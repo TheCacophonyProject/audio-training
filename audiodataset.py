@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import numpy as np
 
+import tensorflow_io as tfio
 
 SEGMENT_LENGTH = 3  # seconds
 SEGMENT_STRIDE = 1  # of a second
@@ -146,9 +147,15 @@ class Recording:
                 self.human_tags.add(tag)
         self.sample_rate = None
         self.rec_data = None
+        self.resampled = False
 
-    def load_recording(self):
+    def load_recording(self, resample=None):
         frames, sr = librosa.load(str(self.filename), sr=None)
+        if resample is not None and resample != sr:
+            frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
+            sr = resample
+            print("resampled to ", sr)
+            self.resampled = True
         self.sample_rate = sr
         self.rec_data = frames
 
@@ -183,7 +190,7 @@ class Recording:
                     pad_end=True,
                 )
 
-                spectrogram = tf.abs(spectrogram)
+                spectrogram = tf.abs(spectrogram).numpy()
                 spectrogram = spectrogram[..., tf.newaxis]
 
     @property
@@ -191,31 +198,30 @@ class Recording:
         return self.id
 
 
-#
-# def plot_spectrogram(spectrogram, ax):
-#     if len(spectrogram.shape) > 2:
-#         assert len(spectrogram.shape) == 3
-#         spectrogram = np.squeeze(spectrogram, axis=-1)
-#     # Convert the frequencies to log scale and transpose, so that the time is
-#     # represented on the x-axis (columns).
-#     # Add an epsilon to avoid taking a log of zero.
-#     log_spec = np.log(spectrogram + np.finfo(float).eps)
-#     height = log_spec.shape[0]
-#     width = log_spec.shape[1]
-#     X = np.linspace(0, np.size(spectrogram), num=width, dtype=int)
-#     Y = range(height)
-#     ax.pcolormesh(X, Y, log_spec)
-#
-#
-# def show_s(data, id):
-#     fig, axes = plt.subplots(1, figsize=(12, 8))
-#
-#     plot_spectrogram(data, axes)
-#     axes.set_title("Spectrogram")
-#     plt.suptitle("TIT")
-#     print("SHOWIN??")
-#     # plt.show()
-#     plt.savefig(f"foo-tf-2-{id}.png")
+def plot_spectrogram(spectrogram, ax):
+    if len(spectrogram.shape) > 2:
+        assert len(spectrogram.shape) == 3
+        spectrogram = np.squeeze(spectrogram, axis=-1)
+    # Convert the frequencies to log scale and transpose, so that the time is
+    # represented on the x-axis (columns).
+    # Add an epsilon to avoid taking a log of zero.
+    log_spec = np.log(spectrogram + np.finfo(float).eps)
+    height = log_spec.shape[0]
+    width = log_spec.shape[1]
+    X = np.linspace(0, np.size(spectrogram), num=width, dtype=int)
+    Y = range(height)
+    ax.pcolormesh(X, Y, log_spec)
+
+
+def show_s(data, id):
+    fig, axes = plt.subplots(1, figsize=(12, 8))
+
+    plot_spectrogram(data, axes)
+    axes.set_title("Spectrogram")
+    plt.suptitle("TIT")
+    print("SHOWIN??")
+    # plt.show()
+    plt.savefig(f"foo-tf-2-{id}.png")
 
 
 class Track:
@@ -237,10 +243,11 @@ class Track:
             else:
                 self.human_tags.add(t.what)
 
-    def get_data(self):
+    def get_data(self, resample=None):
         if self.rec.rec_data is None:
-            self.rec.load_recording()
-
+            self.rec.load_recording(resample)
+        sr = self.rec.sample_rate
+        frames = self.rec.rec_data
         seg_frames = SEGMENT_LENGTH * sr
         t_start = int(sr * self.start)
         t_end = int(sr * self.end)
@@ -263,10 +270,9 @@ class Track:
                 pad_end=True,
             )
 
-            spectrogram = tf.abs(spectrogram)
-            spectrogram = spectrogram[..., tf.newaxis]
+            spectrogram = tf.abs(spectrogram).numpy()
             segments.append(
-                SpectrogramData(spectogram, t_start + start_offset, SEGMENT_LENGTH)
+                SpectrogramData(spectrogram, t_start + start_offset, SEGMENT_LENGTH)
             )
         return segments
 

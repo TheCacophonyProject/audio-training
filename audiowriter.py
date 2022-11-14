@@ -43,8 +43,7 @@ import tensorflow as tf
 import tfrecord_util
 
 
-
-def create_tf_example(data, sample, labels, filename):
+def create_tf_example(data, sample, labels):
     """Converts image and annotations to a tf.Example proto.
 
     Args:
@@ -76,17 +75,18 @@ def create_tf_example(data, sample, labels, filename):
       ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
 
-    print("saving data", data.shape)
+    print("saving data", data.data.shape, sample.rec.filename, sample.rec.sample_rate)
     feature_dict = {
         "audio/rec_id": tfrecord_util.int64_feature(sample.rec_id),
         "audio/track_id": tfrecord_util.int64_feature(sample.id),
-        "audio/sample_rate": tfrecord_util.bytes_feature(str(sample.sample_rate).encode("utf8")),
+        "audio/sample_rate": tfrecord_util.bytes_feature(
+            str(sample.rec.sample_rate).encode("utf8")
+        ),
         "audio/length": tfrecord_util.int64_feature(data.length),
         "audio/start_s": tfrecord_util.int64_feature(data.start_s),
         "audio/class/text": tfrecord_util.bytes_feature(sample.tag.encode("utf8")),
         "audio/class/label": tfrecord_util.int64_feature(labels.index(sample.tag)),
-        "image/audio": tfrecord_util.float_list_feature(data.data),
-
+        "image/audio": tfrecord_util.float_list_feature(data.data.ravel()),
     }
 
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
@@ -94,7 +94,7 @@ def create_tf_example(data, sample, labels, filename):
 
 
 def create_tf_records(
-    dataset, output_path, labels, back_thresh, num_shards=1, cropped=True, by_label=True
+    dataset, output_path, labels, num_shards=1, cropped=True, by_label=True
 ):
 
     output_path = Path(output_path)
@@ -137,7 +137,7 @@ def create_tf_records(
             loaded = []
 
             for sample in local_set:
-                data = sample.get_data()
+                data = sample.get_data(resample=48000)
                 if data is None:
                     continue
                 for d in data:
@@ -149,10 +149,10 @@ def create_tf_records(
             for data, sample in loaded:
                 try:
                     tf_example, num_annotations_skipped = create_tf_example(
-                        data, output_path, sample, labels, ""
+                        data, sample, labels
                     )
                     total_num_annotations_skipped += num_annotations_skipped
-                    l_i = labels.index(sample.label)
+                    l_i = labels.index(sample.tag)
                     if by_label:
                         wrtier = writers[
                             num_shards * l_i + lbl_counts[l_i] % num_shards
