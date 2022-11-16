@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import numpy as np
 
-import tensorflow_io as tfio
 
 SEGMENT_LENGTH = 3  # seconds
 SEGMENT_STRIDE = 1  # of a second
