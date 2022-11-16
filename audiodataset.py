@@ -20,7 +20,12 @@ FRAME_LENGTH = 255
 
 REJECT_TAGS = ["unidentified", "other"]
 
-ACCEPT_TAGS = ["bird", "morepork", "north island brown kiwi"]
+ACCEPT_TAGS = ["bird", "morepork", "kiwi", "rain", "human", "norfolk golden whistler"]
+
+RELABEL = {}
+RELABEL["north island brown kiwi"] = "kiwi"
+RELABEL["great spotted kiwi"] = "kiwi"
+RELABEL["norfolk morepork"] = "morepork"
 
 
 class AudioDataset:
@@ -53,6 +58,7 @@ class AudioDataset:
 
     def print_counts(self):
         counts = {}
+        original_c = {}
         for r in self.recs:
             for track in r.tracks:
                 tags = track.tags
@@ -64,6 +70,14 @@ class AudioDataset:
                         counts[tag] = 1
                     else:
                         counts[tag] += 1
+
+                    tag = list(track.original_tags)[0]
+                    if tag not in RELABEL:
+                        continue
+                    if tag not in original_c:
+                        original_c[tag] = 1
+                    else:
+                        original_c[tag] += 1
                 else:
                     logging.info(
                         "Conflicting tags %s track %s -  %s tags", r.id, track.id, tags
@@ -72,8 +86,13 @@ class AudioDataset:
         for k, v in counts.items():
             logging.info("%s: %s", k, v)
 
+        for k, v in original_c.items():
+            logging.info("%s: %s used as %s", k, v, RELABEL[k])
+
     def print_sample_counts(self):
         counts = {}
+        original_c = {}
+
         for track in self.samples:
             tags = track.tags
             if len(tags) == 1:
@@ -82,6 +101,14 @@ class AudioDataset:
                     counts[tag] = 1
                 else:
                     counts[tag] += 1
+
+                tag = list(track.original_tags)[0]
+                if tag not in RELABEL:
+                    continue
+                if tag not in original_c:
+                    original_c[tag] = 1
+                else:
+                    original_c[tag] += 1
             else:
                 logging.info(
                     "Conflicting tags %s track %s -  %s tags", r.id, track.id, tags
@@ -89,6 +116,8 @@ class AudioDataset:
         logging.info("Counts from %s Samples", len(self.samples))
         for k, v in counts.items():
             logging.info("%s: %s", k, v)
+        for k, v in original_c.items():
+            logging.info("%s: %s used as %s", k, v, RELABEL[k])
 
     def add_sample(self, sample):
         self.samples.append(sample)
@@ -235,12 +264,18 @@ class Track:
         self.automatic_tags = set()
         self.human_tags = set()
         self.automatic = metadata.get("automatic")
+        self.original_tags = set()
         tags = metadata.get("tags", [])
         for tag in tags:
-            t = Tag(tag.get("what"), tag.get("confidence"), tag.get("automatic"))
+            what = tag.get("what")
+            original = what
+            if what in RELABEL:
+                what = RELABEL[what]
+            t = Tag(what, tag.get("confidence"), tag.get("automatic"), original)
             if t.automatic:
                 self.automatic_tags.add(t.what)
             else:
+                self.original_tags.add(t.original)
                 self.human_tags.add(t.what)
 
     def get_data(self, resample=None):
@@ -300,4 +335,4 @@ class Track:
 
 SpectrogramData = namedtuple("SpectrogramData", "data start_s length")
 
-Tag = namedtuple("Tag", "what confidence automatic")
+Tag = namedtuple("Tag", "what confidence automatic original")
