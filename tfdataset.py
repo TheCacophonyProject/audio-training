@@ -8,6 +8,8 @@ import numpy as np
 import time
 import json
 import logging
+import librosa
+import librosa.display
 
 # seed = 1341
 # tf.random.set_seed(seed)
@@ -19,7 +21,7 @@ AUTOTUNE = tf.data.AUTOTUNE
 insect = None
 fp = None
 
-DIMENSIONS = (378, 128)
+DIMENSIONS = (128, 1134)
 
 
 def load_dataset(filenames, num_labels, args):
@@ -200,15 +202,34 @@ def read_tfrecord(
         "audio/data": tf.io.FixedLenFeature(
             [DIMENSIONS[0] * DIMENSIONS[1]], dtype=tf.float32
         ),
+        "audio/mel": tf.io.FixedLenFeature(
+            [DIMENSIONS[0] * DIMENSIONS[1]], dtype=tf.float32
+        ),
+        "audio/mfcc": tf.io.FixedLenFeature([20 * DIMENSIONS[1]], dtype=tf.float32),
         "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
+        "audio/length": tf.io.FixedLenFeature((), tf.int64),
+        "audio/start_s": tf.io.FixedLenFeature(1, tf.float32),
     }
 
     example = tf.io.parse_single_example(example, tfrecord_format)
     audio_data = example["audio/data"]
+    mel = example["audio/mel"]
+    mfcc = example["audio/mfcc"]
 
     audio_data = tf.reshape(audio_data, [DIMENSIONS[0], DIMENSIONS[1], 1])
-    image = tf.image.grayscale_to_rgb(audio_data)
+    mel = tf.reshape(mel, [DIMENSIONS[0], DIMENSIONS[1], 1])
+    mfcc = tf.reshape(mfcc, [20, DIMENSIONS[1], 1])
 
+    length = example["audio/length"]
+    start = example["audio/start_s"]
+    # image = tf.image.grayscale_to_rgb(audio_data)
+
+    # if we want mfcc, i think that we would want to normalized both specs first
+    # spec_mf = tf.concat((audio_data, mfcc), axis=0)
+    # mel_mf = tf.concat((mel, mfcc), axis=0)
+    # image = tf.concat((spec_mf, mel_mf, mel_mf), axis=2)
+
+    image = tf.concat((audio_data, mel, mel), axis=2)
     # if augment:
     #     logging.info("Augmenting")
     #     image = data_augmentation(image)
@@ -222,7 +243,9 @@ def read_tfrecord(
         label = remapped_y.lookup(label)
         if one_hot:
             label = tf.one_hot(label, num_labels)
+        # return image, label
         return image, label
+
     return image
 
 
@@ -251,44 +274,76 @@ def main():
         batch_size=32,
         image_size=DIMENSIONS,
         augment=True,
-        resample=True,
+        resample=False,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
     # print(get_distribution(resampled_ds))
     #
-    for e in range(2):
-        print("epoch", e)
-        true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
-        # true_categories = np.int64(true_categories)
-        true_categories = np.int64(tf.argmax(true_categories, axis=1))
-        c = Counter(list(true_categories))
-        print("epoch is size", len(true_categories))
-        for i in range(len(labels)):
-            print("after have", labels[i], c[i])
+    # for e in range(2):
+    #     print("epoch", e)
+    #     true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
+    #     # true_categories = np.int64(true_categories)
+    #     true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    #     c = Counter(list(true_categories))
+    #     print("epoch is size", len(true_categories))
+    #     for i in range(len(labels)):
+    #         print("after have", labels[i], c[i])
 
     # return
-    for e in range(1):
+    for e in range(2):
         for x, y in resampled_ds:
+            print(len(x), len(y))
             show_batch(x, y, labels)
 
 
 def show_batch(image_batch, label_batch, labels):
-    plt.figure(figsize=(10, 10))
-    print("images in batch", len(image_batch))
-    num_images = min(len(image_batch), 25)
+    plt.figure(figsize=(200, 200))
+    print("images in batch", len(image_batch), len(label_batch))
+    num_images = min(len(label_batch), 25)
+    # rows = int(math.ceil(math.sqrt(num_images)))
     for n in range(num_images):
-        print(np.amax(image_batch[n]), np.amin(image_batch[n]))
-        ax = plt.subplot(5, 5, n + 1)
-        plot_spectrogram(image_batch[n], ax)
+        # print("showing", image_batch[n])
+        start = label_batch[n]
+        length = label_batch[n]
+        p = n * 3
+        ax = plt.subplot(num_images, 3, p + 1)
+        plot_spec(image_batch[n][:, :, 0], ax)
         # plt.imshow(np.uint8(image_batch[n]))
-        plt.title("C-" + str(label_batch[n]))
-        plt.title(labels[np.argmax(label_batch[n])])
-        plt.axis("off")
+        # plt.title(labels[np.argmax(label_batch[n])] + "sftf")
+        plt.title(f"{start}-{length} sftf")
+        # plt.axis("off")
+
+        ax = plt.subplot(num_images, 3, p + 2)
+        plot_mel(image_batch[n][:, :, 1], ax)
+        # plt.imshow(np.uint8(image_batch[n]))
+        # plt.title(labels[np.argmax(label_batch[n])] + "mel")
+        # plt.axis("off")
+        # print(image_batch[1][n].shape)
+        # ax = plt.subplot(num_images, 3, p + 3)
+        # plot_mfcc(image_batch[1][n][:, :, 0], ax)
+        # plt.title(labels[np.argmax(label_batch[n])] + "-mfcc")
+        # plt.axis("off")
+
     plt.show()
 
 
+def plot_mfcc(mfccs, ax):
+    img = librosa.display.specshow(mfccs.numpy(), x_axis="time", ax=ax)
+
+
+def plot_mel(mel, ax):
+    img = librosa.display.specshow(
+        mel.numpy(), x_axis="time", y_axis="mel", sr=48000, fmax=8000, ax=ax
+    )
+
+
+def plot_spec(spec, ax):
+    img = librosa.display.specshow(spec.numpy(), y_axis="log", x_axis="time", ax=ax)
+    ax.set_title("Power spectrogram")
+    # fig.colorbar(img, ax=ax, format="%+2.0f dB")
+
+
 def plot_spectrogram(spectrogram, ax):
-    print(spectrogram.shape)
     spectrogram = spectrogram[:, :, 0]
     if len(spectrogram.shape) > 2:
         assert len(spectrogram.shape) == 3

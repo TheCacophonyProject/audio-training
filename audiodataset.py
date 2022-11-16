@@ -290,24 +290,38 @@ class Track:
         for i in range(segment_count):
             start_offset = i * seg_frames
             # zero pad shorter
-            sub = frames[
-                t_start + start_offset : t_start + start_offset + SEGMENT_LENGTH * sr
-            ]
-            if len(sub) < seg_frames:
+
+            if SEGMENT_LENGTH > self.length:
+                sub = frames[
+                    t_start
+                    + start_offset : t_start
+                    + start_offset
+                    + int(self.length * sr)
+                ]
                 s_data = np.zeros((SEGMENT_LENGTH * sr))
                 s_data[0 : len(sub)] = sub
+
             else:
-                s_data = sub
-            spectrogram = tf.signal.stft(
-                s_data,
-                frame_length=FRAME_LENGTH,
-                frame_step=FRAME_LENGTH // 2,
-                fft_length=FRAME_LENGTH,
-                pad_end=True,
+                s_data = frames[
+                    t_start
+                    + start_offset : t_start
+                    + start_offset
+                    + SEGMENT_LENGTH * sr
+                ]
+            spectrogram = np.abs(
+                librosa.stft(s_data, n_fft=FRAME_LENGTH, hop_length=FRAME_LENGTH // 2)
             )
-            spectrogram = tf.abs(spectrogram).numpy()
+
+            # these should b derivable from spectogram but the librosa exmaples produce different results....
+            mel = librosa.feature.melspectrogram(
+                y=s_data, sr=sr, n_fft=FRAME_LENGTH, hop_length=FRAME_LENGTH // 2
+            )
+            mfcc = librosa.feature.mfcc(
+                y=s_data, sr=sr, hop_length=FRAME_LENGTH // 2, htk=True
+            )
+
             segments.append(
-                SpectrogramData(spectrogram, t_start + start_offset, SEGMENT_LENGTH)
+                SpectrogramData(spectrogram, mel, mfcc, self.start, SEGMENT_LENGTH)
             )
         return segments
 
@@ -332,6 +346,6 @@ class Track:
         return f"{self.rec_id}-{self.tag}"
 
 
-SpectrogramData = namedtuple("SpectrogramData", "data start_s length")
+SpectrogramData = namedtuple("SpectrogramData", "data mel mfcc start_s length")
 
 Tag = namedtuple("Tag", "what confidence automatic original")

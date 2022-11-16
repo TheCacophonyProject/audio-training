@@ -41,6 +41,7 @@ from PIL import Image, ImageOps
 
 import tensorflow as tf
 import tfrecord_util
+import librosa
 
 
 def create_tf_example(data, sample, labels):
@@ -82,10 +83,12 @@ def create_tf_example(data, sample, labels):
             str(sample.rec.sample_rate).encode("utf8")
         ),
         "audio/length": tfrecord_util.int64_feature(data.length),
-        "audio/start_s": tfrecord_util.int64_feature(data.start_s),
+        "audio/start_s": tfrecord_util.float_feature(data.start_s),
         "audio/class/text": tfrecord_util.bytes_feature(sample.tag.encode("utf8")),
         "audio/class/label": tfrecord_util.int64_feature(labels.index(sample.tag)),
-        "audio/data": tfrecord_util.float_list_feature(data.data.ravel()),
+        "audio/data": tfrecord_util.float_list_feature(audio_data.ravel()),
+        "audio/mel": tfrecord_util.float_list_feature(mel.ravel()),
+        "audio/mfcc": tfrecord_util.float_list_feature(data.mfcc.ravel()),
     }
 
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
@@ -127,7 +130,7 @@ def create_tf_records(
             writers.append(tf.io.TFRecordWriter(str(output_path / name)))
         if not by_label:
             break
-    load_first = 200
+    load_first = 1
     try:
         count = 0
         while len(samples) > 0:
@@ -136,7 +139,7 @@ def create_tf_records(
             loaded = []
 
             for sample in local_set:
-                data = sample.get_data(resample=16000)
+                data = sample.get_data(resample=48000)
                 if data is None:
                     continue
                 for d in data:

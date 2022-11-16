@@ -23,8 +23,10 @@ import tensorflow as tf
 from tfdataset import get_dataset
 import time
 
+
 class AudioModel:
     VERSION = 1.0
+
     def __init__(self):
         self.checkpoint_folder = "./train/checkpoints"
         self.log_dir = "./train/logs"
@@ -35,7 +37,7 @@ class AudioModel:
         self.test = None
         self.train = None
         self.remapped = None
-        self.input_shape = (378, 128)
+        self.input_shape = (128, 1134)
         self.preprocess_fn = None
         self.learning_rate = 0.01
         self.load_meta()
@@ -49,7 +51,7 @@ class AudioModel:
             meta = json.load(f)
         self.labels = meta.get("labels", [])
 
-    def train_model(self, run_name="test",epochs = 1):
+    def train_model(self, run_name="test", epochs=1):
         checkpoints = self.checkpoints(run_name)
 
         history = self.model.fit(
@@ -77,13 +79,12 @@ class AudioModel:
                     self.labels,
                     batch_size=self.batch_size,
                     image_size=self.input_shape,
-                    preprocess_fn=self.preprocess_fn
+                    preprocess_fn=self.preprocess_fn,
                 )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)
 
         self.save(run_name, history=history, test_results=test_accuracy)
-
 
     def save(self, run_name=None, history=None, test_results=None):
         # create a save point
@@ -128,10 +129,16 @@ class AudioModel:
             indent=4,
             cls=MetaJSONEncoder,
         )
+
     def build_model(self, num_labels):
         input = tf.keras.Input(shape=(*self.input_shape, 3), name="input")
         base_model, self.preprocess_fn = self.get_base_model((*self.input_shape, 3))
-        x = base_model(input, training=True)
+
+        norm_layer = tf.keras.layers.Normalization()
+        norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
+
+        x = norm_layer(input)
+        x = base_model(x, training=True)
 
         x = tf.keras.layers.GlobalAveragePooling2D()(x)
         birds = tf.keras.layers.Dense(
@@ -140,7 +147,7 @@ class AudioModel:
         self.model = tf.keras.models.Model(input, outputs=birds)
 
         self.model.compile(
-            optimizer=optimizer(lr = self.learning_rate),
+            optimizer=optimizer(lr=self.learning_rate),
             loss=loss(),
             metrics=[
                 "accuracy",
@@ -201,14 +208,14 @@ class AudioModel:
             resample=True,
             preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
-        self.validation,_ = get_dataset(
+        self.validation, _ = get_dataset(
             # dir,
             f"{base_dir}/training-data/validation",
             labels,
             batch_size=self.batch_size,
             image_size=self.input_shape,
             resample=True,
-                preprocess_fn=self.preprocess_fn
+            preprocess_fn=self.preprocess_fn,
         )
         if test:
             self.test, _ = get_dataset(
@@ -217,7 +224,7 @@ class AudioModel:
                 labels,
                 batch_size=batch_size,
                 image_size=self.input_shape,
-                preprocess_fn=self.preprocess_fn
+                preprocess_fn=self.preprocess_fn,
             )
 
     def get_base_model(self, input_shape, weights="imagenet"):
@@ -393,6 +400,7 @@ def main():
     am = AudioModel()
     am.train_model()
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--dir", help="Dir to load")
@@ -419,5 +427,7 @@ class MetaJSONEncoder(json.JSONEncoder):
         if isinstance(obj, SegmentType):
             return obj.name
         return json.JSONEncoder.default(self, obj)
+
+
 if __name__ == "__main__":
     main()
