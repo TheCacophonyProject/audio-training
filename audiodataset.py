@@ -256,7 +256,9 @@ class Track:
         for i in range(segment_count):
             start_offset = i * seg_frames
             # zero pad shorter
-            sub = frames[t_start + start_offset : SEGMENT_LENGTH * sr]
+            sub = frames[
+                t_start + start_offset : t_start + start_offset + SEGMENT_LENGTH * sr
+            ]
             if len(sub) < seg_frames:
                 s_data = np.zeros((SEGMENT_LENGTH * sr))
                 s_data[0 : len(sub)] = sub
@@ -269,7 +271,6 @@ class Track:
                 fft_length=FRAME_LENGTH,
                 pad_end=True,
             )
-
             spectrogram = tf.abs(spectrogram).numpy()
             segments.append(
                 SpectrogramData(spectrogram, t_start + start_offset, SEGMENT_LENGTH)

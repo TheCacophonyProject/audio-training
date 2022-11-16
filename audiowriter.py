@@ -75,7 +75,6 @@ def create_tf_example(data, sample, labels):
       ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
 
-    print("saving data", data.data.shape, sample.rec.filename, sample.rec.sample_rate)
     feature_dict = {
         "audio/rec_id": tfrecord_util.int64_feature(sample.rec_id),
         "audio/track_id": tfrecord_util.int64_feature(sample.id),
@@ -86,7 +85,7 @@ def create_tf_example(data, sample, labels):
         "audio/start_s": tfrecord_util.int64_feature(data.start_s),
         "audio/class/text": tfrecord_util.bytes_feature(sample.tag.encode("utf8")),
         "audio/class/label": tfrecord_util.int64_feature(labels.index(sample.tag)),
-        "image/audio": tfrecord_util.float_list_feature(data.data.ravel()),
+        "audio/data": tfrecord_util.float_list_feature(data.data.ravel()),
     }
 
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
@@ -137,7 +136,7 @@ def create_tf_records(
             loaded = []
 
             for sample in local_set:
-                data = sample.get_data(resample=48000)
+                data = sample.get_data(resample=16000)
                 if data is None:
                     continue
                 for d in data:
