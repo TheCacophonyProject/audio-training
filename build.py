@@ -17,7 +17,7 @@ import sys
 # from config.config import Config
 import numpy as np
 
-from audiodataset import AudioDataset
+from audiodataset import AudioDataset, RELABEL
 from audiowriter import create_tf_records
 
 MAX_TEST_TRACKS = 100
@@ -208,6 +208,7 @@ def main():
         "type": "audio",
         "counts": dataset_counts,
         "by_label": False,
+        "relabbled": RELABEL,
     }
 
     with open(meta_filename, "w") as f:
