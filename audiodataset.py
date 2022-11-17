@@ -57,6 +57,7 @@ class AudioDataset:
 
     def print_counts(self):
         counts = {}
+        recs = {}
         original_c = {}
         for r in self.recs:
             for track in r.tracks:
@@ -67,8 +68,10 @@ class AudioDataset:
                     tag = list(tags)[0]
                     if tag not in counts:
                         counts[tag] = 1
+                        recs[tag] = set()
                     else:
                         counts[tag] += 1
+                    recs[tag].add(r.id)
 
                     tag = list(track.original_tags)[0]
                     if tag not in RELABEL:
@@ -83,7 +86,7 @@ class AudioDataset:
                     )
         logging.info("Counts from %s recordings", len(self.recs))
         for k, v in counts.items():
-            logging.info("%s: %s", k, v)
+            logging.info("%s: %s from %s recs", k, v, len(recs[k]))
 
         for k, v in original_c.items():
             logging.info("%s: %s used as %s", k, v, RELABEL[k])
@@ -91,15 +94,20 @@ class AudioDataset:
     def print_sample_counts(self):
         counts = {}
         original_c = {}
-
+        track_counts = {}
         for track in self.samples:
             tags = track.tags
             if len(tags) == 1:
                 tag = list(tags)[0]
                 if tag not in counts:
                     counts[tag] = 1
+
                 else:
                     counts[tag] += 1
+                if track.id not in track_counts:
+                    track_counts[track.id] = 1
+                else:
+                    track_counts[track.id] += 1
 
                 tag = list(track.original_tags)[0]
                 if tag not in RELABEL:
@@ -117,6 +125,8 @@ class AudioDataset:
             logging.info("%s: %s", k, v)
         for k, v in original_c.items():
             logging.info("%s: %s used as %s", k, v, RELABEL[k])
+        logging.info("track counts %s", track_counts)
+        # 1 / 0
 
     def add_sample(self, sample):
         self.samples.append(sample)
@@ -200,7 +210,9 @@ class Recording:
         for t in self.tracks:
             t_start = int(sr * t.start)
             t_end = int(sr * t.end)
-            segment_count = int(max(1, (t.length - SEGMENT_LENGTH) // SEGMENT_STRIDE))
+            segment_count = int(
+                max(1, 1 + math.ceil(t.length - SEGMENT_LENGTH) // SEGMENT_STRIDE)
+            )
             for i in range(segment_count):
                 start_offset = i * seg_frames
                 # zero pad shorter
@@ -278,6 +290,7 @@ class Track:
                 self.human_tags.add(t.what)
 
     def get_data(self, resample=None):
+        # 1 / 0
         if self.rec.rec_data is None:
             self.rec.load_recording(resample)
         sr = self.rec.sample_rate
@@ -323,6 +336,7 @@ class Track:
             segments.append(
                 SpectrogramData(spectrogram, mel, mfcc, self.start, SEGMENT_LENGTH)
             )
+        logging.info("returning %s seg from %s", len(segments), self.length)
         return segments
 
     #

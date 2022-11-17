@@ -51,7 +51,7 @@ class AudioModel:
             meta = json.load(f)
         self.labels = meta.get("labels", [])
 
-    def train_model(self, run_name="test", epochs=1):
+    def train_model(self, run_name="test", epochs=15):
         checkpoints = self.checkpoints(run_name)
 
         history = self.model.fit(
@@ -131,21 +131,24 @@ class AudioModel:
         )
 
     def build_model(self, num_labels):
-        input = tf.keras.Input(shape=(*self.input_shape, 3), name="input")
+        LSTM = True
+        input = tf.keras.Input(shape=(None, *self.input_shape, 3), name="input")
         base_model, self.preprocess_fn = self.get_base_model((*self.input_shape, 3))
 
-        norm_layer = tf.keras.layers.Normalization()
-        norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
+        if LSTM:
+            self.model = self.add_lstm(None, num_labels)
+        else:
+            norm_layer = tf.keras.layers.Normalization()
+            norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
 
-        x = norm_layer(input)
-        x = base_model(x, training=True)
+            x = norm_layer(input)
+            x = base_model(input, training=True)
 
-        x = tf.keras.layers.GlobalAveragePooling2D()(x)
-        birds = tf.keras.layers.Dense(
-            num_labels, activation="softmax", name="prediction"
-        )(x)
-        self.model = tf.keras.models.Model(input, outputs=birds)
-
+            x = tf.keras.layers.GlobalAveragePooling2D()(x)
+            birds = tf.keras.layers.Dense(
+                num_labels, activation="softmax", name="prediction"
+            )(x)
+            cnn = tf.keras.models.Model(input, outputs=birds)
         self.model.compile(
             optimizer=optimizer(lr=self.learning_rate),
             loss=loss(),
@@ -156,6 +159,31 @@ class AudioModel:
                 tf.keras.metrics.Precision(),
             ],
         )
+
+    def add_lstm(self, cnn, num_labels):
+
+        lstm_units = 128
+        input = tf.keras.Input(shape=(*self.input_shape, 3), name="input")
+        cnn, self.preprocess_fn = self.get_base_model((*self.input_shape, 3))
+        input_layer = tf.keras.Input(shape=(None, *self.input_shape, 3))
+        norm_layer = tf.keras.layers.Normalization()
+        norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
+        x = norm_layer(input_layer)
+
+        encoded_frames = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(x)
+        lstm_outputs = tf.keras.layers.GRU(
+            lstm_units,
+            return_state=False,
+        )(encoded_frames)
+
+        hidden_layer = tf.keras.layers.Dense(1024, activation="relu")(lstm_outputs)
+        hidden_layer = tf.keras.layers.Dense(512, activation="relu")(hidden_layer)
+
+        preds = tf.keras.layers.Dense(num_labels, activation="softmax", name="pred")(
+            hidden_layer
+        )
+        model = tf.keras.models.Model(input_layer, preds)
+        return model
 
     def checkpoints(self, run_name):
         val_loss = os.path.join(self.checkpoint_folder, run_name, "val_loss")

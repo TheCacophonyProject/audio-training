@@ -43,6 +43,8 @@ import tensorflow as tf
 import tfrecord_util
 import librosa
 
+LSTM = True
+
 
 def create_tf_example(data, sample, labels):
     """Converts image and annotations to a tf.Example proto.
@@ -75,20 +77,42 @@ def create_tf_example(data, sample, labels):
     Raises:
       ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
-
+    if LSTM:
+        all_audio = []
+        all_mel = []
+        all_mfcc = []
+        for d in data:
+            start_s = d.start_s
+            length = d.length
+            audio_data = librosa.amplitude_to_db(d.data, ref=np.max)
+            mel = librosa.power_to_db(d.mel, ref=np.max)
+            all_audio.append(audio_data)
+            all_mel.append(mel)
+            all_mfcc.append(d.mfcc)
+        all_audio = np.array(all_audio)
+        all_mel = np.array(all_mel)
+        all_mfcc = np.array(all_mfcc)
+        print(all_audio.shape)
+    else:
+        start_s = data.start_s
+        length = data.length
+        all_audio = librosa.amplitude_to_db(data.data, ref=np.max)
+        all_mel = librosa.power_to_db(data.mel, ref=np.max)
+        all_mfcc = data.mfcc
     feature_dict = {
         "audio/rec_id": tfrecord_util.int64_feature(sample.rec_id),
         "audio/track_id": tfrecord_util.int64_feature(sample.id),
         "audio/sample_rate": tfrecord_util.bytes_feature(
             str(sample.rec.sample_rate).encode("utf8")
         ),
-        "audio/length": tfrecord_util.int64_feature(data.length),
-        "audio/start_s": tfrecord_util.float_feature(data.start_s),
+        "audio/length": tfrecord_util.int64_feature(length),
+        "audio/start_s": tfrecord_util.float_feature(start_s),
         "audio/class/text": tfrecord_util.bytes_feature(sample.tag.encode("utf8")),
         "audio/class/label": tfrecord_util.int64_feature(labels.index(sample.tag)),
-        "audio/data": tfrecord_util.float_list_feature(audio_data.ravel()),
-        "audio/mel": tfrecord_util.float_list_feature(mel.ravel()),
-        "audio/mfcc": tfrecord_util.float_list_feature(data.mfcc.ravel()),
+        "audio/rows": tfrecord_util.int64_feature(len(all_audio)),
+        "audio/data": tfrecord_util.float_list_feature(all_audio.ravel()),
+        "audio/mel": tfrecord_util.float_list_feature(all_mel.ravel()),
+        "audio/mfcc": tfrecord_util.float_list_feature(all_mfcc.ravel()),
     }
 
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
@@ -142,8 +166,11 @@ def create_tf_records(
                 data = sample.get_data(resample=48000)
                 if data is None:
                     continue
-                for d in data:
-                    loaded.append((d, sample))
+                if LSTM:
+                    loaded.append((data, sample))
+                else:
+                    for d in data:
+                        loaded.append((d, sample))
 
             loaded = np.array(loaded)
             np.random.shuffle(loaded)

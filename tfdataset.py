@@ -11,6 +11,7 @@ import logging
 import librosa
 import librosa.display
 
+LSTM = True
 # seed = 1341
 # tf.random.set_seed(seed)
 # np.random.seed(seed)
@@ -66,8 +67,8 @@ def load_dataset(filenames, num_labels, args):
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
-    filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[1]))
-    dataset = dataset.filter(filter_nan)
+    # filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[1]))
+    # dataset = dataset.filter(filter_nan)
     return dataset
 
 
@@ -142,12 +143,13 @@ def get_dataset(base_dir, labels, **args):
     dataset = dataset.take(epoch_size)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     batch_size = args.get("batch_size", None)
-    if batch_size is not None:
-        dataset = dataset.batch(batch_size)
+    # if batch_size is not None:
+    dataset = dataset.batch(1)
     return dataset, remapped
 
 
 def resample(dataset, labels):
+    excluded_labels = ["human"]
     num_labels = len(labels)
     true_categories = [y for x, y in dataset]
     if len(true_categories) == 0:
@@ -157,8 +159,13 @@ def resample(dataset, labels):
     dist = np.empty((num_labels), dtype=np.float32)
     target_dist = np.empty((num_labels), dtype=np.float32)
     for i in range(num_labels):
-        dist[i] = c[i]
-        logging.info("Have %s for %s", dist[i], labels[i])
+        if labels[i] in excluded_labels:
+            dist[i] = 0
+            logging.info("Excluding %s for %s", c[i], labels[i])
+
+        else:
+            dist[i] = c[i]
+            logging.info("Have %s for %s", c[i], labels[i])
     zeros = dist[dist == 0]
     non_zero_labels = num_labels - len(zeros)
     target_dist[:] = 1 / non_zero_labels
@@ -176,11 +183,13 @@ def resample(dataset, labels):
             target_dist[i] = dist[i]
 
         target_dist[i] = max(0, target_dist[i])
-    target_dist = target_dist / np.sum(target_dist)
-
-    if "sheep" in labels:
-        sheep_i = labels.index("sheep")
-        target_dist[sheep_i] = 0
+    # target_dist = target_dist / np.sum(target_dist)
+    #
+    # for l in exclude_labels:
+    #
+    #     if "sheep" in labels:
+    #         sheep_i = labels.index("sheep")
+    #         target_dist[sheep_i] = 0
     rej = dataset.rejection_resample(
         class_func=class_func,
         target_dist=target_dist,
@@ -210,15 +219,36 @@ def read_tfrecord(
         "audio/length": tf.io.FixedLenFeature((), tf.int64),
         "audio/start_s": tf.io.FixedLenFeature(1, tf.float32),
     }
-
+    tfrecord_format = {
+        "audio/data": tf.io.RaggedFeature(
+            dtype=tf.float32, partitions=[tf.io.RaggedFeature.RowSplits("audio/rows")]
+        ),
+        "audio/mel": tf.io.RaggedFeature(
+            dtype=tf.float32, partitions=[tf.io.RaggedFeature.RowSplits("audio/rows")]
+        ),
+        "audio/mfcc": tf.io.RaggedFeature(
+            dtype=tf.float32, partitions=[tf.io.RaggedFeature.RowSplits("audio/rows")]
+        ),
+        "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
+        "audio/length": tf.io.FixedLenFeature((), tf.int64),
+        "audio/start_s": tf.io.FixedLenFeature(1, tf.float32),
+    }
     example = tf.io.parse_single_example(example, tfrecord_format)
     audio_data = example["audio/data"]
     mel = example["audio/mel"]
     mfcc = example["audio/mfcc"]
 
-    audio_data = tf.reshape(audio_data, [DIMENSIONS[0], DIMENSIONS[1], 1])
-    mel = tf.reshape(mel, [DIMENSIONS[0], DIMENSIONS[1], 1])
-    mfcc = tf.reshape(mfcc, [20, DIMENSIONS[1], 1])
+    if LSTM:
+        audio_data = tf.reshape(audio_data, [-1, DIMENSIONS[0], DIMENSIONS[1], 1])
+        mel = tf.reshape(mel, [-1, DIMENSIONS[0], DIMENSIONS[1], 1])
+        mfcc = tf.reshape(mfcc, [-1, 20, DIMENSIONS[1], 1])
+        image = tf.concat((audio_data, mel, mel), axis=3)
+
+    else:
+        audio_data = tf.reshape(audio_data, [DIMENSIONS[0], DIMENSIONS[1], 1])
+        mel = tf.reshape(mel, [DIMENSIONS[0], DIMENSIONS[1], 1])
+        mfcc = tf.reshape(mfcc, [20, DIMENSIONS[1], 1])
+        image = tf.concat((audio_data, mel, mel), axis=2)
 
     length = example["audio/length"]
     start = example["audio/start_s"]
@@ -229,7 +259,6 @@ def read_tfrecord(
     # mel_mf = tf.concat((mel, mfcc), axis=0)
     # image = tf.concat((spec_mf, mel_mf, mel_mf), axis=2)
 
-    image = tf.concat((audio_data, mel, mel), axis=2)
     # if augment:
     #     logging.info("Augmenting")
     #     image = data_augmentation(image)
