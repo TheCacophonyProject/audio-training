@@ -144,7 +144,7 @@ def get_dataset(base_dir, labels, **args):
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     batch_size = args.get("batch_size", None)
     # if batch_size is not None:
-    dataset = dataset.batch(1)
+    dataset = dataset.padded_batch(batch_size)
     return dataset, remapped
 
 
