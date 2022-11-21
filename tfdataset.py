@@ -147,6 +147,11 @@ def get_dataset(base_dir, labels, **args):
     batch_size = args.get("batch_size", None)
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
+
+    dist = get_distribution(dataset)
+    for i, d in enumerate(dist):
+        logging.info("Have %s for %s", d, labels[i])
+
     return dataset, remapped
 
 
@@ -313,25 +318,22 @@ def show_batch(image_batch, label_batch, labels):
     # rows = int(math.ceil(math.sqrt(num_images)))
     for n in range(num_images):
         # print("showing", image_batch[n])
-        start = label_batch[n]
-        length = label_batch[n]
         p = n * 3
         ax = plt.subplot(num_images, 3, p + 1)
         plot_spec(image_batch[n][:, :, 0], ax)
         # plt.imshow(np.uint8(image_batch[n]))
-        # plt.title(labels[np.argmax(label_batch[n])] + "sftf")
-        plt.title(f"{start}-{length} sftf")
+        plt.title(labels[np.argmax(label_batch[n])] + " sftf")
         # plt.axis("off")
 
         ax = plt.subplot(num_images, 3, p + 2)
         plot_mel(image_batch[n][:, :, 1], ax)
         # plt.imshow(np.uint8(image_batch[n]))
-        # plt.title(labels[np.argmax(label_batch[n])] + "mel")
+        plt.title(labels[np.argmax(label_batch[n])] + " mel")
         # plt.axis("off")
         # print(image_batch[1][n].shape)
         # ax = plt.subplot(num_images, 3, p + 3)
         # plot_mfcc(image_batch[1][n][:, :, 0], ax)
-        # plt.title(labels[np.argmax(label_batch[n])] + "-mfcc")
+        # plt.title(labels[np.argmax(label_batch[n])] + " mfcc")
         # plt.axis("off")
 
     plt.show()
