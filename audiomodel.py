@@ -84,6 +84,10 @@ class AudioModel:
                     batch_size=self.batch_size,
                     image_size=self.input_shape,
                     preprocess_fn=self.preprocess_fn,
+                    reshuffle=False,
+                    shuffle=False,
+                    resample=False,
+                    deterministic=True,
                 )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)
@@ -398,17 +402,10 @@ def optimizer(lr=None, decay=None):
 
 
 def confusion(model, labels, dataset, filename="confusion.png"):
-    x_data = []
-    y_data = []
-    for x, y in dataset:
-        x_data.append(x)
-        y_data.append(y)
-
-    true_categories = tf.concat(np.array(y_data), axis=0)
-    x_data = tf.concat(np.array(x_data), axis=0)
+    true_categories = tf.concat([y for x, y in dataset], axis=0)
     if len(true_categories) > 1:
         true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    y_pred = model.predict(x_data)
+    y_pred = model.predict(dataset)
 
     predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
 
@@ -478,6 +475,11 @@ def main():
             labels,
             image_size=[128, 1134],
             preprocess_fn=preprocess,
+            shuffle=False,
+            resample=False,
+            deterministic=True,
+            reshuffle=False,
+            batch_size=64,
         )
 
         confusion(model, labels, dataset, args.confusion)

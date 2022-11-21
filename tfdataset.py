@@ -129,7 +129,10 @@ def get_dataset(base_dir, labels, **args):
     if resample_data:
         logging.info("Resampling data")
         dataset = resample(dataset, labels)
-    # dataset = dataset.shuffle(4096, reshuffle_each_iteration=reshuffle)
+    if args.get("shuffle", True):
+        dataset = dataset.shuffle(
+            4096, reshuffle_each_iteration=args.get("reshuffle", True)
+        )
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     epoch_size = len([0 for x, y in dataset])
@@ -148,7 +151,7 @@ def get_dataset(base_dir, labels, **args):
 
 
 def resample(dataset, labels):
-    excluded_labels = ["human", "rain"]
+    excluded_labels = ["bird"]
     num_labels = len(labels)
     true_categories = [y for x, y in dataset]
     if len(true_categories) == 0:
