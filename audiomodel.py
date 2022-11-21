@@ -51,7 +51,7 @@ class AudioModel:
             meta = json.load(f)
         self.labels = meta.get("labels", [])
 
-    def train_model(self, run_name="test", epochs=1):
+    def train_model(self, run_name="test", epochs=15):
         checkpoints = self.checkpoints(run_name)
 
         history = self.model.fit(

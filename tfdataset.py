@@ -148,6 +148,7 @@ def get_dataset(base_dir, labels, **args):
 
 
 def resample(dataset, labels):
+    excluded_labels = ["human", "rain"]
     num_labels = len(labels)
     true_categories = [y for x, y in dataset]
     if len(true_categories) == 0:
@@ -157,8 +158,14 @@ def resample(dataset, labels):
     dist = np.empty((num_labels), dtype=np.float32)
     target_dist = np.empty((num_labels), dtype=np.float32)
     for i in range(num_labels):
-        dist[i] = c[i]
-        logging.info("Have %s for %s", dist[i], labels[i])
+        if labels[i] in excluded_labels:
+            dist[i] = 0
+            logging.info("Excluding %s for %s", dist[i], labels[i])
+
+        else:
+            dist[i] = c[i]
+
+            logging.info("Have %s for %s", dist[i], labels[i])
     zeros = dist[dist == 0]
     non_zero_labels = num_labels - len(zeros)
     target_dist[:] = 1 / non_zero_labels
