@@ -163,7 +163,7 @@ def resample(dataset, labels):
     for i in range(num_labels):
         if labels[i] in excluded_labels:
             dist[i] = 0
-            logging.info("Excluding %s for %s", dist[i], labels[i])
+            logging.info("Excluding %s for %s", c[i], labels[i])
 
         else:
             dist[i] = c[i]
