@@ -75,7 +75,8 @@ def create_tf_example(data, sample, labels):
     Raises:
       ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
-
+    audio_data = librosa.amplitude_to_db(data.data, ref=np.max)
+    mel = librosa.power_to_db(data.mel, ref=np.max)
     feature_dict = {
         "audio/rec_id": tfrecord_util.int64_feature(sample.rec_id),
         "audio/track_id": tfrecord_util.int64_feature(sample.id),
