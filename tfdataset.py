@@ -314,7 +314,7 @@ def main():
 def show_batch(image_batch, label_batch, labels):
     plt.figure(figsize=(200, 200))
     print("images in batch", len(image_batch), len(label_batch))
-    num_images = min(len(label_batch), 25)
+    num_images = min(len(label_batch), 10)
     # rows = int(math.ceil(math.sqrt(num_images)))
     for n in range(num_images):
         # print("showing", image_batch[n])

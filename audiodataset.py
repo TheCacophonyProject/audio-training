@@ -288,41 +288,53 @@ class Track:
         segment_count = int(max(1, (self.length - SEGMENT_LENGTH) // SEGMENT_STRIDE))
         segments = []
         for i in range(segment_count):
-            start_offset = i * seg_frames
-            # zero pad shorter
+            try:
+                start_offset = i * seg_frames
+                # zero pad shorter
 
-            if SEGMENT_LENGTH > self.length:
-                sub = frames[
-                    t_start
-                    + start_offset : t_start
-                    + start_offset
-                    + int(self.length * sr)
-                ]
-                s_data = np.zeros((SEGMENT_LENGTH * sr))
-                s_data[0 : len(sub)] = sub
+                if SEGMENT_LENGTH > self.length:
+                    sub = frames[
+                        t_start
+                        + start_offset : t_start
+                        + start_offset
+                        + int(self.length * sr)
+                    ]
+                    s_data = np.zeros((SEGMENT_LENGTH * sr))
+                    s_data[0 : len(sub)] = sub
 
-            else:
-                s_data = frames[
-                    t_start
-                    + start_offset : t_start
-                    + start_offset
-                    + SEGMENT_LENGTH * sr
-                ]
-            spectrogram = np.abs(
-                librosa.stft(s_data, n_fft=FRAME_LENGTH, hop_length=FRAME_LENGTH // 2)
-            )
+                else:
+                    s_data = frames[
+                        t_start
+                        + start_offset : t_start
+                        + start_offset
+                        + SEGMENT_LENGTH * sr
+                    ]
+                spectrogram = np.abs(
+                    librosa.stft(
+                        s_data, n_fft=FRAME_LENGTH, hop_length=FRAME_LENGTH // 2
+                    )
+                )
 
-            # these should b derivable from spectogram but the librosa exmaples produce different results....
-            mel = librosa.feature.melspectrogram(
-                y=s_data, sr=sr, n_fft=FRAME_LENGTH, hop_length=FRAME_LENGTH // 2
-            )
-            mfcc = librosa.feature.mfcc(
-                y=s_data, sr=sr, hop_length=FRAME_LENGTH // 2, htk=True
-            )
+                # these should b derivable from spectogram but the librosa exmaples produce different results....
+                mel = librosa.feature.melspectrogram(
+                    y=s_data, sr=sr, n_fft=FRAME_LENGTH, hop_length=FRAME_LENGTH // 2
+                )
+                mfcc = librosa.feature.mfcc(
+                    y=s_data, sr=sr, hop_length=FRAME_LENGTH // 2, htk=True
+                )
+                segments.append(
+                    SpectrogramData(spectrogram, mel, mfcc, self.start, SEGMENT_LENGTH)
+                )
+            except:
+                logging.error(
+                    "Error getting segment for %s-%s start %s lenght %s",
+                    self.rec_id,
+                    self.id,
+                    start_offset / sr,
+                    SEGMENT_LENGTH,
+                    exc_info=True,
+                )
 
-            segments.append(
-                SpectrogramData(spectrogram, mel, mfcc, self.start, SEGMENT_LENGTH)
-            )
         return segments
 
     #
