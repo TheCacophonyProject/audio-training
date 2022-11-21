@@ -13,6 +13,7 @@ import pytz
 import json
 from dateutil.parser import parse as parse_date
 import sys
+import itertools
 
 # from config.config import Config
 import numpy as np
@@ -22,6 +23,9 @@ from audiowriter import create_tf_records
 import tensorflow as tf
 from tfdataset import get_dataset
 import time
+from pathlib import Path
+from sklearn.metrics import confusion_matrix
+import matplotlib.pyplot as plt
 
 
 class AudioModel:
@@ -92,6 +96,7 @@ class AudioModel:
             run_name = self.params.model_name
         self.model.save(os.path.join(self.checkpoint_folder, run_name))
         self.save_metadata(run_name, history, test_results)
+        confusion(self.model, self.labels, self.test, run_name)
 
     def save_metadata(self, run_name=None, history=None, test_results=None):
         #  save metadata
@@ -336,37 +341,35 @@ class AudioModel:
             )
         raise Exception("Could not find model" + pretrained_model)
 
-    def get_preprocess_fn(self):
-        pretrained_model = self.model_name
-        if pretrained_model == "resnet":
-            return tf.keras.applications.resnet.preprocess_input
 
-        elif pretrained_model == "resnetv2":
-            return tf.keras.applications.resnet_v2.preprocess_input
+def get_preprocess_fn(pretrained_model):
+    if pretrained_model == "resnet":
+        return tf.keras.applications.resnet.preprocess_input
 
-        elif pretrained_model == "resnet152":
-            return tf.keras.applications.resnet.preprocess_input
+    elif pretrained_model == "resnetv2":
+        return tf.keras.applications.resnet_v2.preprocess_input
 
-        elif pretrained_model == "vgg16":
-            return tf.keras.applications.vgg16.preprocess_input
+    elif pretrained_model == "resnet152":
+        return tf.keras.applications.resnet.preprocess_input
 
-        elif pretrained_model == "vgg19":
-            return tf.keras.applications.vgg19.preprocess_input
+    elif pretrained_model == "vgg16":
+        return tf.keras.applications.vgg16.preprocess_input
 
-        elif pretrained_model == "mobilenet":
-            return tf.keras.applications.mobilenet_v2.preprocess_input
+    elif pretrained_model == "vgg19":
+        return tf.keras.applications.vgg19.preprocess_input
 
-        elif pretrained_model == "densenet121":
-            return tf.keras.applications.densenet.preprocess_input
+    elif pretrained_model == "mobilenet":
+        return tf.keras.applications.mobilenet_v2.preprocess_input
 
-        elif pretrained_model == "inceptionresnetv2":
-            return tf.keras.applications.inception_resnet_v2.preprocess_input
-        elif pretrained_model == "inceptionv3":
-            return tf.keras.applications.inception_v3.preprocess_input
-        logging.warn(
-            "pretrained model %s has no preprocessing function", pretrained_model
-        )
-        return None
+    elif pretrained_model == "densenet121":
+        return tf.keras.applications.densenet.preprocess_input
+
+    elif pretrained_model == "inceptionresnetv2":
+        return tf.keras.applications.inception_resnet_v2.preprocess_input
+    elif pretrained_model == "inceptionv3":
+        return tf.keras.applications.inception_v3.preprocess_input
+    logging.warn("pretrained model %s has no preprocessing function", pretrained_model)
+    return None
 
 
 def loss(smoothing=0):
@@ -394,18 +397,102 @@ def optimizer(lr=None, decay=None):
     return optimizer
 
 
+def confusion(model, labels, dataset, filename="confusion.png"):
+    x_data = []
+    y_data = []
+    for x, y in dataset:
+        x_data.append(x)
+        y_data.append(y)
+
+    true_categories = tf.concat(np.array(y_data), axis=0)
+    x_data = tf.concat(np.array(x_data), axis=0)
+    if len(true_categories) > 1:
+        true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    y_pred = model.predict(x_data)
+
+    predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
+
+    cm = confusion_matrix(
+        true_categories, predicted_categories, labels=np.arange(len(labels))
+    )
+    # Log the confusion matrix as an image summary.
+    figure = plot_confusion_matrix(cm, class_names=labels)
+    logging.info("Saving confusion to %s", filename)
+    plt.savefig(filename, format="png")
+
+
+# from tensorflow examples
+def plot_confusion_matrix(cm, class_names):
+    """
+    Returns a matplotlib figure containing the plotted confusion matrix.
+
+    Args:
+      cm (array, shape = [n, n]): a confusion matrix of integer classes
+      class_names (array, shape = [n]): String names of the integer classes
+    """
+
+    figure = plt.figure(figsize=(8, 8))
+    plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+    plt.title("Confusion matrix")
+    plt.colorbar()
+    tick_marks = np.arange(len(class_names))
+    plt.xticks(tick_marks, class_names, rotation=45)
+    plt.yticks(tick_marks, class_names)
+
+    # Normalize the confusion matrix.
+    cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
+    cm = np.nan_to_num(cm)
+
+    # Use white text if squares are dark; otherwise black.
+    threshold = cm.max() / 2.0
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        color = "white" if cm[i, j] > threshold else "black"
+        plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
+
+    plt.tight_layout()
+    plt.ylabel("True label")
+    plt.xlabel("Predicted label")
+    return figure
+
+
 def main():
     init_logging()
     args = parse_args()
-    am = AudioModel()
-    am.train_model()
+    print(args)
+    if args.confusion is not None:
+        load_model = Path("./train/checkpoints") / args.name
+        logging.info("Loading %s with weights %s", load_model, "val_acc")
+        model = tf.keras.models.load_model(str(load_model))
+
+        model.load_weights(load_model / "val_acc").expect_partial()
+
+        meta_file = load_model / "metadata.txt"
+        print("Meta", meta_file)
+        with open(str(meta_file), "r") as f:
+            meta_data = json.load(f)
+        labels = meta_data.get("labels")
+        model_name = meta_data.get("name")
+        preprocess = get_preprocess_fn(model_name)
+        dataset, _ = get_dataset(
+            f"./training-data/test",
+            labels,
+            image_size=[128, 1134],
+            preprocess_fn=preprocess,
+        )
+
+        confusion(model, labels, dataset, args.confusion)
+    else:
+        am = AudioModel()
+        am.train_model(run_name=args.name)
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-d", "--dir", help="Dir to load")
+    parser.add_argument("--confusion", help="Save confusion matrix for model")
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
+    parser.add_argument("name", help="Run name")
+
     args = parser.parse_args()
     return args
 
