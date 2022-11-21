@@ -19,6 +19,10 @@ import numpy as np
 
 from audiodataset import AudioDataset, RELABEL
 from audiowriter import create_tf_records
+import warnings
+
+warnings.filterwarnings("ignore")
+# remove librosa pysound warnings
 
 MAX_TEST_TRACKS = 100
 MAX_TEST_SAMPLES = 100
@@ -28,7 +32,9 @@ MIN_TRACKS = 100
 LOW_SAMPLES_LABELS = []
 
 
-def split_label(dataset, datasets, label, existing_test_count=0, max_samples=None):
+def split_label(
+    dataset, datasets, label, existing_test_count=0, max_samples=None, no_test=False
+):
     # split a label from dataset such that vlaidation is 15% or MIN_TRACKS
     recs = [r for r in dataset.recs if label in r.human_tags]
 
@@ -109,6 +115,8 @@ def split_label(dataset, datasets, label, existing_test_count=0, max_samples=Non
         track_count = len(tracks)
         if label_count >= sample_limit and track_count >= track_limit:
             # 100 more for test
+            if no_test:
+                break
             if add_to == validate_c:
                 add_to = test_c
                 camera_type = "test"
@@ -118,6 +126,7 @@ def split_label(dataset, datasets, label, existing_test_count=0, max_samples=Non
                 track_limit = num_test_tracks
                 label_count = 0
                 tracks = set()
+
             else:
                 break
 
@@ -150,7 +159,7 @@ def get_test_recorder(dataset, test_clips, after_date):
     return test_c
 
 
-def split_randomly(dataset, test_clips=[]):
+def split_randomly(dataset, test_clips=[], no_test=False):
     # split data randomly such that a clip is only in one dataset
     # have tried many ways to split i.e. location and cameras found this is simplest
     # and the results are the same
@@ -164,6 +173,7 @@ def split_randomly(dataset, test_clips=[]):
             dataset,
             (train, validation, test),
             label,
+            no_test=no_test
             # existing_test_count=existing_test_count,
         )
 
@@ -178,12 +188,13 @@ def main():
     dataset.load_meta(args.dir)
     # dataset.load_meta()
     dataset.print_counts()
-    datasets = split_randomly(dataset)
+    datasets = split_randomly(dataset, no_test=args.no_test)
     dataset.print_counts()
     all_labels = set()
     for d in datasets:
         logging.info("%s Dataset", d.name)
         d.print_sample_counts()
+
         all_labels.update(d.labels)
     all_labels = list(all_labels)
     all_labels.sort()
@@ -241,6 +252,7 @@ def validate_datasets(datasets):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--dir", help="Dir to load")
+    parser.add_argument("--no-test", action="count", help="NO test set")
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     args = parser.parse_args()

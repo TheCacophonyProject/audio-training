@@ -146,7 +146,7 @@ def create_tf_records(
                 for d in data:
                     loaded.append((d, sample))
 
-            loaded = np.array(loaded)
+            loaded = np.array(loaded, dtype=object)
             np.random.shuffle(loaded)
 
             for data, sample in loaded:

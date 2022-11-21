@@ -91,32 +91,40 @@ class AudioDataset:
     def print_sample_counts(self):
         counts = {}
         original_c = {}
-
+        rec_counts = {}
         for track in self.samples:
             tags = track.tags
             if len(tags) == 1:
                 tag = list(tags)[0]
                 if tag not in counts:
                     counts[tag] = 1
+                    rec_counts[tag] = {track.rec_id}
                 else:
                     counts[tag] += 1
+                    rec_counts[tag].add(track.rec_id)
 
                 tag = list(track.original_tags)[0]
                 if tag not in RELABEL:
                     continue
                 if tag not in original_c:
                     original_c[tag] = 1
+                    rec_counts[tag] = {track.rec_id}
+
                 else:
                     original_c[tag] += 1
+                    rec_counts[tag] = {track.rec_id}
+
             else:
                 logging.info(
                     "Conflicting tags %s track %s -  %s tags", r.id, track.id, tags
                 )
         logging.info("Counts from %s Samples", len(self.samples))
         for k, v in counts.items():
-            logging.info("%s: %s", k, v)
+            logging.info("%s: %s ( %s )", k, v, len(rec_counts[k]))
         for k, v in original_c.items():
-            logging.info("%s: %s used as %s", k, v, RELABEL[k])
+            logging.info(
+                "%s: %s ( %s ) used as %s", k, v, len(rec_counts[k]), RELABEL[k]
+            )
 
     def add_sample(self, sample):
         self.samples.append(sample)
