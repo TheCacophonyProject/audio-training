@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 import tensorflow as tf
 import numpy as np
-
+import math
 
 SEGMENT_LENGTH = 3  # seconds
 SEGMENT_STRIDE = 1  # of a second
@@ -293,36 +293,34 @@ class Track:
         seg_frames = SEGMENT_LENGTH * sr
         t_start = int(sr * self.start)
         t_end = int(sr * self.end)
-        segment_count = int(max(1, (self.length - SEGMENT_LENGTH) // SEGMENT_STRIDE))
+        segment_count = int(math.ceil((self.length - SEGMENT_LENGTH) / SEGMENT_STRIDE))
         segments = []
-        for i in range(segment_count):
+        stride = SEGMENT_STRIDE * sr
+        sample_size = SEGMENT_LENGTH * sr
+        remaining = self.length
+        end = 0
+        start_offset = 0
+        i = 0
+        while end < self.length or i == 0:
             try:
-                start_offset = i * seg_frames
+                start_offset = i * stride
+                end = i * SEGMENT_STRIDE + SEGMENT_LENGTH
+                i += 1
                 # zero pad shorter
-
-                if SEGMENT_LENGTH > self.length:
-                    sub = frames[
-                        t_start
-                        + start_offset : t_start
-                        + start_offset
-                        + int(self.length * sr)
-                    ]
+                if end > self.length:
+                    sub = frames[t_start + start_offset : t_end]
                     s_data = np.zeros((SEGMENT_LENGTH * sr))
                     s_data[0 : len(sub)] = sub
-
                 else:
                     s_data = frames[
-                        t_start
-                        + start_offset : t_start
-                        + start_offset
-                        + SEGMENT_LENGTH * sr
+                        t_start + start_offset : t_start + start_offset + sample_size
                     ]
+
                 spectrogram = np.abs(
                     librosa.stft(
                         s_data, n_fft=FRAME_LENGTH, hop_length=FRAME_LENGTH // 2
                     )
                 )
-
                 # these should b derivable from spectogram but the librosa exmaples produce different results....
                 mel = librosa.feature.melspectrogram(
                     y=s_data, sr=sr, n_fft=FRAME_LENGTH, hop_length=FRAME_LENGTH // 2
