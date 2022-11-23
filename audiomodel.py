@@ -44,9 +44,10 @@ class AudioModel:
         self.input_shape = (128, 1134)
         self.preprocess_fn = None
         self.learning_rate = 0.01
+        self.species = None
         self.load_meta()
-        self.load_datasets(self.data_dir, self.labels, self.input_shape)
-        self.build_model(len(self.labels))
+        self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
+        self.build_model(len(self.species), len(self.labels))
         self.model.summary()
 
     def load_meta(self):
@@ -54,6 +55,7 @@ class AudioModel:
         with open(file, "r") as f:
             meta = json.load(f)
         self.labels = meta.get("labels", [])
+        self.species = meta.get("species", ["bird", "human", "rain"])
 
     def train_model(self, run_name="test", epochs=15):
         checkpoints = self.checkpoints(run_name)
@@ -81,6 +83,7 @@ class AudioModel:
                     # dir,
                     f"{self.data_dir}/training-data/test",
                     self.labels,
+                    self.species,
                     batch_size=self.batch_size,
                     image_size=self.input_shape,
                     preprocess_fn=self.preprocess_fn,
@@ -109,6 +112,8 @@ class AudioModel:
         model_stats = {}
         model_stats["name"] = self.model_name
         model_stats["labels"] = self.labels
+        model_stats["species"] = self.species
+
         # model_stats["hyperparams"] = self.params
         model_stats["training_date"] = str(time.time())
         model_stats["version"] = self.VERSION
@@ -139,7 +144,7 @@ class AudioModel:
             cls=MetaJSONEncoder,
         )
 
-    def build_model(self, num_labels):
+    def build_model(self, num_species, num_labels):
         input = tf.keras.Input(shape=(*self.input_shape, 3), name="input")
         base_model, self.preprocess_fn = self.get_base_model((*self.input_shape, 3))
 
@@ -153,64 +158,73 @@ class AudioModel:
         birds = tf.keras.layers.Dense(
             num_labels, activation="softmax", name="prediction"
         )(x)
-        self.model = tf.keras.models.Model(input, outputs=birds)
+        species = tf.keras.layers.Dense(
+            num_species, activation="softmax", name="species_p"
+        )(x)
+        # outputs = tf.keras.layers.Concatenate()([birds, species])
+
+        outputs = [birds, species]
+        self.model = tf.keras.models.Model(input, outputs=outputs)
 
         self.model.compile(
             optimizer=optimizer(lr=self.learning_rate),
             loss=loss(),
             metrics=[
                 "accuracy",
-                tf.keras.metrics.AUC(),
-                tf.keras.metrics.Recall(),
-                tf.keras.metrics.Precision(),
+                # tf.keras.metrics.AUC(),
+                # tf.keras.metrics.Recall(),
+                # tf.keras.metrics.Precision(),
             ],
         )
 
     def checkpoints(self, run_name):
-        val_loss = os.path.join(self.checkpoint_folder, run_name, "val_loss")
+        val_loss = os.path.join(self.checkpoint_folder, run_name, "val_prediction_loss")
 
         checkpoint_loss = tf.keras.callbacks.ModelCheckpoint(
             val_loss,
-            monitor="val_loss",
+            monitor="val_prediction_loss",
             verbose=1,
             save_best_only=True,
             save_weights_only=True,
             mode="auto",
         )
-        val_acc = os.path.join(self.checkpoint_folder, run_name, "val_acc")
+        val_acc = os.path.join(
+            self.checkpoint_folder, run_name, "val_prediction_accuracy"
+        )
 
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_acc,
-            monitor="val_accuracy",
+            monitor="val_prediction_accuracy",
             verbose=1,
             save_best_only=True,
             save_weights_only=True,
             mode="max",
         )
 
-        val_precision = os.path.join(self.checkpoint_folder, run_name, "val_recall")
-
-        checkpoint_recall = tf.keras.callbacks.ModelCheckpoint(
-            val_precision,
-            monitor="val_recall",
-            verbose=1,
-            save_best_only=True,
-            save_weights_only=True,
-            mode="max",
-        )
+        # val_precision = os.path.join(self.checkpoint_folder, run_name, "val_recall")
+        #
+        # checkpoint_recall = tf.keras.callbacks.ModelCheckpoint(
+        #     val_precision,
+        #     monitor="val_recall",
+        #     verbose=1,
+        #     save_best_only=True,
+        #     save_weights_only=True,
+        #     mode="max",
+        # )
         earlyStopping = tf.keras.callbacks.EarlyStopping(
-            patience=22, monitor="val_accuracy"
+            patience=22, monitor="val_prediction_accuracy"
         )
         reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor="val_accuracy", verbose=1
+            monitor="val_prediction_accuracy", verbose=1
         )
         return [earlyStopping, checkpoint_acc, checkpoint_loss, reduce_lr_callback]
 
-    def load_datasets(self, base_dir, labels, shape, test=False):
+    def load_datasets(self, base_dir, labels, species, shape, test=False):
         self.train, remapped = get_dataset(
             # dir,
             f"{base_dir}/training-data/train",
             labels,
+            species,
             batch_size=self.batch_size,
             image_size=self.input_shape,
             augment=True,
@@ -221,6 +235,7 @@ class AudioModel:
             # dir,
             f"{base_dir}/training-data/validation",
             labels,
+            species,
             batch_size=self.batch_size,
             image_size=self.input_shape,
             resample=True,
@@ -231,6 +246,7 @@ class AudioModel:
                 # dir,
                 f"{base_dir}/training-data/test",
                 labels,
+                species,
                 batch_size=batch_size,
                 image_size=self.input_shape,
                 preprocess_fn=self.preprocess_fn,

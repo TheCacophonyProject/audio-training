@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import numpy as np
 import math
+import librosa.display
+import matplotlib.pyplot as plt
 
 SEGMENT_LENGTH = 3  # seconds
 SEGMENT_STRIDE = 1  # of a second
@@ -301,6 +303,7 @@ class Track:
         end = 0
         start_offset = 0
         i = 0
+        nfft = int(sr / 10)
         while end < self.length or i == 0:
             try:
                 start_offset = i * stride
@@ -317,13 +320,11 @@ class Track:
                     ]
 
                 spectrogram = np.abs(
-                    librosa.stft(
-                        s_data, n_fft=FRAME_LENGTH, hop_length=FRAME_LENGTH // 2
-                    )
+                    librosa.stft(s_data, n_fft=nfft, hop_length=nfft // 2)
                 )
                 # these should b derivable from spectogram but the librosa exmaples produce different results....
                 mel = librosa.feature.melspectrogram(
-                    y=s_data, sr=sr, n_fft=FRAME_LENGTH, hop_length=FRAME_LENGTH // 2
+                    y=s_data, sr=sr, n_fft=nfft, hop_length=nfft // 2
                 )
                 mfcc = librosa.feature.mfcc(
                     y=s_data, sr=sr, hop_length=FRAME_LENGTH // 2, htk=True
@@ -331,6 +332,7 @@ class Track:
                 segments.append(
                     SpectrogramData(spectrogram, mel, mfcc, self.start, SEGMENT_LENGTH)
                 )
+                # plot_mel(mel)
             except:
                 logging.error(
                     "Error getting segment for %s-%s start %s lenght %s",
@@ -362,6 +364,29 @@ class Track:
     @property
     def bin_id(self):
         return f"{self.rec_id}-{self.tag}"
+
+
+def plot_mel(mel):
+    print("pltting")
+    plt.figure(figsize=(10, 10))
+
+    ax = plt.subplot(1, 1, 1)
+    print
+    img = librosa.display.specshow(
+        mel, x_axis="time", y_axis="mel", sr=48000, fmax=8000, ax=ax
+    )
+    plt.savefig("mel.png", format="png")
+    # plt.clf()
+
+    power_mel = librosa.power_to_db(mel)
+    plt.figure(figsize=(10, 10))
+
+    ax = plt.subplot(1, 1, 1)
+    img = librosa.display.specshow(
+        power_mel, x_axis="time", y_axis="mel", sr=48000, fmax=8000, ax=ax
+    )
+    plt.savefig("mel-power.png", format="png")
+    # plt.clf()
 
 
 SpectrogramData = namedtuple("SpectrogramData", "data mel mfcc start_s length")

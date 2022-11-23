@@ -24,7 +24,7 @@ fp = None
 DIMENSIONS = (128, 1134)
 
 
-def load_dataset(filenames, num_labels, args):
+def load_dataset(filenames, num_labels, num_species, args):
     #
     #     image_size,
     deterministic = args.get("deterministic", False)
@@ -57,6 +57,7 @@ def load_dataset(filenames, num_labels, args):
         partial(
             read_tfrecord,
             num_labels=num_labels,
+            num_species=num_species,
             image_size=image_size,
             labeled=labeled,
             augment=augment,
@@ -79,7 +80,7 @@ def preprocess(data):
 
 
 def get_distribution(dataset):
-    true_categories = tf.concat([y for x, y in dataset], axis=0)
+    true_categories = tf.concat([y[0] for x, y in dataset], axis=0)
     num_labels = len(true_categories[0])
     if len(true_categories) == 0:
         return None
@@ -91,7 +92,7 @@ def get_distribution(dataset):
     return dist
 
 
-def get_dataset(base_dir, labels, **args):
+def get_dataset(base_dir, labels, species_list, **args):
     #     batch_size,
     #     image_size,
     #     reshuffle=True,
@@ -105,16 +106,37 @@ def get_dataset(base_dir, labels, **args):
     #     only_features=False,
     #     one_hot=True,
     # ):
+    # species_list = ["bird", "human", "rain"]
+    num_species = len(species_list)
+
     num_labels = len(labels)
     global remapped_y
     remapped = {}
+    global species_y
+    species = {}
+
     keys = []
     values = []
+    s_values = []
     for l in labels:
         remapped[l] = [l]
         keys.append(labels.index(l))
         values.append(labels.index(l))
+        if l == "human":
+            s_values.append(species_list.index("human"))
+        elif l == "rain":
+            s_values.append(species_list.index("rain"))
+        else:
+            s_values.append(species_list.index("bird"))
 
+    species_y = tf.lookup.StaticHashTable(
+        initializer=tf.lookup.KeyValueTensorInitializer(
+            keys=tf.constant(keys),
+            values=tf.constant(s_values),
+        ),
+        default_value=tf.constant(-1),
+        name="remapped_species",
+    )
     remapped_y = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(keys),
@@ -124,7 +146,7 @@ def get_dataset(base_dir, labels, **args):
         name="remapped_y",
     )
     filenames = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
-    dataset = load_dataset(filenames, num_labels, args)
+    dataset = load_dataset(filenames, num_labels, num_species, args)
     resample_data = args.get("resample", True)
     if resample_data:
         logging.info("Resampling data")
@@ -156,9 +178,9 @@ def get_dataset(base_dir, labels, **args):
 
 
 def resample(dataset, labels):
-    excluded_labels = ["bird"]
+    excluded_labels = [""]
     num_labels = len(labels)
-    true_categories = [y for x, y in dataset]
+    true_categories = [y[0] for x, y in dataset]
     if len(true_categories) == 0:
         return None
     true_categories = np.int64(tf.argmax(true_categories, axis=1))
@@ -193,9 +215,6 @@ def resample(dataset, labels):
         target_dist[i] = max(0, target_dist[i])
     target_dist = target_dist / np.sum(target_dist)
 
-    if "sheep" in labels:
-        sheep_i = labels.index("sheep")
-        target_dist[sheep_i] = 0
     rej = dataset.rejection_resample(
         class_func=class_func,
         target_dist=target_dist,
@@ -208,6 +227,7 @@ def read_tfrecord(
     example,
     image_size,
     num_labels,
+    num_species,
     labeled,
     augment=False,
     preprocess_fn=None,
@@ -256,16 +276,22 @@ def read_tfrecord(
         label = tf.cast(example["audio/class/label"], tf.int32)
         global remapped_y
         label = remapped_y.lookup(label)
+        global species_y
+        species = species_y.lookup(label)
+        print("num species", num_species)
+
         if one_hot:
             label = tf.one_hot(label, num_labels)
+            species = tf.one_hot(species, num_species)
+
         # return image, label
-        return image, label
+        return (image, mfcc), (label, species)
 
     return image
 
 
 def class_func(features, label):
-    label = tf.argmax(label)
+    label = tf.argmax(label[0])
     return label
 
 
@@ -279,6 +305,8 @@ def main():
     with open(file, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
+    species_list = ["bird", "human", "rain"]
+
     datasets = []
     # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
     # weights = [0.5] * len(labels)
@@ -286,6 +314,7 @@ def main():
         # dir,
         f"./training-data/validation",
         labels,
+        species_list,
         batch_size=32,
         image_size=DIMENSIONS,
         augment=True,
@@ -308,10 +337,12 @@ def main():
     for e in range(2):
         for x, y in resampled_ds:
             print(len(x), len(y))
-            show_batch(x, y, labels)
+            show_batch(x, y[0], y[1], labels, species_list)
 
 
-def show_batch(image_batch, label_batch, labels):
+def show_batch(image_batch, label_batch, species_batch, labels, species):
+    mfcc = image_batch[1]
+    image_batch = image_batch[0]
     plt.figure(figsize=(200, 200))
     print("images in batch", len(image_batch), len(label_batch))
     num_images = min(len(label_batch), 10)
@@ -322,17 +353,19 @@ def show_batch(image_batch, label_batch, labels):
         ax = plt.subplot(num_images, 3, p + 1)
         plot_spec(image_batch[n][:, :, 0], ax)
         # plt.imshow(np.uint8(image_batch[n]))
-        plt.title(labels[np.argmax(label_batch[n])] + " sftf")
+        lbl = labels[np.argmax(label_batch[n])]
+        spc = species[np.argmax(species_batch[n])]
+        plt.title(f"{lbl} ({spc}) sftf")
         # plt.axis("off")
 
         ax = plt.subplot(num_images, 3, p + 2)
         plot_mel(image_batch[n][:, :, 1], ax)
         # plt.imshow(np.uint8(image_batch[n]))
-        plt.title(labels[np.argmax(label_batch[n])] + " mel")
+        plt.title(f"{lbl} ({spc}) mel")
         # plt.axis("off")
         # print(image_batch[1][n].shape)
-        # ax = plt.subplot(num_images, 3, p + 3)
-        # plot_mfcc(image_batch[1][n][:, :, 0], ax)
+        ax = plt.subplot(num_images, 3, p + 3)
+        plot_mfcc(mfcc[n][:, :, 0], ax)
         # plt.title(labels[np.argmax(label_batch[n])] + " mfcc")
         # plt.axis("off")
 
