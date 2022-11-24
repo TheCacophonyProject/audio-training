@@ -23,6 +23,10 @@ fp = None
 
 DIMENSIONS = (128, 1134)
 
+mel_s = (128, 61)
+sftf_s = (2401, 61)
+mfcc_s = (20, 1134)
+
 
 def load_dataset(filenames, num_labels, num_species, args):
     #
@@ -234,26 +238,31 @@ def read_tfrecord(
     one_hot=True,
 ):
     tfrecord_format = {
-        "audio/data": tf.io.FixedLenFeature(
-            [DIMENSIONS[0] * DIMENSIONS[1]], dtype=tf.float32
-        ),
-        "audio/mel": tf.io.FixedLenFeature(
-            [DIMENSIONS[0] * DIMENSIONS[1]], dtype=tf.float32
-        ),
-        "audio/mfcc": tf.io.FixedLenFeature([20 * DIMENSIONS[1]], dtype=tf.float32),
+        "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
+        "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
+        "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
         "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
         "audio/length": tf.io.FixedLenFeature((), tf.int64),
         "audio/start_s": tf.io.FixedLenFeature(1, tf.float32),
+        "audio/sftf_w": tf.io.FixedLenFeature((), tf.int64),
+        "audio/sftf_h": tf.io.FixedLenFeature((), tf.int64),
+        "audio/mel_w": tf.io.FixedLenFeature((), tf.int64),
+        "audio/mel_h": tf.io.FixedLenFeature((), tf.int64),
+        "audio/mfcc_w": tf.io.FixedLenFeature((), tf.int64),
+        "audio/mfcc_h": tf.io.FixedLenFeature((), tf.int64),
     }
 
     example = tf.io.parse_single_example(example, tfrecord_format)
-    audio_data = example["audio/data"]
+
+    audio_data = example["audio/sftf"]
     mel = example["audio/mel"]
     mfcc = example["audio/mfcc"]
 
-    audio_data = tf.reshape(audio_data, [DIMENSIONS[0], DIMENSIONS[1], 1])
-    mel = tf.reshape(mel, [DIMENSIONS[0], DIMENSIONS[1], 1])
-    mfcc = tf.reshape(mfcc, [20, DIMENSIONS[1], 1])
+    audio_data = tf.reshape(
+        audio_data, [example["audio/sftf_w"], example["audio/sftf_h"], 1]
+    )
+    mel = tf.reshape(mel, [example["audio/mel_h"], example["audio/mel_w"], 1])
+    mfcc = tf.reshape(mfcc, [example["audio/mfcc_h"], example["audio/mfcc_w"], 1])
 
     length = example["audio/length"]
     start = example["audio/start_s"]
@@ -264,7 +273,7 @@ def read_tfrecord(
     # mel_mf = tf.concat((mel, mfcc), axis=0)
     # image = tf.concat((spec_mf, mel_mf, mel_mf), axis=2)
 
-    image = tf.concat((audio_data, mel, mel), axis=2)
+    image = tf.concat((audio_data, audio_data, audio_data), axis=2)
     # if augment:
     #     logging.info("Augmenting")
     #     image = data_augmentation(image)
@@ -344,6 +353,9 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
     mfcc = image_batch[1]
     image_batch = image_batch[0]
     plt.figure(figsize=(200, 200))
+    mel = image_batch[1]
+    mfcc = image_batch[2]
+    image_batch = image_batch[0]
     print("images in batch", len(image_batch), len(label_batch))
     num_images = min(len(label_batch), 10)
     # rows = int(math.ceil(math.sqrt(num_images)))
@@ -359,7 +371,7 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
         # plt.axis("off")
 
         ax = plt.subplot(num_images, 3, p + 2)
-        plot_mel(image_batch[n][:, :, 1], ax)
+        plot_mel(mel[n][:, :, 0], ax)
         # plt.imshow(np.uint8(image_batch[n]))
         plt.title(f"{lbl} ({spc}) mel")
         # plt.axis("off")
@@ -377,8 +389,9 @@ def plot_mfcc(mfccs, ax):
 
 
 def plot_mel(mel, ax):
+    power = librosa.db_to_power(mel.numpy())
     img = librosa.display.specshow(
-        mel.numpy(), x_axis="time", y_axis="mel", sr=48000, fmax=8000, ax=ax
+        power, x_axis="time", y_axis="mel", sr=48000, fmax=8000, ax=ax
     )
 
 

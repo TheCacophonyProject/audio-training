@@ -303,7 +303,7 @@ class Track:
         end = 0
         start_offset = 0
         i = 0
-        nfft = int(sr / 10)
+        n_fft = sr // 10
         while end < self.length or i == 0:
             try:
                 start_offset = i * stride
@@ -319,18 +319,18 @@ class Track:
                         t_start + start_offset : t_start + start_offset + sample_size
                     ]
 
-                spectrogram = np.abs(
-                    librosa.stft(s_data, n_fft=nfft, hop_length=nfft // 2)
+                spectogram = np.abs(
+                    librosa.stft(s_data, n_fft=n_fft, hop_length=n_fft // 2)
                 )
                 # these should b derivable from spectogram but the librosa exmaples produce different results....
                 mel = librosa.feature.melspectrogram(
-                    y=s_data, sr=sr, n_fft=nfft, hop_length=nfft // 2
+                    y=s_data, sr=sr, n_fft=n_fft, hop_length=n_fft // 2
                 )
                 mfcc = librosa.feature.mfcc(
-                    y=s_data, sr=sr, hop_length=FRAME_LENGTH // 2, htk=True
+                    y=s_data, sr=sr, hop_length=n_fft // 2, htk=True
                 )
                 segments.append(
-                    SpectrogramData(spectrogram, mel, mfcc, self.start, SEGMENT_LENGTH)
+                    SpectrogramData(spectogram, mel, mfcc, self.start, SEGMENT_LENGTH)
                 )
                 # plot_mel(mel)
             except:
