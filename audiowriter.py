@@ -87,9 +87,15 @@ def create_tf_example(data, sample, labels):
         "audio/start_s": tfrecord_util.float_feature(data.start_s),
         "audio/class/text": tfrecord_util.bytes_feature(sample.tag.encode("utf8")),
         "audio/class/label": tfrecord_util.int64_feature(labels.index(sample.tag)),
-        "audio/data": tfrecord_util.float_list_feature(audio_data.ravel()),
+        "audio/sftf": tfrecord_util.float_list_feature(audio_data.ravel()),
         "audio/mel": tfrecord_util.float_list_feature(mel.ravel()),
         "audio/mfcc": tfrecord_util.float_list_feature(data.mfcc.ravel()),
+        "audio/sftf_w": tfrecord_util.int64_feature(audio_data.shape[1]),
+        "audio/sftf_h": tfrecord_util.int64_feature(audio_data.shape[0]),
+        "audio/mel_w": tfrecord_util.int64_feature(mel.shape[1]),
+        "audio/mel_h": tfrecord_util.int64_feature(mel.shape[0]),
+        "audio/mfcc_h": tfrecord_util.int64_feature(data.mfcc.shape[1]),
+        "audio/mfcc_w": tfrecord_util.int64_feature(data.mfcc.shape[0]),
     }
 
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
