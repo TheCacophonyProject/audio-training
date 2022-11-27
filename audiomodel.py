@@ -41,7 +41,7 @@ class AudioModel:
         self.test = None
         self.train = None
         self.remapped = None
-        self.input_shape = (128, 1134)
+        self.input_shape = (128 * 2, 61 * 2)
         self.preprocess_fn = None
         self.learning_rate = 0.01
         self.species = None
@@ -59,7 +59,8 @@ class AudioModel:
 
     def train_model(self, run_name="test", epochs=15):
         checkpoints = self.checkpoints(run_name)
-
+        # self.model.save(os.path.join(self.checkpoint_folder, run_name))
+        # return
         history = self.model.fit(
             self.train,
             validation_data=self.validation,
@@ -76,24 +77,24 @@ class AudioModel:
         history = history.history
         test_accuracy = None
         test_files = os.path.join(self.data_dir, "test")
-
-        if len(test_files) > 0:
-            if self.test is None:
-                self.test, remapped = get_dataset(
-                    # dir,
-                    f"{self.data_dir}/training-data/test",
-                    self.labels,
-                    self.species,
-                    batch_size=self.batch_size,
-                    image_size=self.input_shape,
-                    preprocess_fn=self.preprocess_fn,
-                    reshuffle=False,
-                    shuffle=False,
-                    resample=False,
-                    deterministic=True,
-                )
-            if self.test:
-                test_accuracy = self.model.evaluate(self.test)
+        #
+        # if len(test_files) > 0:
+        #     if self.test is None:
+        #         self.test, remapped = get_dataset(
+        #             # dir,
+        #             f"{self.data_dir}/training-data/test",
+        #             self.labels,
+        #             self.species,
+        #             batch_size=self.batch_size,
+        #             image_size=self.input_shape,
+        #             preprocess_fn=self.preprocess_fn,
+        #             reshuffle=False,
+        #             shuffle=False,
+        #             resample=False,
+        #             deterministic=True,
+        #         )
+        #     if self.test:
+        #         test_accuracy = self.model.evaluate(self.test)
 
         self.save(run_name, history=history, test_results=test_accuracy)
 
@@ -229,7 +230,7 @@ class AudioModel:
             image_size=self.input_shape,
             augment=True,
             resample=True,
-            preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
+            # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
         self.validation, _ = get_dataset(
             # dir,
@@ -239,7 +240,7 @@ class AudioModel:
             batch_size=self.batch_size,
             image_size=self.input_shape,
             resample=True,
-            preprocess_fn=self.preprocess_fn,
+            # preprocess_fn=self.preprocess_fn,
         )
         if test:
             self.test, _ = get_dataset(
@@ -249,7 +250,7 @@ class AudioModel:
                 species,
                 batch_size=batch_size,
                 image_size=self.input_shape,
-                preprocess_fn=self.preprocess_fn,
+                # preprocess_fn=self.preprocess_fn,
             )
 
     def get_base_model(self, input_shape, weights="imagenet"):
@@ -489,7 +490,7 @@ def main():
         dataset, _ = get_dataset(
             f"./training-data/test",
             labels,
-            image_size=[128, 1134],
+            image_size=[128, 61],
             preprocess_fn=preprocess,
             shuffle=False,
             resample=False,

@@ -102,18 +102,20 @@ def split_label(
         "# num test samples",
         num_test_samples,
     )
+    recs = set()
     for i, sample_bin in enumerate(sample_bins):
         samples = samples_by_bin[sample_bin]
         for sample in samples:
             tracks.add(sample.id)
             label_count += 1
-
+            recs.add(sample.rec_id)
             add_to.add_sample(sample)
             dataset.remove(sample)
         samples_by_bin[sample_bin] = []
         last_index = i
         track_count = len(tracks)
         if label_count >= sample_limit and track_count >= track_limit:
+            print("have ", len(recs), len(tracks))
             # 100 more for test
             if no_test:
                 break
@@ -205,6 +207,7 @@ def main():
     record_dir = os.path.join(base_dir, "training-data/")
     print("saving to", record_dir)
     dataset_counts = {}
+    return
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
         create_tf_records(

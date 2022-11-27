@@ -77,7 +77,6 @@ def create_tf_example(data, sample, labels):
     """
     audio_data = librosa.amplitude_to_db(data.data, ref=np.max)
     mel = librosa.power_to_db(data.mel, ref=np.max)
-    print(mel.shape)
     feature_dict = {
         "audio/rec_id": tfrecord_util.int64_feature(sample.rec_id),
         "audio/track_id": tfrecord_util.int64_feature(sample.id),
