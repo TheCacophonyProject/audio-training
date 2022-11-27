@@ -13,6 +13,7 @@ import numpy as np
 import math
 import librosa.display
 import matplotlib.pyplot as plt
+import audioread.ffdec  # Use ffmpeg decoder
 
 SEGMENT_LENGTH = 3  # seconds
 SEGMENT_STRIDE = 1  # of a second
@@ -189,7 +190,12 @@ class Recording:
 
     def load_recording(self, resample=None):
         try:
-            frames, sr = librosa.load(str(self.filename), sr=None)
+            # with open(str(self.filename), "rb") as f:
+            # frames, sr = librosa.load(self.filename)
+            #  librosa wont close the file properly..... go figure
+            aro = audioread.ffdec.FFmpegAudioFile(self.filename)
+            frames, sr = librosa.load(aro)
+            aro.close()
             if resample is not None and resample != sr:
                 frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
                 sr = resample

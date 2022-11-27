@@ -21,7 +21,7 @@ from audiodataset import AudioDataset, RELABEL
 from audiowriter import create_tf_records
 import warnings
 
-warnings.filterwarnings("ignore")
+# warnings.filterwarnings("ignore")
 # remove librosa pysound warnings
 
 MAX_TEST_TRACKS = 100
