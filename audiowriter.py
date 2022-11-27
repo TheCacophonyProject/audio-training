@@ -146,7 +146,11 @@ def create_tf_records(
             loaded = []
 
             for sample in local_set:
-                data = sample.get_data(resample=48000)
+                data = None
+                try:
+                    data = sample.get_data(resample=48000)
+                except:
+                    logging.error("Error getting data for %s", sample, exc_info=True)
                 if data is None:
                     continue
                 for d in data:

@@ -188,14 +188,18 @@ class Recording:
         self.resampled = False
 
     def load_recording(self, resample=None):
-        frames, sr = librosa.load(str(self.filename), sr=None)
-        if resample is not None and resample != sr:
-            frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
-            sr = resample
-            print("resampled to ", sr)
-            self.resampled = True
-        self.sample_rate = sr
-        self.rec_data = frames
+        try:
+            frames, sr = librosa.load(str(self.filename), sr=None)
+            if resample is not None and resample != sr:
+                frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
+                sr = resample
+                self.resampled = True
+            self.sample_rate = sr
+            self.rec_data = frames
+        except:
+            logging.error("Coult not load %s", str(self.filename), exc_info=True)
+            return False
+        return True
 
     def load_track_data(self):
         logging.info(
@@ -289,7 +293,9 @@ class Track:
 
     def get_data(self, resample=None):
         if self.rec.rec_data is None:
-            self.rec.load_recording(resample)
+            loaded = self.rec.load_recording(resample)
+            if not loaded:
+                return None
         sr = self.rec.sample_rate
         frames = self.rec.rec_data
         seg_frames = SEGMENT_LENGTH * sr
