@@ -207,7 +207,6 @@ def main():
     record_dir = os.path.join(base_dir, "training-data/")
     print("saving to", record_dir)
     dataset_counts = {}
-    return
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
         create_tf_records(
