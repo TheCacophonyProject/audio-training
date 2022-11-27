@@ -137,7 +137,7 @@ def create_tf_records(
             writers.append(tf.io.TFRecordWriter(str(output_path / name)))
         if not by_label:
             break
-    load_first = 1
+    load_first = 1000
     try:
         count = 0
         while len(samples) > 0:
