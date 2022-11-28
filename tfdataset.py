@@ -10,6 +10,7 @@ import json
 import logging
 import librosa
 import librosa.display
+import tensorflow_io as tfio
 
 # seed = 1341
 # tf.random.set_seed(seed)
@@ -286,57 +287,62 @@ def read_tfrecord(
     audio_data = example["audio/sftf"]
     mel = example["audio/mel"]
     mfcc = example["audio/mfcc"]
+    # mel = tf.expand_dims(mel, axis=2)
 
     audio_data = tf.reshape(audio_data, [*sftf_s, 1])
 
     mel = tf.reshape(mel, [*mel_s])
-    # print(mel.shape)
-    mel_h = tf.experimental.numpy.copy(mel)
-    # print(mel_h.shape)
-    mel_h = mel_h[human_mel[0] : human_mel[0] + human_mel[1]]
-    mel_more = tf.experimental.numpy.copy(mel)
-    mel_more = mel_more[morepork_mel[0] : morepork_mel[0] + morepork_mel[1]]
-
-    # or
-    # full scale zero out other values
-    # mel_h = tf.experimental.numpy.copy(mel)
-    # mel_h = tf.reshape(mel_h, [*mel_s])
-    # mel_h = tf.math.multiply(mel_h, tf_human_mask)
-    mel_h = tf.expand_dims(mel_h, axis=2)
-    #
-    # mel_more = tf.experimental.numpy.copy(mel)
-    # mel_more = tf.reshape(mel_more, [*mel_s])
-    # mel_more = tf.math.multiply(mel_more, tf_more_mask)
-    mel_more = tf.expand_dims(mel_more, axis=2)
+    if augment:
+        logging.info("Augmenting")
+        mel = tfio.audio.freq_mask(mel, param=10)
+        mel = tfio.audio.time_mask(mel, param=10)
     mel = tf.expand_dims(mel, axis=2)
 
-    # mfcc = tf.reshape(mfcc, [*mfcc_s])
-    # mfcc_max = tf.math.reduce_max(mfcc)
-    # mfcc = tf.math.subtract(mfcc, mfcc_max)
-    # mfcc = tf.math.divide(mfcc, 2)
-    length = example["audio/length"]
-    start = example["audio/start_s"]
-    # image = tf.image.grayscale_to_rgb(audio_data)
-
-    # if we want mfcc, i think that we would want to normalized both specs first
-    # spec_mf = tf.concat((audio_data, mfcc), axis=0)
-    # mel_mf = tf.concat((mel, mfcc), axis=0)
-
-    # mel_mf = mel
-    # mel_mf = tf.reshape(mel_mf, [*mel_mf.shape, 1])
-    # image = tf.concat((mel_mf, mel_mf, mel_mf), axis=2)
-    mel_more = tf.image.resize(mel_more, (128, 61))
-    mel_h = tf.image.resize(mel_h, (128, 61))
-
+    # print(mel.shape)
+    # mel_h = tf.experimental.numpy.copy(mel)
+    # # print(mel_h.shape)
+    # mel_h = mel_h[human_mel[0] : human_mel[0] + human_mel[1]]
+    # mel_more = tf.experimental.numpy.copy(mel)
+    # mel_more = mel_more[morepork_mel[0] : morepork_mel[0] + morepork_mel[1]]
+    #
+    # # or
+    # # full scale zero out other values
+    # # mel_h = tf.experimental.numpy.copy(mel)
+    # # mel_h = tf.reshape(mel_h, [*mel_s])
+    # # mel_h = tf.math.multiply(mel_h, tf_human_mask)
+    # mel_h = tf.expand_dims(mel_h, axis=2)
+    # #
+    # # mel_more = tf.experimental.numpy.copy(mel)
+    # # mel_more = tf.reshape(mel_more, [*mel_s])
+    # # mel_more = tf.math.multiply(mel_more, tf_more_mask)
+    # mel_more = tf.expand_dims(mel_more, axis=2)
+    # mel = tf.expand_dims(mel, axis=2)
+    #
+    # # mfcc = tf.reshape(mfcc, [*mfcc_s])
+    # # mfcc_max = tf.math.reduce_max(mfcc)
+    # # mfcc = tf.math.subtract(mfcc, mfcc_max)
+    # # mfcc = tf.math.divide(mfcc, 2)
+    # length = example["audio/length"]
+    # start = example["audio/start_s"]
+    # # image = tf.image.grayscale_to_rgb(audio_data)
+    #
+    # # if we want mfcc, i think that we would want to normalized both specs first
+    # # spec_mf = tf.concat((audio_data, mfcc), axis=0)
+    # # mel_mf = tf.concat((mel, mfcc), axis=0)
+    #
+    # # mel_mf = mel
+    # # mel_mf = tf.reshape(mel_mf, [*mel_mf.shape, 1])
+    # # image = tf.concat((mel_mf, mel_mf, mel_mf), axis=2)
+    #
+    #
+    # mel_more = tf.image.resize(mel_more, (128, 61))
+    # mel_h = tf.image.resize(mel_h, (128, 61))
     # image = tf.concat((mel_h, mel_more, mel), axis=2)
     image = tf.concat((mel, mel, mel), axis=2)
 
     image = tf.image.resize(image, (128 * 2, 61 * 2))
 
-    # image = tf.concat((audio_data, audio_data, audio_data), axis=2)
-    # if augment:
-    #     logging.info("Augmenting")
-    #     image = data_augmentation(image)
+    # image = data_augmentation(image)
     if preprocess_fn is not None:
         logging.info("Preprocessing with %s", preprocess_fn)
         raise Exception("Done preprocess for audio")

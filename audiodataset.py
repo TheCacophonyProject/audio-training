@@ -322,15 +322,27 @@ class Track:
                 end = i * SEGMENT_STRIDE + SEGMENT_LENGTH
                 i += 1
                 # zero pad shorter
-                if end > self.length:
+                if end > self.length or (t_start + start_offset + sample_size) > len(
+                    frames
+                ):
                     sub = frames[t_start + start_offset : t_end]
                     s_data = np.zeros((SEGMENT_LENGTH * sr))
                     s_data[0 : len(sub)] = sub
                 else:
+
                     s_data = frames[
                         t_start + start_offset : t_start + start_offset + sample_size
                     ]
-
+                # logging.info(
+                #     "Getting %s to %s of length %s %s starting %s ending %s rec length %s",
+                #     t_start + start_offset,
+                #     t_start + start_offset + sample_size,
+                #     len(frames),
+                #     self.length,
+                #     self.start,
+                #     self.end,
+                #     len(frames) / sr,
+                # )
                 spectogram = np.abs(
                     librosa.stft(s_data, n_fft=n_fft, hop_length=n_fft // 2)
                 )
@@ -344,7 +356,6 @@ class Track:
                 segments.append(
                     SpectrogramData(spectogram, mel, mfcc, self.start, SEGMENT_LENGTH)
                 )
-                logging.info("Mel shape is %s %s", mel.shape, self.rec.filename)
                 assert mel.shape == (128, 61)
                 # plot_mel(mel)
             except:
