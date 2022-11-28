@@ -353,10 +353,10 @@ class Track:
                 mfcc = librosa.feature.mfcc(
                     y=s_data, sr=sr, hop_length=n_fft // 2, htk=True
                 )
+                assert mel.shape == (128, 61)
                 segments.append(
                     SpectrogramData(spectogram, mel, mfcc, self.start, SEGMENT_LENGTH)
                 )
-                assert mel.shape == (128, 61)
                 # plot_mel(mel)
             except:
                 logging.error(
