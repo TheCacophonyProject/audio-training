@@ -344,6 +344,8 @@ class Track:
                 segments.append(
                     SpectrogramData(spectogram, mel, mfcc, self.start, SEGMENT_LENGTH)
                 )
+                logging.info("Mel shape is %s %s", mel.shape, self.rec.filename)
+                assert mel.shape == (128, 61)
                 # plot_mel(mel)
             except:
                 logging.error(
