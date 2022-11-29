@@ -434,9 +434,11 @@ def optimizer(lr=None, decay=None):
 
 
 def confusion(model, labels, dataset, filename="confusion.png"):
-    true_categories = tf.concat([y for x, y in dataset], axis=0)
-    if len(true_categories) > 1:
-        true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    true_categories = [y for x, y in dataset]
+    if len(true_categories.shape) > 1:
+        true_categories = tf.concat(true_categories, axis=0)
+
+    true_categories = np.int64(tf.argmax(true_categories, axis=1))
     y_pred = model.predict(dataset)
 
     predicted_categories = np.int64(tf.argmax(y_pred, axis=1))

@@ -153,24 +153,25 @@ def get_dataset(base_dir, labels, species_list, **args):
         remapped[l] = [l]
         keys.append(labels.index(l))
         values.append(labels.index(l))
-        if l == "human":
-            s_values.append(species_list.index("human"))
-        elif l == "rain":
-            s_values.append(species_list.index("rain"))
-        elif l == "other":
-            s_values.append(species_list.index("other"))
+        if args.get("use_species", False):
+            if l == "human":
+                s_values.append(species_list.index("human"))
+            elif l == "rain":
+                s_values.append(species_list.index("rain"))
+            elif l == "other":
+                s_values.append(species_list.index("other"))
 
-        else:
-            s_values.append(species_list.index("bird"))
-
-    species_y = tf.lookup.StaticHashTable(
-        initializer=tf.lookup.KeyValueTensorInitializer(
-            keys=tf.constant(keys),
-            values=tf.constant(s_values),
-        ),
-        default_value=tf.constant(-1),
-        name="remapped_species",
-    )
+            else:
+                s_values.append(species_list.index("bird"))
+    if args.get("use_species", False):
+        species_y = tf.lookup.StaticHashTable(
+            initializer=tf.lookup.KeyValueTensorInitializer(
+                keys=tf.constant(keys),
+                values=tf.constant(s_values),
+            ),
+            default_value=tf.constant(-1),
+            name="remapped_species",
+        )
     remapped_y = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(keys),
@@ -356,16 +357,18 @@ def read_tfrecord(
         label = tf.cast(example["audio/class/label"], tf.int32)
         global remapped_y
         label = remapped_y.lookup(label)
-        global species_y
-        species = species_y.lookup(label)
-        print("num species", num_species)
 
         if one_hot:
             label = tf.one_hot(label, num_labels)
-            species = tf.one_hot(species, num_species)
 
         # return image, label
         if use_species:
+            global species_y
+            species = species_y.lookup(label)
+            print("num species", num_species)
+            if one_hot:
+                species = tf.one_hot(species, num_species)
+
             return image, (label, species)
         return image, label
 

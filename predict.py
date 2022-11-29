@@ -28,6 +28,7 @@ from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import librosa
 from audiomodel import get_preprocess_fn
+from tfdataset import get_dataset
 
 
 def load_recording(file, resample=48000):
@@ -102,28 +103,62 @@ def plot_mel(mel, i=0):
 def main():
     init_logging()
     args = parse_args()
-    file = Path(args.file)
-    data = preprocess_file(file)
-    data = np.array(data)
-    print("data is", data.shape)
-    print(args)
     load_model = Path(args.model)
     logging.info("Loading %s with weights %s", load_model, "val_acc")
     model = tf.keras.models.load_model(str(load_model))
 
     model.load_weights(load_model / "val_accuracy").expect_partial()
 
-    # meta_file = load_model / "metadata.txt"
-    # print("Meta", meta_file)
-    # with open(str(meta_file), "r") as f:
-    #     meta_data = json.load(f)
-    # labels = meta_data.get("labels")
-    # model_name = meta_data.get("name")
     labels = ["bird", "human"]
     model_name = "inceptionv3"
 
-    results = model.predict(np.array(data))
     start = 0
+    if args.dataset:
+        dataset, _ = get_dataset(
+            # dir,
+            args.dataset,
+            labels,
+            [],
+            batch_size=32,
+            image_size=(128 * 2, 61 * 2),
+            augment=False,
+            resample=False,
+            use_species=False,
+            shuffle=False,
+            reshuffle=False,
+            deterministic=True,
+            # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
+        )
+        y_pred = model.predict(dataset)
+        predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
+
+        true_categories = tf.concat([y for x, y in dataset], axis=0)
+        true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        correct_other = 0
+        correct_bird = 0
+        total_birds = 0
+        total_others = 0
+        total = len(true_categories)
+        for y, pred in zip(true_categories, predicted_categories):
+            lbl = labels[y]
+            if lbl == "bird":
+                total_birds += 1
+                if pred == 0:
+                    correct_bird += 1
+            else:
+                total_others += 1
+                if pred != 0:
+                    correct_other += 1
+            # print("Predicted", pred, " for ", y)
+
+        print("Bird accuracy ", round(100 * correct_bird / total_birds))
+        print("Other accuracy ", round(100 * correct_other / total_others))
+        return
+    if args.file:
+        file = Path(args.file)
+        data = preprocess_file(file)
+        data = np.array(data)
+    results = model.predict(np.array(data))
 
     for r in results:
         print(f"{start} - {start+3}  class  {np.round(r, 1)}")
@@ -140,6 +175,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--confusion", help="Save confusion matrix for model")
     parser.add_argument("--file", help="Audio file to predict")
+    parser.add_argument("--dataset", help="Dataset to predict")
 
     parser.add_argument("model", help="Run name")
 
