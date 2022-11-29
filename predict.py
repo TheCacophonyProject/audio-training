@@ -115,7 +115,7 @@ def main():
     start = 0
     if args.dataset:
         filenames = tf.io.gfile.glob(f"{args.dataset}/*.tfrecord")
-
+        print("loading", filenames)
         dataset, _ = get_dataset(
             # dir,
             filenames,
