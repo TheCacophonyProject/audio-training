@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from audiodataset import Track,Recording,AudioDataset,RELABEL
 from build import split_randomly
-csv_files = ["warblow/warblrb10k_public_metadata.csv","ff10/ff1010bird_metadata.csv"]
+csv_files = ["/home/cp/cacophony/audio-data/warblrb10k_public/warblrb10k_public_metadata.csv","/home/cp/cacophony/audio-data/ff1010bird/ff1010bird_metadata.csv"]
 out_dir = Path("./other-data")
 from audiowriter import create_tf_records
 
@@ -24,7 +24,9 @@ def main():
                 i+=1
                 if i == 0:
                     continue
-                r = Recording({"id":row[0],"tracks":[]},csv_file.parent / row[0])
+                rec_name = csv_file.parent / "wav"/row[0]
+                rec_name = rec_name.with_suffix(".wav")
+                r = Recording({"id":row[0],"tracks":[]},rec_name)
                 what = labels[int(row[1])]
                 t = Track({"id":row[0],"start":None,"end":None,"tags":[{"automatic":False,"what":what}]},csv_file, r.id, r)
 
@@ -51,7 +53,6 @@ def main():
     for dataset in datasets:
         dir =record_dir / dataset.name
         print("saving to ", dir)
-        continue
         create_tf_records(
             dataset, dir, datasets[0].labels, num_shards=100, by_label=False
         )

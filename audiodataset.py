@@ -308,8 +308,13 @@ class Track:
             loaded = self.rec.load_recording(resample)
             if not loaded:
                 return None
+
         sr = self.rec.sample_rate
         frames = self.rec.rec_data
+        if self.start is None:
+            self.start = 0
+        if self.end is None:
+            self.end = len(frames) // sr
         seg_frames = SEGMENT_LENGTH * sr
         t_start = int(sr * self.start)
         t_end = int(sr * self.end)
