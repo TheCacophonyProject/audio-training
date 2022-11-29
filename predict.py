@@ -111,7 +111,7 @@ def main():
     logging.info("Loading %s with weights %s", load_model, "val_acc")
     model = tf.keras.models.load_model(str(load_model))
 
-    model.load_weights(load_model / "val_prediction_accuracy").expect_partial()
+    model.load_weights(load_model / "val_accuracy").expect_partial()
 
     # meta_file = load_model / "metadata.txt"
     # print("Meta", meta_file)
@@ -123,13 +123,14 @@ def main():
     model_name = "inceptionv3"
 
     results = model.predict(np.array(data))
+    start = 0
+
     for r in results:
         print(f"{start} - {start+3}  class  {np.round(r, 1)}")
         start += 1
     # species = results[0]
     return
     animal = results[1]
-    start = 0
     for s, r in zip(species, animal):
         print(f"{start} - {start+3} Species", np.round(s, 1), " class ", np.round(r, 1))
         start += 1
