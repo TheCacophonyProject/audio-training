@@ -246,7 +246,7 @@ class AudioModel:
             batch_size=self.batch_size,
             image_size=self.input_shape,
             augment=False,
-            resample=True,
+            resample=False,
             use_species=self.use_species,
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
@@ -262,7 +262,7 @@ class AudioModel:
             species,
             batch_size=self.batch_size,
             image_size=self.input_shape,
-            resample=True,
+            resample=False,
             use_species=self.use_species,
             # preprocess_fn=self.preprocess_fn,
         )
