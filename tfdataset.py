@@ -157,6 +157,9 @@ def get_dataset(base_dir, labels, species_list, **args):
             s_values.append(species_list.index("human"))
         elif l == "rain":
             s_values.append(species_list.index("rain"))
+        elif l == "other":
+            s_values.append(species_list.index("other"))
+
         else:
             s_values.append(species_list.index("bird"))
 
@@ -272,7 +275,7 @@ def read_tfrecord(
         "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
         "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
         "audio/length": tf.io.FixedLenFeature((), tf.int64),
-        "audio/rec_id": tf.io.FixedLenFeature((), tf.int64),
+        # "audio/rec_id": tf.io.FixedLenFeature((), tf.int64),
         "audio/start_s": tf.io.FixedLenFeature(1, tf.float32),
         "audio/sftf_w": tf.io.FixedLenFeature((), tf.int64),
         "audio/sftf_h": tf.io.FixedLenFeature((), tf.int64),
@@ -295,7 +298,7 @@ def read_tfrecord(
     if augment:
         logging.info("Augmenting")
         mel = tfio.audio.freq_mask(mel, param=10)
-        mel = tfio.audio.time_mask(mel, param=10)
+        mel3 = tfio.audio.time_mask(mel, param=10)
     mel = tf.expand_dims(mel, axis=2)
 
     # print(mel.shape)
@@ -377,23 +380,23 @@ from collections import Counter
 def main():
     init_logging()
     # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
-    file = f"./training-meta.json"
+    file = f"./other-training/training-meta.json"
     with open(file, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
-    species_list = ["bird", "human", "rain"]
+    species_list = ["bird", "human", "rain", "other"]
 
     datasets = []
     # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
     # weights = [0.5] * len(labels)
     resampled_ds, remapped = get_dataset(
         # dir,
-        f"./training-data/validation",
+        f"./other-training-data/validation",
         labels,
         species_list,
         batch_size=32,
         image_size=DIMENSIONS,
-        augment=True,
+        augment=False,
         resample=False,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
@@ -427,10 +430,10 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
     num_images = 6
     # rows = int(math.ceil(math.sqrt(num_images)))
     i = 0
-    for n in range(len(image_batch)):
+    for n in range(num_images):
         lbl = labels[np.argmax(label_batch[n])]
-        if lbl != "morepork":
-            continue
+        # if lbl != "morepork":
+        # continue
         # if rec_batch[n] != 1384657:
         # continue
         # print("showing", image_batch[n].shape, sftf[n].shape)

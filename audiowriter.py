@@ -79,8 +79,8 @@ def create_tf_example(data, sample, labels):
     mel = librosa.power_to_db(data.mel, ref=np.max)
     assert mel.shape == (128, 61)
     feature_dict = {
-        "audio/rec_id": tfrecord_util.int64_feature(sample.rec_id),
-        "audio/track_id": tfrecord_util.int64_feature(sample.id),
+        "audio/rec_id": tfrecord_util.bytes_feature(str(sample.rec_id).encode("utf8")),
+        "audio/track_id": tfrecord_util.bytes_feature(str(sample.id).encode("utf8")),
         "audio/sample_rate": tfrecord_util.bytes_feature(
             str(sample.rec.sample_rate).encode("utf8")
         ),
