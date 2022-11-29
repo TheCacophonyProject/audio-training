@@ -114,9 +114,11 @@ def main():
 
     start = 0
     if args.dataset:
+        filenames = tf.io.gfile.glob(f"{args.dataset}/*.tfrecord")
+
         dataset, _ = get_dataset(
             # dir,
-            args.dataset,
+            filenames,
             labels,
             [],
             batch_size=32,
