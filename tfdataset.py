@@ -32,7 +32,6 @@ mel_bins = librosa.mel_frequencies(128, fmax=48000 / 2)
 human_lowest = np.where(mel_bins < 60)[-1][-1]
 human_max = np.where(mel_bins > 180)[0][0]
 
-print("Human lowest", human_lowest, human_max)
 
 # 60-180hz
 human_mel = (human_lowest, human_max)
@@ -47,12 +46,9 @@ more_max = np.where(mel_bins > 1200)[0][0]
 
 
 morepork_mel = (more_lower, more_max)
-print("more bins", morepork_mel)
 
 morepork_mask = np.zeros((mel_s), dtype=np.bool)
 morepork_mask[morepork_mel[0] : morepork_mel[0] + morepork_mel[1]] = 1
-
-print(morepork_mask[morepork_mel[0] : morepork_mel[0] + morepork_mel[1]].shape)
 
 
 def load_dataset(filenames, num_labels, num_species, args):
