@@ -123,7 +123,7 @@ def get_distribution(dataset, use_species=False):
     return dist
 
 
-def get_dataset(base_dir, labels, species_list, **args):
+def get_dataset(filenames, labels, species_list, **args):
     #     batch_size,
     #     image_size,
     #     reshuffle=True,
@@ -172,6 +172,14 @@ def get_dataset(base_dir, labels, species_list, **args):
             default_value=tf.constant(-1),
             name="remapped_species",
         )
+    if "rain" in labels:
+        remapped["human"].append("rain")
+        values[labels.index("rain")] = labels.index("human")
+        del remapped["rain"]
+    if "other" in labels:
+        remapped["human"].append("other")
+        values[labels.index("other")] = labels.index("human")
+        del remapped["other"]
     remapped_y = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(keys),
@@ -180,7 +188,6 @@ def get_dataset(base_dir, labels, species_list, **args):
         default_value=tf.constant(-1),
         name="remapped_y",
     )
-    filenames = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
     dataset = load_dataset(filenames, num_labels, num_species, args)
     resample_data = args.get("resample", True)
     if resample_data:
@@ -215,7 +222,7 @@ def get_dataset(base_dir, labels, species_list, **args):
 def resample(dataset, labels):
     excluded_labels = ["morepork", "kiwi"]
     num_labels = len(labels)
-    true_categories = [y[0] for x, y in dataset]
+    true_categories = [y for x, y in dataset]
     if len(true_categories) == 0:
         return None
     true_categories = np.int64(tf.argmax(true_categories, axis=1))
@@ -231,6 +238,15 @@ def resample(dataset, labels):
             dist[i] = c[i]
 
             logging.info("Have %s for %s", dist[i], labels[i])
+    # GP TESTING Just to remove some labels
+    dist = dist / np.sum(dist)
+    print(dist)
+    rej = dataset.rejection_resample(
+        class_func=class_func,
+        target_dist=dist,
+    )
+    dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
+    return dataset
     zeros = dist[dist == 0]
     non_zero_labels = num_labels - len(zeros)
     target_dist[:] = 1 / non_zero_labels
@@ -376,7 +392,7 @@ def read_tfrecord(
 
 
 def class_func(features, label):
-    label = tf.argmax(label[0])
+    label = tf.argmax(label)
     return label
 
 
@@ -386,18 +402,22 @@ from collections import Counter
 def main():
     init_logging()
     # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
-    file = f"./other-training/training-meta.json"
+    file = f"./training-meta.json"
     with open(file, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
     species_list = ["bird", "human", "rain", "other"]
 
     datasets = []
+    filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
+    filenames.extend(tf.io.gfile.glob(f"./other-training-data/validation/*.tfrecord"))
+    print(filenames)
+
     # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
     # weights = [0.5] * len(labels)
     resampled_ds, remapped = get_dataset(
         # dir,
-        f"./other-training-data/validation",
+        filenames,
         labels,
         species_list,
         batch_size=32,

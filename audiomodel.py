@@ -27,7 +27,8 @@ from pathlib import Path
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 
-training_dir = "other-training-data"
+training_dir = "training-data"
+other_training_dir = "training-data"
 
 
 class AudioModel:
@@ -233,26 +234,35 @@ class AudioModel:
         return [earlyStopping, checkpoint_acc, checkpoint_loss, reduce_lr_callback]
 
     def load_datasets(self, base_dir, labels, species, shape, test=False):
+        filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
+        filenames.extend(
+            tf.io.gfile.glob(f"{base_dir}/{other_training_dir}/train/*.tfrecord")
+        )
         self.train, remapped = get_dataset(
             # dir,
-            f"{base_dir}/{training_dir}/train",
+            filenames,
             labels,
             species,
             batch_size=self.batch_size,
             image_size=self.input_shape,
             augment=False,
-            resample=False,
+            resample=True,
             use_species=self.use_species,
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
+        filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/validation/*.tfrecord")
+        filenames.extend(
+            tf.io.gfile.glob(f"{base_dir}/{other_training_dir}/validation/*.tfrecord")
+        )
+
         self.validation, _ = get_dataset(
             # dir,
-            f"{base_dir}/{training_dir}/validation",
+            filenames,
             labels,
             species,
             batch_size=self.batch_size,
             image_size=self.input_shape,
-            resample=False,
+            resample=True,
             use_species=self.use_species,
             # preprocess_fn=self.preprocess_fn,
         )
