@@ -27,6 +27,8 @@ from pathlib import Path
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 
+training_dir = "other-training-data"
+
 
 class AudioModel:
     VERSION = 1.0
@@ -46,16 +48,17 @@ class AudioModel:
         self.learning_rate = 0.01
         self.species = None
         self.load_meta()
+        self.use_species = False
         self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
         self.build_model(len(self.species), len(self.labels))
         self.model.summary()
 
     def load_meta(self):
-        file = f"{self.data_dir}/training-meta.json"
+        file = f"{self.data_dir}/{training_dir}/training-meta.json"
         with open(file, "r") as f:
             meta = json.load(f)
         self.labels = meta.get("labels", [])
-        self.species = meta.get("species", ["bird", "human", "rain"])
+        self.species = meta.get("species", ["bird", "human", "rain", "other"])
 
     def train_model(self, run_name="test", epochs=15):
         checkpoints = self.checkpoints(run_name)
@@ -159,12 +162,15 @@ class AudioModel:
         birds = tf.keras.layers.Dense(
             num_labels, activation="softmax", name="prediction"
         )(x)
-        species = tf.keras.layers.Dense(
-            num_species, activation="softmax", name="species_p"
-        )(x)
-        # outputs = tf.keras.layers.Concatenate()([birds, species])
+        if self.use_species:
+            species = tf.keras.layers.Dense(
+                num_species, activation="softmax", name="species_p"
+            )(x)
+            # outputs = tf.keras.layers.Concatenate()([birds, species])
 
-        outputs = [birds, species]
+            outputs = [birds, species]
+        else:
+            outputs = [birds]
         self.model = tf.keras.models.Model(input, outputs=outputs)
 
         self.model.compile(
@@ -223,33 +229,36 @@ class AudioModel:
     def load_datasets(self, base_dir, labels, species, shape, test=False):
         self.train, remapped = get_dataset(
             # dir,
-            f"{base_dir}/training-data/train",
+            f"{base_dir}/{training_dir}/train",
             labels,
             species,
             batch_size=self.batch_size,
             image_size=self.input_shape,
-            augment=True,
-            resample=True,
+            augment=False,
+            resample=False,
+            use_species=self.use_species,
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
         self.validation, _ = get_dataset(
             # dir,
-            f"{base_dir}/training-data/validation",
+            f"{base_dir}/{training_dir}/validation",
             labels,
             species,
             batch_size=self.batch_size,
             image_size=self.input_shape,
-            resample=True,
+            resample=False,
+            use_species=self.use_species,
             # preprocess_fn=self.preprocess_fn,
         )
         if test:
             self.test, _ = get_dataset(
                 # dir,
-                f"{base_dir}/training-data/test",
+                f"{base_dir}/{training_dir}/test",
                 labels,
                 species,
                 batch_size=batch_size,
                 image_size=self.input_shape,
+                use_species=self.use_species,
                 # preprocess_fn=self.preprocess_fn,
             )
 

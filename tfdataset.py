@@ -94,6 +94,7 @@ def load_dataset(filenames, num_labels, num_species, args):
             augment=augment,
             preprocess_fn=preprocess_fn,
             one_hot=one_hot,
+            use_species=args.get("use_species", False),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -110,8 +111,11 @@ def preprocess(data):
     return tf.keras.applications.inception_v3.preprocess_input(x), y
 
 
-def get_distribution(dataset):
-    true_categories = tf.concat([y[0] for x, y in dataset], axis=0)
+def get_distribution(dataset, use_species=False):
+    if use_species:
+        true_categories = tf.concat([y[0] for x, y in dataset], axis=0)
+    else:
+        true_categories = tf.concat([y for x, y in dataset], axis=0)
     num_labels = len(true_categories[0])
     if len(true_categories) == 0:
         return None
@@ -266,6 +270,7 @@ def read_tfrecord(
     augment=False,
     preprocess_fn=None,
     one_hot=True,
+    use_species=False,
 ):
     tf_more_mask = tf.constant(morepork_mask)
     tf_human_mask = tf.constant(human_mask)
@@ -364,7 +369,9 @@ def read_tfrecord(
             species = tf.one_hot(species, num_species)
 
         # return image, label
-        return image, (label, species)
+        if use_species:
+            return image, (label, species)
+        return image, label
 
     return image
 
@@ -416,6 +423,8 @@ def main():
     for e in range(2):
         for x, y in resampled_ds:
             print(len(x), len(y))
+            show_batch(x, y, None, labels, species_list)
+
             show_batch(x, y[0], y[1], labels, species_list)
 
 
@@ -443,7 +452,9 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
         ax = plt.subplot(num_images, 3, p + 1)
         # plot_spec(image_batch[n][:, :, 0], ax)
         # # plt.imshow(np.uint8(image_batch[n]))
-        spc = species[np.argmax(species_batch[n])]
+        spc = None
+        if species_batch is not None:
+            spc = species[np.argmax(species_batch[n])]
         plt.title(f"{lbl} ({spc} human")
         # # plt.axis("off")
         print(image_batch[n].shape)
