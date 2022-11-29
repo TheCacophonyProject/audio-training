@@ -172,6 +172,10 @@ def get_dataset(filenames, labels, species_list, **args):
             default_value=tf.constant(-1),
             name="remapped_species",
         )
+    if "norfolk golden whistler" in labels:
+        remapped["bird"].append("norfolk golden whistler")
+        values[labels.index("norfolk golden whistler")] = labels.index("bird")
+        del remapped["norfolk golden whistler"]
     if "rain" in labels:
         remapped["human"].append("rain")
         values[labels.index("rain")] = labels.index("human")
