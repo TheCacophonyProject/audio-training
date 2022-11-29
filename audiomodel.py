@@ -185,23 +185,28 @@ class AudioModel:
         )
 
     def checkpoints(self, run_name):
-        val_loss = os.path.join(self.checkpoint_folder, run_name, "val_prediction_loss")
+        loss_name = "val_loss"
+        if self.use_species:
+            loss_name = "val_prediction_loss"
+
+        val_loss = os.path.join(self.checkpoint_folder, run_name, "val_loss")
 
         checkpoint_loss = tf.keras.callbacks.ModelCheckpoint(
             val_loss,
-            monitor="val_prediction_loss",
+            monitor=loss_name,
             verbose=1,
             save_best_only=True,
             save_weights_only=True,
             mode="auto",
         )
-        val_acc = os.path.join(
-            self.checkpoint_folder, run_name, "val_prediction_accuracy"
-        )
+        val_acc = os.path.join(self.checkpoint_folder, run_name, "val_accuracy")
+        acc_name = "val_accuracy"
+        if self.use_species:
+            acc_name = "val_prediction_accuracy"
 
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_acc,
-            monitor="val_prediction_accuracy",
+            monitor=acc_name,
             verbose=1,
             save_best_only=True,
             save_weights_only=True,
@@ -219,10 +224,11 @@ class AudioModel:
         #     mode="max",
         # )
         earlyStopping = tf.keras.callbacks.EarlyStopping(
-            patience=22, monitor="val_prediction_accuracy"
+            patience=22,
+            monitor=acc_name,
         )
         reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor="val_prediction_accuracy", verbose=1
+            monitor=acc_name, verbose=1
         )
         return [earlyStopping, checkpoint_acc, checkpoint_loss, reduce_lr_callback]
 
