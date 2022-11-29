@@ -43,11 +43,14 @@ class AudioDataset:
         meta_files = Path(base_path).glob("**/*.txt")
         for f in meta_files:
             meta = load_metadata(f)
-            r = Recording(meta, f)
-            self.recs.append(r)
-            # r.get_human_tags()
-            for tag in r.human_tags:
-                self.labels.add(tag)
+            r = Recording(meta, f.with_suffix(".m4a"))
+            self.add_recording(r_)
+
+    def add_recording(self, r):
+        self.recs.append(r)
+        # r.get_human_tags()
+        for tag in r.human_tags:
+            self.labels.add(tag)
 
     def get_counts(self):
         counts = {}
@@ -166,7 +169,7 @@ def filter_track(track):
 
 class Recording:
     def __init__(self, metadata, filename):
-        self.filename = filename.with_suffix(".m4a")
+        self.filename = filename
         self.metadata = metadata
         self.id = metadata.get("id")
         self.device_id = metadata.get("deviceId")
@@ -286,16 +289,19 @@ class Track:
         self.original_tags = set()
         tags = metadata.get("tags", [])
         for tag in tags:
-            what = tag.get("what")
-            original = what
-            if what in RELABEL:
-                what = RELABEL[what]
-            t = Tag(what, tag.get("confidence"), tag.get("automatic"), original)
-            if t.automatic:
-                self.automatic_tags.add(t.what)
-            else:
-                self.original_tags.add(t.original)
-                self.human_tags.add(t.what)
+            self.add_tag(tag)
+
+    def add_tag(self, tag):
+        what = tag.get("what")
+        original = what
+        if what in RELABEL:
+            what = RELABEL[what]
+        t = Tag(what, tag.get("confidence"), tag.get("automatic"), original)
+        if t.automatic:
+            self.automatic_tags.add(t.what)
+        else:
+            self.original_tags.add(t.original)
+            self.human_tags.add(t.what)
 
     def get_data(self, resample=None):
         if self.rec.rec_data is None:
