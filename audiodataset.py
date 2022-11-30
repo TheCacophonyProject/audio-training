@@ -70,7 +70,7 @@ class AudioDataset:
                 tags = track.tags
                 if len(tags) == 0:
                     continue
-                elif len(tags) == 1:
+                elif len(tags) == 1 or ("bird" not in track.tags):
                     tag = list(tags)[0]
                     if tag not in counts:
                         counts[tag] = 1
@@ -400,7 +400,16 @@ class Track:
 
     @property
     def tag(self):
-        return list(self.human_tags)[0]
+        all_tags = self.tags
+        tag = None
+        for t in all_tags:
+            if t in ["bird", "human", "video-game", "other"]:
+                tag = t
+
+        if tag is None:
+            return list(self.human_tags)[0]
+        else:
+            return tag
 
     @property
     def bin_id(self):
