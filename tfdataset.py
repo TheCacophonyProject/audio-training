@@ -172,26 +172,33 @@ def get_dataset(filenames, labels, species_list, **args):
             default_value=tf.constant(-1),
             name="remapped_species",
         )
-    if "morepork" in labels:
-        remapped["bird"].append("morepork")
-        values[labels.index("morepork")] = labels.index("bird")
-        del remapped["morepork"]
-    if "kiwi" in labels:
-        remapped["bird"].append("kiwi")
-        values[labels.index("kiwi")] = labels.index("bird")
-        del remapped["kiwi"]
-    if "norfolk golden whistler" in labels:
-        remapped["bird"].append("norfolk golden whistler")
-        values[labels.index("norfolk golden whistler")] = labels.index("bird")
-        del remapped["norfolk golden whistler"]
-    if "rain" in labels:
-        remapped["human"].append("rain")
-        values[labels.index("rain")] = labels.index("human")
-        del remapped["rain"]
-    if "other" in labels:
-        remapped["human"].append("other")
-        values[labels.index("other")] = labels.index("human")
-        del remapped["other"]
+    print("labels are", labels)
+    for l in labels:
+        remap_label = "human"
+        if l in ["morepork", "kiwi", "norfolk golden whistler", "bird"]:
+            remap_label = "bird"
+        if l == remap_label:
+            continue
+        remapped[remap_label].append(l)
+        values[labels.index(l)] = labels.index(remap_label)
+        del remapped[l]
+    print(remapped)
+    # if "kiwi" in labels:
+    #     remapped["bird"].append("kiwi")
+    #     values[labels.index("kiwi")] = labels.index("bird")
+    #     del remapped["kiwi"]
+    # if "norfolk golden whistler" in labels:
+    #     remapped["bird"].append("norfolk golden whistler")
+    #     values[labels.index("norfolk golden whistler")] = labels.index("bird")
+    #     del remapped["norfolk golden whistler"]
+    # if "rain" in labels:
+    #     remapped["human"].append("rain")
+    #     values[labels.index("rain")] = labels.index("human")
+    #     del remapped["rain"]
+    # if "other" in labels:
+    #     remapped["human"].append("other")
+    #     values[labels.index("other")] = labels.index("human")
+    #     del remapped["other"]
     remapped_y = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(keys),
@@ -235,13 +242,15 @@ def get_dataset(filenames, labels, species_list, **args):
 
 
 def resample(dataset, labels):
-    excluded_labels = ["human", "bird", "morepork", "kiwi"]
+    excluded_labels = []
+    # excluded_labels = ["human", "bird", "morepork", "kiwi"]
     num_labels = len(labels)
     true_categories = [y for x, y in dataset]
     if len(true_categories) == 0:
         return None
     true_categories = np.int64(tf.argmax(true_categories, axis=1))
     c = Counter(list(true_categories))
+    print("COUNTER", c)
     dist = np.empty((num_labels), dtype=np.float32)
     target_dist = np.empty((num_labels), dtype=np.float32)
     for i in range(num_labels):
@@ -309,7 +318,6 @@ def read_tfrecord(
         "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
         "audio/class/text": tf.io.FixedLenFeature((), tf.string),
         "audio/length": tf.io.FixedLenFeature((), tf.int64),
-        "audio/rec_id": tf.io.FixedLenFeature((), tf.string),
         "audio/start_s": tf.io.FixedLenFeature(1, tf.float32),
         "audio/sftf_w": tf.io.FixedLenFeature((), tf.int64),
         "audio/sftf_h": tf.io.FixedLenFeature((), tf.int64),
@@ -324,7 +332,6 @@ def read_tfrecord(
     audio_data = example["audio/sftf"]
     mel = example["audio/mel"]
     mfcc = example["audio/mfcc"]
-    rec_id = example["audio/rec_id"]
     # mel = tf.expand_dims(mel, axis=2)
 
     audio_data = tf.reshape(audio_data, [*sftf_s, 1])
@@ -405,7 +412,7 @@ def read_tfrecord(
                 species = tf.one_hot(species, num_species)
 
             return image, (label, species)
-        return image, (label, rec_id)
+        return image, label
 
     return image
 
@@ -435,8 +442,7 @@ def main():
         filenames.extend(tf.io.gfile.glob(f"./{d}/validation/*.tfrecord"))
     labels = list(labels)
     labels.sort()
-    print(filenames)
-    print("labels are", labels)
+
     # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
     # weights = [0.5] * len(labels)
     resampled_ds, remapped = get_dataset(
@@ -490,7 +496,7 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
         # if rec_batch[n] != 1384657:
         # continue
         # print("showing", image_batch[n].shape, sftf[n].shape)
-        p = i * 3
+        p = n
         i += 1
         ax = plt.subplot(num_images, 3, p + 1)
         # plot_spec(image_batch[n][:, :, 0], ax)

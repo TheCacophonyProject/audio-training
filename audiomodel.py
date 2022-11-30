@@ -234,10 +234,19 @@ class AudioModel:
         return [earlyStopping, checkpoint_acc, checkpoint_loss, reduce_lr_callback]
 
     def load_datasets(self, base_dir, labels, species, shape, test=False):
-        filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
-        filenames.extend(
-            tf.io.gfile.glob(f"{base_dir}/{other_training_dir}/train/*.tfrecord")
-        )
+        datasets = ["other-training-data", "training-data", "chime-training-data"]
+        labels = set()
+        filenames = []
+        for d in datasets:
+            # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
+            filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/train/*.tfrecord"))
+            file = f"{base_dir}/{d}/training-meta.json"
+            with open(file, "r") as f:
+                meta = json.load(f)
+            labels.update(meta.get("labels", []))
+        labels = list(labels)
+        labels.sort()
+        self.labels = labels
         self.train, remapped = get_dataset(
             # dir,
             filenames,
@@ -250,10 +259,10 @@ class AudioModel:
             use_species=self.use_species,
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
-        filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/validation/*.tfrecord")
-        filenames.extend(
-            tf.io.gfile.glob(f"{base_dir}/{other_training_dir}/validation/*.tfrecord")
-        )
+        filenames = []
+        for d in datasets:
+            # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
+            filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/validation/*.tfrecord"))
 
         self.validation, _ = get_dataset(
             # dir,
@@ -277,6 +286,7 @@ class AudioModel:
                 use_species=self.use_species,
                 # preprocess_fn=self.preprocess_fn,
             )
+        self.remapped = remapped
 
     def get_base_model(self, input_shape, weights="imagenet"):
         pretrained_model = self.model_name
