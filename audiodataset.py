@@ -50,6 +50,7 @@ class AudioDataset:
         self.recs.append(r)
         # r.get_human_tags()
         for tag in r.human_tags:
+            print("tag is", tag)
             self.labels.add(tag)
 
     def get_counts(self):
@@ -122,7 +123,10 @@ class AudioDataset:
 
             else:
                 logging.info(
-                    "Conflicting tags %s track %s -  %s tags", r.id, track.id, tags
+                    "Conflicting tags %s track %s -  %s tags",
+                    track.rec.id,
+                    track.id,
+                    tags,
                 )
         logging.info("Counts from %s Samples", len(self.samples))
         for k, v in counts.items():
@@ -156,7 +160,8 @@ def load_metadata(filename):
 
 
 def filter_track(track):
-    if len(track.tags) != 1:
+    if len(track.tags) != 1 and "bird" in track.tags:
+        print("filtering track", track)
         return True
 
     tag = track.tag

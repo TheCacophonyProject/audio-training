@@ -201,6 +201,7 @@ def get_dataset(filenames, labels, species_list, **args):
         name="remapped_y",
     )
     dataset = load_dataset(filenames, num_labels, num_species, args)
+
     resample_data = args.get("resample", True)
     if resample_data:
         logging.info("Resampling data")
@@ -414,14 +415,15 @@ from collections import Counter
 def main():
     init_logging()
     # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
-    file = f"./training-meta.json"
+    file = f"./other-training-data/training-meta.json"
     with open(file, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
     species_list = ["bird", "human", "rain", "other"]
 
     datasets = []
-    filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
+    filenames = []
+    # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
     filenames.extend(tf.io.gfile.glob(f"./other-training-data/validation/*.tfrecord"))
     print(filenames)
 
