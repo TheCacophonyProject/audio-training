@@ -151,7 +151,7 @@ def get_dataset(filenames, labels, species_list, **args):
     s_values = []
     for l in labels:
         remapped[l] = [l]
-        keys.append(labels.index(l))
+        keys.append(l)
         values.append(labels.index(l))
         if args.get("use_species", False):
             if l == "human":
@@ -200,6 +200,8 @@ def get_dataset(filenames, labels, species_list, **args):
         default_value=tf.constant(-1),
         name="remapped_y",
     )
+    # print("keys", keys, " values", values)
+    # 1 / 0
     dataset = load_dataset(filenames, num_labels, num_species, args)
 
     resample_data = args.get("resample", True)
@@ -233,7 +235,7 @@ def get_dataset(filenames, labels, species_list, **args):
 
 
 def resample(dataset, labels):
-    excluded_labels = ["morepork", "kiwi"]
+    excluded_labels = ["human", "bird", "morepork", "kiwi"]
     num_labels = len(labels)
     true_categories = [y for x, y in dataset]
     if len(true_categories) == 0:
@@ -305,8 +307,9 @@ def read_tfrecord(
         "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
         "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
         "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
+        "audio/class/text": tf.io.FixedLenFeature((), tf.string),
         "audio/length": tf.io.FixedLenFeature((), tf.int64),
-        # "audio/rec_id": tf.io.FixedLenFeature((), tf.int64),
+        "audio/rec_id": tf.io.FixedLenFeature((), tf.string),
         "audio/start_s": tf.io.FixedLenFeature(1, tf.float32),
         "audio/sftf_w": tf.io.FixedLenFeature((), tf.int64),
         "audio/sftf_h": tf.io.FixedLenFeature((), tf.int64),
@@ -321,6 +324,7 @@ def read_tfrecord(
     audio_data = example["audio/sftf"]
     mel = example["audio/mel"]
     mfcc = example["audio/mfcc"]
+    rec_id = example["audio/rec_id"]
     # mel = tf.expand_dims(mel, axis=2)
 
     audio_data = tf.reshape(audio_data, [*sftf_s, 1])
@@ -383,7 +387,9 @@ def read_tfrecord(
         # image = preprocess_fn(image)
 
     if labeled:
-        label = tf.cast(example["audio/class/label"], tf.int32)
+        # label = tf.cast(example["audio/class/label"], tf.int32)
+        label = tf.cast(example["audio/class/text"], tf.string)
+
         global remapped_y
         label = remapped_y.lookup(label)
 
@@ -399,7 +405,7 @@ def read_tfrecord(
                 species = tf.one_hot(species, num_species)
 
             return image, (label, species)
-        return image, label
+        return image, (label, rec_id)
 
     return image
 
@@ -414,19 +420,23 @@ from collections import Counter
 # test stuff
 def main():
     init_logging()
-    # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
-    file = f"./other-training-data/training-meta.json"
-    with open(file, "r") as f:
-        meta = json.load(f)
-    labels = meta.get("labels", [])
-    species_list = ["bird", "human", "rain", "other"]
-
-    datasets = []
+    datasets = ["other-training-data", "training-data", "chime-training-data"]
     filenames = []
-    # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-    filenames.extend(tf.io.gfile.glob(f"./other-training-data/validation/*.tfrecord"))
-    print(filenames)
+    labels = set()
+    for d in datasets:
+        # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
+        file = f"./{d}/training-meta.json"
+        with open(file, "r") as f:
+            meta = json.load(f)
+        labels.update(meta.get("labels", []))
+        species_list = ["bird", "human", "rain", "other"]
 
+        # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
+        filenames.extend(tf.io.gfile.glob(f"./{d}/validation/*.tfrecord"))
+    labels = list(labels)
+    labels.sort()
+    print(filenames)
+    print("labels are", labels)
     # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
     # weights = [0.5] * len(labels)
     resampled_ds, remapped = get_dataset(
@@ -437,7 +447,7 @@ def main():
         batch_size=32,
         image_size=DIMENSIONS,
         augment=False,
-        resample=False,
+        resample=True,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
     # print(get_distribution(resampled_ds))
@@ -458,7 +468,7 @@ def main():
             print(len(x), len(y))
             show_batch(x, y, None, labels, species_list)
 
-            show_batch(x, y[0], y[1], labels, species_list)
+            # show_batch(x, y[0], y[1], labels, species_list)
 
 
 def show_batch(image_batch, label_batch, species_batch, labels, species):
@@ -469,10 +479,11 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
     # mfcc = image_batch[2]
     image_batch = image_batch
     print("images in batch", len(image_batch), len(label_batch))
-    num_images = 6
+    num_images = len(image_batch)
     # rows = int(math.ceil(math.sqrt(num_images)))
     i = 0
     for n in range(num_images):
+        # print(label_batch[n])
         lbl = labels[np.argmax(label_batch[n])]
         # if lbl != "morepork":
         # continue
@@ -481,26 +492,24 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
         # print("showing", image_batch[n].shape, sftf[n].shape)
         p = i * 3
         i += 1
-        print("setting", p + 1)
         ax = plt.subplot(num_images, 3, p + 1)
         # plot_spec(image_batch[n][:, :, 0], ax)
         # # plt.imshow(np.uint8(image_batch[n]))
         spc = None
         if species_batch is not None:
             spc = species[np.argmax(species_batch[n])]
-        plt.title(f"{lbl} ({spc} human")
+        plt.title(f"{lbl} ({spc}")
         # # plt.axis("off")
-        print(image_batch[n].shape)
         # ax = plt.subplot(num_images, 3, p + 1)
         plot_mel(image_batch[n][:, :, 0], ax)
-
-        ax = plt.subplot(num_images, 3, p + 2)
-        plot_mel(image_batch[n][:, :, 1], ax)
-        plt.title(f"{lbl} ({spc} more")
-
-        ax = plt.subplot(num_images, 3, p + 3)
-        plot_mel(image_batch[n][:, :, 2], ax)
-        plt.title(f"{lbl} ({spc} all")
+        #
+        # ax = plt.subplot(num_images, 3, p + 2)
+        # plot_mel(image_batch[n][:, :, 1], ax)
+        # plt.title(f"{lbl} ({spc} more")
+        #
+        # ax = plt.subplot(num_images, 3, p + 3)
+        # plot_mel(image_batch[n][:, :, 2], ax)
+        # plt.title(f"{lbl} ({spc} all")
 
         # plt.imshow(np.uint8(image_batch[n]))
         # plt.title(f"{lbl} ({spc} - {rec_batch[n]}) mel")
