@@ -61,6 +61,10 @@ class AudioModel:
         self.labels = meta.get("labels", [])
         self.species = meta.get("species", ["bird", "human", "rain", "other"])
 
+    def load_weights(self, weights_file):
+        logging.info("Loading %s", weights_file)
+        self.model.load_weights(weights_file).expect_partial()
+
     def train_model(self, run_name="test", epochs=15):
         checkpoints = self.checkpoints(run_name)
         # self.model.save(os.path.join(self.checkpoint_folder, run_name))
@@ -539,12 +543,15 @@ def main():
         confusion(model, labels, dataset, args.confusion)
     else:
         am = AudioModel()
+        if args.weights is not None:
+            am.load_weights(args.weights)
         am.train_model(run_name=args.name)
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--confusion", help="Save confusion matrix for model")
+    parser.add_argument("-w", "--weights", help="Weights to use")
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("name", help="Run name")

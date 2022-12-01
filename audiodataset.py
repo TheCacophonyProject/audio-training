@@ -101,7 +101,7 @@ class AudioDataset:
         rec_counts = {}
         for track in self.samples:
             tags = track.tags
-            if len(tags) == 1:
+            if len(tags) == 1 or "birds" not in tags:
                 tag = list(tags)[0]
                 if tag not in counts:
                     counts[tag] = 1
