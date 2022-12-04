@@ -44,7 +44,7 @@ class AudioDataset:
         for f in meta_files:
             meta = load_metadata(f)
             r = Recording(meta, f.with_suffix(".m4a"))
-            self.add_recording(r_)
+            self.add_recording(r)
 
     def add_recording(self, r):
         self.recs.append(r)
@@ -160,7 +160,7 @@ def load_metadata(filename):
 
 
 def filter_track(track):
-    if len(track.tags) != 1 and "bird" in track.tags:
+    if len(track.tags) != 1:
         print("filtering track", track)
         return True
 
@@ -360,18 +360,26 @@ class Track:
                 #     len(frames) / sr,
                 # )
                 spectogram = np.abs(
-                    librosa.stft(s_data, n_fft=n_fft, hop_length=n_fft // 2)
+                    librosa.stft(s_data, n_fft=n_fft, hop_length=n_fft // 3)
                 )
                 # these should b derivable from spectogram but the librosa exmaples produce different results....
                 mel = librosa.feature.melspectrogram(
-                    y=s_data, sr=sr, n_fft=n_fft, hop_length=n_fft // 2
+                    y=s_data,
+                    sr=sr,
+                    n_fft=n_fft,
+                    hop_length=n_fft // 3,
+                    fmin=50,
+                    fmax=11000,
+                    n_mels=80,
                 )
                 mfcc = librosa.feature.mfcc(
                     y=s_data, sr=sr, hop_length=n_fft // 2, htk=True
                 )
-                assert mel.shape == (128, 61)
+                assert mel.shape == (80, 91)
                 segments.append(
-                    SpectrogramData(spectogram, mel, mfcc, self.start, SEGMENT_LENGTH)
+                    SpectrogramData(
+                        spectogram, mel, mfcc, self.start, SEGMENT_LENGTH, s_data.copy()
+                    )
                 )
                 # plot_mel(mel)
             except:
@@ -402,11 +410,11 @@ class Track:
     def tag(self):
         all_tags = self.tags
         tag = None
-        for t in all_tags:
-            if t in ["bird", "human", "video-game", "other"]:
-                tag = t
+        # for t in all_tags:
+        #     if t in ["bird", "human", "video-game", "other"]:
+        #         tag = t
 
-        if tag is None:
+        if tag is None and len(self.human_tags) > 0:
             return list(self.human_tags)[0]
         else:
             return tag
@@ -439,6 +447,6 @@ def plot_mel(mel):
     # plt.clf()
 
 
-SpectrogramData = namedtuple("SpectrogramData", "data mel mfcc start_s length")
+SpectrogramData = namedtuple("SpectrogramData", "data mel mfcc start_s length raw")
 
 Tag = namedtuple("Tag", "what confidence automatic original")

@@ -47,37 +47,36 @@ import librosa
 def create_tf_example(data, sample, labels):
     """Converts image and annotations to a tf.Example proto.
 
-    Args:
-      image: dict with keys: [u'license', u'file_name', u'coco_url', u'height',
-        u'width', u'date_captured', u'flickr_url', u'id']
-      image_dir: directory containing the image files.
-      bbox_annotations:
-        list of dicts with keys: [u'segmentation', u'area', u'iscrowd',
-          u'image_id', u'bbox', u'category_id', u'id'] Notice that bounding box
-          coordinates in the official COCO dataset are given as [x, y, width,
-          height] tuples using absolute coordinates where x, y represent the
-          top-left (0-indexed) corner.  This function converts to the format
-          expected by the Tensorflow Object Detection API (which is which is
-          [ymin, xmin, ymax, xmax] with coordinates normalized relative to image
-          size).
-      category_index: a dict containing COCO category information keyed by the
-        'id' field of each category.  See the label_map_util.create_category_index
-        function.
-      caption_annotations:
-        list of dict with keys: [u'id', u'image_id', u'str'].
-      include_masks: Whether to include instance segmentations masks
-        (PNG encoded) in the result. default: False.
+        Args:
+          image: dict with keys: [u'license', u'file_name', u'coco_url', u'height',
+            u'width', u'date_captured', u'flickr_url', u'id']
+          image_dir: directory containing the image files.
+          bbox_annotations:
+            list of dicts with keys: [u'segmentation', u'area', u'iscrowd',
+              u'image_id', u'bbox', u'category_id', u'id'] Notice that bounding box
+              coordinates in the official COCO dataset are given as [x, y, width,
+              height] tuples using absolute coordinates where x, y represent the
+              top-left (0-indexed) corner.  This function converts to the format
+              expected by the Tensorflow Object Detection API (which is which is
+              [ymin, xmin, ymax, xmax] with coordinates normalized relative to image
+              size).
+          category_index: a dict containing COCO category information keyed by the
+            'id' field of each category.  See the label_map_util.create_category_index
+            function.
+          caption_annotations:
+            list of dict with keys: [u'id', u'image_id', u'str'].
+          include_masks: Whether to include instance segmentations masks
+            (PNG encoded) in the result. default: False.
 
-    Returns:
-      example: The converted tf.Example
-      num_annotations_skipped: Number of (invalid) annotations that were ignored.
+        Returns:
+          example: The converted tf.Example
+          num_annotations_skipped: Number of (invalid) annotations that were ignored.
 
     Raises:
-      ValueError: if the image pointed to by data['filename'] is not a valid JPEG
+          ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
     audio_data = librosa.amplitude_to_db(data.data, ref=np.max)
     mel = librosa.power_to_db(data.mel, ref=np.max)
-    assert mel.shape == (128, 61)
     feature_dict = {
         "audio/rec_id": tfrecord_util.bytes_feature(str(sample.rec_id).encode("utf8")),
         "audio/track_id": tfrecord_util.bytes_feature(str(sample.id).encode("utf8")),
@@ -97,6 +96,8 @@ def create_tf_example(data, sample, labels):
         "audio/mel_h": tfrecord_util.int64_feature(mel.shape[0]),
         "audio/mfcc_h": tfrecord_util.int64_feature(data.mfcc.shape[1]),
         "audio/mfcc_w": tfrecord_util.int64_feature(data.mfcc.shape[0]),
+        "audio/raw": tfrecord_util.float_list_feature(data.raw),
+        "audio/raw_l": tfrecord_util.int64_feature(len(data.raw)),
     }
 
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
