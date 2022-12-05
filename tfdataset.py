@@ -362,13 +362,13 @@ def read_tfrecord(
     #     n_mels=80,
     # )
     #
-    # mel = example["audio/mel"]
+    mel = example["audio/mel"]
     # mfcc = example["audio/mfcc"]
     # mel = tf.expand_dims(mel, axis=2)
     #
     # audio_data = tf.reshape(audio_data, [*sftf_s, 1])
     #
-    # mel = tf.reshape(mel, [*mel_s])
+    mel = tf.reshape(mel, [*mel_s])
     if augment:
         logging.info("Augmenting")
         # mel = tfio.audio.freq_mask(mel, param=10)
@@ -490,7 +490,7 @@ def main():
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
     # print(get_distribution(resampled_ds))
-    #
+    # ing2D()(x)
     # for e in range(2):
     #     print("epoch", e)
     #     true_categories = tf.concat([y for x, y in resampled_ds], axis=0)

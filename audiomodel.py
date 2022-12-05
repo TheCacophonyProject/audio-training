@@ -27,6 +27,8 @@ from pathlib import Path
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 
+import badwinner
+
 training_dir = "training-data"
 other_training_dir = "training-data"
 
@@ -44,7 +46,7 @@ class AudioModel:
         self.test = None
         self.train = None
         self.remapped = None
-        self.input_shape = (128 * 2, 61 * 2)
+        self.input_shape = (80, 91)
         self.preprocess_fn = None
         self.learning_rate = 0.01
         self.species = None
@@ -153,30 +155,32 @@ class AudioModel:
             cls=MetaJSONEncoder,
         )
 
-    def build_model(self, num_species, num_labels):
-        input = tf.keras.Input(shape=(*self.input_shape, 3), name="input")
-        base_model, self.preprocess_fn = self.get_base_model((*self.input_shape, 3))
-
+    def build_model(self, num_species, num_labels, bad=True):
         norm_layer = tf.keras.layers.Normalization()
         norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
-
-        x = norm_layer(input)
-        x = base_model(x, training=True)
-
-        x = tf.keras.layers.GlobalAveragePooling2D()(x)
-        birds = tf.keras.layers.Dense(
-            num_labels, activation="softmax", name="prediction"
-        )(x)
-        if self.use_species:
-            species = tf.keras.layers.Dense(
-                num_species, activation="softmax", name="species_p"
-            )(x)
-            # outputs = tf.keras.layers.Concatenate()([birds, species])
-
-            outputs = [birds, species]
+        if bad:
+            self.model = badwinner.build_model(self.input_shape, norm_layer, num_labels)
         else:
-            outputs = [birds]
-        self.model = tf.keras.models.Model(input, outputs=outputs)
+            input = tf.keras.Input(shape=(*self.input_shape, 3), name="input")
+            base_model, self.preprocess_fn = self.get_base_model((*self.input_shape, 3))
+
+            x = norm_layer(input)
+            x = base_model(x, training=True)
+
+            x = tf.keras.layers.GlobalAveragePool31ing2D()(x)
+            birds = tf.keras.layers.Dense(
+                num_labels, activation="softmax", name="prediction"
+            )(x)
+            if self.use_species:
+                species = tf.keras.layers.Dense(
+                    num_species, activation="softmax", name="species_p"
+                )(x)
+                # outputs = tf.keras.layers.Concatenate()([birds, species])
+
+                outputs = [birds, species]
+            else:
+                outputs = [birds]
+            self.model = tf.keras.models.Model(input, outputs=outputs)
 
         self.model.compile(
             optimizer=optimizer(lr=self.learning_rate),
@@ -239,6 +243,7 @@ class AudioModel:
 
     def load_datasets(self, base_dir, labels, species, shape, test=False):
         datasets = ["other-training-data", "training-data", "chime-training-data"]
+        datasets = ["training-data"]
         labels = set()
         filenames = []
         for d in datasets:
