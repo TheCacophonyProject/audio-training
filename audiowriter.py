@@ -77,12 +77,12 @@ def create_tf_example(data, sample, labels):
     """
     audio_data = librosa.amplitude_to_db(data.data, ref=np.max)
     mel = librosa.power_to_db(data.mel, ref=np.max)
+    print(data.raw.shape, data.raw.dtype)
+    print(data.mel.shape)
     feature_dict = {
         "audio/rec_id": tfrecord_util.bytes_feature(str(sample.rec_id).encode("utf8")),
         "audio/track_id": tfrecord_util.bytes_feature(str(sample.id).encode("utf8")),
-        "audio/sample_rate": tfrecord_util.bytes_feature(
-            str(sample.rec.sample_rate).encode("utf8")
-        ),
+        "audio/sample_rate": tfrecord_util.int64_feature(sample.rec.sample_rate),
         "audio/length": tfrecord_util.int64_feature(data.length),
         "audio/start_s": tfrecord_util.float_feature(data.start_s),
         "audio/class/text": tfrecord_util.bytes_feature(sample.tag.encode("utf8")),
@@ -96,7 +96,7 @@ def create_tf_example(data, sample, labels):
         "audio/mel_h": tfrecord_util.int64_feature(mel.shape[0]),
         "audio/mfcc_h": tfrecord_util.int64_feature(data.mfcc.shape[1]),
         "audio/mfcc_w": tfrecord_util.int64_feature(data.mfcc.shape[0]),
-        "audio/raw": tfrecord_util.float_list_feature(data.raw),
+        "audio/raw": tfrecord_util.float_list_feature(np.float32(data.raw)),
         "audio/raw_l": tfrecord_util.int64_feature(len(data.raw)),
     }
 
