@@ -21,7 +21,7 @@ import numpy as np
 from audiodataset import AudioDataset
 from audiowriter import create_tf_records
 import tensorflow as tf
-from tfdataset import get_dataset
+from tfdataset import get_dataset, mel_s
 import time
 from pathlib import Path
 from sklearn.metrics import confusion_matrix
@@ -46,7 +46,7 @@ class AudioModel:
         self.test = None
         self.train = None
         self.remapped = None
-        self.input_shape = (80, 91)
+        self.input_shape = mel_s
         self.preprocess_fn = None
         self.learning_rate = 0.01
         self.species = None
@@ -167,7 +167,7 @@ class AudioModel:
             x = norm_layer(input)
             x = base_model(x, training=True)
 
-            x = tf.keras.layers.GlobalAveragePool31ing2D()(x)
+            x = tf.keras.layers.GlobalAveragePooling2D()(x)
             birds = tf.keras.layers.Dense(
                 num_labels, activation="softmax", name="prediction"
             )(x)

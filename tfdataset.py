@@ -25,7 +25,7 @@ fp = None
 
 DIMENSIONS = (128, 1134)
 
-mel_s = (80, 91)
+mel_s = (80, 226)
 sftf_s = (2401, 61)
 mfcc_s = (20, 61)
 

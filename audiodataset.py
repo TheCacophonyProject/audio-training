@@ -332,6 +332,7 @@ class Track:
         start_offset = 0
         i = 0
         n_fft = sr // 10
+        hop_length = 640  # feature frame rate of 75
         while end < self.length or i == 0:
             try:
                 start_offset = i * stride
@@ -360,22 +361,22 @@ class Track:
                 #     len(frames) / sr,
                 # )
                 spectogram = np.abs(
-                    librosa.stft(s_data, n_fft=n_fft, hop_length=n_fft // 3)
+                    librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length)
                 )
                 # these should b derivable from spectogram but the librosa exmaples produce different results....
                 mel = librosa.feature.melspectrogram(
                     y=s_data,
                     sr=sr,
                     n_fft=n_fft,
-                    hop_length=n_fft // 3,
+                    hop_length=hop_length,
                     fmin=50,
                     fmax=11000,
                     n_mels=80,
                 )
                 mfcc = librosa.feature.mfcc(
-                    y=s_data, sr=sr, hop_length=n_fft // 2, htk=True
+                    y=s_data, sr=sr, hop_length=hop_length, htk=True
                 )
-                assert mel.shape == (80, 91)
+                assert mel.shape == (80, 226)
                 segments.append(
                     SpectrogramData(
                         spectogram, mel, mfcc, self.start, SEGMENT_LENGTH, s_data.copy()
