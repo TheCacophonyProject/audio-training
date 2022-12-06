@@ -11,7 +11,6 @@ import logging
 import librosa
 import librosa.display
 import tensorflow_io as tfio
-import kapre
 
 # seed = 1341
 # tf.random.set_seed(seed)
