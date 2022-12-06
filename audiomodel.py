@@ -163,7 +163,6 @@ class AudioModel:
             norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
             input = tf.keras.Input(shape=(*self.input_shape, 3), name="input")
             base_model, self.preprocess_fn = self.get_base_model((*self.input_shape, 3))
-            base_model.summary()
             x = norm_layer(input)
             x = base_model(x, training=True)
 
