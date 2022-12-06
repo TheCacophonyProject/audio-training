@@ -26,26 +26,26 @@ import tensorflow as tf
 
 def build_model(input_shape, norm_layer, num_labels):
     input = tf.keras.Input(shape=(*input_shape, 1), name="input")
-    x = norm_layer(input)
-    x = tf.keras.layers.BatchNormalization()(x)
+    # x = norm_layer(input)
+    x = tf.keras.layers.BatchNormalization()(input)
     x = tf.keras.layers.Conv2D(16, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
     x = tf.keras.layers.MaxPool2D((3, 3))(x)
     x = tf.keras.layers.Conv2D(16, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
     x = tf.keras.layers.MaxPool2D((3, 3))(x)
 
-    x = tf.keras.layers.Conv2D(16, (3, 1), activation=tf.keras.layers.LeakyReLU())(x)
-    x = tf.keras.layers.MaxPool2D((3, 1))(x)
+    x = tf.keras.layers.Conv2D(16, (1, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.MaxPool2D((1, 3))(x)
 
-    # x = tf.keras.layers.Conv2D(16, (3, 1), activation=tf.keras.layers.LeakyReLU())(x)
-    # x = tf.keras.layers.MaxPool2D((3, 1))(x)
+    x = tf.keras.layers.Conv2D(16, (1, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.MaxPool2D((1, 3))(x)
     x = tf.keras.layers.Dropout(0.5)(x)
 
     x = tf.keras.layers.Dense(256, activation=tf.keras.layers.LeakyReLU())(x)
     x = tf.keras.layers.Dropout(0.5)(x)
     x = tf.keras.layers.Dense(32, activation=tf.keras.layers.LeakyReLU())(x)
     x = tf.keras.layers.Dropout(0.5)(x)
-    x = tf.keras.layers.Dense(num_labels, activation="softmax")(x)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
+    x = tf.keras.layers.Dense(num_labels, activation="softmax")(x)
     # x = tf.keras.layers.Dense(2, activation="softmax")(x)
     # x = tf.keras.activations.sigmoid(x)
 
@@ -57,8 +57,7 @@ def build_model(input_shape, norm_layer, num_labels):
 def main():
     init_logging()
     args = parse_args()
-    print("hit main")
-    build_model()
+    build_model((80, 226), None, 2)
 
 
 def parse_args():
@@ -67,7 +66,6 @@ def parse_args():
     parser.add_argument("-w", "--weights", help="Weights to use")
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
-    parser.add_argument("name", help="Run name")
 
     args = parser.parse_args()
     return args

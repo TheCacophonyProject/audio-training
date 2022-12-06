@@ -155,15 +155,15 @@ class AudioModel:
             cls=MetaJSONEncoder,
         )
 
-    def build_model(self, num_species, num_labels, bad=True):
-        norm_layer = tf.keras.layers.Normalization()
-        norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
+    def build_model(self, num_species, num_labels, bad=False):
         if bad:
-            self.model = badwinner.build_model(self.input_shape, norm_layer, num_labels)
+            self.model = badwinner.build_model(self.input_shape, None, num_labels)
         else:
+            norm_layer = tf.keras.layers.Normalization()
+            norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
             input = tf.keras.Input(shape=(*self.input_shape, 3), name="input")
             base_model, self.preprocess_fn = self.get_base_model((*self.input_shape, 3))
-
+            base_model.summary()
             x = norm_layer(input)
             x = base_model(x, training=True)
 
