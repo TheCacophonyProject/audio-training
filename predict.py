@@ -114,6 +114,11 @@ def main():
 
     start = 0
     if args.dataset:
+        data_path = Path(args.dataset)
+        meta_f = data_path.parent / "training-meta.json"
+        with open(meta_f, "r") as f:
+            meta = json.load(f)
+        labels = meta.get("labels", [])
         filenames = tf.io.gfile.glob(f"{args.dataset}/*.tfrecord")
         print("loading", filenames)
         dataset, _ = get_dataset(

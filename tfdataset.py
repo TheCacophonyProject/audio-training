@@ -325,12 +325,12 @@ def read_tfrecord(
         # "audio/mel_h": tf.io.FixedLenFeature((), tf.int64),
         # "audio/mfcc_w": tf.io.FixedLenFeature((), tf.int64),
         # "audio/mfcc_h": tf.io.FixedLenFeature((), tf.int64),
-        "audio/raw": tf.io.FixedLenFeature(
-            [
-                144000,
-            ],
-            dtype=tf.float32,
-        ),
+        # "audio/raw": tf.io.FixedLenFeature(
+        #     [
+        #         144000,
+        #     ],
+        #     dtype=tf.float32,
+        # ),
     }
 
     example = tf.io.parse_single_example(example, tfrecord_format)
@@ -338,19 +338,19 @@ def read_tfrecord(
     # audio_data = example["audio/sftf"]
     # label = tf.cast(example["audio/class/label"], tf.int32)
 
-    raw = example["audio/raw"]
-    # raw = tf.reshape(raw, [144000])
-    n_fft = 48000 // 10
-    # raw = tf.expand_dims(raw, axis=1)
-    spec = tf.signal.stft(
-        raw, frame_length=n_fft, frame_step=n_fft // 3, fft_length=n_fft, pad_end=True
-    )
-    spec = tf.abs(spec)
-
-    mel_spectrogram = tfio.audio.melscale(
-        spec, rate=48000, mels=80, fmin=50, fmax=11000
-    )
-    mel = tfio.audio.dbscale(mel_spectrogram, top_db=80)
+    # raw = example["audio/raw"]
+    # # raw = tf.reshape(raw, [144000])
+    # n_fft = 48000 // 10
+    # # raw = tf.expand_dims(raw, axis=1)
+    # spec = tf.signal.stft(
+    #     raw, frame_length=n_fft, frame_step=n_fft // 3, fft_length=n_fft, pad_end=True
+    # )
+    # spec = tf.abs(spec)
+    #
+    # mel_spectrogram = tfio.audio.melscale(
+    #     spec, rate=48000, mels=80, fmin=50, fmax=11000
+    # )
+    # mel = tfio.audio.dbscale(mel_spectrogram, top_db=80)
     # mel = librosa.feature.melspectrogram(
     #     y=raw,
     #     sr=sr,
@@ -368,6 +368,13 @@ def read_tfrecord(
     # audio_data = tf.reshape(audio_data, [*sftf_s, 1])
     #
     mel = tf.reshape(mel, [*mel_s])
+    mean_sub = True
+    mel_m = tf.reduce_mean(mel, axis=0)
+    # gp not sure to mean over axis 0 or 1
+    # mel_m = tf.expand_dims(mel_m, axis=1)
+    # mean over each mel bank
+    print(mel_m.shape)
+    mel = mel - mel_m
     if augment:
         logging.info("Augmenting")
         # mel = tfio.audio.freq_mask(mel, param=10)
@@ -521,8 +528,9 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
     # rows = int(math.ceil(math.sqrt(num_images)))
     i = 0
     for n in range(num_images):
-        print(image_batch[n].numpy().T.shape)
-        # print(label_batch[n])
+        # print(image_batch[n].numpy().shape)
+        # print(image_batch[n])
+        # return
         lbl = labels[np.argmax(label_batch[n])]
         # if lbl != "morepork":
         # continue
@@ -567,10 +575,9 @@ def plot_mfcc(mfccs, ax):
 
 
 def plot_mel(mel, ax):
-    print(mel.numpy().T)
     # power = librosa.db_to_power(mel.numpy())
     img = librosa.display.specshow(
-        mel.numpy().T, x_axis="time", y_axis="mel", sr=48000, fmax=48000 / 2, ax=ax
+        mel.numpy(), x_axis="time", y_axis="mel", sr=48000, fmax=11000, ax=ax
     )
 
 
