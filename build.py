@@ -209,9 +209,7 @@ def main():
     dataset_counts = {}
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
-        create_tf_records(
-            dataset, dir, datasets[0].labels, num_shards=100, by_label=False
-        )
+        create_tf_records(dataset, dir, datasets[0].labels, num_shards=100)
         dataset_counts[dataset.name] = dataset.get_counts()
         # dataset.saveto_numpy(os.path.join(base_dir))
     # dont need dataset anymore just need some meta

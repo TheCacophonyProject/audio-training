@@ -28,6 +28,7 @@ from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 
 import badwinner
+from sklearn.model_selection import KFold
 
 training_dir = "training-data"
 other_training_dir = "training-data"
@@ -52,9 +53,6 @@ class AudioModel:
         self.species = None
         self.load_meta()
         self.use_species = False
-        self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
-        self.build_model(len(self.species), len(self.labels))
-        self.model.summary()
 
     def load_meta(self):
         file = f"{self.data_dir}/{training_dir}/training-meta.json"
@@ -67,7 +65,136 @@ class AudioModel:
         logging.info("Loading %s", weights_file)
         self.model.load_weights(weights_file).expect_partial()
 
+    def cross_fold_train(self, run_name="test", epochs=2):
+        datasets = ["other-training-data", "training-data", "chime-training-data"]
+        datasets = ["training-data"]
+        labels = set()
+        filenames = []
+        for d in datasets:
+            # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
+            filenames.extend(tf.io.gfile.glob(f"{self.data_dir}/{d}/train/*.tfrecord"))
+            filenames.extend(
+                tf.io.gfile.glob(f"{self.data_dir}/{d}/validation/*.tfrecord")
+            )
+
+            file = f"{self.data_dir}/{d}/training-meta.json"
+            with open(file, "r") as f:
+                meta = json.load(f)
+            labels.update(meta.get("labels", []))
+        labels = list(labels)
+        labels.sort()
+        self.labels = labels
+        filenames = np.array(filenames)
+        test_percent = 0.2
+        test_i = int(test_percent * len(filenames))
+        print("Using this many test files ", test_i)
+        self.test, _ = get_dataset(
+            # dir,
+            filenames[:test_i],
+            labels,
+            self.species,
+            batch_size=self.batch_size,
+            image_size=self.input_shape,
+            resample=False,
+            use_species=self.use_species,
+            reshuffle=False,
+            shuffle=False,
+            deterministic=True,
+            # preprocess_fn=self.preprocess_fn,
+        )
+        filenames = filenames[test_i:]
+        skf = KFold(n_splits=5, shuffle=True)
+        fold = 0
+        results = {}
+        for train_index, test_index in skf.split(filenames):
+            fold += 1
+            self.train, remapped = get_dataset(
+                # dir,
+                filenames[train_index],
+                labels,
+                self.species,
+                batch_size=self.batch_size,
+                image_size=self.input_shape,
+                augment=False,
+                resample=False,
+                use_species=self.use_species,
+                # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
+            )
+            self.validation, remapped = get_dataset(
+                # dir,
+                filenames[test_index],
+                labels,
+                self.species,
+                batch_size=self.batch_size,
+                image_size=self.input_shape,
+                augment=False,
+                resample=False,
+                use_species=self.use_species,
+                # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
+            )
+            # self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
+            self.build_model(len(self.species), len(self.labels))
+            history = self.model.fit(
+                self.train,
+                validation_data=self.validation,
+                epochs=epochs,
+                shuffle=False,
+                # callbacks=[
+                #     tf.keras.callbacks.TensorBoard(
+                #         self.log_dir, write_graph=True, write_images=True
+                #     ),
+                #     # *checkpoints,
+                # ],  # log metricslast_stats
+            )
+            logging.info("Finished fold %s", fold)
+
+            true_categories = [y for x, y in self.test]
+            true_categories = tf.concat(true_categories, axis=0)
+            true_categories = tf.argmax(true_categories, axis=1)
+
+            predictions = self.model.predict(self.test)
+            predicted_categories = np.int64(tf.argmax(predictions, axis=1))
+            test_results_acc = {}
+            for i, l in enumerate(remapped.keys()):
+
+                y_mask = true_categories == i
+                predicted_y = predicted_categories[y_mask]
+                correct = np.sum(predicted_y == true_categories[y_mask])
+                count = np.sum(y_mask)
+                logging.info(
+                    "%s accuracy %s / %s - %s %%",
+                    l,
+                    correct,
+                    count,
+                    round(100 * correct / max(count, 1)),
+                )
+                test_results_acc[l] = round(100 * correct / max(count, 1))
+            correct = np.sum(predicted_categories == true_categories)
+            logging.info(
+                "Total accuracy %s / %s - %s %%",
+                correct,
+                len(predicted_categories),
+                round(100 * correct / len(predicted_categories)),
+            )
+            test_results_acc["All"] = round(100 * correct / len(predicted_categories))
+
+            val_history = history.history["val_accuracy"]
+            best_val = np.amax(val_history)
+            test_results_acc["val"] = best_val
+            results[fold] = test_results_acc
+        for k, v in results.items():
+            logging.info("For fold %s", k)
+            for key, item in v.items():
+                logging.info("Got %s %s", key, item)
+                # if isinstance(item, list) and isinstance(item[0], np.floating):
+                #     json_history[key] = [float(i) for i in item]
+                # else:
+                #     json_history[key] = item
+
     def train_model(self, run_name="test", epochs=15):
+        self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
+        self.build_model(len(self.species), len(self.labels))
+        self.model.summary()
         checkpoints = self.checkpoints(run_name)
         # self.model.save(os.path.join(self.checkpoint_folder, run_name))
         # return
@@ -155,7 +282,7 @@ class AudioModel:
             cls=MetaJSONEncoder,
         )
 
-    def build_model(self, num_species, num_labels, bad=False):
+    def build_model(self, num_species, num_labels, bad=True):
         if bad:
             self.model = badwinner.build_model(self.input_shape, None, num_labels)
         else:
@@ -549,13 +676,17 @@ def main():
         am = AudioModel()
         if args.weights is not None:
             am.load_weights(args.weights)
-        am.train_model(run_name=args.name)
+        if args.cross:
+            am.cross_fold_train(run_name=args.name)
+        else:
+            am.train_model(run_name=args.name)
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--confusion", help="Save confusion matrix for model")
     parser.add_argument("-w", "--weights", help="Weights to use")
+    parser.add_argument("--cross", action="count", help="Cross fold val")
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("name", help="Run name")

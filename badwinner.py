@@ -50,7 +50,6 @@ def build_model(input_shape, norm_layer, num_labels):
     # x = tf.keras.activations.sigmoid(x)
 
     model = tf.keras.models.Model(input, outputs=x)
-    model.summary()
     return model
 
 

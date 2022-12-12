@@ -29,6 +29,8 @@ RELABEL["north island brown kiwi"] = "kiwi"
 RELABEL["great spotted kiwi"] = "kiwi"
 RELABEL["norfolk morepork"] = "morepork"
 
+SAMPLE_GROUP_ID = 0
+
 
 class AudioDataset:
     def __init__(self, name):
@@ -309,6 +311,9 @@ class Track:
             self.human_tags.add(t.what)
 
     def get_data(self, resample=None):
+        global SAMPLE_GROUP_ID
+        SAMPLE_GROUP_ID += 1
+
         if self.rec.rec_data is None:
             loaded = self.rec.load_recording(resample)
             if not loaded:
@@ -379,7 +384,13 @@ class Track:
                 assert mel.shape == (80, 226)
                 segments.append(
                     SpectrogramData(
-                        spectogram, mel, mfcc, self.start, SEGMENT_LENGTH, s_data.copy()
+                        spectogram,
+                        mel,
+                        mfcc,
+                        self.start,
+                        SEGMENT_LENGTH,
+                        s_data.copy(),
+                        SAMPLE_GROUP_ID,
                     )
                 )
                 # plot_mel(mel)
@@ -448,6 +459,8 @@ def plot_mel(mel):
     # plt.clf()
 
 
-SpectrogramData = namedtuple("SpectrogramData", "data mel mfcc start_s length raw")
+SpectrogramData = namedtuple(
+    "SpectrogramData", "data mel mfcc start_s length raw group"
+)
 
 Tag = namedtuple("Tag", "what confidence automatic original")

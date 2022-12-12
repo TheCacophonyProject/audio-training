@@ -77,8 +77,6 @@ def create_tf_example(data, sample, labels):
     """
     audio_data = librosa.amplitude_to_db(data.data, ref=np.max)
     mel = librosa.power_to_db(data.mel, ref=np.max)
-    print(data.raw.shape, data.raw.dtype)
-    print(data.mel.shape)
     feature_dict = {
         "audio/rec_id": tfrecord_util.bytes_feature(str(sample.rec_id).encode("utf8")),
         "audio/track_id": tfrecord_util.bytes_feature(str(sample.id).encode("utf8")),
@@ -104,9 +102,7 @@ def create_tf_example(data, sample, labels):
     return example, 0
 
 
-def create_tf_records(
-    dataset, output_path, labels, num_shards=1, cropped=True, by_label=True
-):
+def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
 
     output_path = Path(output_path)
     if output_path.is_dir():
@@ -129,16 +125,10 @@ def create_tf_records(
     logging.info("labels are %s", labels)
 
     writers = []
-    for label in labels:
-        for i in range(num_shards):
-            if by_label:
-                safe_l = label.replace("/", "-")
-                name = f"{safe_l}-%05d-of-%05d.tfrecord" % (i, num_shards)
-            else:
-                name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
-            writers.append(tf.io.TFRecordWriter(str(output_path / name)))
-        if not by_label:
-            break
+    for i in range(num_shards):
+        name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
+        writers.append(tf.io.TFRecordWriter(str(output_path / name)))
+
     load_first = 200
     try:
         count = 0
@@ -167,15 +157,11 @@ def create_tf_records(
                         data, sample, labels
                     )
                     total_num_annotations_skipped += num_annotations_skipped
-                    l_i = labels.index(sample.tag)
-                    if by_label:
-                        wrtier = writers[
-                            num_shards * l_i + lbl_counts[l_i] % num_shards
-                        ]
-                    else:
-                        writer = writers[count % num_shards]
+                    # do this by group where group is a track_id
+                    # (possibly should be a recording id where we have more data)
+                    # means we can KFold our dataset files if we want
+                    writer = writers[data.group % num_shards]
                     writer.write(tf_example.SerializeToString())
-                    lbl_counts[l_i] += 1
                     # print("saving example", [count % num_shards])
                     count += 1
                     if count % 100 == 0:

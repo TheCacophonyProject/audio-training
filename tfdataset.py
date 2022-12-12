@@ -109,9 +109,11 @@ def preprocess(data):
 
 def get_distribution(dataset, use_species=False):
     if use_species:
-        true_categories = tf.concat([y[0] for x, y in dataset], axis=0)
+        true_categories = [y[0] for x, y in dataset]
     else:
-        true_categories = tf.concat([y for x, y in dataset], axis=0)
+        true_categories = [y for x, y in dataset]
+
+    true_categories = tf.concat(true_categories, axis=0)
     num_labels = len(true_categories[0])
     if len(true_categories) == 0:
         return None
@@ -369,9 +371,9 @@ def read_tfrecord(
     #
     mel = tf.reshape(mel, [*mel_s])
     mean_sub = True
-    mel_m = tf.reduce_mean(mel, axis=0)
+    mel_m = tf.reduce_mean(mel, axis=1)
     # gp not sure to mean over axis 0 or 1
-    # mel_m = tf.expand_dims(mel_m, axis=1)
+    mel_m = tf.expand_dims(mel_m, axis=1)
     # mean over each mel bank
     print(mel_m.shape)
     mel = mel - mel_m
@@ -421,7 +423,8 @@ def read_tfrecord(
     # # mel_more = tf.image.resize(mel_more, (128, 61))
     # # mel_h = tf.image.resize(mel_h, (128, 61))
     # # image = tf.concat((mel_h, mel_more, mel), axis=2)
-    image = tf.concat((mel, mel, mel), axis=2)
+    # image = tf.concat((mel, mel, mel), axis=2)
+    image = mel
     #
     # image = tf.image.resize(image, (90 * 2, 80 * 2))
 
