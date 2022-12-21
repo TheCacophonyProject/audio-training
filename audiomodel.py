@@ -21,7 +21,7 @@ import numpy as np
 from audiodataset import AudioDataset
 from audiowriter import create_tf_records
 import tensorflow as tf
-from tfdataset import get_dataset, mel_s
+from tfdataset import get_dataset, mel_s, get_weighting
 import time
 from pathlib import Path
 from sklearn.metrics import confusion_matrix
@@ -134,11 +134,14 @@ class AudioModel:
             )
             # self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
             self.build_model(len(self.species), len(self.labels))
+            class_weights = get_weighting(self.train, self.labels)
+            logging.info("Weights are %s", class_weights)
             history = self.model.fit(
                 self.train,
                 validation_data=self.validation,
                 epochs=epochs,
                 shuffle=False,
+                class_weight=class_weights
                 # callbacks=[
                 #     tf.keras.callbacks.TensorBoard(
                 #         self.log_dir, write_graph=True, write_images=True
@@ -669,7 +672,7 @@ def main():
         logging.info("Loading %s with weights %s", load_model, "val_acc")
         model = tf.keras.models.load_model(str(load_model))
 
-        model.load_weights(load_model / "val_acc").expect_partial()
+        model.load_weights(load_model / "val_accuracy").expect_partial()
 
         meta_file = load_model / "metadata.txt"
         print("Meta", meta_file)
@@ -679,9 +682,10 @@ def main():
         model_name = meta_data.get("name")
         preprocess = get_preprocess_fn(model_name)
         dataset, _ = get_dataset(
-            f"./training-data/test",
+            tf.io.gfile.glob(f"./training-data/validation/*.tfrecord"),
             labels,
-            image_size=[128, 61],
+            ["bird", "human"],
+            image_size=mel_s,
             preprocess_fn=preprocess,
             shuffle=False,
             resample=False,

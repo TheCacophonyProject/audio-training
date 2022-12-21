@@ -176,6 +176,7 @@ def get_dataset(filenames, labels, species_list, **args):
         )
     print("labels are", labels)
     for l in labels:
+        continue
         remap_label = "human"
         if l in ["morepork", "kiwi", "norfolk golden whistler", "bird"]:
             remap_label = "bird"
@@ -241,6 +242,43 @@ def get_dataset(filenames, labels, species_list, **args):
         logging.info("Have %s for %s", d, labels[i])
 
     return dataset, remapped
+
+
+def get_weighting(dataset, labels):
+    excluded_labels = []
+
+    dont_weight = []
+    num_labels = len(labels)
+    true_categories = tf.concat([y for x, y in dataset], axis=0)
+    if len(true_categories) == 0:
+        return None
+    true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    c = Counter(list(true_categories))
+    dist = np.empty((num_labels), dtype=np.float32)
+    for i in range(num_labels):
+        if labels[i] in excluded_labels:
+            logging.info("Excluding %s for %s", c[i], labels[i])
+            dist[i] = 0
+        else:
+            dist[i] = c[i]
+            logging.info("Have %s for %s", dist[i], labels[i])
+    zeros = dist[dist == 0]
+    non_zero_labels = num_labels - len(zeros)
+
+    total = np.sum(dist)
+    weights = {}
+    for i in range(num_labels):
+        if labels[i] in dont_weight:
+            weights[i] = 1
+        if dist[i] == 0:
+            weights[i] = 0
+        else:
+            weights[i] = (1 / dist[i]) * (total / non_zero_labels)
+            # cap the weights
+            weights[i] = min(weights[i], 4)
+            weights[i] = max(weights[i], 0.25)
+            # min(weight)
+        print("WEights for ", labels[i], weights[i])
 
 
 def resample(dataset, labels):
