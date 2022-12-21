@@ -191,9 +191,27 @@ class AudioModel:
                 # else:
                 #     json_history[key] = item
 
-    def train_model(self, run_name="test", epochs=15):
+    def train_model(self, run_name="test", epochs=15, weights=None):
         self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
-        self.build_model(len(self.species), len(self.labels))
+        self.build_model(len(self.species), 2)
+        if weights is not None:
+            self.load_weights(weights)
+        # 1 / 0
+        # load weights for bird or not then change last layer for more species
+        x = tf.keras.layers.Dense(len(self.labels), activation="softmax")(
+            self.model.layers[-2].output
+        )
+        self.model = tf.keras.models.Model(self.model.input, outputs=x)
+        self.model.compile(
+            optimizer=optimizer(lr=self.learning_rate),
+            loss=loss(),
+            metrics=[
+                "accuracy",
+                # tf.keras.metrics.AUC(),
+                # tf.keras.metrics.Recall(),
+                # tf.keras.metrics.Precision(),
+            ],
+        )
         self.model.summary()
         checkpoints = self.checkpoints(run_name)
         # self.model.save(os.path.join(self.checkpoint_folder, run_name))
@@ -241,7 +259,8 @@ class AudioModel:
             run_name = self.params.model_name
         self.model.save(os.path.join(self.checkpoint_folder, run_name))
         self.save_metadata(run_name, history, test_results)
-        confusion(self.model, self.labels, self.test, run_name)
+        if self.test is not None:
+            confusion(self.model, self.labels, self.test, run_name)
 
     def save_metadata(self, run_name=None, history=None, test_results=None):
         #  save metadata
@@ -671,15 +690,14 @@ def main():
             batch_size=64,
         )
 
-        confusion(model, labels, dataset, args.confusion)
+        if dataset is not None:
+            confusion(model, labels, dataset, args.confusion)
     else:
         am = AudioModel()
-        if args.weights is not None:
-            am.load_weights(args.weights)
         if args.cross:
             am.cross_fold_train(run_name=args.name)
         else:
-            am.train_model(run_name=args.name)
+            am.train_model(run_name=args.name, weights=args.weights)
 
 
 def parse_args():

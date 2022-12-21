@@ -375,7 +375,6 @@ def read_tfrecord(
     # gp not sure to mean over axis 0 or 1
     mel_m = tf.expand_dims(mel_m, axis=1)
     # mean over each mel bank
-    print(mel_m.shape)
     mel = mel - mel_m
     if augment:
         logging.info("Augmenting")

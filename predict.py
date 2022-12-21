@@ -30,6 +30,8 @@ import librosa
 from audiomodel import get_preprocess_fn
 from tfdataset import get_dataset
 
+import soundfile as sf
+
 
 def load_recording(file, resample=48000):
     frames, sr = librosa.load(str(file), sr=None)
@@ -49,12 +51,27 @@ def preprocess_file(file):
     mels = []
     i = 0
     n_fft = sr // 10
+    print(n_fft)
     sr_stride = stride * sr
+    hop_length = 640  # feature frame rate of 75
+    mel_all = librosa.feature.melspectrogram(
+        y=frames,
+        sr=sr,
+        n_fft=n_fft,
+        hop_length=hop_length,
+        fmin=50,
+        fmax=11000,
+        n_mels=80,
+    )
+    mel_all = librosa.power_to_db(mel_all, ref=np.max)
+    print("mel all is", mel_all.shape)
+    mel_sample_size = int(1 + seg_length * sr / hop_length)
+    jumps_per_stride = int(mel_sample_size / 3.0)
+    print("jumper per stride", jumps_per_stride, sample_size)
     while end < length:
         start_offset = i * sr_stride
 
         end = i * stride + seg_length
-        i += 1
         if end > length:
             print("start off set is", start_offset, " length", length, end)
             sub = frames[start_offset:]
@@ -63,11 +80,22 @@ def preprocess_file(file):
             s_data[0 : len(sub)] = sub
         else:
             s_data = frames[start_offset : start_offset + sample_size]
-        print("loading from ", start_offset / sr)
-        mel = librosa.feature.melspectrogram(
-            y=s_data, sr=sr, n_fft=n_fft, hop_length=n_fft // 2
-        )
-        mel = librosa.power_to_db(mel, ref=np.max)
+        # print("loading from ", start_offset / sr)
+        # sf.write(f"test{i}.wav", s_data, sr, subtype="PCM_24")
+        start = int(jumps_per_stride * (i * stride))
+        mel = mel_all[:, start : start + mel_sample_size].copy()
+        i += 1
+        #
+        # mel = librosa.feature.melspectrogram(
+        #     y=s_data,
+        #     sr=sr,
+        #     n_fft=n_fft,
+        #     hop_length=hop_length,
+        #     fmin=50,
+        #     fmax=11000,
+        #     n_mels=80,
+        # )
+        # mel = librosa.power_to_db(mel, ref=np.max)
         mfcc = librosa.feature.mfcc(y=s_data, sr=sr, hop_length=n_fft // 2, htk=True)
         mfcc = mfcc - np.amax(mfcc)
         mfcc /= 2
@@ -79,12 +107,23 @@ def preprocess_file(file):
         # mel_mf = tf.reshape(mel_mf, [*mel_mf.shape, 1])
 
         # image = tf.concat((mel_mf, mel_mf, mel_mf), axis=2)
+        print(mel.shape)
+        mel_m = tf.reduce_mean(mel, axis=1)
+        # gp not sure to mean over axis 0 or 1
+        mel_m = tf.expand_dims(mel_m, axis=1)
+        # mean over each mel bank
+        empty = np.zeros(((80, 226)))
+        # print("setting mel at 0 -", mel.shape[1])
+        empty[:, : mel.shape[1]] = mel
+        mel = empty
+        # print(mel_m.shape)
+        mel = mel - mel_m
         mel = mel[:, :, np.newaxis]
-        mel = np.repeat(mel, 3, axis=2)
+        # mel = np.repeat(mel, 3, axis=2)
         # mel = tf.image.resize(mel, (128 * 2, 61 * 2))
-        image = tf.image.resize(mel, (128 * 2, 61 * 2))
+        # image = tf.image.resize(mel, (128 * 2, 61 * 2))
 
-        mels.append(image.numpy())
+        mels.append(mel)
     return mels
 
 
@@ -166,14 +205,32 @@ def main():
         data = preprocess_file(file)
         data = np.array(data)
     results = model.predict(np.array(data))
-
+    track = None
     for r in results:
-        print(f"{start} - {start+3}  class  {np.round(r, 1)}")
+        best_i = np.argmax(r)
+        best_p = r[best_i]
+        print(f"{labels[best_i]} {start} - {start+3}  class  {np.round(r, 3)}")
+
+        if best_p > 0.7:
+            if track is None:
+                track = (best_i, start)
+            elif track[0] != best_i:
+                print(f"Changed pred {labels[track[0]]} {track[1]} - {start}")
+                track = (best_i, start)
+
+        elif track is not None:
+            print(
+                f"Low prob {best_p} - {labels[track[0]]} {track[1]} - {start + 3/2 - 1}"
+            )
+            track = None
         start += 1
     # species = results[0]
+    if track is not None:
+        print(f"Final {best_p} - {labels[track[0]]} {track[1]} - {start}")
     return
     animal = results[1]
     for s, r in zip(species, animal):
+
         print(f"{start} - {start+3} Species", np.round(s, 1), " class ", np.round(r, 1))
         start += 1
 
