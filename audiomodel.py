@@ -219,6 +219,8 @@ class AudioModel:
         checkpoints = self.checkpoints(run_name)
         # self.model.save(os.path.join(self.checkpoint_folder, run_name))
         # return
+        class_weights = get_weighting(self.train, self.labels)
+        logging.info("Weights are %s", class_weights)
         history = self.model.fit(
             self.train,
             validation_data=self.validation,
@@ -230,6 +232,7 @@ class AudioModel:
                 ),
                 *checkpoints,
             ],  # log metricslast_stats
+            class_weight=class_weights,
         )
 
         history = history.history
