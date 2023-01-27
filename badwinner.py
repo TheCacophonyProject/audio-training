@@ -24,7 +24,7 @@ import logging
 import tensorflow as tf
 
 
-def build_model(input_shape, norm_layer, num_labels):
+def build_model(input_shape, norm_layer, num_labels, multi_label=False):
     input = tf.keras.Input(shape=(*input_shape, 1), name="input")
     # x = norm_layer(input)
     x = tf.keras.layers.BatchNormalization()(input)
@@ -45,7 +45,11 @@ def build_model(input_shape, norm_layer, num_labels):
     x = tf.keras.layers.Dense(32, activation=tf.keras.layers.LeakyReLU())(x)
     x = tf.keras.layers.Dropout(0.5)(x)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
-    x = tf.keras.layers.Dense(num_labels, activation="softmax")(x)
+    activation = "softmax"
+    if multi_label:
+        activation = "sigmoid"
+    logging.info("Using %s activation", activation)
+    x = tf.keras.layers.Dense(num_labels, activation=activation)(x)
     # x = tf.keras.layers.Dense(2, activation="softmax")(x)
     # x = tf.keras.activations.sigmoid(x)
 

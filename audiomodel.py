@@ -194,27 +194,27 @@ class AudioModel:
                 # else:
                 #     json_history[key] = item
 
-    def train_model(self, run_name="test", epochs=15, weights=None):
+    def train_model(self, run_name="test", epochs=15, weights=None, multi_label=False):
         self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
-        self.build_model(len(self.species), 2)
+        self.build_model(len(self.species), len(self.labels), multi_label=multi_label)
         if weights is not None:
             self.load_weights(weights)
         # 1 / 0
         # load weights for bird or not then change last layer for more species
-        x = tf.keras.layers.Dense(len(self.labels), activation="softmax")(
-            self.model.layers[-2].output
-        )
-        self.model = tf.keras.models.Model(self.model.input, outputs=x)
-        self.model.compile(
-            optimizer=optimizer(lr=self.learning_rate),
-            loss=loss(),
-            metrics=[
-                "accuracy",
-                # tf.keras.metrics.AUC(),
-                # tf.keras.metrics.Recall(),
-                # tf.keras.metrics.Precision(),
-            ],
-        )
+        # x = tf.keras.layers.Dense(len(self.labels), activation="softmax")(
+        #     self.model.layers[-2].output
+        # )
+        # self.model = tf.keras.models.Model(self.model.input, outputs=x)
+        # self.model.compile(
+        #     optimizer=optimizer(lr=self.learning_rate),
+        #     loss=loss(multi_label),
+        #     metrics=[
+        #         "accuracy",
+        #         # tf.keras.metrics.AUC(),
+        #         # tf.keras.metrics.Recall(),
+        #         # tf.keras.metrics.Precision(),
+        #     ],
+        # )
         self.model.summary()
         checkpoints = self.checkpoints(run_name)
         # self.model.save(os.path.join(self.checkpoint_folder, run_name))
@@ -307,9 +307,11 @@ class AudioModel:
             cls=MetaJSONEncoder,
         )
 
-    def build_model(self, num_species, num_labels, bad=True):
+    def build_model(self, num_species, num_labels, bad=True, multi_label=False):
         if bad:
-            self.model = badwinner.build_model(self.input_shape, None, num_labels)
+            self.model = badwinner.build_model(
+                self.input_shape, None, num_labels, multi_label=multi_label
+            )
         else:
             norm_layer = tf.keras.layers.Normalization()
             norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
@@ -335,7 +337,7 @@ class AudioModel:
 
         self.model.compile(
             optimizer=optimizer(lr=self.learning_rate),
-            loss=loss(),
+            loss=loss(multi_label),
             metrics=[
                 "accuracy",
                 # tf.keras.metrics.AUC(),
@@ -399,7 +401,7 @@ class AudioModel:
         filenames = []
         for d in datasets:
             # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
-            filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/train/*.tfrecord"))
+            filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/validation/*.tfrecord"))
             file = f"{base_dir}/{d}/training-meta.json"
             with open(file, "r") as f:
                 meta = json.load(f)
@@ -407,6 +409,7 @@ class AudioModel:
         labels = list(labels)
         labels.sort()
         self.labels = labels
+        logging.info("Loading train")
         self.train, remapped = get_dataset(
             # dir,
             filenames,
@@ -423,7 +426,7 @@ class AudioModel:
         for d in datasets:
             # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
             filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/validation/*.tfrecord"))
-
+        logging.info("Loading Val")
         self.validation, _ = get_dataset(
             # dir,
             filenames,
@@ -436,6 +439,7 @@ class AudioModel:
             # preprocess_fn=self.preprocess_fn,
         )
         if test:
+            logging.info("Loading test")
             self.test, _ = get_dataset(
                 # dir,
                 f"{base_dir}/{training_dir}/test",
@@ -588,10 +592,17 @@ def get_preprocess_fn(pretrained_model):
     return None
 
 
-def loss(smoothing=0):
-    softmax = tf.keras.losses.CategoricalCrossentropy(
-        label_smoothing=smoothing,
-    )
+def loss(multi_label=False, smoothing=0):
+    if multi_label:
+        logging.info("Using binary")
+        softmax = tf.keras.losses.BinaryCrossentropy(
+            label_smoothing=smoothing,
+        )
+    else:
+        logging.info("Using cross")
+        softmax = tf.keras.losses.CategoricalCrossentropy(
+            label_smoothing=smoothing,
+        )
 
     return softmax
 
@@ -704,7 +715,9 @@ def main():
         if args.cross:
             am.cross_fold_train(run_name=args.name)
         else:
-            am.train_model(run_name=args.name, weights=args.weights)
+            am.train_model(
+                run_name=args.name, weights=args.weights, multi_label=args.multi
+            )
 
 
 def parse_args():
@@ -712,6 +725,7 @@ def parse_args():
     parser.add_argument("--confusion", help="Save confusion matrix for model")
     parser.add_argument("-w", "--weights", help="Weights to use")
     parser.add_argument("--cross", action="count", help="Cross fold val")
+    parser.add_argument("--multi", action="count", help="Multi label")
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("name", help="Run name")
