@@ -1,26 +1,32 @@
+import librosa
 import csv
 import logging
 import sys
 from pathlib import Path
-from audiodataset import Track,Recording,AudioDataset,RELABEL
+from audiodataset import Track, Recording, AudioDataset, RELABEL
 from build import split_randomly
+
 # csv_files = ["./ff10/ff1010bird_metadata.csv"]
-csv_files = ["/home/cp/cacophony/audio-data/warblrb10k_public/warblrb10k_public_metadata.csv","/home/cp/cacophony/audio-data/ff1010bird/ff1010bird_metadata.csv"]
+csv_files = [
+    "/home/cp/cacophony/audio-data/warblrb10k_public/warblrb10k_public_metadata.csv",
+    "/home/cp/cacophony/audio-data/ff1010bird/ff1010bird_metadata.csv",
+]
+
 out_dir = Path("./other-data")
 from audiowriter import create_tf_records
 import json
 
 
-chime_labels ={
-"c":"human",
-"m":"human",
-"f":"human",
-"v":"video-game",
-"p":"noise",
-"b": "noise",
-"o":"other",
-"S":"silence",
-"U":"unknown",
+chime_labels = {
+    "c": "human",
+    "m": "human",
+    "f": "human",
+    "v": "video-game",
+    "p": "noise",
+    "b": "noise",
+    "o": "other",
+    "S": "silence",
+    "U": "unknown",
 }
 #  Child speech
 # m Adult male speech
@@ -35,10 +41,10 @@ chime_labels ={
 def chime_data():
     dataset = AudioDataset("Chime")
     p = Path("./chime")
-    csv_files = list(p.glob('**/*.csv'))
+    csv_files = list(p.glob("**/*.csv"))
     for file in csv_files:
-        with open(file, newline='') as f:
-            dreader = csv.reader(f, delimiter=',', quotechar='|')
+        with open(file, newline="") as f:
+            dreader = csv.reader(f, delimiter=",", quotechar="|")
             i = -1
             label = None
             id = None
@@ -51,12 +57,22 @@ def chime_data():
                     id = row[1]
                     # .48kHz.wav
             rec_name = file.parent / f"{file.stem}.48kHz.wav"
-            r = Recording({"id":id,"tracks":[]},rec_name)
+            r = Recording({"id": id, "tracks": []}, rec_name)
             print(rec_name)
             tags = []
             for code in label:
-                tags.append({"automatic":False,"what":chime_labels[code]})
-            t = Track({"id":id,"start":None,"end":None,"tags":tags},rec_name, r.id, r)
+                tags.append({"automatic": False, "what": chime_labels[code]})
+            try:
+                y, sr = librosa.load(rec_name)
+                end = librosa.get_duration(y=y, sr=sr)
+                y = None
+                sr = None
+            except:
+                continue
+            t = Track(
+                {"id": id, "start": 0, "end": end, "tags": tags}, rec_name, r.id, r
+            )
+            r.load_samples()
             r.human_tags.add(chime_labels[code])
             r.tracks.append(t)
 
@@ -76,15 +92,13 @@ def chime_data():
     for d in datasets:
         d.labels = all_labels
     base_dir = Path(".")
-    record_dir =base_dir / "chime-training-data/"
+    record_dir = base_dir / "chime-training-data/"
     print("saving to", record_dir)
     dataset_counts = {}
     for dataset in datasets:
-        dir =record_dir / dataset.name
+        dir = record_dir / dataset.name
         print("saving to ", dir)
-        create_tf_records(
-            dataset, dir, datasets[0].labels, num_shards=100, by_label=False
-        )
+        create_tf_records(dataset, dir, datasets[0].labels, num_shards=100)
         dataset_counts[dataset.name] = dataset.get_counts()
         # dataset.saveto_numpy(os.path.join(base_dir))
     # dont need dataset anymore just need some meta
@@ -99,6 +113,8 @@ def chime_data():
 
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4)
+
+
 def main():
     init_logging()
     chime_data()
@@ -106,27 +122,46 @@ def main():
     # dataset.print_counts()
 
     # return
-    labels = ["other","bird"]
+    labels = ["other", "bird"]
     for csv_file in csv_files:
-        print("loading",csv_file)
+        print("loading", csv_file)
         csv_file = Path(csv_file)
-        with open(csv_file, newline='') as csvfile:
+        with open(csv_file, newline="") as csvfile:
 
-
-            dreader = csv.reader(csvfile, delimiter=',', quotechar='|')
+            dreader = csv.reader(csvfile, delimiter=",", quotechar="|")
             i = -1
             for row in dreader:
-                i+=1
+                i += 1
                 if i == 0:
                     continue
-                rec_name = csv_file.parent / "wav"/row[0]
+                rec_name = csv_file.parent / "wav" / row[0]
                 rec_name = rec_name.with_suffix(".wav")
-                r = Recording({"id":row[0],"tracks":[]},rec_name)
+                r = Recording({"id": row[0], "tracks": []}, rec_name)
+                try:
+                    y, sr = librosa.load(rec_name)
+                    end = librosa.get_duration(y=y, sr=sr)
+                    y = None
+                    sr = None
+                except:
+                    continue
+                print("end is", end)
                 what = labels[int(row[1])]
-                t = Track({"id":row[0],"start":None,"end":None,"tags":[{"automatic":False,"what":what}]},csv_file, r.id, r)
+                t = Track(
+                    {
+                        "id": row[0],
+                        "start": 0,
+                        "end": end,
+                        "tags": [{"automatic": False, "what": what}],
+                    },
+                    csv_file,
+                    r.id,
+                    r,
+                )
 
-                r.tracks =[t]
+                r.tracks = [t]
                 r.human_tags.add(what)
+                r.load_samples()
+                # dataset
                 dataset.add_recording(r)
     print("counts are")
     dataset.print_counts()
@@ -142,15 +177,13 @@ def main():
     for d in datasets:
         d.labels = all_labels
     base_dir = Path(".")
-    record_dir =base_dir / "other-training-data/"
+    record_dir = base_dir / "other-training-data/"
     print("saving to", record_dir)
     dataset_counts = {}
     for dataset in datasets:
-        dir =record_dir / dataset.name
+        dir = record_dir / dataset.name
         print("saving to ", dir)
-        create_tf_records(
-            dataset, dir, datasets[0].labels, num_shards=100, by_label=False
-        )
+        create_tf_records(dataset, dir, datasets[0].labels, num_shards=100)
         dataset_counts[dataset.name] = dataset.get_counts()
         # dataset.saveto_numpy(os.path.join(base_dir))
     # dont need dataset anymore just need some meta
@@ -165,6 +198,7 @@ def main():
 
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4)
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
