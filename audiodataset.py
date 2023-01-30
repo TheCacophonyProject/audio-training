@@ -37,8 +37,8 @@ RELABEL = {}
 RELABEL["north island brown kiwi"] = "kiwi"
 RELABEL["great spotted kiwi"] = "kiwi"
 RELABEL["norfolk morepork"] = "morepork"
-RELABEL["godlen whistler"] = "whistler"
-RELABEL["nortolk golden whistler"] = "whistler"
+RELABEL["golden whistler"] = "whistler"
+RELABEL["norfolk golden whistler"] = "whistler"
 
 SAMPLE_GROUP_ID = 0
 
