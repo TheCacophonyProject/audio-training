@@ -20,17 +20,18 @@ SEGMENT_STRIDE = 0.5  # of a second
 FRAME_LENGTH = 255
 
 
-REJECT_TAGS = ["unidentified", "other"]
+REJECT_TAGS = ["unidentified", "other", "mammal", "sheep"]
 
-ACCEPT_TAGS = [
-    "house sparrow",
-    "bird",
-    "morepork",
-    "kiwi",
-    "rain",
-    "human",
-    "norfolk golden whistler",
-]
+ACCEPT_TAGS = None
+# # [
+#     "house sparrow",
+#     "bird",
+#     "morepork",
+#     "kiwi",
+#     "rain",
+#     "human",
+#     "norfolk golden whistler",
+# ]
 
 RELABEL = {}
 RELABEL["north island brown kiwi"] = "kiwi"
