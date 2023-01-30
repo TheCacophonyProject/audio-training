@@ -83,7 +83,7 @@ def split_label(
 
     min_t = MIN_TRACKS
 
-    if label in LOW_SAMPLES_LABELS:
+    if label in LOW_SAMPLES_LABELS or total_tracks < 20:
         min_t = 1
 
     num_validate_tracks = max(total_tracks * 0.15, min_t)
@@ -109,37 +109,39 @@ def split_label(
         num_test_samples,
     )
     recs = set()
-    for i, sample_bin in enumerate(sample_bins):
-        samples = samples_by_bin[sample_bin]
-        for sample in samples:
-            # not really tracks but bins are by tracks right now
-            tracks.add(sample.bin_id)
-            label_count += 1
-            recs.add(sample.rec_id)
-            add_to.add_sample(sample)
-            dataset.remove(sample)
-        samples_by_bin[sample_bin] = []
-        last_index = i
-        track_count = len(tracks)
-        if label_count >= sample_limit and track_count >= track_limit:
-            print("have ", len(recs), len(tracks))
-            # 100 more for test
-            if no_test:
-                break
-            if add_to == validate_c:
-                add_to = test_c
-                camera_type = "test"
-                if num_test_samples <= 0:
+    if total_tracks > 5:
+        for i, sample_bin in enumerate(sample_bins):
+            samples = samples_by_bin[sample_bin]
+            for sample in samples:
+                # not really tracks but bins are by tracks right now
+                tracks.add(sample.bin_id)
+                label_count += 1
+                recs.add(sample.rec_id)
+                add_to.add_sample(sample)
+                dataset.remove(sample)
+            samples_by_bin[sample_bin] = []
+            last_index = i
+            track_count = len(tracks)
+            if label_count >= sample_limit and track_count >= track_limit:
+                print("have ", len(recs), len(tracks))
+                # 100 more for test
+                if no_test:
                     break
-                sample_limit = num_test_samples
-                track_limit = num_test_tracks
-                label_count = 0
-                tracks = set()
+                if add_to == validate_c:
+                    add_to = test_c
+                    camera_type = "test"
+                    if num_test_samples <= 0:
+                        break
+                    sample_limit = num_test_samples
+                    track_limit = num_test_tracks
+                    label_count = 0
+                    tracks = set()
 
-            else:
-                break
+                else:
+                    break
 
-    sample_bins = sample_bins[last_index + 1 :]
+        sample_bins = sample_bins[last_index + 1 :]
+
     camera_type = "train"
     added = 0
     for i, sample_bin in enumerate(sample_bins):
