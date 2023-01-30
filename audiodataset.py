@@ -15,14 +15,22 @@ import librosa.display
 import matplotlib.pyplot as plt
 import audioread.ffdec  # Use ffmpeg decoder
 
-SEGMENT_LENGTH = 3  # seconds
-SEGMENT_STRIDE = 1  # of a second
+SEGMENT_LENGTH = 1.5  # seconds
+SEGMENT_STRIDE = 0.5  # of a second
 FRAME_LENGTH = 255
 
 
 REJECT_TAGS = ["unidentified", "other"]
 
-ACCEPT_TAGS = ["bird", "morepork", "kiwi", "rain", "human", "norfolk golden whistler"]
+ACCEPT_TAGS = [
+    "house sparrow",
+    "bird",
+    "morepork",
+    "kiwi",
+    "rain",
+    "human",
+    "norfolk golden whistler",
+]
 
 RELABEL = {}
 RELABEL["north island brown kiwi"] = "kiwi"
@@ -47,21 +55,22 @@ class AudioDataset:
             meta = load_metadata(f)
             r = Recording(meta, f.with_suffix(".m4a"))
             self.add_recording(r)
+            self.samples.extend(r.samples)
 
     def add_recording(self, r):
         self.recs.append(r)
         # r.get_human_tags()
         for tag in r.human_tags:
-            print("tag is", tag)
             self.labels.add(tag)
 
     def get_counts(self):
         counts = {}
         for s in self.samples:
-            if s.tag in counts:
-                counts[s.tag] += 1
-            else:
-                counts[s.tag] = 0
+            for tag in s.tags:
+                if tag in counts:
+                    counts[tag] += 1
+                else:
+                    counts[tag] = 0
         return counts
 
     def print_counts(self):
@@ -70,9 +79,11 @@ class AudioDataset:
         for r in self.recs:
             for track in r.tracks:
                 tags = track.tags
-                if len(tags) == 0:
-                    continue
-                elif len(tags) == 1 or ("bird" not in track.tags):
+                # if len(tags) == 0:
+                # continue
+                # allowsing multi label
+                for tag in tags:
+                    # elif len(tags) == 1 or ("bird" not in track.tags):
                     tag = list(tags)[0]
                     if tag not in counts:
                         counts[tag] = 1
@@ -86,10 +97,10 @@ class AudioDataset:
                         original_c[tag] = 1
                     else:
                         original_c[tag] += 1
-                else:
-                    logging.info(
-                        "Conflicting tags %s track %s -  %s tags", r.id, track.id, tags
-                    )
+                # else:
+                # logging.info(
+                # "Conflicting tags %s track %s -  %s tags", r.id, track.id, tags
+                # )
         logging.info("Counts from %s recordings", len(self.recs))
         for k, v in counts.items():
             logging.info("%s: %s", k, v)
@@ -101,35 +112,36 @@ class AudioDataset:
         counts = {}
         original_c = {}
         rec_counts = {}
-        for track in self.samples:
-            tags = track.tags
-            if len(tags) == 1 or "birds" not in tags:
-                tag = list(tags)[0]
+        for s in self.samples:
+            tags = s.tags
+            for tag in tags:
+                # if len(tags) == 1 or "birds" not in tags:
+                # tag = list(tags)[0]
                 if tag not in counts:
                     counts[tag] = 1
-                    rec_counts[tag] = {track.rec_id}
+                    rec_counts[tag] = {s.rec_id}
                 else:
                     counts[tag] += 1
-                    rec_counts[tag].add(track.rec_id)
+                    rec_counts[tag].add(s.rec_id)
 
-                tag = list(track.original_tags)[0]
+                # tag = list(track.original_tags)[0]
                 if tag not in RELABEL:
                     continue
                 if tag not in original_c:
                     original_c[tag] = 1
-                    rec_counts[tag] = {track.rec_id}
+                    rec_counts[tag] = {s.rec_id}
 
                 else:
                     original_c[tag] += 1
-                    rec_counts[tag] = {track.rec_id}
+                    rec_counts[tag] = {s.rec_id}
 
-            else:
-                logging.info(
-                    "Conflicting tags %s track %s -  %s tags",
-                    track.rec.id,
-                    track.id,
-                    tags,
-                )
+            # else:
+            #     logging.info(
+            #         "Conflicting tags %s track %s -  %s tags",
+            #         track.rec.id,
+            #         track.id,
+            #         tags,
+            #     )
         logging.info("Counts from %s Samples", len(self.samples))
         for k, v in counts.items():
             logging.info("%s: %s ( %s )", k, v, len(rec_counts[k]))
@@ -144,9 +156,12 @@ class AudioDataset:
             self.labels.add(t)
 
     def remove(self, sample):
-        sample.rec.tracks.remove(sample)
+        # sample.rec.tracks.remove(sample)
         if sample in self.samples:
             self.samples.remove(sample)
+        # if sample in sample.rec.samples:
+        # print("remove from rec")
+        # sample.rec.samples.remove(sample)
 
 
 def load_metadata(filename):
@@ -163,7 +178,6 @@ def load_metadata(filename):
 
 def filter_track(track):
     if len(track.tags) != 1:
-        print("filtering track", track)
         return True
 
     tag = track.tag
@@ -172,6 +186,36 @@ def filter_track(track):
     if ACCEPT_TAGS is not None and tag not in ACCEPT_TAGS:
         return True
     return False
+
+
+class AudioSample:
+    def __init__(self, rec, tags, start, end, track_ids, group_id, bin_id=None):
+        self.rec = rec
+        self.rec_id = rec.id
+        self.tags = list(tags)
+        self.tags.sort()
+        self.start = start
+        self.end = end
+        self.track_ids = track_ids
+        self.spectogram_data = None
+        self.sr = None
+        self.group = group_id
+        if bin_id is None:
+            self.bin_id = f"{self.rec_id}"
+        else:
+            self.bin_id = bin_id
+
+    @property
+    def length(self):
+        return self.end - self.start
+
+    @property
+    def tags_s(self):
+        return "\n".join(self.tags)
+
+    @property
+    def track_id(self):
+        return self.bin_id
 
 
 class Recording:
@@ -197,6 +241,83 @@ class Recording:
         self.sample_rate = None
         self.rec_data = None
         self.resampled = False
+        self.samples = []
+        self.load_samples()
+
+    def load_samples(self):
+
+        global SAMPLE_GROUP_ID
+        SAMPLE_GROUP_ID += 1
+        sorted_tracks = sorted(
+            self.tracks,
+            key=lambda track: track.start,
+        )
+        self.samples = []
+        if len(sorted_tracks) == 0:
+            return
+        track = sorted_tracks[0]
+        start = track.start
+        end = start + SEGMENT_LENGTH
+        i = 1
+        labels = set()
+        labels = labels | track.human_tags
+        bin = 0
+        bin_id = f"{self.id}-{bin}"
+        tracks = [track.id]
+        while True:
+
+            # start = round(start, 1)
+            # end = round(end, 1)
+            other_tracks = []
+            for t in sorted_tracks[i:]:
+                # starts in this sample
+                # print("checking for", t.start, t.end, t.human_tags)
+                if t.start > end:
+                    break
+                if t.start < start:
+                    s = start
+                else:
+                    s = t.start
+
+                if t.end > end:
+                    e = end
+                else:
+                    e = t.end
+                intersect = e - s
+                if intersect > SEGMENT_STRIDE:
+                    # if t.start<= start and t.end <= end:
+                    other_tracks.append(t)
+                    labels = labels | t.human_tags
+                    tracks.append(t.id)
+            self.samples.append(
+                AudioSample(self, labels, start, end, tracks, SAMPLE_GROUP_ID, bin_id)
+            )
+            start += SEGMENT_STRIDE
+            # print("track end is ", track.end, " and start is", start)
+            if (track.end - start) < SEGMENT_LENGTH / 2:
+                old_end = track.end
+                track = None
+                # get new track
+                for z, t in enumerate(sorted_tracks[i:]):
+                    # print("checking track ", t.human_tags, t.start)
+                    if t.end > start:
+                        if t.start > old_end:
+                            # new bin as non overlapping audio
+                            bin += 1
+                            bin_id = f"{self.id}-{bin}"
+                        track = t
+                        tracks = [t.id]
+                        start = max(start, t.start)
+                        i = i + z + 1
+                        labels = set()
+                        labels = labels | track.human_tags
+                        break
+                if track is None:
+                    # got all tracks
+                    break
+            end = start + SEGMENT_LENGTH
+        # other_tracks = [t for t in sorted_tracks[i:] if t.start<= start and t.end >= end]
+        # for t in sorted_tracks:
 
     def load_recording(self, resample=None):
         try:
@@ -217,39 +338,32 @@ class Recording:
             return False
         return True
 
-    def load_track_data(self):
-        logging.info(
-            "Have data for %s sr %s len frames %s",
-            self.filename,
-            self.sample_rate,
-            len(frames),
-        )
+    def get_data(self, resample=None):
+        global SAMPLE_GROUP_ID
+        SAMPLE_GROUP_ID += 1
 
-        base_name = self.filename.stem
-        seg_frames = SEGMENT_LENGTH * sr
-        for t in self.tracks:
-            t_start = int(sr * t.start)
-            t_end = int(sr * t.end)
-            segment_count = int(max(1, (t.length - SEGMENT_LENGTH) // SEGMENT_STRIDE))
-            for i in range(segment_count):
-                start_offset = i * seg_frames
-                # zero pad shorter
-                sub = frames[t_start + start_offset : SEGMENT_LENGTH * sr]
-                if len(sub) < seg_frames:
-                    s_data = np.zeros((SEGMENT_LENGTH * sr))
-                    s_data[0 : len(sub)] = sub
-                else:
-                    s_data = sub
-                spectrogram = tf.signal.stft(
-                    s_data,
-                    frame_length=FRAME_LENGTH,
-                    frame_step=FRAME_LENGTH // 2,
-                    fft_length=FRAME_LENGTH,
-                    pad_end=True,
-                )
+        print("loading", self.id, len(self.samples))
+        # 1 / 0
+        if self.rec_data is None:
+            loaded = self.load_recording(resample)
+            if not loaded:
+                return None
+        sr = self.sample_rate
+        frames = self.rec_data
+        for sample in self.samples:
+            spectogram, mel, mfcc, s_data = load_data(sample.start, frames, sr)
+            if spectogram is None:
+                print("error loading")
+                continue
+            sample.spectogram_data = SpectrogramData(
+                spectogram,
+                mel,
+                mfcc,
+                s_data.copy(),
+            )
+            sample.sr = sr
 
-                spectrogram = tf.abs(spectrogram).numpy()
-                spectrogram = spectrogram[..., tf.newaxis]
+        return self.samples
 
     @property
     def bin_id(self):
@@ -323,88 +437,33 @@ class Track:
         frames = self.rec.rec_data
         if self.start is None:
             self.start = 0
-        if self.end is None:
-            self.end = len(frames) // sr
-        seg_frames = SEGMENT_LENGTH * sr
-        t_start = int(sr * self.start)
-        t_end = int(sr * self.end)
-        segment_count = int(math.ceil((self.length - SEGMENT_LENGTH) / SEGMENT_STRIDE))
-        segments = []
-        stride = SEGMENT_STRIDE * sr
-        sample_size = SEGMENT_LENGTH * sr
-        remaining = self.length
-        end = 0
-        start_offset = 0
         i = 0
-        n_fft = sr // 10
-        hop_length = 640  # feature frame rate of 75
-        while end < self.length or i == 0:
-            try:
-                start_offset = i * stride
-                end = i * SEGMENT_STRIDE + SEGMENT_LENGTH
-                i += 1
-                # zero pad shorter
-                if end > self.length or (t_start + start_offset + sample_size) > len(
-                    frames
-                ):
-                    sub = frames[t_start + start_offset : t_end]
-                    s_data = np.zeros((SEGMENT_LENGTH * sr))
-                    s_data[0 : len(sub)] = sub
-                else:
-
-                    s_data = frames[
-                        t_start + start_offset : t_start + start_offset + sample_size
-                    ]
-                # logging.info(
-                #     "Getting %s to %s of length %s %s starting %s ending %s rec length %s",
-                #     t_start + start_offset,
-                #     t_start + start_offset + sample_size,
-                #     len(frames),
-                #     self.length,
-                #     self.start,
-                #     self.end,
-                #     len(frames) / sr,
-                # )
-                spectogram = np.abs(
-                    librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length)
-                )
-                # these should b derivable from spectogram but the librosa exmaples produce different results....
-                mel = librosa.feature.melspectrogram(
-                    y=s_data,
-                    sr=sr,
-                    n_fft=n_fft,
-                    hop_length=hop_length,
-                    fmin=50,
-                    fmax=11000,
-                    n_mels=80,
-                )
-                mfcc = librosa.feature.mfcc(
-                    y=s_data, sr=sr, hop_length=hop_length, htk=True
-                )
-                assert mel.shape == (80, 226)
-                segments.append(
-                    SpectrogramData(
-                        spectogram,
-                        mel,
-                        mfcc,
-                        self.start,
-                        SEGMENT_LENGTH,
-                        s_data.copy(),
-                        SAMPLE_GROUP_ID,
-                    )
-                )
-                # plot_mel(mel)
-            except:
-                logging.error(
-                    "Error getting segment for %s-%s start %s lenght %s",
-                    self.rec_id,
-                    self.id,
-                    start_offset / sr,
-                    SEGMENT_LENGTH,
-                    exc_info=True,
-                )
-
-        return segments
+        start_s = self.start
+        samples = []
+        while (start_s + SEGMENT_LENGTH / 2) < self.end or i == 0:
+            spectogram, mel, mfcc, s_data = load_data(start_s, frames, sr)
+            if spectogram is None:
+                continue
+            sample = AudioSample(
+                self.rec,
+                self.human_tags,
+                start_s,
+                start_s + SEGMENT_LENGTH,
+                [self.id],
+                SAMPLE_GROUP_ID,
+            )
+            sample.spectogram_data = SpectrogramData(
+                spectogram,
+                mel,
+                mfcc,
+                s_data.copy(),
+            )
+            samples.append(sample)
+            print("Getting for ", start_s, self.end, i, self.end - start_s)
+            start_s += SEGMENT_STRIDE
+            print(mel.shape)
+            i += 1
+        return samples
 
     #
     # def get_human_tags(self):
@@ -459,8 +518,57 @@ def plot_mel(mel):
     # plt.clf()
 
 
-SpectrogramData = namedtuple(
-    "SpectrogramData", "data mel mfcc start_s length raw group"
-)
+SpectrogramData = namedtuple("SpectrogramData", "spect mel mfcc raw")
 
 Tag = namedtuple("Tag", "what confidence automatic original")
+
+
+def load_data(
+    start_s,
+    frames,
+    sr,
+    segment_l=SEGMENT_LENGTH,
+    segment_stride=SEGMENT_STRIDE,
+    hop_length=640,
+    n_fft=None,
+):
+    sr_stride = int(segment_stride * sr)
+
+    if n_fft is None:
+        n_fft = sr // 10
+    start = start_s * sr
+    start = int(start)
+    end = int(segment_l * sr) + start
+    try:
+        # zero pad shorter
+        if end > len(frames):
+            sub = frames[start:end]
+            s_data = np.zeros(int(segment_l * sr))
+            # randomize zero padding location
+            extra_frames = len(s_data) - len(sub)
+            offset = np.random.randint(0, extra_frames)
+            s_data[offset : offset + len(sub)] = sub
+            print("Padding at ", offset / sr, " for length ", len(sub) / sr)
+        else:
+            s_data = frames[start:end]
+        spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
+        # these should b derivable from spectogram but the librosa exmaples produce different results....
+        mel = librosa.feature.melspectrogram(
+            y=s_data,
+            sr=sr,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            fmin=50,
+            fmax=11000,
+            n_mels=80,
+        )
+        mfcc = librosa.feature.mfcc(y=s_data, sr=sr, hop_length=hop_length, htk=True)
+        return spectogram, mel, mfcc, s_data
+    except:
+        logging.error(
+            "Error getting segment  start %s lenght %s",
+            start_s,
+            SEGMENT_LENGTH,
+            exc_info=True,
+        )
+    return None, None, None, None

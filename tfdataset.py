@@ -25,9 +25,9 @@ fp = None
 
 DIMENSIONS = (128, 1134)
 
-mel_s = (80, 226)
-sftf_s = (2401, 61)
-mfcc_s = (20, 61)
+mel_s = (80, 113)
+sftf_s = (2401, 113)
+mfcc_s = (20, 113)
 
 mel_bins = librosa.mel_frequencies(128, fmax=48000 / 2)
 human_lowest = np.where(mel_bins < 60)[-1][-1]
@@ -356,7 +356,7 @@ def read_tfrecord(
         # "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
         "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
         # "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
-        "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
+        # "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
         "audio/class/text": tf.io.FixedLenFeature((), tf.string),
         # "audio/length": tf.io.FixedLenFeature((), tf.int64),
         # "audio/start_s": tf.io.FixedLenFeature(1, tf.float32),
@@ -475,12 +475,13 @@ def read_tfrecord(
     if labeled:
         # label = tf.cast(example["audio/class/label"], tf.int32)
         label = tf.cast(example["audio/class/text"], tf.string)
-
+        labels = tf.strings.split(label, sep="\n")
         global remapped_y
-        label = remapped_y.lookup(label)
-
+        labels = remapped_y.lookup(labels)
         if one_hot:
-            label = tf.one_hot(label, num_labels)
+            label = tf.reduce_max(
+                tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
+            )
 
         # return image, label
         if use_species:
@@ -489,8 +490,9 @@ def read_tfrecord(
             print("num species", num_species)
             if one_hot:
                 species = tf.one_hot(species, num_species)
-
+                # species[4] = 1
             return image, (label, species)
+        # label[3] = 1
         return image, label
 
     return image
@@ -516,6 +518,7 @@ def main():
         with open(file, "r") as f:
             meta = json.load(f)
         labels.update(meta.get("labels", []))
+        print("loaded labels", labels)
         species_list = ["bird", "human", "rain", "other"]
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
@@ -551,6 +554,9 @@ def main():
     # return
     for e in range(2):
         for x, y in resampled_ds:
+            for a in y:
+                print("y is", a)
+            continue
             print(len(x), len(y))
             show_batch(x, y, None, labels, species_list)
 

@@ -36,26 +36,33 @@ def split_label(
     dataset, datasets, label, existing_test_count=0, max_samples=None, no_test=False
 ):
     # split a label from dataset such that vlaidation is 15% or MIN_TRACKS
-    recs = [r for r in dataset.recs if label in r.human_tags]
+    # recs = [r for r in dataset.recs if label in r.human_tags]
 
     samples_by_bin = {}
     total_tracks = set()
     total_tracks = 0
-    sample_bins = []
-    for rec in recs:
-        tracks = [t for t in rec.tracks if label in t.human_tags]
-        total_tracks += len(tracks)
-        for track in tracks:
-            # total_tracks.add(sample.track_id)
-            if track.bin_id not in samples_by_bin:
-                samples_by_bin[track.bin_id] = []
-            samples_by_bin[track.bin_id].append(track)
-            sample_bins.append(track.bin_id)
+    sample_bins = set()
+    tracks = set()
+    num_samples = 0
+    for s in dataset.samples:
+        if label not in s.rec.human_tags:
+            continue
+        # for s in rec.samples:
+        if label in s.tags:
+            sample_bins.add(s.bin_id)
+            tracks = tracks | set(s.track_ids)
+            num_samples += 1
+        if s.bin_id in samples_by_bin:
+            samples_by_bin[s.bin_id].append(s)
+        else:
+            samples_by_bin[s.bin_id] = [s]
+    sample_bins = list(sample_bins)
+    total_tracks = len(tracks)
     # sample_bins = [sample.bin_id for sample in samples]
     if len(sample_bins) == 0:
         return
     # sample_bins duplicates
-    sample_bins = list(set(sample_bins))
+    # sample_bins = list(set(sample_bins))
 
     random.shuffle(sample_bins)
     train_c, validate_c, test_c = datasets
@@ -64,14 +71,13 @@ def split_label(
     add_to = validate_c
     last_index = 0
     label_count = 0
-    total = len(sample_bins)
     min_t = MIN_SAMPLES
 
     if label in LOW_SAMPLES_LABELS:
         min_t = 10
-    num_validate_samples = max(total * 0.15, min_t)
+    num_validate_samples = max(num_samples * 0.15, min_t)
     num_test_samples = (
-        min(MAX_TEST_SAMPLES, max(total * 0.05, min_t)) - existing_test_count
+        min(MAX_TEST_SAMPLES, max(num_samples * 0.05, min_t)) - existing_test_count
     )
     # should have test covered by test set
 
@@ -96,7 +102,7 @@ def split_label(
         "and # samples",
         num_validate_samples,
         "from total samples",
-        total,
+        num_samples,
         "# test tracks",
         num_test_tracks,
         "# num test samples",
@@ -106,7 +112,8 @@ def split_label(
     for i, sample_bin in enumerate(sample_bins):
         samples = samples_by_bin[sample_bin]
         for sample in samples:
-            tracks.add(sample.id)
+            # not really tracks but bins are by tracks right now
+            tracks.add(sample.bin_id)
             label_count += 1
             recs.add(sample.rec_id)
             add_to.add_sample(sample)
@@ -202,7 +209,9 @@ def main():
     all_labels.sort()
     for d in datasets:
         d.labels = all_labels
+        print("setting all labels", all_labels)
     validate_datasets(datasets)
+    # return
     base_dir = "."
     record_dir = os.path.join(base_dir, "training-data/")
     print("saving to", record_dir)
@@ -213,7 +222,7 @@ def main():
         dataset_counts[dataset.name] = dataset.get_counts()
         # dataset.saveto_numpy(os.path.join(base_dir))
     # dont need dataset anymore just need some meta
-    meta_filename = f"{base_dir}/training-meta.json"
+    meta_filename = f"{base_dir}/training-data/training-meta.json"
     meta_data = {
         "labels": datasets[0].labels,
         "type": "audio",
@@ -221,7 +230,6 @@ def main():
         "by_label": False,
         "relabbled": RELABEL,
     }
-
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4)
 
@@ -239,9 +247,9 @@ def validate_datasets(datasets):
         assert t not in test_tracks
 
     #  make sure all tags from a recording are only in one dataset
-    train_tracks = [f"{s.rec_id}-{s.tag}" for s in train.samples]
-    val_tracks = [f"{s.rec_id}-{s.tag}" for s in validation.samples]
-    test_tracks = [f"{s.rec_id}-{s.tag}" for s in test.samples]
+    train_tracks = [f"{s.bin_id}" for s in train.samples]
+    val_tracks = [f"{s.bin_id}" for s in validation.samples]
+    test_tracks = [f"{s.bin_id}" for s in test.samples]
     for t in train_tracks:
         assert t not in val_tracks and t not in test_tracks
 

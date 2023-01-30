@@ -44,7 +44,7 @@ import tfrecord_util
 import librosa
 
 
-def create_tf_example(data, sample, labels):
+def create_tf_example(sample, labels):
     """Converts image and annotations to a tf.Example proto.
 
         Args:
@@ -59,7 +59,7 @@ def create_tf_example(data, sample, labels):
               top-left (0-indexed) corner.  This function converts to the format
               expected by the Tensorflow Object Detection API (which is which is
               [ymin, xmin, ymax, xmax] with coordinates normalized relative to image
-              size).
+          size).
           category_index: a dict containing COCO category information keyed by the
             'id' field of each category.  See the label_map_util.create_category_index
             function.
@@ -75,16 +75,20 @@ def create_tf_example(data, sample, labels):
     Raises:
           ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
-    audio_data = librosa.amplitude_to_db(data.data, ref=np.max)
+    data = sample.spectogram_data
+    audio_data = librosa.amplitude_to_db(data.spect, ref=np.max)
     mel = librosa.power_to_db(data.mel, ref=np.max)
+    tags = sample.tags_s
+    track_ids = " ".join(map(str, sample.track_ids))
+    print("sample tags is ", sample.tags)
     feature_dict = {
         "audio/rec_id": tfrecord_util.bytes_feature(str(sample.rec_id).encode("utf8")),
-        "audio/track_id": tfrecord_util.bytes_feature(str(sample.id).encode("utf8")),
+        "audio/track_id": tfrecord_util.bytes_feature(track_ids.encode("utf8")),
         "audio/sample_rate": tfrecord_util.int64_feature(sample.rec.sample_rate),
-        "audio/length": tfrecord_util.int64_feature(data.length),
-        "audio/start_s": tfrecord_util.float_feature(data.start_s),
-        "audio/class/text": tfrecord_util.bytes_feature(sample.tag.encode("utf8")),
-        "audio/class/label": tfrecord_util.int64_feature(labels.index(sample.tag)),
+        "audio/length": tfrecord_util.float_feature(sample.length),
+        "audio/start_s": tfrecord_util.float_feature(sample.start),
+        "audio/class/text": tfrecord_util.bytes_feature(tags.encode("utf8")),
+        # "audio/class/label": tfrecord_util.int64_feature(labels.index(tags.tag)),
         "audio/sftf": tfrecord_util.float_list_feature(audio_data.ravel()),
         "audio/mel": tfrecord_util.float_list_feature(mel.ravel()),
         "audio/mfcc": tfrecord_util.float_list_feature(data.mfcc.ravel()),
@@ -136,31 +140,36 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
             local_set = samples[:load_first]
             samples = samples[load_first:]
             loaded = []
+            recs = set()
+            for sample in local_set:
+                if sample.rec_id not in recs:
+                    sample.rec.get_data(resample=48000)
+                    recs.add(sample.rec_id)
+            # loaded.append(sample)
+            # for sample in local_set:
+            #     data = None
+            #     try:
+            #         data = sample.get_data(resample=48000)
+            #     except:
+            #         logging.error("Error getting data for %s", sample, exc_info=True)
+            #     if data is None:
+            #         continue
+            #     for d in data:
+            #         loaded.append((d, sample))
+
+            loaded = np.array(local_set, dtype=object)
+            np.random.shuffle(local_set)
 
             for sample in local_set:
-                data = None
-                try:
-                    data = sample.get_data(resample=48000)
-                except:
-                    logging.error("Error getting data for %s", sample, exc_info=True)
-                if data is None:
-                    continue
-                for d in data:
-                    loaded.append((d, sample))
-
-            loaded = np.array(loaded, dtype=object)
-            np.random.shuffle(loaded)
-
-            for data, sample in loaded:
                 try:
                     tf_example, num_annotations_skipped = create_tf_example(
-                        data, sample, labels
+                        sample, labels
                     )
                     total_num_annotations_skipped += num_annotations_skipped
                     # do this by group where group is a track_id
                     # (possibly should be a recording id where we have more data)
                     # means we can KFold our dataset files if we want
-                    writer = writers[data.group % num_shards]
+                    writer = writers[sample.group % num_shards]
                     writer.write(tf_example.SerializeToString())
                     # print("saving example", [count % num_shards])
                     count += 1
