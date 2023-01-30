@@ -345,7 +345,6 @@ class Recording:
         global SAMPLE_GROUP_ID
         SAMPLE_GROUP_ID += 1
 
-        print("loading", self.id, len(self.samples))
         # 1 / 0
         if self.rec_data is None:
             loaded = self.load_recording(resample)

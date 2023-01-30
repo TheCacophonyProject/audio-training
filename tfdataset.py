@@ -19,7 +19,7 @@ import librosa.display
 AUTOTUNE = tf.data.AUTOTUNE
 # IMAGE_SIZE = [256, 256]
 # BATCH_SIZE = 64
-NOISE_LABELS = ["wind", "vehicle", "dog", "rain", "static"]
+NOISE_LABELS = ["wind", "vehicle", "dog", "rain", "static", "noise", "cat"]
 BIRD_LABELS = ["whistler", "kiwi", "morepork"]
 insect = None
 fp = None
@@ -109,7 +109,7 @@ def preprocess(data):
 
 def get_distribution(dataset):
     true_categories = [y for x, y in dataset]
-
+    print(true_categories)
     true_categories = tf.concat(true_categories, axis=0)
     num_labels = len(true_categories[0])
     if len(true_categories) == 0:
@@ -124,6 +124,8 @@ def get_distribution(dataset):
 
 def get_dataset(filenames, labels, **args):
     num_labels = len(labels)
+    global master_s
+    master_s = {}
     global remapped_y
     remapped = {}
 
@@ -135,45 +137,57 @@ def get_dataset(filenames, labels, **args):
         keys.append(l)
         values.append(labels.index(l))
 
-    print("labels are", labels)
+    master_keys = []
+    master_values = []
     for l in labels:
         if l in NOISE_LABELS:
             remap_label = "noise"
-        if l in BIRD_LABELS or l == "human":
+            master_s[l] = labels.index("noise")
+            continue
+        elif l in BIRD_LABELS:
+            if l != "bird":
+                master_s[l] = labels.index("bird")
+            # or l == "human":
+            continue
+        elif l == "human":
+            master_s[l] = labels.index("noise")
+
             continue
         else:
-            print("remapping", l, " to bird")
             remap_label = "bird"
-        # if l == remap_label:
-        # continue
+            if l != "bird":
+                master_s[l] = labels.index("bird")
+        if l == remap_label:
+            continue
+
         remapped[remap_label].append(l)
         values[labels.index(l)] = labels.index(remap_label)
         del remapped[l]
-    print(remapped)
-    # if "kiwi" in labels:
-    #     remapped["bird"].append("kiwi")
-    #     values[labels.index("kiwi")] = labels.index("bird")
-    #     del remapped["kiwi"]
-    # if "norfolk golden whistler" in labels:
-    #     remapped["bird"].append("norfolk golden whistler")
-    #     values[labels.index("norfolk golden whistler")] = labels.index("bird")
-    #     del remapped["norfolk golden whistler"]
-    # if "rain" in labels:
-    #     remapped["human"].append("rain")
-    #     values[labels.index("rain")] = labels.index("human")
-    #     del remapped["rain"]
-    # if "other" in labels:
-    #     remapped["human"].append("other")
-    #     values[labels.index("other")] = labels.index("human")
-    #     del remapped["other"]
+
     remapped_y = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(keys),
             values=tf.constant(values),
         ),
-        default_value=tf.constant(-1),
+        default_value=tf.constant(0),
         name="remapped_y",
     )
+
+    # extra tags, since we have multi label problem, morepork is a bird and morepork
+    # cat is a cat but also "noise"
+    master_s_keys = list(master_s.keys())
+    master_s_values = list(master_s.values())
+    print("master s is", master_s_keys, master_s_values)
+
+    master_s = tf.lookup.StaticHashTable(
+        initializer=tf.lookup.KeyValueTensorInitializer(
+            keys=tf.constant(master_s_keys),
+            values=tf.constant(master_s_values),
+        ),
+        default_value=tf.constant(0),
+        name="master_s",
+    )
+
     # print("keys", keys, " values", values)
     # 1 / 0
     dataset = load_dataset(filenames, num_labels, args)
@@ -437,9 +451,11 @@ def read_tfrecord(
         # label = tf.cast(example["audio/class/label"], tf.int32)
         label = tf.cast(example["audio/class/text"], tf.string)
         labels = tf.strings.split(label, sep="\n")
-        global remapped_y
+        global remapped_y, master_s
+        extra = master_s.lookup(labels)
         labels = remapped_y.lookup(labels)
-        # if
+        labels = tf.concat([labels, extra], axis=0)
+        print(labels.shape, extra.shape)
         if one_hot:
             label = tf.reduce_max(
                 tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
@@ -476,13 +492,13 @@ def main():
         # species_list = ["bird", "human", "rain", "other"]
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-        filenames.extend(tf.io.gfile.glob(f"./{d}/validation/*.tfrecord"))
+        filenames.extend(tf.io.gfile.glob(f"./{d}/train/*.tfrecord"))
     labels.add("bird")
     labels.add("noise")
     labels = list(labels)
 
     labels.sort()
-
+    print(labels)
     # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
     # weights = [0.5] * len(labels)
     resampled_ds, remapped = get_dataset(

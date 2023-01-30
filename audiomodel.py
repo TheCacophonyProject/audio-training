@@ -50,16 +50,13 @@ class AudioModel:
         self.input_shape = mel_s
         self.preprocess_fn = None
         self.learning_rate = 0.01
-        self.species = None
         self.load_meta()
-        self.use_species = False
 
     def load_meta(self):
         file = f"{self.data_dir}/{training_dir}/training-meta.json"
         with open(file, "r") as f:
             meta = json.load(f)
         self.labels = meta.get("labels", [])
-        self.species = meta.get("species", ["bird", "human", "rain", "other"])
 
     def load_weights(self, weights_file):
         logging.info("Loading %s", weights_file)
@@ -92,11 +89,9 @@ class AudioModel:
             # dir,
             filenames[:test_i],
             labels,
-            self.species,
             batch_size=self.batch_size,
             image_size=self.input_shape,
             resample=False,
-            use_species=self.use_species,
             reshuffle=False,
             shuffle=False,
             deterministic=True,
@@ -112,28 +107,24 @@ class AudioModel:
                 # dir,
                 filenames[train_index],
                 labels,
-                self.species,
                 batch_size=self.batch_size,
                 image_size=self.input_shape,
                 augment=False,
                 resample=False,
-                use_species=self.use_species,
                 # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
             )
             self.validation, remapped = get_dataset(
                 # dir,
                 filenames[test_index],
                 labels,
-                self.species,
                 batch_size=self.batch_size,
                 image_size=self.input_shape,
                 augment=False,
                 resample=False,
-                use_species=self.use_species,
                 # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
             )
             # self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
-            self.build_model(len(self.species), len(self.labels))
+            self.build_model(len(self.labels))
             class_weights = get_weighting(self.train, self.labels)
             logging.info("Weights are %s", class_weights)
             history = self.model.fit(
@@ -195,8 +186,8 @@ class AudioModel:
                 #     json_history[key] = item
 
     def train_model(self, run_name="test", epochs=15, weights=None, multi_label=False):
-        self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
-        self.build_model(len(self.species), len(self.labels), multi_label=multi_label)
+        self.load_datasets(self.data_dir, self.labels, self.input_shape)
+        self.build_model(len(self.labels), multi_label=multi_label)
         if weights is not None:
             self.load_weights(weights)
         # 1 / 0
@@ -275,7 +266,6 @@ class AudioModel:
         model_stats = {}
         model_stats["name"] = self.model_name
         model_stats["labels"] = self.labels
-        model_stats["species"] = self.species
 
         # model_stats["hyperparams"] = self.params
         model_stats["training_date"] = str(time.time())
@@ -307,7 +297,7 @@ class AudioModel:
             cls=MetaJSONEncoder,
         )
 
-    def build_model(self, num_species, num_labels, bad=True, multi_label=False):
+    def build_model(self, num_labels, bad=True, multi_label=False):
         if bad:
             self.model = badwinner.build_model(
                 self.input_shape, None, num_labels, multi_label=multi_label
@@ -324,15 +314,8 @@ class AudioModel:
             birds = tf.keras.layers.Dense(
                 num_labels, activation="softmax", name="prediction"
             )(x)
-            if self.use_species:
-                species = tf.keras.layers.Dense(
-                    num_species, activation="softmax", name="species_p"
-                )(x)
-                # outputs = tf.keras.layers.Concatenate()([birds, species])
 
-                outputs = [birds, species]
-            else:
-                outputs = [birds]
+            outputs = [birds]
             self.model = tf.keras.models.Model(input, outputs=outputs)
 
         self.model.compile(
@@ -348,8 +331,6 @@ class AudioModel:
 
     def checkpoints(self, run_name):
         loss_name = "val_loss"
-        if self.use_species:
-            loss_name = "val_prediction_loss"
 
         val_loss = os.path.join(self.checkpoint_folder, run_name, "val_loss")
 
@@ -363,8 +344,6 @@ class AudioModel:
         )
         val_acc = os.path.join(self.checkpoint_folder, run_name, "val_accuracy")
         acc_name = "val_accuracy"
-        if self.use_species:
-            acc_name = "val_prediction_accuracy"
 
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_acc,
@@ -394,7 +373,7 @@ class AudioModel:
         )
         return [earlyStopping, checkpoint_acc, checkpoint_loss, reduce_lr_callback]
 
-    def load_datasets(self, base_dir, labels, species, shape, test=False):
+    def load_datasets(self, base_dir, labels, shape, test=False):
         datasets = ["other-training-data", "training-data", "chime-training-data"]
         datasets = ["training-data"]
         labels = set()
@@ -414,12 +393,10 @@ class AudioModel:
             # dir,
             filenames,
             labels,
-            species,
             batch_size=self.batch_size,
             image_size=self.input_shape,
             augment=False,
             resample=False,
-            use_species=self.use_species,
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
         filenames = []
@@ -431,11 +408,9 @@ class AudioModel:
             # dir,
             filenames,
             labels,
-            species,
             batch_size=self.batch_size,
             image_size=self.input_shape,
             resample=False,
-            use_species=self.use_species,
             # preprocess_fn=self.preprocess_fn,
         )
         if test:
@@ -444,10 +419,8 @@ class AudioModel:
                 # dir,
                 f"{base_dir}/{training_dir}/test",
                 labels,
-                species,
                 batch_size=batch_size,
                 image_size=self.input_shape,
-                use_species=self.use_species,
                 # preprocess_fn=self.preprocess_fn,
             )
         self.remapped = remapped
