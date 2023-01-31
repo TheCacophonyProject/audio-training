@@ -38,10 +38,14 @@ from absl import flags
 from absl import logging
 import numpy as np
 from PIL import Image, ImageOps
+import audioread.ffdec  # Use ffmpeg decoder
 
 import tensorflow as tf
 import tfrecord_util
 import librosa
+
+from audiodataset import load_data, SpectrogramData
+from multiprocessing import Pool
 
 
 def create_tf_example(sample, labels):
@@ -106,6 +110,37 @@ def create_tf_example(sample, labels):
     return example, 0
 
 
+def get_data(args):
+    # print("got args", args)
+    rec_id = args[0]
+    filename = args[1]
+    resample = args[2]
+    samples = args[3]
+    print("getting data for", filename, resample, len(samples))
+    aro = audioread.ffdec.FFmpegAudioFile(filename)
+    frames, sr = librosa.load(aro)
+    aro.close()
+    if resample is not None and resample != sr:
+        frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
+        sr = resample
+    data = [None] * len(samples)
+
+    for i, sample in enumerate(samples):
+        spectogram, mel, mfcc, s_data = load_data(sample.start, frames, sr)
+        if spectogram is None:
+            print("error loading")
+            continue
+        spec = SpectrogramData(
+            spectogram,
+            mel,
+            mfcc,
+            s_data.copy(),
+        )
+        data[i] = spec
+        # sample.sr = sr
+    return (rec_id, sr, data)
+
+
 def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
 
     output_path = Path(output_path)
@@ -133,20 +168,35 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
         name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
         writers.append(tf.io.TFRecordWriter(str(output_path / name)))
     logging.info("Saving %s samples", len(samples))
-    load_first = 1000
+    load_first = 400
     try:
         count = 0
+        recs = {}
         while len(samples) > 0:
             local_set = samples[:load_first]
             samples = samples[load_first:]
             loaded = []
-            recs = set()
+            pool_data = []
             for sample in local_set:
                 if sample.rec_id not in recs:
-                    sample.rec.get_data(resample=48000)
-                    recs.add(sample.rec_id)
-                    sample.rec.rec_data = None
+                    # sample.rec.get_data(resample=48000)
+                    recs[sample.rec_id] = sample.rec
+                    # sample.rec.rec_data = None
+                    pool_data.append(
+                        (sample.rec_id, sample.rec.filename, 48000, sample.rec.samples)
+                    )
 
+            with Pool(processes=8) as pool:
+                for i in pool.imap_unordered(get_data, pool_data):
+                    rec_id = i[0]
+                    sr = i[1]
+                    data = i[2]
+                    rec = recs[rec_id]
+                    rec.sample_rate = sr
+                    for sample, d in zip(rec.samples, data):
+                        sample.spectogram_data = d
+                        sample.sr = sr
+                        # print("setting data", d is not None)
             # loaded.append(sample)
             # for sample in local_set:
             #     data = None
@@ -167,13 +217,14 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     tf_example, num_annotations_skipped = create_tf_example(
                         sample, labels
                     )
-                    sample.spectogram_data = None
                     total_num_annotations_skipped += num_annotations_skipped
                     # do this by group where group is a track_id
                     # (possibly should be a recording id where we have more data)
                     # means we can KFold our dataset files if we want
                     writer = writers[sample.group % num_shards]
                     writer.write(tf_example.SerializeToString())
+                    sample.spectogram_data = None
+
                     # print("saving example", [count % num_shards])
                     count += 1
                     if count % 100 == 0:
