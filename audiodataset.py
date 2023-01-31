@@ -550,7 +550,6 @@ def load_data(
             extra_frames = len(s_data) - len(sub)
             offset = np.random.randint(0, extra_frames)
             s_data[offset : offset + len(sub)] = sub
-            print("Padding at ", offset / sr, " for length ", len(sub) / sr)
         else:
             s_data = frames[start:end]
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
