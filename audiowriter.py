@@ -133,7 +133,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
         name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
         writers.append(tf.io.TFRecordWriter(str(output_path / name)))
     logging.info("Saving %s samples", len(samples))
-    load_first = 200
+    load_first = 1000
     try:
         count = 0
         while len(samples) > 0:
@@ -165,6 +165,8 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     tf_example, num_annotations_skipped = create_tf_example(
                         sample, labels
                     )
+                    sample.spectogram_data = None
+                    sample.rec.rec_data = None
                     total_num_annotations_skipped += num_annotations_skipped
                     # do this by group where group is a track_id
                     # (possibly should be a recording id where we have more data)
@@ -178,7 +180,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     # count += 1
                 except Exception as e:
                     logging.error("Error saving ", exc_info=True)
-            # break
+
     except:
         logging.error("Error saving track info", exc_info=True)
     for writer in writers:
