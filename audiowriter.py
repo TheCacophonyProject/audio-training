@@ -145,6 +145,8 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                 if sample.rec_id not in recs:
                     sample.rec.get_data(resample=48000)
                     recs.add(sample.rec_id)
+                    sample.rec.rec_data = None
+
             # loaded.append(sample)
             # for sample in local_set:
             #     data = None
@@ -166,7 +168,6 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                         sample, labels
                     )
                     sample.spectogram_data = None
-                    sample.rec.rec_data = None
                     total_num_annotations_skipped += num_annotations_skipped
                     # do this by group where group is a track_id
                     # (possibly should be a recording id where we have more data)

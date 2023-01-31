@@ -123,7 +123,6 @@ def split_label(
             last_index = i
             track_count = len(tracks)
             if label_count >= sample_limit and track_count >= track_limit:
-                print("have ", len(recs), len(tracks))
                 # 100 more for test
                 if no_test:
                     break
