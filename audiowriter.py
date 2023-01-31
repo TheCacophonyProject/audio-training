@@ -132,7 +132,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     for i in range(num_shards):
         name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
         writers.append(tf.io.TFRecordWriter(str(output_path / name)))
-
+    logging.info("Saving %s samples", len(samples))
     load_first = 200
     try:
         count = 0
