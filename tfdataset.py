@@ -234,19 +234,7 @@ def get_weighting(dataset, labels):
 
     dont_weight = []
     num_labels = len(labels)
-    true_categories = tf.concat([y for x, y in dataset], axis=0)
-    if len(true_categories) == 0:
-        return None
-    true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    c = Counter(list(true_categories))
-    dist = np.empty((num_labels), dtype=np.float32)
-    for i in range(num_labels):
-        if labels[i] in excluded_labels:
-            logging.info("Excluding %s for %s", c[i], labels[i])
-            dist[i] = 0
-        else:
-            dist[i] = c[i]
-            logging.info("Have %s for %s", dist[i], labels[i])
+    dist = get_distribution(dataset)
     zeros = dist[dist == 0]
     non_zero_labels = num_labels - len(zeros)
 
