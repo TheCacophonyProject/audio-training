@@ -8,8 +8,8 @@ from build import split_randomly
 
 # csv_files = ["./ff10/ff1010bird_metadata.csv"]
 csv_files = [
-    "/home/cp/cacophony/audio-data/warblrb10k_public/warblrb10k_public_metadata.csv",
-    "/home/cp/cacophony/audio-data/ff1010bird/ff1010bird_metadata.csv",
+    "/data/audio-data/warblrb10k_public/warblrb10k_public_metadata.csv",
+    "/data//audio-data/ff1010bird/ff1010bird_metadata.csv",
 ]
 
 out_dir = Path("./other-data")

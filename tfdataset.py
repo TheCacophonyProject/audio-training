@@ -109,13 +109,19 @@ def preprocess(data):
 
 def get_distribution(dataset):
     true_categories = [y for x, y in dataset]
-    print(true_categories)
     true_categories = tf.concat(true_categories, axis=0)
     num_labels = len(true_categories[0])
     if len(true_categories) == 0:
         return None
-    true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    c = Counter(list(true_categories))
+    print(true_categories[0])
+    classes = []
+    for y in true_categories:
+        non_zero = tf.where(y).numpy()
+        classes.extend(non_zero.flatten())
+    classes = np.array(classes)
+    print("classess is", classes.shape, classes)
+    # classes = classes.unravel()
+    c = Counter(list(classes))
     dist = np.empty((num_labels), dtype=np.float32)
     for i in range(num_labels):
         dist[i] = c[i]
@@ -177,7 +183,8 @@ def get_dataset(filenames, labels, **args):
     # cat is a cat but also "noise"
     master_s_keys = list(master_s.keys())
     master_s_values = list(master_s.values())
-    print("master s is", master_s_keys, master_s_values)
+    print("master s is", master_s)
+    print("remapped is", remapped)
 
     master_s = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
@@ -488,11 +495,11 @@ def main():
         with open(file, "r") as f:
             meta = json.load(f)
         labels.update(meta.get("labels", []))
-        print("loaded labels", labels)
+        # print("loaded labels", labels)
         # species_list = ["bird", "human", "rain", "other"]
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-        filenames.extend(tf.io.gfile.glob(f"./{d}/train/*.tfrecord"))
+        filenames.extend(tf.io.gfile.glob(f"./{d}/validation/*.tfrecord"))
     labels.add("bird")
     labels.add("noise")
     labels = list(labels)
@@ -524,6 +531,7 @@ def main():
     #         print("after have", labels[i], c[i])
 
     # return
+    return
     for e in range(2):
         for x, y in resampled_ds:
             for a in y:
