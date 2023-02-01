@@ -117,26 +117,37 @@ def get_data(args):
     resample = args[2]
     samples = args[3]
     print("getting data for", filename, resample, len(samples))
-    aro = audioread.ffdec.FFmpegAudioFile(filename)
-    frames, sr = librosa.load(aro)
-    aro.close()
+    try:
+        aro = audioread.ffdec.FFmpegAudioFile(filename)
+        frames, sr = librosa.load(aro)
+        aro.close()
+    except Exception as ex:
+        print("Error loading rec ", filename, ex)
+        try:
+            aro.close()
+        except:
+            pass
+        return (rec_id, sr, None)
     if resample is not None and resample != sr:
         frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
         sr = resample
     data = [None] * len(samples)
 
     for i, sample in enumerate(samples):
-        spectogram, mel, mfcc, s_data = load_data(sample.start, frames, sr)
-        if spectogram is None:
-            print("error loading")
-            continue
-        spec = SpectrogramData(
-            spectogram,
-            mel,
-            mfcc,
-            s_data.copy(),
-        )
-        data[i] = spec
+        try:
+            spectogram, mel, mfcc, s_data = load_data(sample.start, frames, sr)
+            if spectogram is None:
+                print("error loading", rec_id)
+                continue
+            spec = SpectrogramData(
+                spectogram,
+                mel,
+                mfcc,
+                s_data.copy(),
+            )
+            data[i] = spec
+        except Exception as ex:
+            print("Error ", rec_id, ex)
         # sample.sr = sr
     return (rec_id, sr, data)
 
@@ -191,6 +202,8 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     rec_id = i[0]
                     sr = i[1]
                     data = i[2]
+                    if data is None:
+                        continue
                     rec = recs[rec_id]
                     rec.sample_rate = sr
                     for sample, d in zip(rec.samples, data):
@@ -213,6 +226,8 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
             np.random.shuffle(local_set)
 
             for sample in local_set:
+                if sample.spectogram_data is None:
+                    continue
                 try:
                     tf_example, num_annotations_skipped = create_tf_example(
                         sample, labels

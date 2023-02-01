@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import audioread.ffdec  # Use ffmpeg decoder
 
 SEGMENT_LENGTH = 1.5  # seconds
-SEGMENT_STRIDE = 0.5  # of a second
+SEGMENT_STRIDE = 1  # of a second
 FRAME_LENGTH = 255
 
 
