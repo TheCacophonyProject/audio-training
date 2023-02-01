@@ -388,7 +388,7 @@ class AudioModel:
         filenames = []
         for d in datasets:
             # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
-            filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/train3/*.tfrecord"))
+            filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/train/*.tfrecord"))
             file = f"{base_dir}/{d}/training-meta.json"
             with open(file, "r") as f:
                 meta = json.load(f)
