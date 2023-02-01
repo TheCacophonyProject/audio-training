@@ -323,12 +323,15 @@ class AudioModel:
             outputs = [birds]
             self.model = tf.keras.models.Model(input, outputs=outputs)
 
+        if multi_label:
+            acc = tf.metrics.binary_accuracy
+        else:
+            acc = tf.metrics.categorical_accuracy
         self.model.compile(
             optimizer=optimizer(lr=self.learning_rate),
             loss=loss(multi_label),
             metrics=[
-                "accuracy",
-                # tf.keras.metrics.AUC(),
+                acc,  # tf.keras.metrics.AUC(),
                 # tf.keras.metrics.Recall(),
                 # tf.keras.metrics.Precision(),
             ],
@@ -385,7 +388,7 @@ class AudioModel:
         filenames = []
         for d in datasets:
             # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
-            filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/train/*.tfrecord"))
+            filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/train3/*.tfrecord"))
             file = f"{base_dir}/{d}/training-meta.json"
             with open(file, "r") as f:
                 meta = json.load(f)
