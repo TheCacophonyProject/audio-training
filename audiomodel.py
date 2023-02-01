@@ -57,6 +57,11 @@ class AudioModel:
         with open(file, "r") as f:
             meta = json.load(f)
         self.labels = meta.get("labels", [])
+        if "bird" not in self.labels:
+            self.labels.append("bird")
+        if "noise" not in self.labels:
+            self.labels.append("noise")
+        self.labels.sort()
 
     def load_weights(self, weights_file):
         logging.info("Loading %s", weights_file)
@@ -388,11 +393,16 @@ class AudioModel:
         labels = list(labels)
         labels.sort()
         self.labels = labels
+        if "bird" not in self.labels:
+            self.labels.append("bird")
+        if "noise" not in self.labels:
+            self.labels.append("noise")
+        self.labels.sort()
         logging.info("Loading train")
         self.train, remapped = get_dataset(
             # dir,
             filenames,
-            labels,
+            self.labels,
             batch_size=self.batch_size,
             image_size=self.input_shape,
             augment=False,
@@ -407,7 +417,7 @@ class AudioModel:
         self.validation, _ = get_dataset(
             # dir,
             filenames,
-            labels,
+            self.labels,
             batch_size=self.batch_size,
             image_size=self.input_shape,
             resample=False,
@@ -418,7 +428,7 @@ class AudioModel:
             self.test, _ = get_dataset(
                 # dir,
                 f"{base_dir}/{training_dir}/test",
-                labels,
+                self.labels,
                 batch_size=batch_size,
                 image_size=self.input_shape,
                 # preprocess_fn=self.preprocess_fn,

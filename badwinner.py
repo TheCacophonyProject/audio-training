@@ -35,9 +35,9 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
 
     x = tf.keras.layers.Conv2D(16, (1, 3), activation=tf.keras.layers.LeakyReLU())(x)
     x = tf.keras.layers.MaxPool2D((1, 3))(x)
-
-    x = tf.keras.layers.Conv2D(16, (1, 3), activation=tf.keras.layers.LeakyReLU())(x)
-    x = tf.keras.layers.MaxPool2D((1, 3))(x)
+    #
+    # x = tf.keras.layers.Conv2D(16, (1, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    # x = tf.keras.layers.MaxPool2D((1, 3))(x)
     x = tf.keras.layers.Dropout(0.5)(x)
 
     x = tf.keras.layers.Dense(256, activation=tf.keras.layers.LeakyReLU())(x)

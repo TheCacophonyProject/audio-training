@@ -84,7 +84,6 @@ def create_tf_example(sample, labels):
     mel = librosa.power_to_db(data.mel, ref=np.max)
     tags = sample.tags_s
     track_ids = " ".join(map(str, sample.track_ids))
-    print("sample tags is ", sample.tags)
     feature_dict = {
         "audio/rec_id": tfrecord_util.bytes_feature(str(sample.rec_id).encode("utf8")),
         "audio/track_id": tfrecord_util.bytes_feature(track_ids.encode("utf8")),
