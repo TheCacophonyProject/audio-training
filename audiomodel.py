@@ -365,8 +365,8 @@ class AudioModel:
             save_weights_only=True,
             mode="auto",
         )
-        val_acc = os.path.join(self.checkpoint_folder, run_name, "binary_accuracy")
-        acc_name = "binary_accuracy"
+        val_acc = os.path.join(self.checkpoint_folder, run_name, "val_binary_accuracy")
+        acc_name = "val_binary_accuracy"
 
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_acc,
@@ -377,12 +377,12 @@ class AudioModel:
             mode="max",
         )
 
-        val_precision = os.path.join(
+        val_k = os.path.join(
             self.checkpoint_folder, run_name, "val_top_k_categorical_accuracy"
         )
 
-        checkpoint_recall = tf.keras.callbacks.ModelCheckpoint(
-            val_precision,
+        check_k = tf.keras.callbacks.ModelCheckpoint(
+            val_k,
             monitor="val_top_k_categorical_accuracy",
             verbose=1,
             save_best_only=True,
@@ -396,7 +396,27 @@ class AudioModel:
         reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
             monitor=acc_name, verbose=1
         )
-        return [earlyStopping, checkpoint_acc, checkpoint_loss, reduce_lr_callback]
+
+        val_prec = os.path.join(self.checkpoint_folder, run_name, "val_precision")
+        acc_name = "val_precision"
+
+        check_prec = tf.keras.callbacks.ModelCheckpoint(
+            val_prec,
+            monitor=acc_name,
+            verbose=1,
+            save_best_only=True,
+            save_weights_only=True,
+            mode="max",
+        )
+
+        return [
+            earlyStopping,
+            checkpoint_acc,
+            checkpoint_loss,
+            check_prec,
+            check_k,
+            reduce_lr_callback,
+        ]
 
     def load_datasets(self, base_dir, labels, shape, test=False):
         datasets = ["other-training-data", "training-data", "chime-training-data"]
