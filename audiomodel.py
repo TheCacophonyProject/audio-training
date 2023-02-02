@@ -365,8 +365,8 @@ class AudioModel:
             save_weights_only=True,
             mode="auto",
         )
-        val_acc = os.path.join(self.checkpoint_folder, run_name, "val_accuracy")
-        acc_name = "val_accuracy"
+        val_acc = os.path.join(self.checkpoint_folder, run_name, "binary_accuracy")
+        acc_name = "binary_accuracy"
 
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_acc,
@@ -377,16 +377,18 @@ class AudioModel:
             mode="max",
         )
 
-        # val_precision = os.path.join(self.checkpoint_folder, run_name, "val_recall")
-        #
-        # checkpoint_recall = tf.keras.callbacks.ModelCheckpoint(
-        #     val_precision,
-        #     monitor="val_recall",
-        #     verbose=1,
-        #     save_best_only=True,
-        #     save_weights_only=True,
-        #     mode="max",
-        # )
+        val_precision = os.path.join(
+            self.checkpoint_folder, run_name, "val_top_k_categorical_accuracy"
+        )
+
+        checkpoint_recall = tf.keras.callbacks.ModelCheckpoint(
+            val_precision,
+            monitor="val_top_k_categorical_accuracy",
+            verbose=1,
+            save_best_only=True,
+            save_weights_only=True,
+            mode="max",
+        )
         earlyStopping = tf.keras.callbacks.EarlyStopping(
             patience=22,
             monitor=acc_name,
