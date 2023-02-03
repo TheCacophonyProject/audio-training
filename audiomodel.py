@@ -344,8 +344,9 @@ class AudioModel:
             optimizer=optimizer(lr=self.learning_rate),
             loss=loss(multi_label),
             metrics=[
-                acc,  # tf.keras.metrics.AUC(),
-                # tf.keras.metrics.Recall(),
+                acc,  #
+                tf.keras.metrics.AUC(),
+                tf.keras.metrics.Recall(),
                 tf.keras.metrics.Precision(),
                 # f1,
                 prec_at_k,
@@ -353,70 +354,41 @@ class AudioModel:
         )
 
     def checkpoints(self, run_name):
-        loss_name = "val_loss"
-
-        val_loss = os.path.join(self.checkpoint_folder, run_name, "val_loss")
-
-        checkpoint_loss = tf.keras.callbacks.ModelCheckpoint(
-            val_loss,
-            monitor=loss_name,
-            verbose=1,
-            save_best_only=True,
-            save_weights_only=True,
-            mode="auto",
-        )
-        val_acc = os.path.join(self.checkpoint_folder, run_name, "val_binary_accuracy")
-        acc_name = "val_binary_accuracy"
-
-        checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
-            val_acc,
-            monitor=acc_name,
-            verbose=1,
-            save_best_only=True,
-            save_weights_only=True,
-            mode="max",
-        )
-
-        val_k = os.path.join(
-            self.checkpoint_folder, run_name, "val_top_k_categorical_accuracy"
-        )
-
-        check_k = tf.keras.callbacks.ModelCheckpoint(
-            val_k,
-            monitor="val_top_k_categorical_accuracy",
-            verbose=1,
-            save_best_only=True,
-            save_weights_only=True,
-            mode="max",
-        )
+        metrics = [
+            "val_loss",
+            "val_binary_accuracy",
+            "val_top_k_categorical_accuracy",
+            "val_precision",
+            "val_auc",
+            "val_recall",
+        ]
+        checks = []
+        for m in metrics:
+            m_dir = os.path.join(self.checkpoint_folder, run_name, m)
+            if "loss" in m:
+                mode = "auto"
+            else:
+                mode = "max"
+            m_check = tf.keras.callbacks.ModelCheckpoint(
+                m_dir,
+                monitor=m,
+                verbose=1,
+                save_best_only=True,
+                save_weights_only=True,
+                mode=mode,
+            )
+            checks.append(m_check)
         earlyStopping = tf.keras.callbacks.EarlyStopping(
             patience=22,
-            monitor=acc_name,
+            monitor="val_precision",
         )
+        checks.append(earlyStopping)
         reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor=acc_name, verbose=1
+            monitor="val_precision", verbose=1
         )
+        checks.append(reduce_lr_callback)
 
-        val_prec = os.path.join(self.checkpoint_folder, run_name, "val_precision")
-        acc_name = "val_precision"
-
-        check_prec = tf.keras.callbacks.ModelCheckpoint(
-            val_prec,
-            monitor=acc_name,
-            verbose=1,
-            save_best_only=True,
-            save_weights_only=True,
-            mode="max",
-        )
-
-        return [
-            earlyStopping,
-            checkpoint_acc,
-            checkpoint_loss,
-            check_prec,
-            check_k,
-            reduce_lr_callback,
-        ]
+        return checks
 
     def load_datasets(self, base_dir, labels, shape, test=False):
         datasets = ["other-training-data", "training-data", "chime-training-data"]
