@@ -97,6 +97,9 @@ def load_dataset(filenames, num_labels, args):
     )
     filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[1]))
     dataset = dataset.filter(filter_nan)
+
+    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
+    dataset = dataset.filter(filter_excluded)
     return dataset
 
 
@@ -113,14 +116,12 @@ def get_distribution(dataset):
     num_labels = len(true_categories[0])
     if len(true_categories) == 0:
         return None
-    print(true_categories[0])
     classes = []
     for y in true_categories:
         non_zero = tf.where(y).numpy()
         classes.extend(non_zero.flatten())
     classes = np.array(classes)
-    print("classess is", classes.shape, classes)
-    # classes = classes.unravel()
+
     c = Counter(list(classes))
     dist = np.empty((num_labels), dtype=np.float32)
     for i in range(num_labels):
@@ -128,76 +129,90 @@ def get_distribution(dataset):
     return dist
 
 
-def get_dataset(filenames, labels, **args):
-    num_labels = len(labels)
-    global master_s
-    master_s = {}
-    global remapped_y
+def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
+    extra_label_map = {}
     remapped = {}
-
-    keys = []
-    values = []
-    s_values = []
+    re_dic = {}
+    new_labels = labels.copy()
+    for excluded in excluded_labels:
+        if excluded in labels:
+            new_labels.remove(excluded)
     for l in labels:
-        remapped[l] = [l]
-        keys.append(l)
-        values.append(labels.index(l))
+        if l in excluded_labels:
+            re_dic[l] = -1
+            remapped[l] = []
+            logging.info("Excluding %s", l)
+        else:
+            re_dic[l] = new_labels.index(l)
+            remapped[l] = [l]
+            # values.append(new_labels.index(l))
 
     master_keys = []
     master_values = []
+    if not keep_excluded_in_extra:
+        labels = new_labels
     for l in labels:
         if l in NOISE_LABELS:
             remap_label = "noise"
-            master_s[l] = labels.index("noise")
+            extra_label_map[l] = new_labels.index("noise")
             continue
         elif l in BIRD_LABELS:
             if l != "bird":
-                master_s[l] = labels.index("bird")
+                extra_label_map[l] = new_labels.index("bird")
             # or l == "human":
             continue
         elif l == "human":
-            master_s[l] = labels.index("noise")
+            extra_label_map[l] = new_labels.index("noise")
 
             continue
         else:
             remap_label = "bird"
             if l != "bird":
-                master_s[l] = labels.index("bird")
+                extra_label_map[l] = new_labels.index("bird")
         if l == remap_label:
             continue
-
+        if l in excluded_labels:
+            continue
         remapped[remap_label].append(l)
-        values[labels.index(l)] = labels.index(remap_label)
+        re_dic[l] = new_labels.index(remap_label)
         del remapped[l]
+    return (extra_label_map, re_dic, new_labels)
 
+
+def get_dataset(filenames, labels, **args):
+
+    excluded_labels = args.get("excluded_labels", [])
+
+    global extra_label_map
+    global remapped_y
+
+    extra_label_map, remapped, labels = get_remappings(labels, excluded_labels)
     remapped_y = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
-            keys=tf.constant(keys),
-            values=tf.constant(values),
+            keys=tf.constant(list(remapped.keys())),
+            values=tf.constant(list(remapped.values())),
         ),
         default_value=tf.constant(-1),
         name="remapped_y",
     )
-
+    logging.info(
+        "Remapped %s extra mapping %s new labels %s", remapped, extra_label_map, labels
+    )
     # extra tags, since we have multi label problem, morepork is a bird and morepork
     # cat is a cat but also "noise"
-    master_s_keys = list(master_s.keys())
-    master_s_values = list(master_s.values())
-    print("master s is", master_s)
-    print("remapped is", remapped)
 
-    master_s = tf.lookup.StaticHashTable(
+    extra_label_map = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
-            keys=tf.constant(master_s_keys),
-            values=tf.constant(master_s_values),
+            keys=tf.constant(list(extra_label_map.keys())),
+            values=tf.constant(list(extra_label_map.values())),
         ),
         default_value=tf.constant(-1),
-        name="master_s",
+        name="extra_label_map",
     )
 
     # print("keys", keys, " values", values)
     # 1 / 0
-    dataset = load_dataset(filenames, num_labels, args)
+    dataset = load_dataset(filenames, len(labels), args)
 
     resample_data = args.get("resample", True)
     if resample_data:
@@ -446,8 +461,8 @@ def read_tfrecord(
         # label = tf.cast(example["audio/class/label"], tf.int32)
         label = tf.cast(example["audio/class/text"], tf.string)
         labels = tf.strings.split(label, sep="\n")
-        global remapped_y, master_s
-        extra = master_s.lookup(labels)
+        global remapped_y, extra_label_map
+        extra = extra_label_map.lookup(labels)
         labels = remapped_y.lookup(labels)
         labels = tf.concat([labels, extra], axis=0)
         print(labels.shape, extra.shape)
