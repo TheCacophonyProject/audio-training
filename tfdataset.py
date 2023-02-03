@@ -246,19 +246,26 @@ def get_dataset(filenames, labels, **args):
 
 def get_weighting(dataset, labels):
     excluded_labels = []
-
-    dont_weight = []
+    dont_weigh = []
+    for l in labels:
+        if l in ["bird", "noise", "whistler", "morepork", "kiwi"]:
+            continue
+        dont_weigh.append(l)
+    print("dont weight", dont_weigh)
     num_labels = len(labels)
     dist = get_distribution(dataset)
     zeros = dist[dist == 0]
     non_zero_labels = num_labels - len(zeros)
-
-    total = np.sum(dist)
+    total = 0
+    for d, l in zip(dist, labels):
+        if l not in dont_weigh:
+            total += d
+    # total = np.sum(dist)
     weights = {}
     for i in range(num_labels):
-        if labels[i] in dont_weight:
+        if labels[i] in dont_weigh:
             weights[i] = 1
-        if dist[i] == 0:
+        elif dist[i] == 0:
             weights[i] = 0
         else:
             weights[i] = (1 / dist[i]) * (total / non_zero_labels)
