@@ -41,13 +41,15 @@ def load_recording(file, resample=48000):
     return frames, sr
 
 
+seg_length = 1.5
+
+
 def preprocess_file(file):
     stride = 1
-    seg_length = 3
     frames, sr = load_recording(file)
     length = len(frames) / sr
     end = 0
-    sample_size = seg_length * sr
+    sample_size = int(seg_length * sr)
     mels = []
     i = 0
     n_fft = sr // 10
@@ -66,7 +68,7 @@ def preprocess_file(file):
     mel_all = librosa.power_to_db(mel_all, ref=np.max)
     print("mel all is", mel_all.shape)
     mel_sample_size = int(1 + seg_length * sr / hop_length)
-    jumps_per_stride = int(mel_sample_size / 3.0)
+    jumps_per_stride = int(mel_sample_size / seg_length)
     print("jumper per stride", jumps_per_stride, sample_size)
     while end < length:
         start_offset = i * sr_stride
@@ -75,7 +77,7 @@ def preprocess_file(file):
         if end > length:
             print("start off set is", start_offset, " length", length, end)
             sub = frames[start_offset:]
-            s_data = np.zeros((seg_length * sr))
+            s_data = np.zeros(int(seg_length * sr))
             print("sub is", len(sub), len(s_data))
             s_data[0 : len(sub)] = sub
         else:
@@ -112,7 +114,7 @@ def preprocess_file(file):
         # gp not sure to mean over axis 0 or 1
         mel_m = tf.expand_dims(mel_m, axis=1)
         # mean over each mel bank
-        empty = np.zeros(((80, 226)))
+        empty = np.zeros(((80, 113)))
         # print("setting mel at 0 -", mel.shape[1])
         empty[:, : mel.shape[1]] = mel
         mel = empty
@@ -146,11 +148,14 @@ def main():
     logging.info("Loading %s with weights %s", load_model, "val_acc")
     model = tf.keras.models.load_model(str(load_model))
 
-    model.load_weights(load_model / "val_accuracy").expect_partial()
+    model.load_weights(load_model / "val_loss").expect_partial()
+    with open(load_model / "metadata.txt", "r") as f:
+        meta = json.load(f)
+    labels = meta.get("labels", [])
 
-    labels = ["bird", "human"]
+    # labels = ["bird", "human"]
     model_name = "inceptionv3"
-
+    model.summary()
     start = 0
     if args.dataset:
         data_path = Path(args.dataset)
@@ -204,13 +209,22 @@ def main():
         file = Path(args.file)
         data = preprocess_file(file)
         data = np.array(data)
+        print(data.shape)
     results = model.predict(np.array(data))
     track = None
     for r in results:
-        best_i = np.argmax(r)
-        best_p = r[best_i]
-        print(f"{labels[best_i]} {start} - {start+3}  class  {np.round(r, 3)}")
+        # best_i = np.argmax(r)
+        # best_p = r[best_i]
+        results = []
+        for i, p in enumerate(r):
+            if p > 0.5:
+                results.append((round(100 * p), labels[i]))
 
+        print(results)
+
+        print(f"{results} {start} - {start+seg_length} ")
+        start += 1
+        continue
         if best_p > 0.7:
             if track is None:
                 track = (best_i, start)
@@ -220,7 +234,7 @@ def main():
 
         elif track is not None:
             print(
-                f"Low prob {best_p} - {labels[track[0]]} {track[1]} - {start + 3/2 - 1}"
+                f"Low prob {best_p} - {labels[track[0]]} {track[1]} - {start + seg_length/2.0 - 1}"
             )
             track = None
         start += 1
@@ -231,7 +245,12 @@ def main():
     animal = results[1]
     for s, r in zip(species, animal):
 
-        print(f"{start} - {start+3} Species", np.round(s, 1), " class ", np.round(r, 1))
+        print(
+            f"{start} - {start+seg_length} Species",
+            np.round(s, 1),
+            " class ",
+            np.round(r, 1),
+        )
         start += 1
 
 

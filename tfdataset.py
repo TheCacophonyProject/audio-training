@@ -175,7 +175,7 @@ def get_dataset(filenames, labels, **args):
             keys=tf.constant(keys),
             values=tf.constant(values),
         ),
-        default_value=tf.constant(0),
+        default_value=tf.constant(-1),
         name="remapped_y",
     )
 
@@ -191,7 +191,7 @@ def get_dataset(filenames, labels, **args):
             keys=tf.constant(master_s_keys),
             values=tf.constant(master_s_values),
         ),
-        default_value=tf.constant(0),
+        default_value=tf.constant(-1),
         name="master_s",
     )
 
