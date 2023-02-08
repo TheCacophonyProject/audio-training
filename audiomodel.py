@@ -21,7 +21,7 @@ import numpy as np
 from audiodataset import AudioDataset
 from audiowriter import create_tf_records
 import tensorflow as tf
-from tfdataset import get_dataset, mel_s, get_weighting
+from tfdataset import get_dataset, mel_s, get_weighting, NOISE_LABELS, BIRD_LABELS
 import time
 from pathlib import Path
 from sklearn.metrics import confusion_matrix
@@ -411,6 +411,12 @@ class AudioModel:
             self.labels.append("noise")
         self.labels.sort()
         logging.info("Loading train")
+        excluded_labels = []
+        for l in self.labels:
+            if l not in BIRD_LABELS and l not in ["noise", "human"]:
+                excluded_labels.append(l)
+
+        logging.info("labels are %s Excluding %s", self.labels, excluded_labels)
         self.train, remapped = get_dataset(
             # dir,
             filenames,
@@ -419,6 +425,7 @@ class AudioModel:
             image_size=self.input_shape,
             augment=False,
             resample=False,
+            excluded_labels=excluded_labels,
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
         filenames = []
@@ -433,6 +440,7 @@ class AudioModel:
             batch_size=self.batch_size,
             image_size=self.input_shape,
             resample=False,
+            excluded_labels=excluded_labels,
             # preprocess_fn=self.preprocess_fn,
         )
         if test:
@@ -443,9 +451,12 @@ class AudioModel:
                 self.labels,
                 batch_size=batch_size,
                 image_size=self.input_shape,
+                excluded_labels=excluded_labels,
                 # preprocess_fn=self.preprocess_fn,
             )
         self.remapped = remapped
+        for l in excluded_labels:
+            self.labels.remove(l)
 
     def get_base_model(self, input_shape, weights="imagenet"):
         pretrained_model = self.model_name

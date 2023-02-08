@@ -31,6 +31,9 @@ from audiomodel import get_preprocess_fn
 from tfdataset import get_dataset
 
 import soundfile as sf
+import matplotlib
+
+matplotlib.use("TkAgg")
 
 
 def load_recording(file, resample=48000):
@@ -102,7 +105,7 @@ def preprocess_file(file):
         mfcc = mfcc - np.amax(mfcc)
         mfcc /= 2
 
-        # plot_mel(mel,i)
+        # plot_mel(mel, i)
         # mel = mel[:, :, np.newaxis]
         # mel_mf = tf.concat((mel, mfcc), axis=0)
         # mel_mf = mel
@@ -148,7 +151,7 @@ def main():
     logging.info("Loading %s with weights %s", load_model, "val_acc")
     model = tf.keras.models.load_model(str(load_model))
 
-    model.load_weights(load_model / "val_loss").expect_partial()
+    model.load_weights(load_model / "val_auc").expect_partial()
     with open(load_model / "metadata.txt", "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
@@ -219,8 +222,6 @@ def main():
         for i, p in enumerate(r):
             if p > 0.5:
                 results.append((round(100 * p), labels[i]))
-
-        print(results)
 
         print(f"{results} {start} - {start+seg_length} ")
         start += 1
