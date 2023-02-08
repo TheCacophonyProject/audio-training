@@ -263,6 +263,9 @@ def get_weighting(dataset, labels):
     # total = np.sum(dist)
     weights = {}
     for i in range(num_labels):
+        weights[i] = 1
+        continue
+
         if labels[i] in dont_weigh:
             weights[i] = 1
         elif dist[i] == 0:
