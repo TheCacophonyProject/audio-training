@@ -89,6 +89,7 @@ def create_tf_example(sample, labels):
         "audio/track_id": tfrecord_util.bytes_feature(track_ids.encode("utf8")),
         "audio/sample_rate": tfrecord_util.int64_feature(sample.rec.sample_rate),
         "audio/length": tfrecord_util.float_feature(sample.length),
+        "audio/raw_length": tfrecord_util.float_feature(data.raw_length),
         "audio/start_s": tfrecord_util.float_feature(sample.start),
         "audio/class/text": tfrecord_util.bytes_feature(tags.encode("utf8")),
         # "audio/class/label": tfrecord_util.int64_feature(labels.index(tags.tag)),
@@ -134,16 +135,13 @@ def get_data(args):
 
     for i, sample in enumerate(samples):
         try:
-            spectogram, mel, mfcc, s_data = load_data(sample.start, frames, sr)
+            spectogram, mel, mfcc, s_data, raw_length = load_data(
+                sample.start, frames, sr, end=sample.end
+            )
             if spectogram is None:
                 print("error loading", rec_id)
                 continue
-            spec = SpectrogramData(
-                spectogram,
-                mel,
-                mfcc,
-                s_data.copy(),
-            )
+            spec = SpectrogramData(spectogram, mel, mfcc, s_data.copy(), raw_length)
             data[i] = spec
         except Exception as ex:
             print("Error ", rec_id, ex)

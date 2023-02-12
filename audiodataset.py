@@ -15,7 +15,7 @@ import librosa.display
 import matplotlib.pyplot as plt
 import audioread.ffdec  # Use ffmpeg decoder
 
-SEGMENT_LENGTH = 1.5  # seconds
+SEGMENT_LENGTH = 2  # seconds
 SEGMENT_STRIDE = 1  # of a second
 FRAME_LENGTH = 255
 
@@ -274,7 +274,6 @@ class Recording:
             other_tracks = []
             for t in sorted_tracks[i:]:
                 # starts in this sample
-                # print("checking for", t.start, t.end, t.human_tags)
                 if t.start > end:
                     break
                 if t.start < start:
@@ -283,6 +282,7 @@ class Recording:
                     s = t.start
 
                 if t.end > end:
+                    # possible to miss out on some of a track
                     e = end
                 else:
                     e = t.end
@@ -293,8 +293,17 @@ class Recording:
                     labels = labels | t.human_tags
                     tracks.append(t.id)
             self.samples.append(
-                AudioSample(self, labels, start, end, tracks, SAMPLE_GROUP_ID, bin_id)
+                AudioSample(
+                    self,
+                    labels,
+                    start,
+                    min(track.end, end),
+                    tracks,
+                    SAMPLE_GROUP_ID,
+                    bin_id,
+                )
             )
+            # print("sample length is", self.samples[-1].length)
             start += SEGMENT_STRIDE
             # print("track end is ", track.end, " and start is", start)
             if (track.end - start) < SEGMENT_LENGTH / 2:
@@ -520,7 +529,7 @@ def plot_mel(mel):
     # plt.clf()
 
 
-SpectrogramData = namedtuple("SpectrogramData", "spect mel mfcc raw")
+SpectrogramData = namedtuple("SpectrogramData", "spect mel mfcc raw raw_length")
 
 Tag = namedtuple("Tag", "what confidence automatic original")
 
@@ -533,6 +542,7 @@ def load_data(
     segment_stride=SEGMENT_STRIDE,
     hop_length=640,
     n_fft=None,
+    end=None,
 ):
     sr_stride = int(segment_stride * sr)
 
@@ -540,7 +550,11 @@ def load_data(
         n_fft = sr // 10
     start = start_s * sr
     start = int(start)
-    end = int(segment_l * sr) + start
+    if end is None:
+        end = int(segment_l * sr) + start
+    else:
+        end = int(end * sr)
+    data_length = segment_l
     try:
         # zero pad shorter
         if end > len(frames):
@@ -548,11 +562,21 @@ def load_data(
             s_data = np.zeros(int(segment_l * sr))
             # randomize zero padding location
             extra_frames = len(s_data) - len(sub)
-            offset = np.random.randint(0, extra_frames)
+            # offset = np.random.randint(0, extra_frames)
             offset = 0
             s_data[offset : offset + len(sub)] = sub
+            data_length = len(sub) / sr
         else:
             s_data = frames[start:end]
+            if len(s_data) < int(segment_l * sr):
+                sub = s_data
+                data_length = len(sub) / sr
+                s_data = np.zeros(int(segment_l * sr))
+                # randomize zero padding location
+                # extra_frames = len(s_data) - len(sub)
+                # offset = np.random.randint(0, extra_frames)
+                offset = 0
+                s_data[offset : offset + len(sub)] = sub
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
         # these should b derivable from spectogram but the librosa exmaples produce different results....
         mel = librosa.feature.melspectrogram(
@@ -565,7 +589,7 @@ def load_data(
             n_mels=80,
         )
         mfcc = librosa.feature.mfcc(y=s_data, sr=sr, hop_length=hop_length, htk=True)
-        return spectogram, mel, mfcc, s_data
+        return spectogram, mel, mfcc, s_data, data_length
     except:
         logging.error(
             "Error getting segment  start %s lenght %s",
@@ -573,4 +597,4 @@ def load_data(
             SEGMENT_LENGTH,
             exc_info=True,
         )
-    return None, None, None, None
+    return None, None, None, None, None
