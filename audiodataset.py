@@ -549,6 +549,7 @@ def load_data(
             # randomize zero padding location
             extra_frames = len(s_data) - len(sub)
             offset = np.random.randint(0, extra_frames)
+            offset = 0
             s_data[offset : offset + len(sub)] = sub
         else:
             s_data = frames[start:end]

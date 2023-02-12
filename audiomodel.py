@@ -60,6 +60,8 @@ class AudioModel:
         self.input_shape = mel_s
         self.preprocess_fn = None
         self.learning_rate = 0.01
+        self.segment_length = None
+        self.segment_stride = None
         self.load_meta()
 
     def load_meta(self):
@@ -72,6 +74,8 @@ class AudioModel:
         if "noise" not in self.labels:
             self.labels.append("noise")
         self.labels.sort()
+        self.segment_length = meta.get("segment_length", 3)
+        self.segment_stride = meta.get("segment_stride", 1.5)
 
     def load_weights(self, weights_file):
         logging.info("Loading %s", weights_file)
@@ -263,9 +267,14 @@ class AudioModel:
         #     if self.test:
         #         test_accuracy = self.model.evaluate(self.test)
 
-        self.save(run_name, history=history, test_results=test_accuracy)
+        self.save(
+            run_name,
+            history=history,
+            test_results=test_accuracy,
+            multi_label=multi_label,
+        )
 
-    def save(self, run_name=None, history=None, test_results=None):
+    def save(self, run_name=None, history=None, test_results=None, multi_label=False):
         # create a save point
         if run_name is None:
             run_name = self.params.model_name
@@ -281,6 +290,9 @@ class AudioModel:
         model_stats = {}
         model_stats["name"] = self.model_name
         model_stats["labels"] = self.labels
+        model_stats["multi_label"] = multi_label
+        model_stats["segment_stride"] = self.segment_stride
+        model_stats["segment_length"] = self.segment_length
 
         # model_stats["hyperparams"] = self.params
         model_stats["training_date"] = str(time.time())
