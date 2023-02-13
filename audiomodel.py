@@ -714,9 +714,8 @@ def main():
         model_name = meta_data.get("name")
         preprocess = get_preprocess_fn(model_name)
         dataset, _ = get_dataset(
-            tf.io.gfile.glob(f"./training-data/validation/*.tfrecord"),
+            tf.io.gfile.glob(f"./training-data/test/*.tfrecord"),
             labels,
-            ["bird", "human"],
             image_size=mel_s,
             preprocess_fn=preprocess,
             shuffle=False,
