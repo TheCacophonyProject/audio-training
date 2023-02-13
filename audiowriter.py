@@ -251,6 +251,8 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
         writer.close()
     for r in dataset.recs:
         r.rec_data = None
+        for s in r.samples:
+            s.spectogram_data = None
     logging.info(
         "Finished writing, skipped %d annotations.", total_num_annotations_skipped
     )
