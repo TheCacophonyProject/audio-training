@@ -24,7 +24,7 @@ import tensorflow as tf
 from tfdataset import get_dataset, mel_s, get_weighting, NOISE_LABELS, BIRD_LABELS
 import time
 from pathlib import Path
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, multilabel_confusion_matrix
 import matplotlib.pyplot as plt
 
 import badwinner
@@ -649,15 +649,26 @@ def optimizer(lr=None, decay=None):
 
 def confusion(model, labels, dataset, filename="confusion.png"):
     true_categories = [y for x, y in dataset]
-    if len(true_categories.shape) > 1:
-        true_categories = tf.concat(true_categories, axis=0)
+    true_categories = tf.concat(true_categories, axis=0)
+    y_true = []
+    for y in true_categories:
+        non_zero = tf.where(y).numpy()
+        y_true.append(non_zero.flatten())
+    y_true = np.array(y_true)
 
     true_categories = np.int64(tf.argmax(true_categories, axis=1))
     y_pred = model.predict(dataset)
 
-    predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
-
-    cm = confusion_matrix(
+    predicted_categories = []
+    for pred in y_pred:
+        cur_preds = []
+        for i, p in enumerate(pred):
+            if p > 0.7:
+                cur_preds.append(i)
+        predicted_categories.append(cur_preds)
+    predicted_categories = np.array(predicted_categories)
+    print(y_true, predicted_categories)
+    cm = multiconfusion_matrix(
         true_categories, predicted_categories, labels=np.arange(len(labels))
     )
     # Log the confusion matrix as an image summary.
@@ -707,9 +718,18 @@ def main():
     if args.confusion is not None:
         load_model = Path("./train/checkpoints") / args.name
         logging.info("Loading %s with weights %s", load_model, "val_acc")
-        model = tf.keras.models.load_model(str(load_model))
+        hamming = tfa.metrics.HammingLoss(mode="multilabel", threshold=0.8)
+        prec_at_k = tf.keras.metrics.TopKCategoricalAccuracy()
+        model = tf.keras.models.load_model(
+            str(load_model),
+            custom_objects={
+                "hamming_loss": hamming,
+                "top_k_categorical_accuracy": prec_at_k,
+            },
+            compile=False,
+        )
 
-        model.load_weights(load_model / "val_accuracy").expect_partial()
+        model.load_weights(load_model / "val_hamming_loss").expect_partial()
 
         meta_file = load_model / "metadata.txt"
         print("Meta", meta_file)
