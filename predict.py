@@ -14,6 +14,7 @@ import json
 from dateutil.parser import parse as parse_date
 import sys
 import itertools
+import tensorflow_addons as tfa
 
 # from config.config import Config
 import numpy as np
@@ -44,7 +45,7 @@ def load_recording(file, resample=48000):
     return frames, sr
 
 
-seg_length = 1.5
+seg_length = 2
 
 
 def preprocess_file(file):
@@ -103,14 +104,15 @@ def preprocess_file(file):
         # start = int(jumps_per_stride * (i * stride))
         # mel = mel_all[:, start : start + mel_sample_size].copy()
         i += 1
-        if i >= 60:
-            plot_mel(mel)
+        # if i >= 60:
+        # plot_mel(mel)
         # plot_mel(mel)
         mel_m = tf.reduce_mean(mel, axis=1)
         # gp not sure to mean over axis 0 or 1
         mel_m = tf.expand_dims(mel_m, axis=1)
         # mean over each mel bank
-        empty = np.zeros(((80, 113)))
+        # print(mel.shape)
+        empty = np.zeros(((80, 151)))
         empty[:, : mel.shape[1]] = mel
         mel = empty
         mel = mel - mel_m
@@ -162,7 +164,7 @@ def test(filename):
     first_one = librosa.power_to_db(first_one, ref=np.max)
     print("sample size", mel_sample_size)
     print("first one is", first_one.shape, first_one)
-    empty = np.zeros((80, 113))
+    empty = np.zeros((80, 151))
     empty[:, :76] = first_one
     first_one = empty
     plot_mel(first_one)
@@ -201,16 +203,28 @@ def main():
     # test(args.file)
     # return
     logging.info("Loading %s with weights %s", load_model, "val_acc")
-    model = tf.keras.models.load_model(str(load_model))
+    hamming = tfa.metrics.HammingLoss(mode="multilabel", threshold=0.8)
+    prec_at_k = tf.keras.metrics.TopKCategoricalAccuracy()
+    model = tf.keras.models.load_model(
+        str(load_model),
+        custom_objects={
+            "hamming_loss": hamming,
+            "top_k_categorical_accuracy": prec_at_k,
+        },
+        compile=False,
+    )
+    # model = tf.keras.models.load_model(str(load_model))
 
-    model.load_weights(load_model / "val_auc").expect_partial()
+    model.load_weights(load_model / "val_hamming_loss").expect_partial()
     with open(load_model / "metadata.txt", "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
     multi_label = meta.get("multi_label", True)
     segment_length = meta.get("segment_length", 1.5)
     segment_stride = meta.get("segment_stride", 1)
-
+    segment_length = 2
+    segment_stride = 1
+    multi_label = True
     # labels = ["bird", "human"]
     model_name = "inceptionv3"
     model.summary()
@@ -277,6 +291,7 @@ def main():
         results = []
         track_labels = []
         if multi_label:
+            # print("doing multi", prediction * 100)
             for i, p in enumerate(prediction):
                 if p > 0.7:
                     label = labels[i]

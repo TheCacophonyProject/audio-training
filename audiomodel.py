@@ -207,6 +207,7 @@ class AudioModel:
     def train_model(self, run_name="test", epochs=15, weights=None, multi_label=False):
         self.load_datasets(self.data_dir, self.labels, self.input_shape)
         self.build_model(len(self.labels), multi_label=multi_label)
+
         if weights is not None:
             self.load_weights(weights)
         # 1 / 0
@@ -648,13 +649,16 @@ def optimizer(lr=None, decay=None):
 
 
 def confusion(model, labels, dataset, filename="confusion.png"):
+    from sklearn.preprocessing import MultiLabelBinarizer
+
+    mlb = MultiLabelBinarizer(classes=[0, 1, 2, 3, 4, 5])
     true_categories = [y for x, y in dataset]
     true_categories = tf.concat(true_categories, axis=0)
     y_true = []
     for y in true_categories:
         non_zero = tf.where(y).numpy()
-        y_true.append(non_zero.flatten())
-    y_true = np.array(y_true)
+        y_true.append(list(non_zero.flatten()))
+    y_true = y_true
 
     true_categories = np.int64(tf.argmax(true_categories, axis=1))
     y_pred = model.predict(dataset)
@@ -666,15 +670,49 @@ def confusion(model, labels, dataset, filename="confusion.png"):
             if p > 0.7:
                 cur_preds.append(i)
         predicted_categories.append(cur_preds)
-    predicted_categories = np.array(predicted_categories)
-    print(y_true, predicted_categories)
-    cm = multiconfusion_matrix(
-        true_categories, predicted_categories, labels=np.arange(len(labels))
+    predicted_categories = predicted_categories
+    y_true = mlb.fit_transform(y_true)
+    predicted_categories = mlb.fit_transform(predicted_categories)
+    cms = multilabel_confusion_matrix(
+        y_true, predicted_categories, labels=np.arange(len(labels))
     )
     # Log the confusion matrix as an image summary.
-    figure = plot_confusion_matrix(cm, class_names=labels)
-    logging.info("Saving confusion to %s", filename)
-    plt.savefig(filename, format="png")
+    for i, cm in enumerate(cms):
+        figure = plot_confusion_matrix(cm, class_names=[labels[i], "not"])
+        logging.info("Saving confusion to %s", filename)
+        plt.savefig(f"{labels[i]}-{filename}", format="png")
+
+
+#
+#
+# def confusion(model, labels, dataset, filename="confusion.png"):
+#     true_categories = [y for x, y in dataset]
+#     true_categories = tf.concat(true_categories, axis=0)
+#     y_true = []
+#     for y in true_categories:
+#         non_zero = tf.where(y).numpy()
+#         y_true.append(non_zero.flatten())
+#     y_true = np.array(y_true)
+#
+#     true_categories = np.int64(tf.argmax(true_categories, axis=1))
+#     y_pred = model.predict(dataset)
+#
+#     predicted_categories = []
+#     for pred in y_pred:
+#         cur_preds = []
+#         for i, p in enumerate(pred):
+#             if p > 0.7:
+#                 cur_preds.append(i)
+#         predicted_categories.append(cur_preds)
+#     predicted_categories = np.array(predicted_categories)
+#     print(y_true, predicted_categories)
+#     cm = multiconfusion_matrix(
+#         true_categories, predi3cted_categories, labels=np.arange(len(labels))
+#     )
+#     # Log the confusion matrix as an image summary.
+#     figure = plot_confusion_matrix(cm, class_names=labels)
+#     logging.info("Saving confusion to %s", filename)
+#     plt.savefig(filename, format="png")
 
 
 # from tensorflow examples
@@ -742,7 +780,6 @@ def main():
             tf.io.gfile.glob(f"./training-data/test/*.tfrecord"),
             labels,
             image_size=mel_s,
-            preprocess_fn=preprocess,
             shuffle=False,
             resample=False,
             deterministic=True,
@@ -757,6 +794,7 @@ def main():
         if args.cross:
             am.cross_fold_train(run_name=args.name)
         else:
+            args.multi = args.multi == 1
             am.train_model(
                 run_name=args.name, weights=args.weights, multi_label=args.multi
             )

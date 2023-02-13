@@ -17,7 +17,7 @@ import sys
 # from config.config import Config
 import numpy as np
 
-from audiodataset import AudioDataset, RELABEL
+from audiodataset import AudioDataset, RELABEL, SEGMENT_LENGTH, SEGMENT_STRIDE
 from audiowriter import create_tf_records
 import warnings
 
@@ -225,6 +225,8 @@ def main():
     # dont need dataset anymore just need some meta
     meta_filename = f"{base_dir}/training-data/training-meta.json"
     meta_data = {
+        "segment_length": SEGMENT_LENGTH,
+        "segment_stride": SEGMENT_STRIDE,
         "labels": datasets[0].labels,
         "type": "audio",
         "counts": dataset_counts,

@@ -29,7 +29,7 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
     # x = norm_layer(input)
     filters = 16
     if multi_label:
-        filters = 64
+        filters = 32
     x = tf.keras.layers.BatchNormalization()(input)
     x = tf.keras.layers.Conv2D(filters, (3, 3), activation=tf.keras.layers.LeakyReLU())(
         x
