@@ -352,7 +352,8 @@ class AudioModel:
         else:
             acc = tf.metrics.categorical_accuracy
 
-        f1 = tfa.metrics.F1Score(num_classes=num_labels, average=None)
+        hamming = tfa.metrics.HammingLoss(mode="multilabel", threshold=0.8)
+
         prec_at_k = tf.keras.metrics.TopKCategoricalAccuracy()
         self.model.compile(
             optimizer=optimizer(lr=self.learning_rate),
@@ -362,6 +363,7 @@ class AudioModel:
                 tf.keras.metrics.AUC(),
                 tf.keras.metrics.Recall(),
                 tf.keras.metrics.Precision(),
+                hamming,
                 # f1,
                 prec_at_k,
             ],
