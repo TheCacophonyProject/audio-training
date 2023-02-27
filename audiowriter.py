@@ -159,8 +159,12 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                 child.unlink()
     output_path.mkdir(parents=True, exist_ok=True)
     samples = dataset.samples
+    samples = sorted(
+        samples,
+        key=lambda sample: sample.rec_id,
+    )
     # keys = list(samples.keys())
-    np.random.shuffle(samples)
+    # np.random.shuffle(samples)
 
     total_num_annotations_skipped = 0
     num_labels = len(labels)

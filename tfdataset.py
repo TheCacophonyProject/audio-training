@@ -404,16 +404,18 @@ def read_tfrecord(
     # audio_data = tf.reshape(audio_data, [*sftf_s, 1])
     #
     mel = tf.reshape(mel, [*mel_s])
+
+    if augment:
+        logging.info("Augmenting")
+        # tf.random.uniform()
+        # mel = tfio.audio.freq_mask(mel, param=10)
+        # mel = tfio.audio.time_mask(mel, param=10)
     mean_sub = True
     mel_m = tf.reduce_mean(mel, axis=1)
     # gp not sure to mean over axis 0 or 1
     mel_m = tf.expand_dims(mel_m, axis=1)
     # mean over each mel bank
     mel = mel - mel_m
-    if augment:
-        logging.info("Augmenting")
-        # mel = tfio.audio.freq_mask(mel, param=10)
-        # mel3 = tfio.audio.time_mask(mel, param=10)
     mel = tf.expand_dims(mel, axis=2)
     #
     # # print(mel.shape)
