@@ -712,7 +712,10 @@ def confusion(model, labels, dataset, filename="confusion.png"):
     )
     # Log the confusion matrix as an image summary.
     for i, cm in enumerate(cms):
-        figure = plot_confusion_matrix(cm, class_names=[labels[i], "not"])
+        cm2 = np.empty((cm.shape))
+        cm2[0] = cm[1]
+        cm2[1] = cm[0]
+        figure = plot_confusion_matrix(cm2, class_names=[labels[i], "not"])
         logging.info("Saving confusion to %s", filename)
         plt.savefig(f"{labels[i]}-{filename}", format="png")
 
