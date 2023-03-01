@@ -678,13 +678,13 @@ def confusion(model, labels, dataset, filename="confusion.png"):
         fp = 0
         tn = 0
         for y, p in zip(true_categories, predicted_categories):
-            if i in true_categories:
+            if i in y:
                 lbl_count += 1
-                if i in predicted_categories:
+                if i in p:
                     tp += 1
                 else:
                     fn += 1
-            elif i in predicted_categories:
+            elif i in p:
                 fp += 1
             else:
                 tn += 1
