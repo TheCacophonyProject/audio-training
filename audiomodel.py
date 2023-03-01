@@ -82,7 +82,7 @@ class AudioModel:
         logging.info("Loading %s", weights_file)
         self.model.load_weights(weights_file).expect_partial()
 
-    def cross_fold_train(self, run_name="test", epochs=2):
+    def cross_fold_train(self, run_name="test", epochs=2, multi=True):
         datasets = ["other-training-data", "training-data", "chime-training-data"]
         datasets = ["training-data"]
         labels = set()
@@ -101,6 +101,10 @@ class AudioModel:
         labels = list(labels)
         labels.sort()
         self.labels = labels
+        if "bird" not in self.labels:
+            self.labels.append("bird")
+        if "noise" not in self.labels:
+            self.labels.append("noise")
         filenames = np.array(filenames)
         test_percent = 0.2
         test_i = int(test_percent * len(filenames))
@@ -144,7 +148,7 @@ class AudioModel:
                 # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
             )
             # self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
-            self.build_model(len(self.labels))
+            self.build_model(len(self.labels), multi_label=multi)
             class_weights = get_weighting(self.train, self.labels)
             logging.info("Weights are %s", class_weights)
             history = self.model.fit(
@@ -164,36 +168,95 @@ class AudioModel:
 
             true_categories = [y for x, y in self.test]
             true_categories = tf.concat(true_categories, axis=0)
-            true_categories = tf.argmax(true_categories, axis=1)
+            y_true = []
+            for y in true_categories:
+                non_zero = tf.where(y).numpy()
+                y_true.append(list(non_zero.flatten()))
+            y_true = y_true
 
             predictions = self.model.predict(self.test)
-            predicted_categories = np.int64(tf.argmax(predictions, axis=1))
+            # predicted_categories = np.int64(tf.argmax(predictions, axis=1))
+            threshold = 0.5
+            predicted_categories = []
+            for pred in predictions:
+                cur_preds = []
+                for i, p in enumerate(pred):
+                    if p > threshold:
+                        cur_preds.append(i)
+                predicted_categories.append(cur_preds)
+
             test_results_acc = {}
-            for i, l in enumerate(remapped.keys()):
-                y_mask = true_categories == i
-                predicted_y = predicted_categories[y_mask]
-                correct = np.sum(predicted_y == true_categories[y_mask])
-                count = np.sum(y_mask)
-                logging.info(
-                    "%s accuracy %s / %s - %s %%",
-                    l,
-                    correct,
-                    count,
-                    round(100 * correct / max(count, 1)),
+            correct = 0
+            total = 0
+            for i, l in enumerate(labels):
+                print("for ", l)
+                lbl_count = 0
+                tp = 0
+                fn = 0
+                fp = 0
+                tn = 0
+                neg_c = 0
+                for y, p in zip(y_true, predicted_categories):
+                    if i in y:
+                        total += 1
+                        lbl_count += 1
+                        if i in p:
+                            tp += 1
+                            correct += 1
+                        else:
+                            fp += 1
+                    else:
+                        neg_c += 1
+                        if i in p:
+                            fn += 1
+                        else:
+                            tn += 1
+
+                print("Have", lbl_count)
+                if lbl_count == 0:
+                    continue
+                print(
+                    "{}( {}%)\t{}( {}% )".format(
+                        tp, round(100 * tp / (tp + fp)), fp, round(100 * fp / (tp + fp))
+                    )
                 )
-                test_results_acc[l] = round(100 * correct / max(count, 1))
-            correct = np.sum(predicted_categories == true_categories)
+                print(
+                    "{}( {}%)\t{}( {}% )".format(
+                        fn, round(100 * fn / (tn + fn)), tn, round(100 * tn / (tn + fn))
+                    )
+                )
+                accuracy = round(100 * tp / (tp + fp))
+                test_results_acc[l] = [[tp, fp], [fn, tn]]
+            # for i, l in enumerate(remapped.keys()):
+            #
+            #     y_mask = true_categories == i
+            #     predicted_y = predicted_categories[y_mask]
+            #     correct = np.sum(predicted_y == true_categories[y_mask])
+            #     count = np.sum(y_mask)
+            #     logging.info(
+            #         "%s accuracy %s / %s - %s %%",
+            #         l,
+            #         correct,
+            #         count,
+            #         round(100 * correct / max(count, 1)),
+            #     )
+            #     test_results_acc[l] = round(100 * correct / max(count, 1))
+            # correct = np.sum(predicted_categories == true_categories)
             logging.info(
                 "Total accuracy %s / %s - %s %%",
                 correct,
-                len(predicted_categories),
-                round(100 * correct / len(predicted_categories)),
+                total,
+                round(100 * correct / total),
             )
-            test_results_acc["All"] = round(100 * correct / len(predicted_categories))
+            test_results_acc["%Correct"] = round(100 * correct / total)
 
-            val_history = history.history["val_accuracy"]
+            val_history = history.history["val_binary_accuracy"]
             best_val = np.amax(val_history)
-            test_results_acc["val"] = best_val
+            test_results_acc["val_acc"] = best_val
+
+            loss_history = history.history["val_loss"]
+            best_loss = np.amin(loss_history)
+            test_results_acc["val_loss"] = best_loss
             results[fold] = test_results_acc
         for k, v in results.items():
             logging.info("For fold %s", k)
@@ -398,11 +461,12 @@ class AudioModel:
             checks.append(m_check)
         earlyStopping = tf.keras.callbacks.EarlyStopping(
             patience=22,
-            monitor="val_precision",
+            monitor="val_loss",
+            mode="min",
         )
         checks.append(earlyStopping)
         reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor="val_precision", verbose=1
+            monitor="val_loss", verbose=1, mode="min"
         )
         checks.append(reduce_lr_callback)
 
@@ -617,6 +681,10 @@ def get_preprocess_fn(pretrained_model):
 
 def loss(multi_label=False, smoothing=0):
     if multi_label:
+        return tf.keras.losses.BinaryFocalCrossentropy(
+            gamma=2.0, from_logits=False, apply_class_balancing=True
+        )
+
         logging.info("Using binary")
         softmax = tf.keras.losses.BinaryCrossentropy(
             label_smoothing=smoothing,
@@ -862,12 +930,13 @@ def parse_args():
     parser.add_argument("--confusion", help="Save confusion matrix for model")
     parser.add_argument("-w", "--weights", help="Weights to use")
     parser.add_argument("--cross", action="count", help="Cross fold val")
-    parser.add_argument("--multi", action="count", help="Multi label")
+    parser.add_argument("--multi", default=True, action="count", help="Multi label")
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("name", help="Run name")
 
     args = parser.parse_args()
+    print(args)
     return args
 
 
