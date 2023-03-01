@@ -105,6 +105,10 @@ class AudioModel:
             self.labels.append("bird")
         if "noise" not in self.labels:
             self.labels.append("noise")
+        excluded_labels = []
+        for l in self.labels:
+            if l not in BIRD_LABELS and l not in ["noise", "human"]:
+                excluded_labels.append(l)
         filenames = np.array(filenames)
         test_percent = 0.2
         test_i = int(test_percent * len(filenames))
@@ -119,6 +123,7 @@ class AudioModel:
             reshuffle=False,
             shuffle=False,
             deterministic=True,
+            excluded_labels=excluded_labels,
             # preprocess_fn=self.preprocess_fn,
         )
         filenames = filenames[test_i:]
@@ -135,6 +140,7 @@ class AudioModel:
                 image_size=self.input_shape,
                 augment=False,
                 resample=False,
+                excluded_labels=excluded_labels,
                 # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
             )
             self.validation, remapped = get_dataset(
@@ -145,6 +151,7 @@ class AudioModel:
                 image_size=self.input_shape,
                 augment=False,
                 resample=False,
+                excluded_labels=excluded_labels,
                 # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
             )
             # self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
@@ -478,7 +485,7 @@ class AudioModel:
                 epoch, logs, self.model, self.validation, file_writer_cm, self.labels
             )
         )
-        checks.append(cm_callback)
+        # checks.append(cm_callback)
         return checks
 
     def load_datasets(self, base_dir, labels, shape, test=False):
@@ -696,10 +703,10 @@ def get_preprocess_fn(pretrained_model):
 
 def loss(multi_label=False, smoothing=0):
     if multi_label:
-        logging.info("Using focal binary cross")
-        return tf.keras.losses.BinaryFocalCrossentropy(
-            gamma=2.0, from_logits=False, apply_class_balancing=True
-        )
+        # logging.info("Using focal binary cross")
+        # return tf.keras.losses.BinaryFocalCrossentropy(
+        #     gamma=2.0, from_logits=False, apply_class_balancing=True
+        # )
 
         logging.info("Using binary")
         softmax = tf.keras.losses.BinaryCrossentropy(
@@ -1005,7 +1012,7 @@ def main():
         if args.cross:
             am.cross_fold_train(run_name=args.name)
         else:
-            args.multi = args.multi == 1
+            # args.multi = args.multi == 1
             am.train_model(
                 run_name=args.name, weights=args.weights, multi_label=args.multi
             )
@@ -1024,6 +1031,7 @@ def parse_args():
     args = parser.parse_args()
     print(args)
     args.multi = args.multi > 0
+    print(args.multi)
     return args
 
 

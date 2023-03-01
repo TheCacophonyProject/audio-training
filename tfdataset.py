@@ -502,9 +502,60 @@ def class_func(features, label):
 from collections import Counter
 
 
+def calc_mean():
+    datasets = ["training-data"]
+    filenames = []
+    labels = set()
+    for d in datasets:
+        # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
+        file = f"./{d}/training-meta.json"
+        with open(file, "r") as f:
+            meta = json.load(f)
+        labels.update(meta.get("labels", []))
+        # print("loaded labels", labels)
+        # species_list = ["bird", "human", "rain", "other"]
+
+        # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
+        filenames.extend(tf.io.gfile.glob(f"./{d}/test/*.tfrecord"))
+        filenames.extend(tf.io.gfile.glob(f"./{d}/train/*.tfrecord"))
+
+        filenames.extend(tf.io.gfile.glob(f"./{d}/validation/*.tfrecord"))
+    labels.add("bird")
+    labels.add("noise")
+    labels = list(labels)
+
+    labels.sort()
+    print(labels)
+    resampled_ds, remapped = get_dataset(
+        # dir,
+        filenames,
+        labels,
+        batch_size=32,
+        image_size=DIMENSIONS,
+        augment=False,
+        resample=False,
+        # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
+    )
+    resampled_ds = resampled_ds.unbatch()
+    data = [x for x, y in resampled_ds]
+    data = np.array(data)
+
+    # print(np.mean(data, axis=0).shape)
+    # print(np.std(data, axis=0).shape)
+    # mel_m = tf.reduce_mean(data, axis=0)
+    zvals = {"mean": np.mean(data, axis=0), "std": np.std(data, axis=0)}
+    zvals["mean"] = zvals["mean"].tolist()
+    zvals["std"] = zvals["std"].tolist()
+
+    with open("zvalues.txt", "w") as f:
+        json.dump(zvals, f, indent=4)
+
+
 # test stuff
 def main():
     init_logging()
+    calc_mean()
+    return
     datasets = ["other-training-data", "training-data", "chime-training-data"]
     datasets = ["training-data"]
     filenames = []
