@@ -130,6 +130,9 @@ class AudioModel:
         skf = KFold(n_splits=5, shuffle=True)
         fold = 0
         results = {}
+        exc_l = labels.copy()
+        for l in excluded_labels:
+            exc_l.remove(l)
         for train_index, test_index in skf.split(filenames):
             fold += 1
             self.train, remapped = get_dataset(
@@ -155,7 +158,7 @@ class AudioModel:
                 # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
             )
             # self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
-            self.build_model(len(self.labels), multi_label=multi)
+            self.build_model(len(exc_l), multi_label=multi)
             class_weights = get_weighting(self.train, self.labels)
             logging.info("Weights are %s", class_weights)
             history = self.model.fit(
@@ -163,7 +166,17 @@ class AudioModel:
                 validation_data=self.validation,
                 epochs=epochs,
                 shuffle=False,
-                class_weight=class_weights
+                class_weight=class_weights,
+                callbacks=[
+                    tf.keras.callbacks.ModelCheckpoint(
+                        self.checkpoint_folder / run_name,
+                        monitor="val_loss",
+                        verbose=1,
+                        save_best_only=True,
+                        save_weights_only=True,
+                        mode="min",
+                    )
+                ]
                 # callbacks=[
                 #     tf.keras.callbacks.TensorBoard(
                 #         self.log_dir, write_graph=True, write_images=True
@@ -172,7 +185,9 @@ class AudioModel:
                 # ],  # log metricslast_stats
             )
             logging.info("Finished fold %s", fold)
-
+            self.model.load_weights(
+                str(self.checkpoint_folder / run_name / "val_loss")
+            ).expect_partial()
             true_categories = [y for x, y in self.test]
             true_categories = tf.concat(true_categories, axis=0)
             y_true = []
