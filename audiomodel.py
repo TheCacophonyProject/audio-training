@@ -534,12 +534,16 @@ class AudioModel:
             excluded_labels=excluded_labels,
             # preprocess_fn=self.preprocess_fn,
         )
-        # test = False
+
         if test:
             logging.info("Loading test")
+            filenames = []
+            for d in datasets:
+                # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
+                filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/test/*.tfrecord"))
             self.test, _ = get_dataset(
                 # dir,
-                f"{base_dir}/{d}/test/*.tfrecord",
+                filenames,
                 self.labels,
                 batch_size=self.batch_size,
                 image_size=self.input_shape,
