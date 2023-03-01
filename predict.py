@@ -9,9 +9,10 @@ import random
 import datetime
 import logging
 import pickle
-import pytz
 import json
-from dateutil.parser import parse as parse_date
+import audioread.ffdec  # Use ffmpeg decoder
+
+# from dateutil.parser import parse as parse_date
 import sys
 import itertools
 import tensorflow_addons as tfa
@@ -37,8 +38,12 @@ import matplotlib
 matplotlib.use("TkAgg")
 
 
+#
+#
 def load_recording(file, resample=48000):
-    frames, sr = librosa.load(str(file), sr=None)
+    aro = audioread.ffdec.FFmpegAudioFile(file)
+    frames, sr = librosa.load(aro)
+    aro.close()
     if resample is not None and resample != sr:
         frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
         sr = resample
@@ -92,6 +97,19 @@ def preprocess_file(file):
             # print(s_data.shape, sr, seg_length, seg_length * sr)
         else:
             s_data = frames[start_offset : start_offset + sample_size]
+        # print(
+        #     start_offset,
+        #     sample_size,
+        #     len(s_data),
+        #     "data max is",
+        #     np.amax(s_data),
+        #     s_data.dtype,
+        # )
+        # print(s_data[0])
+        # 1 / 0
+        # for d in s_data:
+        #     print(d)
+        # print("end")
         mel = librosa.feature.melspectrogram(
             y=s_data,
             sr=sr,
@@ -111,6 +129,7 @@ def preprocess_file(file):
         # if i >= 60:
         # plot_mel(mel, i)
         # plot_mel(mel)
+        # print("mel max is", np.amax(mel))
         mel_m = tf.reduce_mean(mel, axis=1)
         # print("Mean at ", i, " is", mel_m)
         # gp not sure to mean over axis 0 or 1
@@ -124,6 +143,7 @@ def preprocess_file(file):
         mel = mel[:, :, np.newaxis]
         # print("mean of mel is", round(1000 * np.mean(mel), 4))
         mels.append(mel)
+        # break
     return mels, length
 
 
@@ -226,12 +246,14 @@ def main():
         data, length = preprocess_file(file)
         data = np.array(data)
 
-    print("data is", data.shape)
+    print("data is", data.shape, data.dtype, np.amax(data))
     predictions = model.predict(np.array(data))
     tracks = []
     start = 0
     active_tracks = {}
     for prediction in predictions:
+        print("at", start, np.round(prediction * 100))
+        # break
         if start + seg_length > length:
             print("final one")
             start = length - seg_length
@@ -277,7 +299,6 @@ def main():
             label = r[1]
 
             if specific_bird and label == "bird":
-
                 print("got specific bird so ignoring bird track")
                 continue
             track = active_tracks.get(label, None)

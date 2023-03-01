@@ -9,7 +9,8 @@ import random
 import datetime
 import logging
 import pickle
-import pytz
+
+# import pytz
 import json
 from dateutil.parser import parse as parse_date
 import sys
@@ -169,7 +170,6 @@ class AudioModel:
             predicted_categories = np.int64(tf.argmax(predictions, axis=1))
             test_results_acc = {}
             for i, l in enumerate(remapped.keys()):
-
                 y_mask = true_categories == i
                 predicted_y = predicted_categories[y_mask]
                 correct = np.sum(predicted_y == true_categories[y_mask])
@@ -479,7 +479,6 @@ class AudioModel:
     def get_base_model(self, input_shape, weights="imagenet"):
         pretrained_model = self.model_name
         if pretrained_model == "resnet":
-
             return (
                 tf.keras.applications.ResNet50(
                     weights=weights,
@@ -786,6 +785,24 @@ def main():
             reshuffle=False,
             batch_size=64,
         )
+
+        hamming = tfa.metrics.HammingLoss(mode="multilabel", threshold=0.8)
+
+        prec_at_k = tf.keras.metrics.TopKCategoricalAccuracy()
+        model.compile(
+            optimizer=optimizer(lr=1),
+            loss=loss(True),
+            metrics=[
+                acc,  #
+                tf.keras.metrics.AUC(),
+                tf.keras.metrics.Recall(),
+                tf.keras.metrics.Precision(),
+                hamming,
+                # f1,
+                prec_at_k,
+            ],
+        )
+        # self.model.evaluate(dataset)
 
         if dataset is not None:
             confusion(model, labels, dataset, args.confusion)

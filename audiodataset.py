@@ -2,17 +2,19 @@ import logging
 import json
 from pathlib import Path
 from collections import namedtuple
+
 from dateutil.parser import parse as parse_date
 import soundfile as sf
 
 import librosa
+
 import matplotlib.pyplot as plt
 
 import tensorflow as tf
 import numpy as np
 import math
 import librosa.display
-import matplotlib.pyplot as plt
+
 import audioread.ffdec  # Use ffmpeg decoder
 
 SEGMENT_LENGTH = 2  # seconds
@@ -248,7 +250,6 @@ class Recording:
         self.load_samples()
 
     def load_samples(self):
-
         global SAMPLE_GROUP_ID
         SAMPLE_GROUP_ID += 1
         sorted_tracks = sorted(
@@ -268,7 +269,6 @@ class Recording:
         bin_id = f"{self.id}-{bin}"
         tracks = [track.id]
         while True:
-
             # start = round(start, 1)
             # end = round(end, 1)
             other_tracks = []
