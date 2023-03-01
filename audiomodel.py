@@ -681,6 +681,7 @@ def get_preprocess_fn(pretrained_model):
 
 def loss(multi_label=False, smoothing=0):
     if multi_label:
+        logging.info("Using focal binary cross")
         return tf.keras.losses.BinaryFocalCrossentropy(
             gamma=2.0, from_logits=False, apply_class_balancing=True
         )
