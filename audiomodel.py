@@ -825,13 +825,14 @@ def main():
         )
 
         hamming = tfa.metrics.HammingLoss(mode="multilabel", threshold=0.8)
+        acc = tf.metrics.binary_accuracy
 
         prec_at_k = tf.keras.metrics.TopKCategoricalAccuracy()
         model.compile(
             optimizer=optimizer(lr=1),
             loss=loss(True),
             metrics=[
-                # acc,  #
+                acc,  #
                 tf.keras.metrics.AUC(),
                 tf.keras.metrics.Recall(),
                 tf.keras.metrics.Precision(),
