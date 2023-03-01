@@ -690,6 +690,8 @@ def confusion(model, labels, dataset, filename="confusion.png"):
                 tn += 1
 
         print("Have", lbl_count)
+        if lbl_count == 0:
+            continue
         print(
             "{}( {}%)\t{}( {}% )".format(
                 tp, round(100 * tp / lbl_count), fp, round(100 * fp / lbl_count)
