@@ -82,7 +82,7 @@ class AudioModel:
         logging.info("Loading %s", weights_file)
         self.model.load_weights(weights_file).expect_partial()
 
-    def cross_fold_train(self, run_name="test", epochs=2, multi=True):
+    def cross_fold_train(self, run_name="test", epochs=15, multi=True):
         datasets = ["other-training-data", "training-data", "chime-training-data"]
         datasets = ["training-data"]
         labels = set()
