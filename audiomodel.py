@@ -539,7 +539,7 @@ class AudioModel:
             logging.info("Loading test")
             self.test, _ = get_dataset(
                 # dir,
-                f"{base_dir}/{training_dir}/test",
+                f"{base_dir}/{d}/test/*.tfrecord",
                 self.labels,
                 batch_size=self.batch_size,
                 image_size=self.input_shape,
