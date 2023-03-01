@@ -669,7 +669,37 @@ def confusion(model, labels, dataset, filename="confusion.png"):
             if p > 0.7:
                 cur_preds.append(i)
         predicted_categories.append(cur_preds)
-    predicted_categories = predicted_categories
+
+    for i, l in enumerate(labels):
+        print("for ", l)
+        lbl_count = 0
+        tp = 0
+        fn = 0
+        fp = 0
+        tn = 0
+        for y, p in zip(true_categories, predicted_categories):
+            if i in true_categories:
+                lbl_count += 1
+                if i in predicted_categories:
+                    tp += 1
+                else:
+                    fn += 1
+            elif i in predicted_categories:
+                fp += 1
+            else:
+                tn += 1
+
+        print("Have", lbl_count)
+        print(
+            "{}( {}%)\t{}( {}% )".format(
+                tp, round(100 * tp / lbl_count), fp, round(100 * fp / lbl_count)
+            )
+        )
+        print(
+            "{}( {}%)\t{}( {}% )".format(
+                tp, round(100 * tn / lbl_count), fp, round(100 * fn / lbl_count)
+            )
+        )
     y_true = mlb.fit_transform(y_true)
     predicted_categories = mlb.fit_transform(predicted_categories)
     cms = multilabel_confusion_matrix(
@@ -802,10 +832,11 @@ def main():
                 prec_at_k,
             ],
         )
-        # self.model.evaluate(dataset)
+        self.model.evaluate(dataset)
 
         if dataset is not None:
             confusion(model, labels, dataset, args.confusion)
+
     else:
         am = AudioModel()
         if args.cross:
