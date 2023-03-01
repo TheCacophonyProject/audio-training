@@ -697,12 +697,12 @@ def confusion(model, labels, dataset, filename="confusion.png"):
             continue
         print(
             "{}( {}%)\t{}( {}% )".format(
-                tp, round(100 * tp / lbl_count), fp, round(100 * fp / lbl_count)
+                tp, round(100 * tp / lbl_count), fp, round(100 * fp / neg_c)
             )
         )
         print(
             "{}( {}%)\t{}( {}% )".format(
-                tp, round(100 * tn / neg_c), fp, round(100 * fn / neg_c)
+                tp, round(100 * tn / neg_c), fp, round(100 * fn / lbl_count)
             )
         )
     y_true = mlb.fit_transform(y_true)
