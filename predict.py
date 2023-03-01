@@ -139,7 +139,7 @@ def preprocess_file(file):
         empty = np.zeros(((80, 151)))
         empty[:, : mel.shape[1]] = mel
         mel = empty
-        mel = mel - mel_m
+        # mel = mel - mel_m
         mel = mel[:, :, np.newaxis]
         # print("mean of mel is", round(1000 * np.mean(mel), 4))
         mels.append(mel)
@@ -178,16 +178,16 @@ def main():
     )
     # model = tf.keras.models.load_model(str(load_model))
 
-    # model.load_weights(load_model / "val_hamming_loss").expect_partial()
+    model.load_weights(load_model / "val_loss").expect_partial()
     with open(load_model / "metadata.txt", "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
     multi_label = meta.get("multi_label", True)
     segment_length = meta.get("segment_length", 1.5)
-    segment_stride = meta.get("segment_stride", 1)
-    print("stride is", segment_stride)
+    segment_stride = meta.get("segment_stride", 2)
+    # print("stride is", segment_stride)
     # segment_length = 2
-    # segment_stride = 1
+    segment_stride = 0.5
     # multi_label = True
     # labels = ["bird", "human"]
     model_name = "inceptionv3"
@@ -257,7 +257,6 @@ def main():
         if start + seg_length > length:
             print("final one")
             start = length - seg_length
-        print("checking", start)
         results = []
         track_labels = []
         if multi_label:
@@ -265,7 +264,6 @@ def main():
             for i, p in enumerate(prediction):
                 if p >= 0.7:
                     label = labels[i]
-                    print("At", start, " have", label, round(p * 100))
                     results.append((p, label))
                     track_labels.append(label)
         else:
@@ -288,7 +286,6 @@ def main():
                 track.label == "bird" and specific_bird
             ):
                 if specific_bird:
-                    print("got specific bird so ending bird track")
                     track.end = start
                 else:
                     track.end = track.end - segment_length / 2
@@ -299,7 +296,6 @@ def main():
             label = r[1]
 
             if specific_bird and label == "bird":
-                print("got specific bird so ignoring bird track")
                 continue
             track = active_tracks.get(label, None)
             if track is None:

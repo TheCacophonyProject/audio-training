@@ -49,8 +49,8 @@ class AudioModel:
     VERSION = 1.0
 
     def __init__(self):
-        self.checkpoint_folder = "./train/checkpoints"
-        self.log_dir = "./train/logs"
+        self.checkpoint_folder = Path("./train/checkpoints")
+        self.log_dir = Path("./train/logs")
         self.data_dir = "."
         self.model_name = "inceptionv3"
         self.batch_size = 32
@@ -268,7 +268,9 @@ class AudioModel:
                 #     json_history[key] = item
 
     def train_model(self, run_name="test", epochs=15, weights=None, multi_label=False):
-        self.load_datasets(self.data_dir, self.labels, self.input_shape)
+        self.log_dir = self.log_dir / run_name
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.load_datasets(self.data_dir, self.labels, self.input_shape, test=True)
         self.build_model(len(self.labels), multi_label=multi_label)
 
         if weights is not None:
@@ -469,7 +471,14 @@ class AudioModel:
             monitor="val_loss", verbose=1, mode="min"
         )
         checks.append(reduce_lr_callback)
-
+        print(str(self.log_dir / "cm"))
+        file_writer_cm = tf.summary.create_file_writer(str(self.log_dir / "cm"))
+        cm_callback = tf.keras.callbacks.LambdaCallback(
+            on_epoch_end=lambda epoch, logs: log_confusion_matrix(
+                epoch, logs, self.model, self.validation, file_writer_cm, self.labels
+            )
+        )
+        checks.append(cm_callback)
         return checks
 
     def load_datasets(self, base_dir, labels, shape, test=False):
@@ -525,14 +534,16 @@ class AudioModel:
             excluded_labels=excluded_labels,
             # preprocess_fn=self.preprocess_fn,
         )
+        # test = False
         if test:
             logging.info("Loading test")
             self.test, _ = get_dataset(
                 # dir,
                 f"{base_dir}/{training_dir}/test",
                 self.labels,
-                batch_size=batch_size,
+                batch_size=self.batch_size,
                 image_size=self.input_shape,
+                resample=False,
                 excluded_labels=excluded_labels,
                 # preprocess_fn=self.preprocess_fn,
             )
@@ -716,6 +727,76 @@ def optimizer(lr=None, decay=None):
     return optimizer
 
 
+def plot_to_image(figure):
+    import io
+
+    """Converts the matplotlib plot specified by 'figure' to a PNG image and
+    returns it. The supplied figure is closed and inaccessible after this call."""
+    # Save the plot to a PNG in memory.
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png")
+    # Closing the figure prevents it from being displayed directly inside
+    # the notebook.
+    plt.close(figure)
+    buf.seek(0)
+    # Convert PNG buffer to TF image
+    image = tf.image.decode_png(buf.getvalue(), channels=4)
+    # Add the batch dimension
+    image = tf.expand_dims(image, 0)
+    return image
+
+
+def log_confusion_matrix(epoch, logs, model, dataset, writer, labels):
+    # Use the model to predict the values from the validation dataset.
+    from sklearn.preprocessing import MultiLabelBinarizer
+
+    mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
+    true_categories = [y for x, y in dataset]
+    true_categories = tf.concat(true_categories, axis=0)
+    y_true = []
+    for y in true_categories:
+        non_zero = tf.where(y).numpy()
+        y_true.append(list(non_zero.flatten()))
+    y_true = y_true
+
+    true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    y_pred = model.predict(dataset)
+
+    predicted_categories = []
+    for pred in y_pred:
+        cur_preds = []
+        for i, p in enumerate(pred):
+            if p > 0.7:
+                cur_preds.append(i)
+        predicted_categories.append(cur_preds)
+
+    y_true = mlb.fit_transform(y_true)
+    predicted_categories = mlb.fit_transform(predicted_categories)
+    cms = multilabel_confusion_matrix(
+        y_true, predicted_categories, labels=np.arange(len(labels))
+    )
+
+    for i, cm in enumerate(cms):
+        print("saving cm for", labels[i])
+        cm2 = np.empty((cm.shape))
+        cm2[0] = np.flip(cm[1])
+        cm2[1] = np.flip(cm[0])
+        figure = plot_confusion_matrix(cm2, class_names=[labels[i], "not"])
+        # logging.info("Saving confusion to %s", filename)
+        # plt.savefig(f"{labels[i]}-{filename}", format="png")
+        #
+        # cm = confusion_matrix(
+        #     true_categories, predicted_categories, labels=np.arange(len(model.labels))
+        # )
+        # Log the confusion matrix as an image summary.
+        # figure = plot_confusion_matrix(cm, class_names=model.labels)
+        cm_image = plot_to_image(figure)
+
+        # Log the confusion matrix as an image summary.
+        with writer.as_default():
+            tf.summary.image(f"Confusion Matrix {i}", cm_image, step=epoch)
+
+
 def confusion(model, labels, dataset, filename="confusion.png"):
     from sklearn.preprocessing import MultiLabelBinarizer
 
@@ -873,7 +954,7 @@ def main():
             compile=False,
         )
 
-        model.load_weights(load_model / "val_hamming_loss").expect_partial()
+        model.load_weights(load_model / "val_loss").expect_partial()
 
         meta_file = load_model / "metadata.txt"
         print("Meta", meta_file)
@@ -938,6 +1019,7 @@ def parse_args():
 
     args = parser.parse_args()
     print(args)
+    args.multi = args.multi > 0
     return args
 
 
