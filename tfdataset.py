@@ -82,6 +82,7 @@ def load_dataset(filenames, num_labels, args):
     preprocess_fn = args.get("preprocess_fn")
     one_hot = args.get("one_hot", True)
     dataset = dataset.apply(tf.data.experimental.ignore_errors())
+    dataset = dataset.filter(filter_short)
     dataset = dataset.map(
         partial(
             read_tfrecord,
@@ -103,7 +104,13 @@ def load_dataset(filenames, num_labels, args):
     return dataset
 
 
-#
+def filter_short(example):
+    tfrecord_format = {"audio/raw_length": tf.io.FixedLenFeature((), tf.float32)}
+    example = tf.io.parse_single_example(example, tfrecord_format)
+    raw_length = tf.cast(example["audio/raw_length"], tf.float32)
+    return raw_length != 2.0
+
+
 def preprocess(data):
     x = tf.stack(fields[:-1])
     y = tf.stack(fields[-1:])
@@ -180,7 +187,6 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
 
 
 def get_dataset(filenames, labels, **args):
-
     excluded_labels = args.get("excluded_labels", [])
 
     global extra_label_map
@@ -251,7 +257,6 @@ def get_weighting(dataset, labels):
         if l in ["bird", "noise", "whistler", "morepork", "kiwi"]:
             continue
         dont_weigh.append(l)
-    print("dont weight", dont_weigh)
     num_labels = len(labels)
     dist = get_distribution(dataset)
     zeros = dist[dist == 0]
@@ -277,6 +282,7 @@ def get_weighting(dataset, labels):
             weights[i] = max(weights[i], 0.25)
             # min(weight)
         print("WEights for ", labels[i], weights[i])
+    return weights
 
 
 def resample(dataset, labels):
@@ -360,7 +366,6 @@ def read_tfrecord(
         # "audio/mel_w": tf.io.FixedLenFeature((), tf.int64),
         # "audio/mel_h": tf.io.FixedLenFeature((), tf.int64),
         # "audio/mfcc_w": tf.io.FixedLenFeature((), tf.int64),
-        # "audio/mfcc_h": tf.io.FixedLenFeature((), tf.int64),
         # "audio/raw": tf.io.FixedLenFeature(
         #     [
         #         144000,
@@ -371,7 +376,6 @@ def read_tfrecord(
 
     example = tf.io.parse_single_example(example, tfrecord_format)
 
-    # audio_data = example["audio/sftf"]
     # label = tf.cast(example["audio/class/label"], tf.int32)
 
     # raw = example["audio/raw"]
@@ -496,6 +500,7 @@ def class_func(features, label):
 
 
 from collections import Counter
+
 
 # test stuff
 def main():
@@ -660,5 +665,4 @@ def init_logging():
 
 
 if __name__ == "__main__":
-
     main()
