@@ -415,11 +415,11 @@ def read_tfrecord(
         # mel = tfio.audio.freq_mask(mel, param=10)
         # mel = tfio.audio.time_mask(mel, param=10)
     mean_sub = True
-    mel_m = tf.reduce_mean(mel, axis=1)
+    # mel_m = tf.reduce_mean(mel, axis=1)
     # gp not sure to mean over axis 0 or 1
-    mel_m = tf.expand_dims(mel_m, axis=1)
+    # mel_m = tf.expand_dims(mel_m, axis=1)
     # mean over each mel bank
-    mel = mel - mel_m
+    # mel = mel - mel_m
     mel = tf.expand_dims(mel, axis=2)
     #
     # # print(mel.shape)
