@@ -684,11 +684,11 @@ def confusion(model, labels, dataset, filename="confusion.png"):
                 if i in p:
                     tp += 1
                 else:
-                    fn += 1
+                    fp += 1
             else:
                 neg_c += 1
                 if i in p:
-                    fp += 1
+                    fn += 1
                 else:
                     tn += 1
 
@@ -697,12 +697,12 @@ def confusion(model, labels, dataset, filename="confusion.png"):
             continue
         print(
             "{}( {}%)\t{}( {}% )".format(
-                tp, round(100 * tp / lbl_count), fp, round(100 * fp / neg_c)
+                tp, round(100 * tp / lbl_count), fp, round(100 * fp / lbl_count)
             )
         )
         print(
             "{}( {}%)\t{}( {}% )".format(
-                tp, round(100 * tn / lbl_count), fp, round(100 * fn / neg_c)
+                tp, round(100 * tn / neg_c), fp, round(100 * fn / neg_c)
             )
         )
     y_true = mlb.fit_transform(y_true)
