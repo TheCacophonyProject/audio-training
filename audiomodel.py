@@ -677,17 +677,20 @@ def confusion(model, labels, dataset, filename="confusion.png"):
         fn = 0
         fp = 0
         tn = 0
-        for y, p in zip(true_categories, predicted_categories):
+        neg_c = 0
+        for y, p in zip(y_true, predicted_categories):
             if i in y:
                 lbl_count += 1
                 if i in p:
                     tp += 1
                 else:
                     fn += 1
-            elif i in p:
-                fp += 1
             else:
-                tn += 1
+                neg_c += 1
+                if i in p:
+                    fp += 1
+                else:
+                    tn += 1
 
         print("Have", lbl_count)
         if lbl_count == 0:
@@ -699,7 +702,7 @@ def confusion(model, labels, dataset, filename="confusion.png"):
         )
         print(
             "{}( {}%)\t{}( {}% )".format(
-                tp, round(100 * tn / lbl_count), fp, round(100 * fn / lbl_count)
+                tp, round(100 * tn / neg_c), fp, round(100 * fn / neg_c)
             )
         )
     y_true = mlb.fit_transform(y_true)
@@ -825,7 +828,7 @@ def main():
             optimizer=optimizer(lr=1),
             loss=loss(True),
             metrics=[
-                acc,  #
+                # acc,  #
                 tf.keras.metrics.AUC(),
                 tf.keras.metrics.Recall(),
                 tf.keras.metrics.Precision(),
@@ -834,7 +837,7 @@ def main():
                 prec_at_k,
             ],
         )
-        self.model.evaluate(dataset)
+        model.evaluate(dataset)
 
         if dataset is not None:
             confusion(model, labels, dataset, args.confusion)
