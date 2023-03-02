@@ -52,6 +52,14 @@ morepork_mel = (more_lower, more_max)
 morepork_mask = np.zeros((mel_s), dtype=np.bool)
 morepork_mask[morepork_mel[0] : morepork_mel[0] + morepork_mel[1]] = 1
 
+with open(str("zvalues.txt"), "r") as f:
+    zvals = json.load(f)
+
+zvals["mean"] = np.array(zvals["mean"])
+zvals["std"] = np.array(zvals["std"])
+
+Z_NORM = True
+
 
 def load_dataset(filenames, num_labels, args):
     #
@@ -422,7 +430,9 @@ def read_tfrecord(
     # mel = mel - mel_m
     mel = tf.expand_dims(mel, axis=2)
     #
-    # # print(mel.shape)
+    print(mel.shape)
+    if Z_NORM:
+        mel = (mel - zvals["mean"]) / zvals["std"]
     # # mel_h = tf.experimental.numpy.copy(mel)
     # # # print(mel_h.shape)
     # # mel_h = mel_h[human_mel[0] : human_mel[0] + human_mel[1]]
@@ -554,8 +564,8 @@ def calc_mean():
 # test stuff
 def main():
     init_logging()
-    calc_mean()
-    return
+    # calc_mean()
+    # return
     datasets = ["other-training-data", "training-data", "chime-training-data"]
     datasets = ["training-data"]
     filenames = []
