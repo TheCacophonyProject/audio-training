@@ -80,8 +80,8 @@ def create_tf_example(sample, labels):
           ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
     data = sample.spectogram_data
-    audio_data = librosa.amplitude_to_db(data.spect, ref=np.max)
-    mel = librosa.power_to_db(data.mel, ref=np.max)
+    audio_data = librosa.amplitude_to_db(data.spect)
+    mel = librosa.power_to_db(data.mel)
     tags = sample.tags_s
     track_ids = " ".join(map(str, sample.track_ids))
     feature_dict = {
@@ -150,7 +150,6 @@ def get_data(args):
 
 
 def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
-
     output_path = Path(output_path)
     if output_path.is_dir():
         logging.info("Clearing dir %s", output_path)

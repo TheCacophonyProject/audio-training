@@ -119,7 +119,7 @@ def preprocess_file(file):
             fmax=11000,
             n_mels=80,
         )
-        mel = librosa.power_to_db(mel, ref=np.max)
+        mel = librosa.power_to_db(mel)
 
         # print("loading from ", start_offset / sr)
         # sf.write(f"test{i}.wav", s_data, sr, subtype="PCM_24")

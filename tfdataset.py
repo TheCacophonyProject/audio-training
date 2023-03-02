@@ -57,8 +57,8 @@ with open(str("zvalues.txt"), "r") as f:
 
 zvals["mean"] = np.array(zvals["mean"])
 zvals["std"] = np.array(zvals["std"])
-
-Z_NORM = True
+Z_NORM = False
+# Z_NORM = True
 
 
 def load_dataset(filenames, num_labels, args):
@@ -90,7 +90,7 @@ def load_dataset(filenames, num_labels, args):
     preprocess_fn = args.get("preprocess_fn")
     one_hot = args.get("one_hot", True)
     dataset = dataset.apply(tf.data.experimental.ignore_errors())
-    dataset = dataset.filter(filter_short)
+    # dataset = dataset.filter(filter_short)
     dataset = dataset.map(
         partial(
             read_tfrecord,
