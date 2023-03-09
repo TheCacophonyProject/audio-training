@@ -127,7 +127,7 @@ def get_data(args):
             aro.close()
         except:
             pass
-        return (rec_id, sr, None)
+        return (rec_id, None, None)
     if resample is not None and resample != sr:
         frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
         sr = resample
