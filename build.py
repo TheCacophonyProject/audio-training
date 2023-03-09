@@ -24,11 +24,10 @@ import warnings
 # warnings.filterwarnings("ignore")
 # remove librosa pysound warnings
 
-MAX_TEST_TRACKS = 1
-MAX_TEST_SAMPLES = 1
-
-MIN_SAMPLES = 1
-MIN_TRACKS = 1
+MAX_TEST_TRACKS = 10
+MAX_TEST_SAMPLES = 10
+MIN_SAMPLES = 10
+MIN_TRACKS = 10
 LOW_SAMPLES_LABELS = []
 
 
