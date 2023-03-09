@@ -17,7 +17,7 @@ import librosa.display
 
 import audioread.ffdec  # Use ffmpeg decoder
 
-SEGMENT_LENGTH = 2  # seconds
+SEGMENT_LENGTH = 2.5  # seconds
 SEGMENT_STRIDE = 1  # of a second
 FRAME_LENGTH = 255
 
@@ -557,26 +557,28 @@ def load_data(
     data_length = segment_l
     try:
         # zero pad shorter
-        if end > len(frames):
-            sub = frames[start:end]
+        s_data = frames[start : int(segment_l * sr + start)]
+        data_length = len(s_data) / sr
+        # if end > len(frames):
+        #     sub = frames[start:end]
+        #     s_data = np.zeros(int(segment_l * sr))
+        #     # randomize zero padding location
+        #     extra_frames = len(s_data) - len(sub)
+        #     # offset = np.random.randint(0, extra_frames)
+        #     offset = 0
+        #     s_data[offset : offset + len(sub)] = sub
+        #     data_length = len(sub) / sr
+        # else:
+        #     s_data = frames[start:end]
+        if len(s_data) < int(segment_l * sr):
+            sub = s_data
+            data_length = len(sub) / sr
             s_data = np.zeros(int(segment_l * sr))
             # randomize zero padding location
-            extra_frames = len(s_data) - len(sub)
+            # extra_frames = len(s_data) - len(sub)
             # offset = np.random.randint(0, extra_frames)
             offset = 0
             s_data[offset : offset + len(sub)] = sub
-            data_length = len(sub) / sr
-        else:
-            s_data = frames[start:end]
-            if len(s_data) < int(segment_l * sr):
-                sub = s_data
-                data_length = len(sub) / sr
-                s_data = np.zeros(int(segment_l * sr))
-                # randomize zero padding location
-                # extra_frames = len(s_data) - len(sub)
-                # offset = np.random.randint(0, extra_frames)
-                offset = 0
-                s_data[offset : offset + len(sub)] = sub
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
         # these should b derivable from spectogram but the librosa exmaples produce different results....
         mel = librosa.feature.melspectrogram(

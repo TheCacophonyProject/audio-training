@@ -100,6 +100,7 @@ def load_dataset(filenames, num_labels, args):
             augment=augment,
             preprocess_fn=preprocess_fn,
             one_hot=one_hot,
+            mean_sub=args.get("mean_sub", False),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -358,6 +359,7 @@ def read_tfrecord(
     augment=False,
     preprocess_fn=None,
     one_hot=True,
+    mean_sub=False,
 ):
     tf_more_mask = tf.constant(morepork_mask)
     tf_human_mask = tf.constant(human_mask)
@@ -422,16 +424,17 @@ def read_tfrecord(
         # tf.random.uniform()
         # mel = tfio.audio.freq_mask(mel, param=10)
         # mel = tfio.audio.time_mask(mel, param=10)
-    mean_sub = True
-    # mel_m = tf.reduce_mean(mel, axis=1)
-    # gp not sure to mean over axis 0 or 1
-    # mel_m = tf.expand_dims(mel_m, axis=1)
-    # mean over each mel bank
-    # mel = mel - mel_m
+    if mean_sub:
+        print("Subbing mean")
+        mel_m = tf.reduce_mean(mel, axis=1)
+        # gp not sure to mean over axis 0 or 1
+        mel_m = tf.expand_dims(mel_m, axis=1)
+        # mean over each mel bank
+        mel = mel - mel_m
     mel = tf.expand_dims(mel, axis=2)
     #
-    print(mel.shape)
     if Z_NORM:
+        print("Subbing znorm")
         mel = (mel - zvals["mean"]) / zvals["std"]
     # # mel_h = tf.experimental.numpy.copy(mel)
     # # # print(mel_h.shape)

@@ -63,6 +63,7 @@ class AudioModel:
         self.learning_rate = 0.01
         self.segment_length = None
         self.segment_stride = None
+        self.mean_sub = False
         self.load_meta()
 
     def load_meta(self):
@@ -124,6 +125,7 @@ class AudioModel:
             shuffle=False,
             deterministic=True,
             excluded_labels=excluded_labels,
+            mean_sub=self.mean_sub
             # preprocess_fn=self.preprocess_fn,
         )
         filenames = filenames[test_i:]
@@ -144,6 +146,7 @@ class AudioModel:
                 augment=False,
                 resample=False,
                 excluded_labels=excluded_labels,
+                mean_sub=self.mean_sub
                 # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
             )
             self.validation, remapped = get_dataset(
@@ -155,6 +158,7 @@ class AudioModel:
                 augment=False,
                 resample=False,
                 excluded_labels=excluded_labels,
+                mean_sub=self.mean_sub
                 # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
             )
             # self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
@@ -383,6 +387,7 @@ class AudioModel:
         model_stats["multi_label"] = multi_label
         model_stats["segment_stride"] = self.segment_stride
         model_stats["segment_length"] = self.segment_length
+        model_stats["mean_sub"] = self.mean_sub
 
         # model_stats["hyperparams"] = self.params
         model_stats["training_date"] = str(time.time())
@@ -539,6 +544,7 @@ class AudioModel:
             augment=False,
             resample=False,
             excluded_labels=excluded_labels,
+            mean_sub=self.mean_sub
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
         filenames = []
@@ -554,6 +560,7 @@ class AudioModel:
             image_size=self.input_shape,
             resample=False,
             excluded_labels=excluded_labels,
+            mean_sub=self.mean_sub
             # preprocess_fn=self.preprocess_fn,
         )
 
@@ -571,6 +578,7 @@ class AudioModel:
                 image_size=self.input_shape,
                 resample=False,
                 excluded_labels=excluded_labels,
+                mean_sub=self.mean_sub
                 # preprocess_fn=self.preprocess_fn,
             )
         self.remapped = remapped
@@ -998,6 +1006,7 @@ def main():
             deterministic=True,
             reshuffle=False,
             batch_size=64,
+            mean_sub=self.mean_sub,
         )
 
         hamming = tfa.metrics.HammingLoss(mode="multilabel", threshold=0.8)

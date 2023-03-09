@@ -11,6 +11,7 @@ import logging
 import pickle
 import json
 import audioread.ffdec  # Use ffmpeg decoder
+import math
 
 # from dateutil.parser import parse as parse_date
 import sys
@@ -83,7 +84,7 @@ def preprocess_file(file):
         start_offset = i * sr_stride
 
         end = i * stride + seg_length
-        print("start", i * stride)
+        # print("start", i * stride)
 
         if end > length:
             s_data = frames[-sample_size:]
@@ -119,6 +120,15 @@ def preprocess_file(file):
             fmax=11000,
             n_mels=80,
         )
+        half = mel[:, 75:]
+        if np.amax(half) == np.amin(half):
+            print("mel max is same")
+            strides_per = math.ceil(seg_length / 2.0 / stride) + 1
+            mels = mels[:-strides_per]
+            print("remove last ", strides_per, len(mels))
+            return mels, length
+            # 1 / 0
+
         mel = librosa.power_to_db(mel)
 
         # print("loading from ", start_offset / sr)
@@ -129,7 +139,7 @@ def preprocess_file(file):
         # if i >= 60:
         # plot_mel(mel, i)
         # plot_mel(mel)
-        # print("mel max is", np.amax(mel))
+        print("mel max is", np.amax(mel), np.amin(mel), np.mean(mel))
         mel_m = tf.reduce_mean(mel, axis=1)
         # print("Mean at ", i, " is", mel_m)
         # gp not sure to mean over axis 0 or 1
@@ -156,7 +166,8 @@ def plot_mel(mel, i=0):
     )
     # plt.show()
     plt.savefig(f"mel-power-{i}.png", format="png")
-    # plt.clf()
+    plt.clf()
+    plt.close()
 
 
 def main():
@@ -178,7 +189,9 @@ def main():
     )
     # model = tf.keras.models.load_model(str(load_model))
 
-    model.load_weights(load_model / "val_loss").expect_partial()
+    # model.load_weights(load_model / "val_loss").expect_partial()
+    # model.save(load_model / "frozen_model")
+    # 1 / 0
     with open(load_model / "metadata.txt", "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
@@ -190,8 +203,6 @@ def main():
     segment_stride = 0.5
     # multi_label = True
     # labels = ["bird", "human"]
-    model_name = "inceptionv3"
-    model.summary()
     start = 0
     if args.dataset:
         data_path = Path(args.dataset)
@@ -262,14 +273,14 @@ def main():
         if multi_label:
             # print("doing multi", prediction * 100)
             for i, p in enumerate(prediction):
-                if p >= 0.7:
+                if p >= 0.8:
                     label = labels[i]
                     results.append((p, label))
                     track_labels.append(label)
         else:
             best_i = np.argmax(prediction)
             best_p = prediction[best_i]
-            if best_p > 0.7:
+            if best_p > 0.8:
                 label = labels[best_i]
                 results.append((best_p, label))
                 track_labels.append[label]
