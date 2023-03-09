@@ -163,7 +163,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
         key=lambda sample: sample.rec_id,
     )
     # keys = list(samples.keys())
-    # np.random.shuffle(samples)
+    np.random.shuffle(samples)
 
     total_num_annotations_skipped = 0
     num_labels = len(labels)
@@ -179,7 +179,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
         name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
         writers.append(tf.io.TFRecordWriter(str(output_path / name)))
     logging.info("Saving %s samples", len(samples))
-    load_first = 400
+    load_first = 100
     try:
         count = 0
         recs = {}
@@ -197,7 +197,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                         (sample.rec_id, sample.rec.filename, 48000, sample.rec.samples)
                     )
 
-            with Pool(processes=8) as pool:
+            with Pool(processes=3) as pool:
                 for i in pool.imap_unordered(get_data, pool_data):
                     rec_id = i[0]
                     sr = i[1]

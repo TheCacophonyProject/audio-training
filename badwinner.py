@@ -28,8 +28,8 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
     input = tf.keras.Input(shape=(*input_shape, 1), name="input")
     # x = norm_layer(input)
     filters = 16
-    if multi_label:
-        filters = 32
+    # if multi_label:
+    # filters = 32
     x = tf.keras.layers.BatchNormalization()(input)
     x = tf.keras.layers.Conv2D(filters, (3, 3), activation=tf.keras.layers.LeakyReLU())(
         x
@@ -48,10 +48,10 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
     # x = tf.keras.layers.Conv2D(filters, (1, 3), activation=tf.keras.layers.LeakyReLU())(x)
     # x = tf.keras.layers.MaxPool2D((1, 3))(x)
     x = tf.keras.layers.Dropout(0.5)(x)
-    if num_labels > 1:
-        dense = [1024, 512]
-    else:
-        dense = [256, 32]
+    # if num_labels > 1:
+    # dense = [1024, 512]
+    # else:
+    dense = [256, 32]
     for d in dense:
         x = tf.keras.layers.Dense(d, activation=tf.keras.layers.LeakyReLU())(x)
         x = tf.keras.layers.Dropout(0.5)(x)
