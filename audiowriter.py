@@ -44,7 +44,7 @@ import tensorflow as tf
 import tfrecord_util
 import librosa
 
-from audiodataset import load_data, SpectrogramData
+from audiodataset import load_data, SpectrogramData, SEGMENT_LENGTH
 from multiprocessing import Pool
 
 
@@ -116,10 +116,25 @@ def get_data(args):
     filename = args[1]
     resample = args[2]
     samples = args[3]
-    print("getting data for", filename, resample, len(samples))
+    samples = sorted(
+        samples,
+        key=lambda sample: sample.start,
+    )
+    start = samples[0].start
+    end = samples[-1].end
+    print(
+        "getting data for",
+        filename,
+        resample,
+        len(samples),
+        " starting",
+        start,
+        "ending",
+        end,
+    )
     try:
         aro = audioread.ffdec.FFmpegAudioFile(filename)
-        frames, sr = librosa.load(aro)
+        frames, sr = librosa.load(aro, sr=None, offset=start, duration=end - start)
         aro.close()
     except Exception as ex:
         print("Error loading rec ", filename, ex)
@@ -131,13 +146,15 @@ def get_data(args):
     if resample is not None and resample != sr:
         frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
         sr = resample
+
     data = [None] * len(samples)
 
     for i, sample in enumerate(samples):
         try:
             spectogram, mel, mfcc, s_data, raw_length = load_data(
-                sample.start, frames, sr, end=sample.end
+                sample.start - start, frames, sr, end=sample.end - start
             )
+            # print("adjusted start is", sample.start, " becomes", sample.start - start)
             if spectogram is None:
                 print("error loading", rec_id)
                 continue
@@ -179,24 +196,25 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
         name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
         writers.append(tf.io.TFRecordWriter(str(output_path / name)))
     logging.info("Saving %s samples", len(samples))
-    load_first = 100
+    load_first = 400
     try:
         count = 0
-        recs = {}
         while len(samples) > 0:
             local_set = samples[:load_first]
             samples = samples[load_first:]
             loaded = []
             pool_data = []
+            samples_by_rec = {}
             for sample in local_set:
-                if sample.rec_id not in recs:
-                    # sample.rec.get_data(resample=48000)
-                    recs[sample.rec_id] = sample.rec
-                    # sample.rec.rec_data = None
-                    pool_data.append(
-                        (sample.rec_id, sample.rec.filename, 48000, sample.rec.samples)
-                    )
-
+                if sample.rec_id not in samples_by_rec:
+                    samples_by_rec[sample.rec_id] = [sample]
+                else:
+                    samples_by_rec[sample.rec_id].append(sample)
+            for rec_id, rec_samples in samples_by_rec.items():
+                # sample.rec.rec_data = None
+                pool_data.append(
+                    (rec_id, rec_samples[0].rec.filename, 48000, rec_samples)
+                )
             with Pool(processes=3) as pool:
                 for i in pool.imap_unordered(get_data, pool_data):
                     rec_id = i[0]
@@ -204,24 +222,11 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     data = i[2]
                     if data is None:
                         continue
-                    rec = recs[rec_id]
-                    rec.sample_rate = sr
-                    for sample, d in zip(rec.samples, data):
+                    rec_samples = samples_by_rec[rec_id]
+                    rec_samples[0].rec.sample_rate = sr
+                    for sample, d in zip(rec_samples, data):
                         sample.spectogram_data = d
                         sample.sr = sr
-                        # print("setting data", d is not None)
-            # loaded.append(sample)
-            # for sample in local_set:
-            #     data = None
-            #     try:
-            #         data = sample.get_data(resample=48000)
-            #     except:
-            #         logging.error("Error getting data for %s", sample, exc_info=True)
-            #     if data is None:
-            #         continue
-            #     for d in data:
-            #         loaded.append((d, sample))
-
             loaded = np.array(local_set, dtype=object)
             np.random.shuffle(local_set)
 
@@ -259,3 +264,31 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     logging.info(
         "Finished writing, skipped %d annotations.", total_num_annotations_skipped
     )
+
+
+import sys
+from types import ModuleType, FunctionType
+from gc import get_referents
+
+# Custom objects know their class.
+# Function objects seem to know way too much, including modules.
+# Exclude modules as well.
+BLACKLIST = type, ModuleType, FunctionType
+
+
+def getsize(obj):
+    """sum size of object & members."""
+    if isinstance(obj, BLACKLIST):
+        raise TypeError("getsize() does not take argument of type: " + str(type(obj)))
+    seen_ids = set()
+    size = 0
+    objects = [obj]
+    while objects:
+        need_referents = []
+        for obj in objects:
+            if not isinstance(obj, BLACKLIST) and id(obj) not in seen_ids:
+                seen_ids.add(id(obj))
+                size += sys.getsizeof(obj)
+                need_referents.append(obj)
+        objects = get_referents(*need_referents)
+    return size * 0.000001
