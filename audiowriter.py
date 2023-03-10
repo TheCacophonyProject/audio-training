@@ -121,7 +121,7 @@ def get_data(args):
         key=lambda sample: sample.start,
     )
     start = samples[0].start
-    end = samples[-1].end
+    end = samples[-1].end + SEGMENT_LENGTH
     print(
         "getting data for",
         filename,
