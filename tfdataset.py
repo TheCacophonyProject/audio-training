@@ -10,6 +10,7 @@ import json
 import logging
 import librosa
 import librosa.display
+import scipy.io.wavfile as wf
 
 # import tensorflow_io as tfio
 
@@ -26,9 +27,9 @@ fp = None
 
 DIMENSIONS = (128, 1134)
 
-mel_s = (80, 151)
-sftf_s = (2401, 113)
-mfcc_s = (20, 113)
+mel_s = (80, 188)
+sftf_s = (2401, 188)
+mfcc_s = (20, 188)
 
 mel_bins = librosa.mel_frequencies(128, fmax=48000 / 2)
 human_lowest = np.where(mel_bins < 60)[-1][-1]
@@ -108,8 +109,16 @@ def load_dataset(filenames, num_labels, args):
     filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[1]))
     dataset = dataset.filter(filter_nan)
 
-    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
+    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y[0]), 0)
     dataset = dataset.filter(filter_excluded)
+
+    logit = np.zeros((num_labels), np.bool)
+    morepork_i = 19
+    # labels.index("morepork")
+    logit[morepork_i] = 1
+    logit = tf.constant(logit, dtype=tf.bool)
+    filter_labels = lambda x, y: tf.reduce_any(tf.math.logical_and(y[0] > 0, logit))
+    dataset = dataset.filter(filter_labels)
     return dataset
 
 
@@ -127,7 +136,7 @@ def preprocess(data):
 
 
 def get_distribution(dataset):
-    true_categories = [y for x, y in dataset]
+    true_categories = [y[0] for x, y in dataset]
     true_categories = tf.concat(true_categories, axis=0)
     num_labels = len(true_categories[0])
     if len(true_categories) == 0:
@@ -213,6 +222,7 @@ def get_dataset(filenames, labels, **args):
     logging.info(
         "Remapped %s extra mapping %s new labels %s", remapped, extra_label_map, labels
     )
+    logging.info("MOre pork index%s", labels.index("morepork"))
     # extra tags, since we have multi label problem, morepork is a bird and morepork
     # cat is a cat but also "noise"
 
@@ -370,22 +380,28 @@ def read_tfrecord(
         # "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
         "audio/class/text": tf.io.FixedLenFeature((), tf.string),
         # "audio/length": tf.io.FixedLenFeature((), tf.int64),
-        # "audio/start_s": tf.io.FixedLenFeature(1, tf.float32),
+        "audio/start_s": tf.io.FixedLenFeature((), tf.float32),
         # "audio/sftf_w": tf.io.FixedLenFeature((), tf.int64),
         # "audio/sftf_h": tf.io.FixedLenFeature((), tf.int64),
         # "audio/mel_w": tf.io.FixedLenFeature((), tf.int64),
         # "audio/mel_h": tf.io.FixedLenFeature((), tf.int64),
         # "audio/mfcc_w": tf.io.FixedLenFeature((), tf.int64),
+        "audio/raw": tf.io.FixedLenFeature([int(48000 * 2.5)], tf.float32),
         # "audio/raw": tf.io.FixedLenFeature(
         #     [
         #         144000,
         #     ],
         #     dtype=tf.float32,
         # ),
+        "audio/rec_id": tf.io.FixedLenFeature((), tf.string),
+        "audio/track_id": tf.io.FixedLenFeature((), tf.string),
     }
 
     example = tf.io.parse_single_example(example, tfrecord_format)
-
+    r_id = example["audio/rec_id"]
+    t_id = example["audio/track_id"]
+    start_s = example["audio/start_s"]
+    # id = f"{r_id}-{t_id}-{start_s}"
     # label = tf.cast(example["audio/class/label"], tf.int32)
 
     # raw = example["audio/raw"]
@@ -501,8 +517,15 @@ def read_tfrecord(
             )
 
         # return image, label
+        raw = example["audio/raw"]
+        print("raw type is")
+        raw = tf.reshape(raw, [int(48000 * 2.5)])
 
-        return image, label
+        print(raw)
+        r_id = example["audio/rec_id"]
+        t_id = example["audio/track_id"]
+        start_s = example["audio/start_s"]
+        return (mel, raw), (label, r_id, t_id, start_s)
 
     return image
 
@@ -571,6 +594,8 @@ def main():
     # return
     datasets = ["other-training-data", "training-data", "chime-training-data"]
     datasets = ["training-data"]
+    datasets = ["cp-training"]
+
     filenames = []
     labels = set()
     for d in datasets:
@@ -583,7 +608,7 @@ def main():
         # species_list = ["bird", "human", "rain", "other"]
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-        filenames.extend(tf.io.gfile.glob(f"./{d}/validation/*.tfrecord"))
+        filenames.extend(tf.io.gfile.glob(f"./{d}/test/*.tfrecord"))
     labels.add("bird")
     labels.add("noise")
     labels = list(labels)
@@ -596,89 +621,62 @@ def main():
         # dir,
         filenames,
         labels,
-        batch_size=32,
+        batch_size=8,
         image_size=DIMENSIONS,
         augment=False,
         resample=False,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
-    # print(get_distribution(resampled_ds))
-    # ing2D()(x)
-    # for e in range(2):
-    #     print("epoch", e)
-    #     true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
-    #     # true_categories = np.int64(true_categories)
-    #     true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    #     c = Counter(list(true_categories))
-    #     print("epoch is size", len(true_categories))
-    #     for i in range(len(labels)):
-    #         print("after have", labels[i], c[i])
-
-    # return
-    return
-    for e in range(2):
+    for e in range(1):
         for x, y in resampled_ds:
-            for a in y:
-                print("y is", a)
-            continue
-            print(len(x), len(y))
-            show_batch(x, y, None, labels, species_list)
+
+            # continue
+            # print(len(x), len(y))
+            show_batch(x, y, labels)
 
             # show_batch(x, y[0], y[1], labels, species_list)
 
 
-def show_batch(image_batch, label_batch, species_batch, labels, species):
-    # mfcc = image_batch[1]
-    # sftf = image_batch[1]
-    # image_batch = image_batch[0]
+audio_i = 0
+
+
+def show_batch(image_batch, label_batch, labels):
+    global audio_i
     plt.figure(figsize=(200, 200))
-    # mfcc = image_batch[2]
-    image_batch = image_batch
+    r_id_batch = label_batch[1]
+    t_id_batch = label_batch[2]
+    s_id_batch = label_batch[3]
+
+    label_batch = label_batch[0]
+    audio_batch = image_batch[1]
+    image_batch = image_batch[0]
+    print("audio batch is", len(audio_batch), audio_batch.shape)
     print("images in batch", len(image_batch), len(label_batch))
     num_images = len(image_batch)
-    # rows = int(math.ceil(math.sqrt(num_images)))
     i = 0
+    labels = np.array(labels)
+    columns = math.ceil(num_images / 3)
     for n in range(num_images):
-        # print(image_batch[n].numpy().shape)
-        # print(image_batch[n])
-        # return
-        lbl = labels[np.argmax(label_batch[n])]
-        # if lbl != "morepork":
-        # continue
-        # if rec_batch[n] != 1384657:
-        # continue
-        # print("showing", image_batch[n].shape, sftf[n].shape)
+        audio_i += 1
+        indices = label_batch[n] == 1
+        lbl = labels[indices]
+        print(lbl)
         p = n
         i += 1
-        ax = plt.subplot(num_images, 3, p + 1)
-        # plot_spec(image_batch[n][:, :, 0], ax)
-        # # plt.imshow(np.uint8(image_batch[n]))
+        ax = plt.subplot(columns, 3, p + 1)
         spc = None
-        if species_batch is not None:
-            spc = species[np.argmax(species_batch[n])]
-        plt.title(f"{lbl} ({spc}")
-        # # plt.axis("off")
-        # ax = plt.subplot(num_images, 3, p + 1)
+        plt.title(f"{lbl}-{r_id_batch[n]}-{t_id_batch[n]}-{s_id_batch[n]}")
         plot_mel(image_batch[n][:, :, 0], ax)
-        #
-        # ax = plt.subplot(num_images, 3, p + 2)
-        # plot_mel(image_batch[n][:, :, 1], ax)
-        # plt.title(f"{lbl} ({spc} more")
-        #
-        # ax = plt.subplot(num_images, 3, p + 3)
-        # plot_mel(image_batch[n][:, :, 2], ax)power_to_db
-        # plt.title(f"{lbl} ({spc} all")
+        # import sounddevice as sd
 
-        # plt.imshow(np.uint8(image_batch[n]))
-        # plt.title(f"{lbl} ({spc} - {rec_batch[n]}) mel")
-        # plt.axis("off")
-        # print(image_batch[1][n].shape)
-        # ax = plt.subplot(num_images, 3, p + 3)
-        # plot_mfcc(image_batch[n][:, :, 0], ax)
-        # plt.title(labels[np.argmax(label_batch[n])] + " mfcc")
-        # plt.axis("off")
+        # print("playing audio")
+        # sd.play(audio_batch[n], 48000)
+        audio = audio_batch[n]
+        audio = np.float32(audio)
+        # wf.write(f"{r_id_batch[n]}-{t_id_batch[n]}-{s_id_batch[n]}.wav", 48000, audio)
 
-    plt.show()
+    # plt.show()
+    plt.savefig(f"batch{i}.png", format="png")
 
 
 def plot_mfcc(mfccs, ax):

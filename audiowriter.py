@@ -154,6 +154,7 @@ def get_data(args):
             spectogram, mel, mfcc, s_data, raw_length = load_data(
                 sample.start - start, frames, sr, end=sample.end - start
             )
+            print("mel is", mel.shape)
             # print("adjusted start is", sample.start, " becomes", sample.start - start)
             if spectogram is None:
                 print("error loading", rec_id)

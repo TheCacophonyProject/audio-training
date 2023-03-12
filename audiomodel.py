@@ -996,6 +996,8 @@ def main():
             meta_data = json.load(f)
         labels = meta_data.get("labels")
         model_name = meta_data.get("name")
+        mean_sub = meta_data.get("mean_sub")
+
         preprocess = get_preprocess_fn(model_name)
         dataset, _ = get_dataset(
             tf.io.gfile.glob(f"./training-data/test/*.tfrecord"),
@@ -1006,7 +1008,7 @@ def main():
             deterministic=True,
             reshuffle=False,
             batch_size=64,
-            mean_sub=self.mean_sub,
+            mean_sub=mean_sub,
         )
 
         hamming = tfa.metrics.HammingLoss(mode="multilabel", threshold=0.8)
