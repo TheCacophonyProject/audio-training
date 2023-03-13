@@ -24,8 +24,7 @@ from audiowriter import create_tf_records
 import tensorflow as tf
 from tfdataset import (
     get_dataset,
-    mel_s,
-    mfcc_s,
+    DIMENSIONS,
     get_weighting,
     NOISE_LABELS,
     BIRD_LABELS,
@@ -65,7 +64,7 @@ class AudioModel:
         self.test = None
         self.train = None
         self.remapped = None
-        self.input_shape = mfcc_s
+        self.input_shape = DIMENSIONS
         self.preprocess_fn = None
         self.learning_rate = 0.01
         self.segment_length = None
@@ -1003,17 +1002,19 @@ def main():
             meta_data = json.load(f)
         labels = meta_data.get("labels")
         model_name = meta_data.get("name")
+        mean_sub = meta_data.get("mean_sub")
+
         preprocess = get_preprocess_fn(model_name)
         dataset, _ = get_dataset(
             tf.io.gfile.glob(f"./training-data/test/*.tfrecord"),
             labels,
-            image_size=mffc_s,
+            image_size=DIMENSIONS,
             shuffle=False,
             resample=False,
             deterministic=True,
             reshuffle=False,
             batch_size=64,
-            mean_sub=self.mean_sub,
+            mean_sub=mean_sub,
         )
 
         hamming = tfa.metrics.HammingLoss(mode="multilabel", threshold=0.8)
