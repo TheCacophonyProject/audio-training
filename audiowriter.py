@@ -215,7 +215,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                 pool_data.append(
                     (rec_id, rec_samples[0].rec.filename, 48000, rec_samples)
                 )
-            with Pool(processes=3) as pool:
+            with Pool(processes=8) as pool:
                 for i in pool.imap_unordered(get_data, pool_data):
                     rec_id = i[0]
                     sr = i[1]

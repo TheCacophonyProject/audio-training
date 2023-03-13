@@ -211,7 +211,6 @@ def main():
         d.labels = all_labels
         print("setting all labels", all_labels)
     validate_datasets(datasets)
-    # return
     base_dir = "."
     record_dir = os.path.join(base_dir, "training-data/")
     print("saving to", record_dir)
@@ -219,7 +218,15 @@ def main():
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
         create_tf_records(dataset, dir, datasets[0].labels, num_shards=100)
-        dataset_counts[dataset.name] = dataset.get_counts()
+        r_counts = dataset.get_rec_counts()
+        for k, v in r_counts.items():
+            r_counts[k] = len(v)
+
+        dataset_counts[dataset.name] = {
+            "rec_counts": r_counts,
+            "sample_counts": dataset.get_counts(),
+        }
+
         # dataset.saveto_numpy(os.path.join(base_dir))
     # dont need dataset anymore just need some meta
     meta_filename = f"{base_dir}/training-data/training-meta.json"

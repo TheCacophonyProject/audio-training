@@ -68,6 +68,16 @@ class AudioDataset:
         for tag in r.human_tags:
             self.labels.add(tag)
 
+    def get_rec_counts(self):
+        counts = {}
+        for s in self.samples:
+            for tag in s.tags:
+                if tag in counts:
+                    counts[tag].add(s.tag)
+                else:
+                    counts[tag] = {s.rec_id}
+        return counts
+
     def get_counts(self):
         counts = {}
         for s in self.samples:
@@ -81,37 +91,46 @@ class AudioDataset:
     def print_counts(self):
         counts = {}
         original_c = {}
+        rec_counts = {}
         for r in self.recs:
             for track in r.tracks:
                 tags = track.tags
                 # if len(tags) == 0:
                 # continue
                 # allowsing multi label
-                for tag in tags:
+                for tag, original in zip(tags, track.original_tags):
                     # elif len(tags) == 1 or ("bird" not in track.tags):
-                    tag = list(tags)[0]
                     if tag not in counts:
                         counts[tag] = 1
+                        rec_counts[tag] = {r.id}
+                        print("added", tag)
                     else:
                         counts[tag] += 1
+                        rec_counts[tag].add(r.id)
 
-                    tag = list(track.original_tags)[0]
-                    if tag not in RELABEL:
+                    if original not in RELABEL:
                         continue
-                    if tag not in original_c:
-                        original_c[tag] = 1
+
+                    if original not in original_c:
+                        original_c[original] = 1
+                        print("adding ", original)
+                        rec_counts[original] = {r.id}
+
                     else:
-                        original_c[tag] += 1
-                # else:
+                        original_c[original] += 1
+                        rec_counts[original].add(r.id)
+                    # else:
                 # logging.info(
                 # "Conflicting tags %s track %s -  %s tags", r.id, track.id, tags
                 # )
         logging.info("Counts from %s recordings", len(self.recs))
         for k, v in counts.items():
-            logging.info("%s: %s", k, v)
+            logging.info("%s: %s ( %s )", k, v, len(rec_counts[k]))
 
         for k, v in original_c.items():
-            logging.info("%s: %s used as %s", k, v, RELABEL[k])
+            logging.info(
+                "%s: %s used as %s ( %s )", k, v, RELABEL[k], len(rec_counts[k])
+            )
 
     def print_sample_counts(self):
         counts = {}
@@ -128,17 +147,18 @@ class AudioDataset:
                 else:
                     counts[tag] += 1
                     rec_counts[tag].add(s.rec_id)
-
+                continue
                 # tag = list(track.original_tags)[0]
                 if tag not in RELABEL:
                     continue
+                # tag = RELABEL[tag]
                 if tag not in original_c:
                     original_c[tag] = 1
                     rec_counts[tag] = {s.rec_id}
 
                 else:
                     original_c[tag] += 1
-                    rec_counts[tag] = {s.rec_id}
+                    rec_counts[tag].add(s.rec_id)
 
             # else:
             #     logging.info(
@@ -314,9 +334,10 @@ class Recording:
                     # print("checking track ", t.human_tags, t.start)
                     if t.end > start:
                         if t.start > old_end:
+                            pass
                             # new bin as non overlapping audio
-                            bin += 1
-                            bin_id = f"{self.id}-{bin}"
+                            # bin += 1
+                            # bin_id = f"{self.id}-{bin}"
                         track = t
                         tracks = [t.id]
                         start = max(start, t.start)
@@ -463,6 +484,7 @@ class Track:
                 [self.id],
                 SAMPLE_GROUP_ID,
             )
+            print(mfcc.shape)
             sample.spectogram_data = SpectrogramData(
                 spectogram,
                 mel,
@@ -590,7 +612,15 @@ def load_data(
             fmax=11000,
             n_mels=80,
         )
-        mfcc = librosa.feature.mfcc(y=s_data, sr=sr, hop_length=hop_length, htk=True)
+        mfcc = librosa.feature.mfcc(
+            y=s_data,
+            sr=sr,
+            hop_length=hop_length,
+            htk=True,
+            fmin=50,
+            fmax=11000,
+            n_mels=80,
+        )
         return spectogram, mel, mfcc, s_data, data_length
     except:
         logging.error(

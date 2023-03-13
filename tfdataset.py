@@ -26,9 +26,9 @@ fp = None
 
 DIMENSIONS = (128, 1134)
 
-mel_s = (80, 151)
-sftf_s = (2401, 113)
-mfcc_s = (20, 113)
+mel_s = (80, 188)
+sftf_s = (2401, 188)
+mfcc_s = (20, 188)
 
 mel_bins = librosa.mel_frequencies(128, fmax=48000 / 2)
 human_lowest = np.where(mel_bins < 60)[-1][-1]
@@ -366,7 +366,7 @@ def read_tfrecord(
     tfrecord_format = {
         # "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
         "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
-        # "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
+        "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
         # "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
         "audio/class/text": tf.io.FixedLenFeature((), tf.string),
         # "audio/length": tf.io.FixedLenFeature((), tf.int64),
@@ -417,8 +417,11 @@ def read_tfrecord(
     #
     # audio_data = tf.reshape(audio_data, [*sftf_s, 1])
     #
-    mel = tf.reshape(mel, [*mel_s])
+    mfcc = example["audio/mfcc"]
+    mfcc = tf.reshape(mfcc, [*mfcc_s])
 
+    mel = tf.reshape(mel, [*mel_s])
+    mel = mfcc
     if augment:
         logging.info("Augmenting")
         # tf.random.uniform()
@@ -615,14 +618,9 @@ def main():
     #         print("after have", labels[i], c[i])
 
     # return
-    return
-    for e in range(2):
+    for e in range(1):
         for x, y in resampled_ds:
-            for a in y:
-                print("y is", a)
-            continue
-            print(len(x), len(y))
-            show_batch(x, y, None, labels, species_list)
+            show_batch(x, y, None, labels, None)
 
             # show_batch(x, y[0], y[1], labels, species_list)
 
@@ -659,7 +657,9 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
         plt.title(f"{lbl} ({spc}")
         # # plt.axis("off")
         # ax = plt.subplot(num_images, 3, p + 1)
-        plot_mel(image_batch[n][:, :, 0], ax)
+        # plot_mel(image_batch[n][:, :, 0], ax)
+        plot_mfcc(image_batch[n][:, :, 0], ax)
+
         #
         # ax = plt.subplot(num_images, 3, p + 2)
         # plot_mel(image_batch[n][:, :, 1], ax)

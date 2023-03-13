@@ -22,7 +22,14 @@ import numpy as np
 from audiodataset import AudioDataset
 from audiowriter import create_tf_records
 import tensorflow as tf
-from tfdataset import get_dataset, mel_s, get_weighting, NOISE_LABELS, BIRD_LABELS
+from tfdataset import (
+    get_dataset,
+    mel_s,
+    mfcc_s,
+    get_weighting,
+    NOISE_LABELS,
+    BIRD_LABELS,
+)
 import time
 from pathlib import Path
 from sklearn.metrics import confusion_matrix, multilabel_confusion_matrix
@@ -58,7 +65,7 @@ class AudioModel:
         self.test = None
         self.train = None
         self.remapped = None
-        self.input_shape = mel_s
+        self.input_shape = mfcc_s
         self.preprocess_fn = None
         self.learning_rate = 0.01
         self.segment_length = None
@@ -1000,7 +1007,7 @@ def main():
         dataset, _ = get_dataset(
             tf.io.gfile.glob(f"./training-data/test/*.tfrecord"),
             labels,
-            image_size=mel_s,
+            image_size=mffc_s,
             shuffle=False,
             resample=False,
             deterministic=True,
