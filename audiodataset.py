@@ -103,7 +103,6 @@ class AudioDataset:
                     if tag not in counts:
                         counts[tag] = 1
                         rec_counts[tag] = {r.id}
-                        print("added", tag)
                     else:
                         counts[tag] += 1
                         rec_counts[tag].add(r.id)
@@ -113,7 +112,6 @@ class AudioDataset:
 
                     if original not in original_c:
                         original_c[original] = 1
-                        print("adding ", original)
                         rec_counts[original] = {r.id}
 
                     else:

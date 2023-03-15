@@ -24,17 +24,17 @@ import warnings
 # warnings.filterwarnings("ignore")
 # remove librosa pysound warnings
 
-MAX_TEST_TRACKS = 10
+MAX_TEST_BINS = 10
 MAX_TEST_SAMPLES = 10
 MIN_SAMPLES = 10
-MIN_TRACKS = 10
+MIN_BINS = 10
 LOW_SAMPLES_LABELS = []
 
 
 def split_label(
     dataset, datasets, label, existing_test_count=0, max_samples=None, no_test=False
 ):
-    # split a label from dataset such that vlaidation is 15% or MIN_TRACKS
+    # split a label from dataset such that vlaidation is 15% or MIN_BINS
     # recs = [r for r in dataset.recs if label in r.human_tags]
 
     samples_by_bin = {}
@@ -80,48 +80,48 @@ def split_label(
     )
     # should have test covered by test set
 
-    min_t = MIN_TRACKS
-
-    if label in LOW_SAMPLES_LABELS or total_tracks < 20:
+    min_t = MIN_BINS
+    total_bins = len(sample_bins)
+    if label in LOW_SAMPLES_LABELS or total_bins < 20:
         min_t = 1
 
-    num_validate_tracks = max(total_tracks * 0.15, min_t)
-    num_test_tracks = (
-        min(MAX_TEST_TRACKS, max(total_tracks * 0.05, min_t)) - existing_test_count
+    num_validate_bins = max(total_bins * 0.15, min_t)
+    num_test_bins = (
+        min(MAX_TEST_BINS, max(total_bins * 0.05, min_t)) - existing_test_count
     )
-    track_limit = num_validate_tracks
+    bin_limit = num_validate_bins
     sample_limit = num_validate_samples
-    tracks = set()
+    bins = set()
     print(
         label,
-        "looking for val tracks",
-        num_validate_tracks,
-        "  out of tracks",
-        total_tracks,
+        "looking for val bins",
+        num_validate_bins,
+        "  out of bins",
+        total_bins,
         "and # samples",
         num_validate_samples,
         "from total samples",
         num_samples,
         "# test tracks",
-        num_test_tracks,
+        num_test_bins,
         "# num test samples",
         num_test_samples,
     )
     recs = set()
-    if total_tracks > 5:
+    if total_bins > 5:
         for i, sample_bin in enumerate(sample_bins):
             samples = samples_by_bin[sample_bin]
             for sample in samples:
-                # not really tracks but bins are by tracks right now
-                tracks.add(sample.bin_id)
+                # not really bins but bins are by bins right now
+                bins.add(sample.bin_id)
                 label_count += 1
                 recs.add(sample.rec_id)
                 add_to.add_sample(sample)
                 dataset.remove(sample)
             samples_by_bin[sample_bin] = []
             last_index = i
-            track_count = len(tracks)
-            if label_count >= sample_limit and track_count >= track_limit:
+            bin_count = len(bins)
+            if label_count >= sample_limit and bin_count >= bin_limit:
                 # 100 more for test
                 if no_test:
                     break
@@ -131,9 +131,9 @@ def split_label(
                     if num_test_samples <= 0:
                         break
                     sample_limit = num_test_samples
-                    track_limit = num_test_tracks
+                    bin_limit = num_test_bins
                     label_count = 0
-                    tracks = set()
+                    bins = set()
 
                 else:
                     break
