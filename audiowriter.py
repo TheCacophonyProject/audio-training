@@ -122,16 +122,16 @@ def get_data(args):
     )
     start = samples[0].start
     end = samples[-1].end + SEGMENT_LENGTH
-    print(
-        "getting data for",
-        filename,
-        resample,
-        len(samples),
-        " starting",
-        start,
-        "ending",
-        end,
-    )
+    # print(
+    #     "getting data for",
+    #     filename,
+    #     resample,
+    #     len(samples),
+    #     " starting",
+    #     start,
+    #     "ending",
+    #     end,
+    # )
     try:
         aro = audioread.ffdec.FFmpegAudioFile(filename)
         frames, sr = librosa.load(aro, sr=None, offset=start, duration=end - start)
