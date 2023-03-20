@@ -73,7 +73,7 @@ class AudioDataset:
         for s in self.samples:
             for tag in s.tags:
                 if tag in counts:
-                    counts[tag].add(s.tag)
+                    counts[tag].add(s.rec_id)
                 else:
                     counts[tag] = {s.rec_id}
         return counts
