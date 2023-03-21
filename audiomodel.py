@@ -42,15 +42,6 @@ training_dir = "training-data"
 other_training_dir = "training-data"
 
 
-def precision_at_k(y_true, y_pred):
-    K = 3
-    print(y_pred)
-    print(y_true)
-    return tf.compat.v1.metrics.average_precision_at_k(
-        tf.cast(y_true, tf.float32), y_pred, K
-    )
-
-
 class AudioModel:
     VERSION = 1.0
 
