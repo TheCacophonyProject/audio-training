@@ -290,6 +290,8 @@ class Recording:
             # start = round(start, 1)
             # end = round(end, 1)
             other_tracks = []
+            tracks = [track.id]
+            labels = set(track.human_tags)
             for t in sorted_tracks[i:]:
                 # starts in this sample
                 if t.start > end:
