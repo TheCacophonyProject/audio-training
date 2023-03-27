@@ -383,15 +383,12 @@ class Recording:
         sr = self.sample_rate
         frames = self.rec_data
         for sample in self.samples:
-            spectogram, mel, mfcc, s_data = load_data(sample.start, frames, sr)
+            spectogram, mel, mfcc, s_data, pcem = load_data(sample.start, frames, sr)
             if spectogram is None:
                 print("error loading")
                 continue
             sample.spectogram_data = SpectrogramData(
-                spectogram,
-                mel,
-                mfcc,
-                s_data.copy(),
+                spectogram, mel, mfcc, s_data.copy(), pcem
             )
             sample.sr = sr
 
@@ -551,7 +548,7 @@ def plot_mel(mel):
     # plt.clf()
 
 
-SpectrogramData = namedtuple("SpectrogramData", "spect mel mfcc raw raw_length")
+SpectrogramData = namedtuple("SpectrogramData", "spect mel mfcc raw raw_length pcen")
 
 Tag = namedtuple("Tag", "what confidence automatic original")
 
@@ -611,7 +608,9 @@ def load_data(
             fmin=50,
             fmax=11000,
             n_mels=80,
+            power=1,
         )
+        pcen_S = librosa.pcen(mel * (2**31))
         mfcc = librosa.feature.mfcc(
             y=s_data,
             sr=sr,
@@ -621,7 +620,7 @@ def load_data(
             fmax=11000,
             n_mels=80,
         )
-        return spectogram, mel, mfcc, s_data, data_length
+        return spectogram, mel, mfcc, s_data, data_length, pcen_S
     except:
         logging.error(
             "Error getting segment  start %s lenght %s",
@@ -629,4 +628,4 @@ def load_data(
             SEGMENT_LENGTH,
             exc_info=True,
         )
-    return None, None, None, None, None
+    return None, None, None, None, None, None
