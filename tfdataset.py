@@ -29,7 +29,7 @@ DIMENSIONS = (160, 188)
 mel_s = (80, 188)
 sftf_s = (2401, 188)
 mfcc_s = (20, 188)
-
+DIMENSIONS = mel_s
 mel_bins = librosa.mel_frequencies(128, fmax=48000 / 2)
 human_lowest = np.where(mel_bins < 60)[-1][-1]
 human_max = np.where(mel_bins > 180)[0][0]
@@ -417,13 +417,13 @@ def read_tfrecord(
     #
     # audio_data = tf.reshape(audio_data, [*sftf_s, 1])
     #
-    mfcc = example["audio/mfcc"]
-    mfcc = tf.reshape(mfcc, [*mfcc_s, 1])
-    # mfcc
-    mfcc = tf.image.resize_with_pad(mfcc, mel_s[0], mel_s[1])
-    full_mfcc = tf.zeros((mel_s[0], mel_s[1]))
+    # mfcc = example["audio/mfcc"]
+    # mfcc = tf.reshape(mfcc, [*mfcc_s, 1])
+    # # mfcc
+    # mfcc = tf.image.resize_with_pad(mfcc, mel_s[0], mel_s[1])
+    # full_mfcc = tf.zeros((mel_s[0], mel_s[1]))
     mel = tf.reshape(mel, [*mel_s, 1])
-    mel = tf.concat((mel, mfcc), axis=0)
+    # mel = tf.concat((mel, mfcc), axis=0)
     if augment:
         logging.info("Augmenting")
         # tf.random.uniform()

@@ -51,66 +51,35 @@ def load_recording(file, resample=48000):
     return frames, sr
 
 
-seg_length = 2
-
-
-def preprocess_file(file):
-    stride = 0.5
+def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
     frames, sr = load_recording(file)
     length = len(frames) / sr
     end = 0
     sample_size = int(seg_length * sr)
-    print("sr", sr, seg_length, sample_size)
-    print("Length of recording is", length)
+    logging.info(
+        "sr %s seg %s sample size %s stride %s hop%s mean sub %s mfcc %s",
+        sr,
+        seg_length,
+        sample_size,
+        stride,
+        hop_length,
+        mean_sub,
+        use_mfcc,
+    )
     mels = []
     i = 0
     n_fft = sr // 10
-    print(n_fft)
     sr_stride = int(stride * sr)
-    hop_length = 640  # feature frame rate of 75
-    # mel_all = librosa.feature.melspectrogram(
-    #     y=frames,
-    #     sr=sr,
-    #     n_fft=n_fft,
-    #     hop_length=hop_length,
-    #     fmin=50,
-    #     fmax=11000,
-    #     n_mels=80,
-    # )
-    # mel_all = librosa.power_to_db(mel_all, ref=np.max)
-    # mel_sample_size = int(1 + seg_length * sr / hop_length)
-    # jumps_per_stride = int(mel_sample_size / seg_length)
     while end < (length + stride):
         start_offset = i * sr_stride
 
         end = i * stride + seg_length
-        # print("start", i * stride)
 
         if end > length:
             s_data = frames[-sample_size:]
-            # sub = frames[start_offset:]
-            # s_data = np.zeros(int(seg_length * sr))
-            # start_pos = np.random.randint((sr / 4))
-            # start_pos = 0
-            # s_data[start_pos : start_pos + len(sub)] = sub
-
-            # s_data = np.pad(sub, int(seg_length * sr))
-            # print(s_data.shape, sr, seg_length, seg_length * sr)
         else:
             s_data = frames[start_offset : start_offset + sample_size]
-        # print(
-        #     start_offset,
-        #     sample_size,
-        #     len(s_data),
-        #     "data max is",
-        #     np.amax(s_data),
-        #     s_data.dtype,
-        # )
-        # print(s_data[0])
-        # 1 / 0
-        # for d in s_data:
-        #     print(d)
-        # print("end")
+
         mel = librosa.feature.melspectrogram(
             y=s_data,
             sr=sr,
@@ -131,30 +100,45 @@ def preprocess_file(file):
 
         mel = librosa.power_to_db(mel)
 
-        # print("loading from ", start_offset / sr)
-        # sf.write(f"test{i}.wav", s_data, sr, subtype="PCM_24")
-        # start = int(jumps_per_stride * (i * stride))
-        # mel = mel_all[:, start : start + mel_sample_size].copy()
         i += 1
-        # if i >= 60:
-        # plot_mel(mel, i)
-        # plot_mel(mel)
-        print("mel max is", np.amax(mel), np.amin(mel), np.mean(mel))
-        mel_m = tf.reduce_mean(mel, axis=1)
-        # print("Mean at ", i, " is", mel_m)
-        # gp not sure to mean over axis 0 or 1
-        mel_m = tf.expand_dims(mel_m, axis=1)
+        mel = tf.expand_dims(mel, axis=2)
+
+        if use_mfcc:
+            mfcc = librosa.feature.mfcc(
+                y=s_data,
+                sr=sr,
+                hop_length=hop_length,
+                htk=True,
+                fmin=50,
+                fmax=11000,
+                n_mels=80,
+            )
+            mfcc = tf.expand_dims(mfcc, axis=2)
+            plot_mfcc(mfcc)
+            mfcc = tf.image.resize_with_pad(mfcc, mel.shape[0], mel.shape[1])
+            plot_mfcc(mfcc[:, :, 0])
+            mel = tf.concat((mel, mfcc), axis=0)
+        if mean_sub:
+            mel_m = tf.reduce_mean(mel, axis=1)
+
+            mel_m = tf.expand_dims(mel_m, axis=1)
+            mel = mel - mel__m
         # mean over each mel bank
-        # print(mel.shape)
-        empty = np.zeros(((80, 151)))
-        empty[:, : mel.shape[1]] = mel
-        mel = empty
-        # mel = mel - mel_m
-        mel = mel[:, :, np.newaxis]
         # print("mean of mel is", round(1000 * np.mean(mel), 4))
         mels.append(mel)
         # break
     return mels, length
+
+
+def plot_mfcc(mfcc):
+    plt.figure(figsize=(10, 10))
+
+    img = librosa.display.specshow(mfcc, x_axis="time", ax=ax)
+    ax = plt.subplot(1, 1, 1)
+    plt.show()
+    # plt.savefig(f"mel-power-{i}.png", format="png")
+    plt.clf()
+    plt.close()
 
 
 def plot_mel(mel, i=0):
@@ -198,6 +182,11 @@ def main():
     multi_label = meta.get("multi_label", True)
     segment_length = meta.get("segment_length", 1.5)
     segment_stride = meta.get("segment_stride", 2)
+    use_mfcc = meta.get("use_mfcc", True)
+    mean_sub = meta.get("mean_sub", False)
+    use_mfcc = meta.get("use_mfcc", False)
+    hop_length = meta.get("hop_length", 640)
+
     # print("stride is", segment_stride)
     # segment_length = 2
     segment_stride = 0.5
@@ -254,7 +243,9 @@ def main():
         return
     if args.file:
         file = Path(args.file)
-        data, length = preprocess_file(file)
+        data, length = preprocess_file(
+            file, segment_length, segment_stride, hop_length, mean_sub, use_mfcc
+        )
         data = np.array(data)
 
     print("data is", data.shape, data.dtype, np.amax(data))
@@ -265,9 +256,9 @@ def main():
     for prediction in predictions:
         print("at", start, np.round(prediction * 100))
         # break
-        if start + seg_length > length:
+        if start + segment_length > length:
             print("final one")
-            start = length - seg_length
+            start = length - segment_length
         results = []
         track_labels = []
         if multi_label:
@@ -326,45 +317,6 @@ def main():
         start += segment_stride
     for t in tracks:
         print(f"{t.start}-{t.end} have {t.label}")
-    #
-    # for r in results:
-    #     # best_i = np.argmax(r)
-    #     # best_p = r[best_i]
-    #     results = []
-    #     for i, p in enumerate(r):
-    #         if p > 0.65:
-    #             results.append((round(100 * p), labels[i]))
-    #
-    #     print(f"{results} {start} - {start+seg_length} ")
-    #     start += 1
-    #     continue
-    #     if best_p > 0.7:
-    #         if track is None:
-    #             track = (best_i, start)
-    #         elif track[0] != best_i:
-    #             print(f"Changed pred {labels[track[0]]} {track[1]} - {start}")
-    #             track = (best_i, start)
-    #
-    #     elif track is not None:
-    #         print(
-    #             f"Low prob {best_p} - {labels[track[0]]} {track[1]} - {start + seg_length/2.0 - 1}"
-    #         )
-    #         track = None
-    #     start += 1
-    # # species = results[0]
-    # if track is not None:
-    #     print(f"Final {best_p} - {labels[track[0]]} {track[1]} - {start}")
-    # return
-    # animal = results[1]
-    # for s, r in zip(species, animal):
-    #
-    #     print(
-    #         f"{start} - {start+seg_length} Species",
-    #         np.round(s, 1),
-    #         " class ",
-    #         np.round(r, 1),
-    #     )
-    #     start += 1
 
 
 def parse_args():
