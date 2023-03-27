@@ -412,8 +412,8 @@ def read_tfrecord(
 
     # label = tf.cast(example["audio/class/label"], tf.int32)
 
-    raw = example["audio/raw"]
-    raw = tf.reshape(raw, [120000])
+    # raw = example["audio/raw"]
+    # raw = tf.reshape(raw, [120000])
     # n_fft = 48000 // 10
     # # raw = tf.expand_dims(raw, axis=1)
     # spec = tf.signal.stft(
@@ -534,7 +534,7 @@ def read_tfrecord(
 
         # return image, label
 
-        return raw, label
+        return mel, label
 
     return image
 
