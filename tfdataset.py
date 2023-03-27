@@ -228,11 +228,11 @@ def get_dataset(filenames, labels, **args):
     # print("keys", keys, " values", values)
     # 1 / 0
     dataset = load_dataset(filenames, len(labels), args)
-    dataset = dataset.map(
-        lambda x, y: tf.py_function(
-            func=normalize_image, inp=[x, y], Tout=[tf.float64, tf.int32]
-        )
-    )
+    # dataset = dataset.map(
+    #     lambda x, y: tf.py_function(
+    #         func=normalize_image, inp=[x, y], Tout=[tf.float64, tf.int32]
+    #     )
+    # )
 
     resample_data = args.get("resample", True)
     if resample_data:
