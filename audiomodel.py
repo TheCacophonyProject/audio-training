@@ -972,7 +972,7 @@ def main():
     args = parse_args()
     print(args)
     if args.confusion is not None:
-        load_model = Path("./train/checkpoints") / args.name
+        load_model = Path(args.name)
         logging.info("Loading %s with weights %s", load_model, "val_acc")
         hamming = tfa.metrics.HammingLoss(mode="multilabel", threshold=0.8)
         prec_at_k = tf.keras.metrics.TopKCategoricalAccuracy()
@@ -997,7 +997,7 @@ def main():
 
         preprocess = get_preprocess_fn(model_name)
         dataset, _ = get_dataset(
-            tf.io.gfile.glob(f"./training-data/test/*.tfrecord"),
+            tf.io.gfile.glob(f"./cp-training/test/*.tfrecord"),
             labels,
             image_size=DIMENSIONS,
             shuffle=False,

@@ -29,7 +29,7 @@ DIMENSIONS = (160, 188)
 mel_s = (80, 188)
 sftf_s = (2401, 188)
 mfcc_s = (20, 188)
-DIMENSIONS = mel_s
+
 mel_bins = librosa.mel_frequencies(128, fmax=48000 / 2)
 human_lowest = np.where(mel_bins < 60)[-1][-1]
 human_max = np.where(mel_bins > 180)[0][0]
@@ -228,6 +228,11 @@ def get_dataset(filenames, labels, **args):
     # print("keys", keys, " values", values)
     # 1 / 0
     dataset = load_dataset(filenames, len(labels), args)
+    dataset = dataset.map(
+        lambda x, y: tf.py_function(
+            func=normalize_image, inp=[x, y], Tout=[tf.float64, tf.int32]
+        )
+    )
 
     resample_data = args.get("resample", True)
     if resample_data:
@@ -257,6 +262,24 @@ def get_dataset(filenames, labels, **args):
         logging.info("Have %s for %s", d, labels[i])
 
     return dataset, remapped
+
+
+def normalize_image(image, label):
+    mel = librosa.feature.melspectrogram(
+        y=image.numpy(),
+        sr=48000,
+        n_fft=4800,
+        hop_length=640,
+        fmin=50,
+        fmax=11000,
+        n_mels=80,
+        power=1,
+    )
+    pcen_S = librosa.pcen(mel * (2**31))
+    pcen_S = tf.expand_dims(pcen_S, axis=2)
+    return pcen_S, label
+
+    # return tf.cast(image, tf.float32) / 255., label
 
 
 def get_weighting(dataset, labels):
@@ -376,20 +399,20 @@ def read_tfrecord(
         # "audio/mel_w": tf.io.FixedLenFeature((), tf.int64),
         # "audio/mel_h": tf.io.FixedLenFeature((), tf.int64),
         # "audio/mfcc_w": tf.io.FixedLenFeature((), tf.int64),
-        # "audio/raw": tf.io.FixedLenFeature(
-        #     [
-        #         144000,
-        #     ],
-        #     dtype=tf.float32,
-        # ),
+        "audio/raw": tf.io.FixedLenFeature(
+            [
+                120000,
+            ],
+            dtype=tf.float32,
+        ),
     }
 
     example = tf.io.parse_single_example(example, tfrecord_format)
 
     # label = tf.cast(example["audio/class/label"], tf.int32)
 
-    # raw = example["audio/raw"]
-    # # raw = tf.reshape(raw, [144000])
+    raw = example["audio/raw"]
+    raw = tf.reshape(raw, [120000])
     # n_fft = 48000 // 10
     # # raw = tf.expand_dims(raw, axis=1)
     # spec = tf.signal.stft(
@@ -417,13 +440,13 @@ def read_tfrecord(
     #
     # audio_data = tf.reshape(audio_data, [*sftf_s, 1])
     #
-    # mfcc = example["audio/mfcc"]
-    # mfcc = tf.reshape(mfcc, [*mfcc_s, 1])
-    # # mfcc
-    # mfcc = tf.image.resize_with_pad(mfcc, mel_s[0], mel_s[1])
-    # full_mfcc = tf.zeros((mel_s[0], mel_s[1]))
+    mfcc = example["audio/mfcc"]
+    mfcc = tf.reshape(mfcc, [*mfcc_s, 1])
+    # mfcc
+    mfcc = tf.image.resize_with_pad(mfcc, mel_s[0], mel_s[1])
+    full_mfcc = tf.zeros((mel_s[0], mel_s[1]))
     mel = tf.reshape(mel, [*mel_s, 1])
-    # mel = tf.concat((mel, mfcc), axis=0)
+    mel = tf.concat((mel, mfcc), axis=0)
     if augment:
         logging.info("Augmenting")
         # tf.random.uniform()
@@ -507,7 +530,7 @@ def read_tfrecord(
 
         # return image, label
 
-        return image, label
+        return raw, label
 
     return image
 
@@ -576,6 +599,7 @@ def main():
     # return
     datasets = ["other-training-data", "training-data", "chime-training-data"]
     datasets = ["training-data"]
+    datasets = ["cp-training"]
     filenames = []
     labels = set()
     for d in datasets:
@@ -588,7 +612,7 @@ def main():
         # species_list = ["bird", "human", "rain", "other"]
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-        filenames.extend(tf.io.gfile.glob(f"./{d}/validation/*.tfrecord"))
+        filenames.extend(tf.io.gfile.glob(f"./{d}/test/*.tfrecord"))
     labels.add("bird")
     labels.add("noise")
     labels = list(labels)
@@ -631,11 +655,12 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
     # mfcc = image_batch[1]
     # sftf = image_batch[1]
     # image_batch = image_batch[0]
-    plt.figure(figsize=(200, 200))
+    plt.figure(figsize=(20, 20))
     # mfcc = image_batch[2]
     image_batch = image_batch
     print("images in batch", len(image_batch), len(label_batch))
     num_images = len(image_batch)
+    num_images = min(num_images, 8)
     # rows = int(math.ceil(math.sqrt(num_images)))
     i = 0
     for n in range(num_images):
@@ -650,7 +675,7 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
         # print("showing", image_batch[n].shape, sftf[n].shape)
         p = n
         i += 1
-        ax = plt.subplot(num_images, 3, p + 1)
+        ax = plt.subplot(num_images // 3 + 1, 3, n + 1)
         # plot_spec(image_batch[n][:, :, 0], ax)
         # # plt.imshow(np.uint8(image_batch[n]))
         spc = None
@@ -659,9 +684,10 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
         plt.title(f"{lbl} ({spc}")
         # # plt.axis("off")
         # ax = plt.subplot(num_images, 3, p + 1)
-        # plot_mel(image_batch[n][:, :, 0], ax)
-        plot_mfcc(image_batch[n][:, :, 0], ax)
-
+        plot_mel(image_batch[n][:, :, 0], ax)
+        # plot_mfcc(image_batch[n][80:, :, 0], ax)
+        data = image_batch[n][:, :, 0]
+        print(np.amax(data), np.amin(data))
         #
         # ax = plt.subplot(num_images, 3, p + 2)
         # plot_mel(image_batch[n][:, :, 1], ax)
@@ -684,7 +710,9 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
 
 
 def plot_mfcc(mfccs, ax):
-    img = librosa.display.specshow(mfccs.numpy(), x_axis="time", ax=ax)
+    img = librosa.display.specshow(
+        mfccs.numpy(), x_axis="time", y_axis="mel", ax=ax, sr=48000, fmax=11000, fmin=50
+    )
 
 
 def plot_mel(mel, ax):

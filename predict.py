@@ -97,9 +97,10 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             print("remove last ", strides_per, len(mels))
             return mels, length
             # 1 / 0
-
+        # pcen_S = librosa.pcen(mel * (2**31))
+        # plot_mel(pcen_S)
         mel = librosa.power_to_db(mel)
-
+        # plot_mel(mel)
         i += 1
         mel = tf.expand_dims(mel, axis=2)
 
@@ -113,10 +114,10 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
                 fmax=11000,
                 n_mels=80,
             )
+            # plot_mfcc(mfcc)
             mfcc = tf.expand_dims(mfcc, axis=2)
-            plot_mfcc(mfcc)
             mfcc = tf.image.resize_with_pad(mfcc, mel.shape[0], mel.shape[1])
-            plot_mfcc(mfcc[:, :, 0])
+            # plot_mfcc(mfcc[:, :, 0])
             mel = tf.concat((mel, mfcc), axis=0)
         if mean_sub:
             mel_m = tf.reduce_mean(mel, axis=1)
@@ -131,10 +132,11 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
 
 
 def plot_mfcc(mfcc):
+    mfcc = np.float32(mfcc)
     plt.figure(figsize=(10, 10))
 
-    img = librosa.display.specshow(mfcc, x_axis="time", ax=ax)
     ax = plt.subplot(1, 1, 1)
+    img = librosa.display.specshow(mfcc, x_axis="time", ax=ax)
     plt.show()
     # plt.savefig(f"mel-power-{i}.png", format="png")
     plt.clf()
@@ -148,8 +150,8 @@ def plot_mel(mel, i=0):
     img = librosa.display.specshow(
         mel, x_axis="time", y_axis="mel", sr=48000, fmax=11000, ax=ax
     )
-    # plt.show()
-    plt.savefig(f"mel-power-{i}.png", format="png")
+    plt.show()
+    # plt.savefig(f"mel-power-{i}.png", format="png")
     plt.clf()
     plt.close()
 
@@ -173,7 +175,7 @@ def main():
     )
     # model = tf.keras.models.load_model(str(load_model))
 
-    # model.load_weights(load_model / "val_loss").expect_partial()
+    model.load_weights(load_model / "val_loss").expect_partial()
     # model.save(load_model / "frozen_model")
     # 1 / 0
     with open(load_model / "metadata.txt", "r") as f:
@@ -264,14 +266,14 @@ def main():
         if multi_label:
             # print("doing multi", prediction * 100)
             for i, p in enumerate(prediction):
-                if p >= 0.8:
+                if p >= 0.7:
                     label = labels[i]
                     results.append((p, label))
                     track_labels.append(label)
         else:
             best_i = np.argmax(prediction)
             best_p = prediction[best_i]
-            if best_p > 0.8:
+            if best_p > 0.7:
                 label = labels[best_i]
                 results.append((best_p, label))
                 track_labels.append[label]
