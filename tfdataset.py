@@ -388,6 +388,7 @@ def read_tfrecord(
     tf_human_mask = tf.constant(human_mask)
     tfrecord_format = {
         # "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
+        "audio/pecm": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
         "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
         "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
         # "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
@@ -434,19 +435,22 @@ def read_tfrecord(
     #     n_mels=80,
     # )
     #
-    mel = example["audio/mel"]
+    # mel = example["audio/mel"]
+    # mel = tf.reshape(mel, [*mel_s, 1])
+
+    mel = example["audio/pecm"]
+    mel = tf.reshape(mel, [*mel_s, 1])
     # mfcc = example["audio/mfcc"]
     # mel = tf.expand_dims(mel, axis=2)
     #
     # audio_data = tf.reshape(audio_data, [*sftf_s, 1])
     #
-    mfcc = example["audio/mfcc"]
-    mfcc = tf.reshape(mfcc, [*mfcc_s, 1])
-    # mfcc
-    mfcc = tf.image.resize_with_pad(mfcc, mel_s[0], mel_s[1])
-    full_mfcc = tf.zeros((mel_s[0], mel_s[1]))
-    mel = tf.reshape(mel, [*mel_s, 1])
-    mel = tf.concat((mel, mfcc), axis=0)
+    # mfcc = example["audio/mfcc"]
+    # mfcc = tf.reshape(mfcc, [*mfcc_s, 1])
+    # # mfcc
+    # mfcc = tf.image.resize_with_pad(mfcc, mel_s[0], mel_s[1])
+    # full_mfcc = tf.zeros((mel_s[0], mel_s[1]))
+    # mel = tf.concat((mel, mfcc), axis=0)
     if augment:
         logging.info("Augmenting")
         # tf.random.uniform()
