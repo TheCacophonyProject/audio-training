@@ -258,11 +258,11 @@ def get_dataset(filenames, labels, **args):
     dataset = dataset.take(epoch_size)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     batch_size = args.get("batch_size", None)
-    # dataset = dataset.map(
-    #     lambda x, y: tf.py_function(
-    #         func=mel_lib, inp=[x, y], Tout=[tf.float32, tf.int32]
-    #     )
-    # )
+    dataset = dataset.map(
+        lambda x, y: tf.py_function(
+            func=undo_db, inp=[x, y], Tout=[tf.float32, tf.int32]
+        )
+    )
 
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
@@ -284,42 +284,28 @@ def get_dataset(filenames, labels, **args):
     return dataset, remapped
 
 
-@tf.function
-def mel_lib(raw, y):
-    mel = librosa.feature.melspectrogram(
-        y=raw.numpy(),
-        sr=48000,
-        n_fft=4800,
-        hop_length=640,
-        fmin=50,
-        fmax=11000,
-        n_mels=80,
-        power=2,
-    )
-    mel = librosa.power_to_db(mel)
-    # pcen_S = librosa.pcen(mel * (2**31))
-    mel = tf.expand_dims(mel, axis=2)
-    return mel, y
+def undo_db(raw, y):
+    return librosa.db_to_amplitude(raw), y
 
 
 @tf.function
 def mel(raw, y):
     n_fft = 48000 // 10
-
-    spec = tf.signal.stft(
-        raw, frame_length=n_fft, frame_step=640, fft_length=n_fft, pad_end=True
-    )
-    spec = tf.abs(spec)
-    mel = spec
+    #
+    # spec = tf.signal.stft(
+    #     raw, frame_length=n_fft, frame_step=640, fft_length=n_fft, pad_end=True
+    # )
+    # spec = tf.abs(spec)
+    # mel =
     # use this to hparam tune
-    mel_spectrogram = tfio.audio.melscale(
-        spec, rate=48000, mels=80, fmin=20, fmax=11000
-    )
-    mel = tfio.audio.dbscale(mel_spectrogram, top_db=80.0)
-    print(mel.shape)
+    raw = tf.transpose(raw, [0, 2, 1])
+    print(raw.shape)
+
+    mel = tfio.audio.melscale(raw, rate=48000, mels=80, fmin=20, fmax=11000)
+    mel = tfio.audio.dbscale(mel, top_db=80.0)
     mel = tf.transpose(mel, [0, 2, 1])
     mel = tf.expand_dims(mel, axis=3)
-    print(mel.shape)
+    print("got mels", mel.shape)
     return mel, y
 
 
@@ -446,9 +432,9 @@ def read_tfrecord(
     tf_more_mask = tf.constant(morepork_mask)
     tf_human_mask = tf.constant(human_mask)
     tfrecord_format = {
-        # "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
+        "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
         # "audio/pecm": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
-        "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
+        # "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
         # "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
         # "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
         "audio/class/text": tf.io.FixedLenFeature((), tf.string),
@@ -459,20 +445,23 @@ def read_tfrecord(
         # "audio/mel_w": tf.io.FixedLenFeature((), tf.int64),
         # "audio/mel_h": tf.io.FixedLenFeature((), tf.int64),
         # "audio/mfcc_w": tf.io.FixedLenFeature((), tf.int64),
-        "audio/raw": tf.io.FixedLenFeature(
-            [
-                120000,
-            ],
-            dtype=tf.float32,
-        ),
+        # "audio/raw": tf.io.FixedLenFeature(
+        #     [
+        #         120000,
+        #     ],
+        #     dtype=tf.float32,
+        # ),
     }
 
     example = tf.io.parse_single_example(example, tfrecord_format)
 
     # label = tf.cast(example["audio/class/label"], tf.int32)
-
-    raw = example["audio/raw"]
-    raw = tf.reshape(raw, [120000])
+    raw = example["audio/sftf"]
+    # raw = tf.reshape(raw, [120000])
+    raw = tf.reshape(raw, [*sftf_s])
+    print(raw.shape)
+    # raw = example["audio/raw"]
+    # raw = tf.reshape(raw, [120000])
     mel = raw
     n_fft = 48000 // 10
     # # raw = tf.expand_dims(raw, axis=1)
@@ -719,8 +708,8 @@ def main():
 def show_batch(image_batch, label_batch, species_batch, labels, species):
     # mfcc = image_batch[1]
     # sftf = image_batch[1]
-    mel_2 = image_batch[1]
-    image_batch = image_batch[0]
+    # mel_2 = image_batch[1]
+    # image_batch = image_batch[0]
     plt.figure(figsize=(20, 20))
     # mfcc = image_batch[2]
     image_batch = image_batch
@@ -751,16 +740,17 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
         # # plt.axis("off")
         # ax = plt.subplot(num_images, 3, p + 1)
         plot_mel(image_batch[n][:, :, 0], ax)
-        i += 1
-        ax = plt.subplot(num_images // 3 + 1, 6, i + 1)
-
-        plot_mel(mel_2[n][:, :, 0], ax)
-
-        # plot_mfcc(image_batch[n][80:, :, 0], ax)
+        # i += 1
+        # ax = plt.subplot(num_images // 3 + 1, 6, i + 1)
+        #
+        # plot_mel(mel_2[n][:, :, 0], ax)
+        #
+        # # plot_mfcc(image_batch[n][80:, :, 0], ax)
         data = image_batch[n][:, :, 0]
-        mel_d = mel_2[n][:, :, 0]
+        # mel_d = mel_2[n][:, :, 0]
 
-        print(np.amax(data), np.amin(data), np.amax(mel_d), np.amin(mel_d))
+        print(np.amax(data), np.amin(data))
+        # , np.amax(mel_d), np.amin(mel_d))
         # print("time", 0)
         # for mel_f in data[:, 0]:
         # print(mel_f)
