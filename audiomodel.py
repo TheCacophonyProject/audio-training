@@ -160,8 +160,8 @@ class AudioModel:
             )
             # self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
             self.build_model(len(labels), multi_label=multi)
-            class_weights = get_weighting(self.train, self.labels)
-            logging.info("Weights are %s", class_weights)
+            # class_weights = get_weighting(self.train, self.labels)
+            # logging.info("Weights are %s", class_weights)
             cm_dir = self.checkpoint_folder / run_name
             cm_dir.mkdir(parents=True, exist_ok=True)
             history = self.model.fit(
@@ -318,8 +318,8 @@ class AudioModel:
         checkpoints = self.checkpoints(run_name)
         # self.model.save(os.path.join(self.checkpoint_folder, run_name))
         # return
-        class_weights = get_weighting(self.train, self.labels)
-        logging.info("Weights are %s", class_weights)
+        # class_weights = get_weighting(self.train, self.labels)
+        # logging.info("Weights are %s", class_weights)
         history = self.model.fit(
             self.train,
             validation_data=self.validation,
@@ -331,7 +331,7 @@ class AudioModel:
                 ),
                 *checkpoints,
             ],  # log metricslast_stats
-            class_weight=class_weights,
+            # class_weight=class_weights,
         )
 
         history = history.history

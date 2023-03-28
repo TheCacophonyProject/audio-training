@@ -76,7 +76,10 @@ def load_dataset(filenames, num_labels, args):
     ignore_order.experimental_deterministic = (
         deterministic  # disable order, increase speed
     )
-    dataset = tf.data.TFRecordDataset(filenames)
+    dataset = tf.data.TFRecordDataset(
+        filenames,
+        num_parallel_reads=tf.data.experimental.AUTOTUNE,
+    )
 
     # dataset = dataset.interleave(tf.data.TFRecordDataset, cycle_length=4)
     # automatically interleaves reads from multiple files
@@ -238,34 +241,68 @@ def get_dataset(filenames, labels, **args):
     if resample_data:
         logging.info("Resampling data")
         dataset = resample(dataset, labels)
+
     if args.get("shuffle", True):
         dataset = dataset.shuffle(
-            200, reshuffle_each_iteration=args.get("reshuffle", True)
+            1024, reshuffle_each_iteration=args.get("reshuffle", True)
         )
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
-    # epoch_size = len([0 for x, y in dataset])
+    epoch_size = len([0 for x, y in dataset])
     # logging.info("Setting dataset size to %s", epoch_size)
     if not args.get("only_features", False):
         dataset = dataset.repeat(2)
     scale_epoch = args.get("scale_epoch", None)
     if scale_epoch:
         epoch_size = epoch_size // scale_epoch
-    # dataset = dataset.take(epoch_size)
+    dataset = dataset.take(epoch_size)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     batch_size = args.get("batch_size", None)
+    # dataset = dataset.map(
+    #     lambda x, y: tf.py_function(
+    #         func=mel_lib, inp=[x, y], Tout=[tf.float32, tf.int32]
+    #     )
+    # )
+
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
 
-    dist = get_distribution(dataset)
-    for i, d in enumerate(dist):
-        logging.info("Have %s for %s", d, labels[i])
+    dataset = dataset.map(
+        mel,
+        num_parallel_calls=AUTOTUNE,
+    )
+    dataset = dataset.cache()
 
-    dataset = dataset.map(lambda x, y: mel(x, y))
+    logging.info("done map")
+    # dist = get_distribution(dataset)
+    # for i, d in enumerate(dist):
+    #     logging.info("Have %s for %s", d, labels[i])
+    # logging.info("done dist")
+
+    # logging.info("done map")
 
     return dataset, remapped
 
 
+@tf.function
+def mel_lib(raw, y):
+    mel = librosa.feature.melspectrogram(
+        y=raw.numpy(),
+        sr=48000,
+        n_fft=4800,
+        hop_length=640,
+        fmin=50,
+        fmax=11000,
+        n_mels=80,
+        power=2,
+    )
+    mel = librosa.power_to_db(mel)
+    # pcen_S = librosa.pcen(mel * (2**31))
+    mel = tf.expand_dims(mel, axis=2)
+    return mel, y
+
+
+@tf.function
 def mel(raw, y):
     n_fft = 48000 // 10
 
