@@ -242,16 +242,19 @@ def get_dataset(filenames, labels, **args):
         logging.info("Resampling data")
         dataset = resample(dataset, labels)
 
-    if args.get("shuffle", True):
-        dataset = dataset.shuffle(
-            1024, reshuffle_each_iteration=args.get("reshuffle", True)
-        )
+    # if args.get("shuffle", True):
+    #     dataset = dataset.shuffle(
+    #         1024, reshuffle_each_iteration=args.get("reshuffle", True)
+    #     )
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     epoch_size = len([0 for x, y in dataset])
     # logging.info("Setting dataset size to %s", epoch_size)
-    if not args.get("only_features", False):
-        dataset = dataset.repeat(2)
+    # if not args.get("only_features", False):
+    #     dataset = dataset.repeat(2)
+    dataset = dataset.shuffle(
+        4096, reshuffle_each_iteration=args.get("reshuffle", True)
+    )
     scale_epoch = args.get("scale_epoch", None)
     if scale_epoch:
         epoch_size = epoch_size // scale_epoch
@@ -272,7 +275,9 @@ def get_dataset(filenames, labels, **args):
         num_parallel_calls=AUTOTUNE,
     )
     dataset = dataset.cache()
-
+    dataset = dataset.shuffle(
+        4096, reshuffle_each_iteration=args.get("reshuffle", True)
+    )
     logging.info("done map")
     # dist = get_distribution(dataset)
     # for i, d in enumerate(dist):
