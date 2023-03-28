@@ -997,7 +997,7 @@ def main():
 
         preprocess = get_preprocess_fn(model_name)
         dataset, _ = get_dataset(
-            tf.io.gfile.glob(f"./cp-training/test/*.tfrecord"),
+            tf.io.gfile.glob(f"./test/*.tfrecord"),
             labels,
             image_size=DIMENSIONS,
             shuffle=False,
