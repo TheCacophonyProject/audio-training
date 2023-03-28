@@ -244,7 +244,7 @@ def get_dataset(filenames, labels, **args):
 
     if args.get("shuffle", True):
         dataset = dataset.shuffle(
-            1024, reshuffle_each_iteration=args.get("reshuffle", True)
+            4096, reshuffle_each_iteration=args.get("reshuffle", True)
         )
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
@@ -258,11 +258,11 @@ def get_dataset(filenames, labels, **args):
     dataset = dataset.take(epoch_size)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     batch_size = args.get("batch_size", None)
-    dataset = dataset.map(
-        lambda x, y: tf.py_function(
-            func=undo_db, inp=[x, y], Tout=[tf.float32, tf.int32]
-        )
-    )
+    # dataset = dataset.map(
+    #     lambda x, y: tf.py_function(
+    #         func=undo_db, inp=[x, y], Tout=[tf.float32, tf.int32]
+    #     )
+    # )
 
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
@@ -272,7 +272,9 @@ def get_dataset(filenames, labels, **args):
         num_parallel_calls=AUTOTUNE,
     )
     dataset = dataset.cache()
-
+    dataset = dataset.shuffle(
+        4096, reshuffle_each_iteration=args.get("reshuffle", True)
+    )
     logging.info("done map")
     # dist = get_distribution(dataset)
     # for i, d in enumerate(dist):
@@ -284,14 +286,11 @@ def get_dataset(filenames, labels, **args):
     return dataset, remapped
 
 
-def undo_db(raw, y):
-    raw = librosa.db_to_amplitude(raw)
-    print("undoing db")
-    return raw, y
-
-
 @tf.function
 def mel(raw, y):
+    # equivelent of db to amplitude
+    raw = tf.math.pow(10.0, 0.1 * raw) ** 0.5
+
     n_fft = 48000 // 10
     #
     # spec = tf.signal.stft(
