@@ -29,7 +29,7 @@ DIMENSIONS = (160, 188)
 mel_s = (80, 188)
 sftf_s = (2401, 188)
 mfcc_s = (20, 188)
-
+DIMENSIONS = mel_s
 mel_bins = librosa.mel_frequencies(128, fmax=48000 / 2)
 human_lowest = np.where(mel_bins < 60)[-1][-1]
 human_max = np.where(mel_bins > 180)[0][0]
@@ -240,18 +240,18 @@ def get_dataset(filenames, labels, **args):
         dataset = resample(dataset, labels)
     if args.get("shuffle", True):
         dataset = dataset.shuffle(
-            4096, reshuffle_each_iteration=args.get("reshuffle", True)
+            200, reshuffle_each_iteration=args.get("reshuffle", True)
         )
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
-    epoch_size = len([0 for x, y in dataset])
-    logging.info("Setting dataset size to %s", epoch_size)
+    # epoch_size = len([0 for x, y in dataset])
+    # logging.info("Setting dataset size to %s", epoch_size)
     if not args.get("only_features", False):
         dataset = dataset.repeat(2)
     scale_epoch = args.get("scale_epoch", None)
     if scale_epoch:
         epoch_size = epoch_size // scale_epoch
-    dataset = dataset.take(epoch_size)
+    # dataset = dataset.take(epoch_size)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     batch_size = args.get("batch_size", None)
     if batch_size is not None:
@@ -261,7 +261,29 @@ def get_dataset(filenames, labels, **args):
     for i, d in enumerate(dist):
         logging.info("Have %s for %s", d, labels[i])
 
+    dataset = dataset.map(lambda x, y: mel(x, y))
+
     return dataset, remapped
+
+
+def mel(raw, y):
+    n_fft = 48000 // 10
+
+    spec = tf.signal.stft(
+        raw, frame_length=n_fft, frame_step=640, fft_length=n_fft, pad_end=True
+    )
+    spec = tf.abs(spec)
+    mel = spec
+    # use this to hparam tune
+    mel_spectrogram = tfio.audio.melscale(
+        spec, rate=48000, mels=80, fmin=20, fmax=11000
+    )
+    mel = tfio.audio.dbscale(mel_spectrogram, top_db=80.0)
+    print(mel.shape)
+    mel = tf.transpose(mel, [0, 2, 1])
+    mel = tf.expand_dims(mel, axis=3)
+    print(mel.shape)
+    return mel, y
 
 
 def normalize_image(image, label):
@@ -389,7 +411,7 @@ def read_tfrecord(
     tfrecord_format = {
         # "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
         # "audio/pecm": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
-        # "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
+        "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
         # "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
         # "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
         "audio/class/text": tf.io.FixedLenFeature((), tf.string),
@@ -414,19 +436,20 @@ def read_tfrecord(
 
     raw = example["audio/raw"]
     raw = tf.reshape(raw, [120000])
+    mel = raw
     n_fft = 48000 // 10
     # # raw = tf.expand_dims(raw, axis=1)
-    spec = tf.signal.stft(
-        raw, frame_length=n_fft, frame_step=640, fft_length=n_fft, pad_end=True
-    )
-    spec = tf.abs(spec)
-
+    # spec = tf.signal.stft(
+    #     raw, frame_length=n_fft, frame_step=640, fft_length=n_fft, pad_end=True
+    # )
+    # spec = tf.abs(spec)
+    # mel = spec
     # use this to hparam tune
-    mel_spectrogram = tfio.audio.melscale(
-        spec, rate=48000, mels=80, fmin=20, fmax=11000
-    )
-    mel = tfio.audio.dbscale(mel_spectrogram, top_db=80.0)
-    mel = tf.transpose(mel, [1, 0])
+    # mel_spectrogram = tfio.audio.melscale(
+    #     spec, rate=48000, mels=80, fmin=20, fmax=11000
+    # )
+    # mel = tfio.audio.dbscale(mel_spectrogram, top_db=80.0)
+    # mel = tf.transpose(mel, [1, 0])
     # mel = librosa.feature.melspectrogram(
     #     y=raw,
     #     sr=sr,
@@ -443,7 +466,7 @@ def read_tfrecord(
     # mel = example["audio/mel"]
     # mel = tf.reshape(mel, [*mel_s, 1])
     # mfcc = example["audio/mfcc"]
-    mel = tf.expand_dims(mel, axis=2)
+    # mel = tf.expand_dims(mel, axis=2)
     #
     # audio_data = tf.reshape(audio_data, [*sftf_s, 1])
     #
@@ -510,7 +533,6 @@ def read_tfrecord(
     # # mel_h = tf.image.resize(mel_h, (128, 61))
     # # image = tf.concat((mel_h, mel_more, mel), axis=2)
     # image = tf.concat((mel, mel, mel), axis=2)
-    image = mel
     #
     # image = tf.image.resize(image, (90 * 2, 80 * 2))
 
