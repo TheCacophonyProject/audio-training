@@ -242,10 +242,10 @@ def get_dataset(filenames, labels, **args):
         logging.info("Resampling data")
         dataset = resample(dataset, labels)
 
-    if args.get("shuffle", True):
-        dataset = dataset.shuffle(
-            4096, reshuffle_each_iteration=args.get("reshuffle", True)
-        )
+    # if args.get("shuffle", True):
+    # dataset = dataset.shuffle(
+    #     4096, reshuffle_each_iteration=args.get("reshuffle", True)
+    # )
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     epoch_size = len([0 for x, y in dataset])
@@ -307,7 +307,7 @@ def mel(raw, y):
     print("mel now", mel.shape)
     mel = tf.transpose(mel, [0, 2, 1])
     mel = tf.expand_dims(mel, axis=3)
-    print("got mels", mel.shape)
+    print("got mels", mel.shape, y.shape)
     return mel, y
 
 
