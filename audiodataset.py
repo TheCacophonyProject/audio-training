@@ -605,18 +605,28 @@ def load_data(
             sr=sr,
             n_fft=n_fft,
             hop_length=hop_length,
-            fmin=50,
+            fmin=20,
+            fmax=11000,
+            n_mels=80,
+            power=2,
+        )
+        mel_pcen = librosa.feature.melspectrogram(
+            y=s_data,
+            sr=sr,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            fmin=20,
             fmax=11000,
             n_mels=80,
             power=1,
         )
-        pcen_S = librosa.pcen(mel * (2**31))
+        pcen_S = librosa.pcen(mel_pcen * (2**31), sr=sr, hop_length=hop_length)
         mfcc = librosa.feature.mfcc(
             y=s_data,
             sr=sr,
             hop_length=hop_length,
             htk=True,
-            fmin=50,
+            fmin=20,
             fmax=11000,
             n_mels=80,
         )

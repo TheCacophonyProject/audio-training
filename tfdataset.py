@@ -11,7 +11,7 @@ import logging
 import librosa
 import librosa.display
 
-# import tensorflow_io as tfio
+import tensorflow_io as tfio
 
 # seed = 1341
 # tf.random.set_seed(seed)
@@ -388,9 +388,9 @@ def read_tfrecord(
     tf_human_mask = tf.constant(human_mask)
     tfrecord_format = {
         # "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
-        "audio/pecm": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
-        "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
-        "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
+        # "audio/pecm": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
+        # "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
+        # "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
         # "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
         "audio/class/text": tf.io.FixedLenFeature((), tf.string),
         # "audio/length": tf.io.FixedLenFeature((), tf.int64),
@@ -412,19 +412,21 @@ def read_tfrecord(
 
     # label = tf.cast(example["audio/class/label"], tf.int32)
 
-    # raw = example["audio/raw"]
-    # raw = tf.reshape(raw, [120000])
-    # n_fft = 48000 // 10
+    raw = example["audio/raw"]
+    raw = tf.reshape(raw, [120000])
+    n_fft = 48000 // 10
     # # raw = tf.expand_dims(raw, axis=1)
-    # spec = tf.signal.stft(
-    #     raw, frame_length=n_fft, frame_step=n_fft // 3, fft_length=n_fft, pad_end=True
-    # )
-    # spec = tf.abs(spec)
-    #
-    # mel_spectrogram = tfio.audio.melscale(
-    #     spec, rate=48000, mels=80, fmin=50, fmax=11000
-    # )
-    # mel = tfio.audio.dbscale(mel_spectrogram, top_db=80)
+    spec = tf.signal.stft(
+        raw, frame_length=n_fft, frame_step=640, fft_length=n_fft, pad_end=True
+    )
+    spec = tf.abs(spec)
+
+    # use this to hparam tune
+    mel_spectrogram = tfio.audio.melscale(
+        spec, rate=48000, mels=80, fmin=20, fmax=11000
+    )
+    mel = tfio.audio.dbscale(mel_spectrogram, top_db=80.0)
+    mel = tf.transpose(mel, [1, 0])
     # mel = librosa.feature.melspectrogram(
     #     y=raw,
     #     sr=sr,
@@ -435,13 +437,13 @@ def read_tfrecord(
     #     n_mels=80,
     # )
     #
+    # mel_2 = example["audio/mel"]
+    # mel_2 = tf.reshape(mel, [*mel_s, 1])
+
     # mel = example["audio/mel"]
     # mel = tf.reshape(mel, [*mel_s, 1])
-
-    mel = example["audio/pecm"]
-    mel = tf.reshape(mel, [*mel_s, 1])
     # mfcc = example["audio/mfcc"]
-    # mel = tf.expand_dims(mel, axis=2)
+    mel = tf.expand_dims(mel, axis=2)
     #
     # audio_data = tf.reshape(audio_data, [*sftf_s, 1])
     #
@@ -616,7 +618,7 @@ def main():
         # species_list = ["bird", "human", "rain", "other"]
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-        filenames.extend(tf.io.gfile.glob(f"./{d}/test/*.tfrecord"))
+        filenames.extend(tf.io.gfile.glob(f"./{d}/test/00039-of-00100.tfrecord"))
     labels.add("bird")
     labels.add("noise")
     labels = list(labels)
@@ -658,7 +660,8 @@ def main():
 def show_batch(image_batch, label_batch, species_batch, labels, species):
     # mfcc = image_batch[1]
     # sftf = image_batch[1]
-    # image_batch = image_batch[0]
+    mel_2 = image_batch[1]
+    image_batch = image_batch[0]
     plt.figure(figsize=(20, 20))
     # mfcc = image_batch[2]
     image_batch = image_batch
@@ -679,7 +682,7 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
         # print("showing", image_batch[n].shape, sftf[n].shape)
         p = n
         i += 1
-        ax = plt.subplot(num_images // 3 + 1, 3, n + 1)
+        ax = plt.subplot(num_images // 3 + 1, 6, i + 1)
         # plot_spec(image_batch[n][:, :, 0], ax)
         # # plt.imshow(np.uint8(image_batch[n]))
         spc = None
@@ -689,9 +692,21 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
         # # plt.axis("off")
         # ax = plt.subplot(num_images, 3, p + 1)
         plot_mel(image_batch[n][:, :, 0], ax)
+        i += 1
+        ax = plt.subplot(num_images // 3 + 1, 6, i + 1)
+
+        plot_mel(mel_2[n][:, :, 0], ax)
+
         # plot_mfcc(image_batch[n][80:, :, 0], ax)
         data = image_batch[n][:, :, 0]
-        print(np.amax(data), np.amin(data))
+        mel_d = mel_2[n][:, :, 0]
+
+        print(np.amax(data), np.amin(data), np.amax(mel_d), np.amin(mel_d))
+        # print("time", 0)
+        # for mel_f in data[:, 0]:
+        # print(mel_f)
+        # break
+        # 1 / 0
         #
         # ax = plt.subplot(num_images, 3, p + 2)
         # plot_mel(image_batch[n][:, :, 1], ax)

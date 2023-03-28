@@ -97,8 +97,9 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             print("remove last ", strides_per, len(mels))
             return mels, length
             # 1 / 0
-        # pcen_S = librosa.pcen(mel * (2**31))
-        # plot_mel(pcen_S)
+        pcen_S = librosa.pcen(mel * (2**31), sr=sr, hop_length=hop_length, max_size=3)
+        print(np.amax(pcen_S), np.amin(pcen_S))
+        plot_mel(pcen_S)
         mel = librosa.power_to_db(mel)
         # plot_mel(mel)
         i += 1
@@ -148,7 +149,7 @@ def plot_mel(mel, i=0):
 
     ax = plt.subplot(1, 1, 1)
     img = librosa.display.specshow(
-        mel, x_axis="time", y_axis="mel", sr=48000, fmax=11000, ax=ax
+        mel, x_axis="time", y_axis="mel", sr=48000, fmax=11000, ax=ax, fmin=50
     )
     plt.show()
     # plt.savefig(f"mel-power-{i}.png", format="png")
