@@ -108,7 +108,7 @@ def load_dataset(filenames, num_labels, args):
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
-    filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[1]))
+    filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
     dataset = dataset.filter(filter_nan)
 
     filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
@@ -242,19 +242,16 @@ def get_dataset(filenames, labels, **args):
         logging.info("Resampling data")
         dataset = resample(dataset, labels)
 
-    # if args.get("shuffle", True):
-    #     dataset = dataset.shuffle(
-    #         1024, reshuffle_each_iteration=args.get("reshuffle", True)
-    #     )
+    if args.get("shuffle", True):
+        dataset = dataset.shuffle(
+            1024, reshuffle_each_iteration=args.get("reshuffle", True)
+        )
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     epoch_size = len([0 for x, y in dataset])
-    # logging.info("Setting dataset size to %s", epoch_size)
-    # if not args.get("only_features", False):
-    #     dataset = dataset.repeat(2)
-    dataset = dataset.shuffle(
-        4096, reshuffle_each_iteration=args.get("reshuffle", True)
-    )
+    logging.info("Setting dataset size to %s", epoch_size)
+    if not args.get("only_features", False):
+        dataset = dataset.repeat(2)
     scale_epoch = args.get("scale_epoch", None)
     if scale_epoch:
         epoch_size = epoch_size // scale_epoch
@@ -275,9 +272,7 @@ def get_dataset(filenames, labels, **args):
         num_parallel_calls=AUTOTUNE,
     )
     dataset = dataset.cache()
-    dataset = dataset.shuffle(
-        4096, reshuffle_each_iteration=args.get("reshuffle", True)
-    )
+
     logging.info("done map")
     # dist = get_distribution(dataset)
     # for i, d in enumerate(dist):
@@ -290,7 +285,9 @@ def get_dataset(filenames, labels, **args):
 
 
 def undo_db(raw, y):
-    return librosa.db_to_amplitude(raw), y
+    raw = librosa.db_to_amplitude(raw)
+    print("undoing db")
+    return raw, y
 
 
 @tf.function
@@ -304,10 +301,11 @@ def mel(raw, y):
     # mel =
     # use this to hparam tune
     raw = tf.transpose(raw, [0, 2, 1])
-    print(raw.shape)
+    print("raw shape", raw.shape)
 
     mel = tfio.audio.melscale(raw, rate=48000, mels=80, fmin=20, fmax=11000)
     mel = tfio.audio.dbscale(mel, top_db=80.0)
+    print("mel now", mel.shape)
     mel = tf.transpose(mel, [0, 2, 1])
     mel = tf.expand_dims(mel, axis=3)
     print("got mels", mel.shape)
