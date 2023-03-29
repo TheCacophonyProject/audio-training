@@ -70,8 +70,8 @@ class AudioModel:
         self.labels = meta.get("labels", [])
         if "bird" not in self.labels:
             self.labels.append("bird")
-        if "noise" not in self.labels:
-            self.labels.append("noise")
+        # if "noise" not in self.labels:
+        # self.labels.append("noise")
         self.labels.sort()
         self.segment_length = meta.get("segment_length", 3)
         self.segment_stride = meta.get("segment_stride", 1.5)
@@ -101,8 +101,8 @@ class AudioModel:
         self.labels = labels
         if "bird" not in self.labels:
             self.labels.append("bird")
-        if "noise" not in self.labels:
-            self.labels.append("noise")
+        # if "noise" not in self.labels:
+        # self.labels.append("noise")
         excluded_labels = []
         for l in self.labels:
             if l not in BIRD_LABELS and l not in ["noise", "human"]:
@@ -522,8 +522,8 @@ class AudioModel:
         self.labels = labels
         if "bird" not in self.labels:
             self.labels.append("bird")
-        if "noise" not in self.labels:
-            self.labels.append("noise")
+        # if "noise" not in self.labels:
+        # self.labels.append("noise")
         self.labels.sort()
         logging.info("Loading train")
         excluded_labels = []

@@ -21,6 +21,8 @@ AUTOTUNE = tf.data.AUTOTUNE
 # BATCH_SIZE = 64
 NOISE_LABELS = ["wind", "vehicle", "dog", "rain", "static", "noise", "cat"]
 BIRD_LABELS = ["whistler", "kiwi", "morepork", "bird"]
+BIRD_LABELS = ["bird"]
+NOISE_LABELS = []
 insect = None
 fp = None
 
@@ -76,7 +78,7 @@ def load_dataset(filenames, num_labels, args):
     ignore_order.experimental_deterministic = (
         deterministic  # disable order, increase speed
     )
-    dataset = tf.data.TFRecordDataset(filenames)
+    dataset = tf.data.TFRecordDataset(filenames, num_parallel_reads=AUTOTUNE)
 
     # dataset = dataset.interleave(tf.data.TFRecordDataset, cycle_length=4)
     # automatically interleaves reads from multiple files
@@ -178,7 +180,8 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
             # or l == "human":
             continue
         elif l == "human":
-            extra_label_map[l] = new_labels.index("noise")
+            if "noise" in new_labels:
+                extra_label_map[l] = new_labels.index("noise")
 
             continue
         else:
@@ -251,7 +254,10 @@ def get_dataset(filenames, labels, **args):
     batch_size = args.get("batch_size", None)
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
-
+    dataset = dataset.cache()
+    dataset = dataset.shuffle(
+        4096, reshuffle_each_iteration=args.get("reshuffle", True)
+    )
     dist = get_distribution(dataset)
     for i, d in enumerate(dist):
         logging.info("Have %s for %s", d, labels[i])
@@ -366,7 +372,7 @@ def read_tfrecord(
     tfrecord_format = {
         # "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
         "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
-        "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
+        # "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
         # "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
         "audio/class/text": tf.io.FixedLenFeature((), tf.string),
         # "audio/length": tf.io.FixedLenFeature((), tf.int64),
