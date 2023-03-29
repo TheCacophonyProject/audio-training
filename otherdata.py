@@ -41,7 +41,6 @@ def flickr_data():
         id = f"{id}-{id_2}"
 
         r = Recording({"id": id, "tracks": []}, rec_name)
-        print(rec_name)
         tags = [{"automatic": False, "what": label}]
         try:
             y, sr = librosa.load(rec_name)
