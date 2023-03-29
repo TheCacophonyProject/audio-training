@@ -208,6 +208,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
             loaded = []
             pool_data = []
             samples_by_rec = {}
+
             for sample in local_set:
                 if sample.rec_id not in samples_by_rec:
                     samples_by_rec[sample.rec_id] = [sample]
@@ -232,7 +233,6 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                         sample.sr = sr
             loaded = np.array(local_set, dtype=object)
             np.random.shuffle(local_set)
-
             for sample in local_set:
                 if sample.spectogram_data is None:
                     continue

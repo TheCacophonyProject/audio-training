@@ -126,7 +126,7 @@ def chime_data():
                     id = row[1]
                     # .48kHz.wav
             rec_name = file.parent / f"{file.stem}.48kHz.wav"
-            print(label)
+            id = file.stem
             r = Recording({"id": id, "tracks": []}, rec_name)
             print(rec_name)
             tags = []
@@ -149,7 +149,6 @@ def chime_data():
             dataset.add_recording(r)
             dataset.samples.extend(r.samples)
 
-    print("counts are")
     dataset.print_counts()
     # return
     datasets = split_randomly(dataset, no_test=True)
@@ -159,7 +158,6 @@ def chime_data():
         d.print_sample_counts()
 
         all_labels.update(d.labels)
-    return
     all_labels = list(all_labels)
     all_labels.sort()
     for d in datasets:
@@ -191,9 +189,9 @@ def chime_data():
 def main():
     init_logging()
     flickr_data()
-    return
+    # return
     chime_data()
-    return
+    # return
     dataset = AudioDataset("Other")
     # dataset.print_counts()
 
@@ -238,6 +236,8 @@ def main():
                 r.load_samples()
                 # dataset
                 dataset.add_recording(r)
+                dataset.samples.extend(r.samples)
+
     print("counts are")
     dataset.print_counts()
     datasets = split_randomly(dataset, no_test=True)
