@@ -553,7 +553,7 @@ def plot_mel(mel):
     # plt.clf()
 
 
-SpectrogramData = namedtuple("SpectrogramData", "spect mel mfcc raw raw_length")
+SpectrogramData = namedtuple("SpectrogramData", "spect mel mfcc raw raw_length pcen")
 
 Tag = namedtuple("Tag", "what confidence automatic original")
 
@@ -614,6 +614,17 @@ def load_data(
             fmax=11000,
             n_mels=80,
         )
+        mel_pcen = librosa.feature.melspectrogram(
+            y=s_data,
+            sr=sr,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            fmin=50,
+            fmax=11000,
+            n_mels=80,
+            power=1,
+        )
+        pcen_S = librosa.pcen(mel_pcen * (2**31), sr=sr, hop_length=hop_length)
         mfcc = librosa.feature.mfcc(
             y=s_data,
             sr=sr,
@@ -623,7 +634,7 @@ def load_data(
             fmax=11000,
             n_mels=80,
         )
-        return spectogram, mel, mfcc, s_data, data_length
+        return spectogram, mel, mfcc, s_data, data_length, mel_pcen
     except:
         logging.error(
             "Error getting segment  start %s lenght %s",
