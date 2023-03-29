@@ -269,7 +269,7 @@ def get_weighting(dataset, labels):
     excluded_labels = []
     dont_weigh = []
     for l in labels:
-        if l in ["bird", "noise", "whistler", "morepork", "kiwi"]:
+        if l in ["human", "bird", "noise", "whistler", "morepork", "kiwi"]:
             continue
         dont_weigh.append(l)
     num_labels = len(labels)

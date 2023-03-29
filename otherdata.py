@@ -28,6 +28,75 @@ chime_labels = {
     "S": "silence",
     "U": "unknown",
 }
+
+
+def flickr_data():
+    dataset = AudioDataset("Flickr")
+    p = Path("./flickr/wavs")
+    wav_files = list(p.glob("*.wav"))
+    for rec_name in wav_files:
+        label = "human"
+        id = None
+        id, id_2, speaker = rec_name.stem.split("_")
+        id = f"{id}-{id_2}"
+
+        r = Recording({"id": id, "tracks": []}, rec_name)
+        print(rec_name)
+        tags = [{"automatic": False, "what": label}]
+        try:
+            y, sr = librosa.load(rec_name)
+            end = librosa.get_duration(y=y, sr=sr)
+            y = None
+            sr = None
+        except:
+            continue
+        t = Track({"id": id, "start": 0, "end": end, "tags": tags}, rec_name, r.id, r)
+        r.load_samples()
+        r.human_tags.add(label)
+        r.tracks.append(t)
+        r.load_samples()
+        dataset.add_recording(r)
+        dataset.samples.extend(r.samples)
+
+    print("counts are")
+    dataset.print_counts()
+    # return
+    datasets = split_randomly(dataset, no_test=True)
+    all_labels = set()
+    for d in datasets:
+        logging.info("%s Dataset", d.name)
+        d.print_sample_counts()
+
+        all_labels.update(d.labels)
+    # return
+    all_labels = list(all_labels)
+    all_labels.sort()
+    for d in datasets:
+        d.labels = all_labels
+    base_dir = Path(".")
+    record_dir = base_dir / "flickr-training-data/"
+    print("saving to", record_dir)
+    dataset_counts = {}
+    for dataset in datasets:
+        dir = record_dir / dataset.name
+        print("saving to ", dir)
+        create_tf_records(dataset, dir, datasets[0].labels, num_shards=100)
+        dataset_counts[dataset.name] = dataset.get_counts()
+        # dataset.saveto_numpy(os.path.join(base_dir))
+    # dont need dataset anymore just need some meta
+    meta_filename = f"{base_dir}/flickr-training-data/training-meta.json"
+    meta_data = {
+        "labels": datasets[0].labels,
+        "type": "audio",
+        "counts": dataset_counts,
+        "by_label": False,
+        "relabbled": RELABEL,
+    }
+
+    with open(meta_filename, "w") as f:
+        json.dump(meta_data, f, indent=4)
+
+
 #  Child speech
 # m Adult male speech
 # f Adult female speech
@@ -57,6 +126,7 @@ def chime_data():
                     id = row[1]
                     # .48kHz.wav
             rec_name = file.parent / f"{file.stem}.48kHz.wav"
+            print(label)
             r = Recording({"id": id, "tracks": []}, rec_name)
             print(rec_name)
             tags = []
@@ -75,11 +145,13 @@ def chime_data():
             r.load_samples()
             r.human_tags.add(chime_labels[code])
             r.tracks.append(t)
-
+            r.load_samples()
             dataset.add_recording(r)
+            dataset.samples.extend(r.samples)
 
     print("counts are")
     dataset.print_counts()
+    # return
     datasets = split_randomly(dataset, no_test=True)
     all_labels = set()
     for d in datasets:
@@ -87,6 +159,7 @@ def chime_data():
         d.print_sample_counts()
 
         all_labels.update(d.labels)
+    return
     all_labels = list(all_labels)
     all_labels.sort()
     for d in datasets:
@@ -117,7 +190,10 @@ def chime_data():
 
 def main():
     init_logging()
+    flickr_data()
+    return
     chime_data()
+    return
     dataset = AudioDataset("Other")
     # dataset.print_counts()
 
@@ -127,7 +203,6 @@ def main():
         print("loading", csv_file)
         csv_file = Path(csv_file)
         with open(csv_file, newline="") as csvfile:
-
             dreader = csv.reader(csvfile, delimiter=",", quotechar="|")
             i = -1
             for row in dreader:
