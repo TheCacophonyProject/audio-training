@@ -127,7 +127,6 @@ def chime_data():
             rec_name = file.parent / f"{file.stem}.48kHz.wav"
             id = file.stem
             r = Recording({"id": id, "tracks": []}, rec_name)
-            print(rec_name)
             tags = []
             for code in label:
                 tags.append({"automatic": False, "what": chime_labels[code]})
@@ -216,7 +215,6 @@ def main():
                     sr = None
                 except:
                     continue
-                print("end is", end)
                 what = labels[int(row[1])]
                 t = Track(
                     {
