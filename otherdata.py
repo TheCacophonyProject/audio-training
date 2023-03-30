@@ -38,7 +38,7 @@ def flickr_data():
         label = "human"
         id = None
         id, id_2, speaker = rec_name.stem.split("_")
-        id = f"{id}-{id_2}"
+        id = f"{id}-{id_2}-{speaker}"
 
         r = Recording({"id": id, "tracks": []}, rec_name)
         tags = [{"automatic": False, "what": label}]
