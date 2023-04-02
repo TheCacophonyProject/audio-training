@@ -47,6 +47,8 @@ import librosa
 from audiodataset import load_data, SpectrogramData, SEGMENT_LENGTH
 from multiprocessing import Pool
 
+import psutil
+
 
 def create_tf_example(sample, labels):
     """Converts image and annotations to a tf.Example proto.
@@ -255,7 +257,9 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     # count += 1
                 except Exception as e:
                     logging.error("Error saving ", exc_info=True)
-
+            logging.info(
+                "Saved %s memory %s", len(local_set), psutil.virtual_memory()[2]
+            )
     except:
         logging.error("Error saving track info", exc_info=True)
     for writer in writers:

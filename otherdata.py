@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from audiodataset import Track, Recording, AudioDataset, RELABEL
 from build import split_randomly
+import psutil
 
 # csv_files = ["./ff10/ff1010bird_metadata.csv"]
 csv_files = [
@@ -56,11 +57,12 @@ def flickr_data():
         r.load_samples()
         dataset.add_recording(r)
         dataset.samples.extend(r.samples)
-
-    print("counts are")
+    logging.info("Loaded samples mem %s", psutil.virtual_memory()[2])
     dataset.print_counts()
     # return
     datasets = split_randomly(dataset, no_test=True)
+    logging.info("Split samples mem %s", psutil.virtual_memory()[2])
+
     all_labels = set()
     for d in datasets:
         logging.info("%s Dataset", d.name)
@@ -75,6 +77,8 @@ def flickr_data():
     base_dir = Path(".")
     record_dir = base_dir / "flickr-training-data/"
     print("saving to", record_dir)
+    logging.info("Saving pre samples mem %s", psutil.virtual_memory()[2])
+
     dataset_counts = {}
     for dataset in datasets:
         dir = record_dir / dataset.name
@@ -143,13 +147,14 @@ def chime_data():
             r.load_samples()
             r.human_tags.add(chime_labels[code])
             r.tracks.append(t)
-            r.load_samples()
             dataset.add_recording(r)
             dataset.samples.extend(r.samples)
-
+    logging.info("Loaded samples mem %s", psutil.virtual_memory()[2])
     dataset.print_counts()
     # return
     datasets = split_randomly(dataset, no_test=True)
+    logging.info("Split samples mem %s", psutil.virtual_memory()[2])
+
     all_labels = set()
     for d in datasets:
         logging.info("%s Dataset", d.name)
@@ -163,6 +168,8 @@ def chime_data():
     base_dir = Path(".")
     record_dir = base_dir / "chime-training-data/"
     print("saving to", record_dir)
+    logging.info("Saving pre samples mem %s", psutil.virtual_memory()[2])
+
     dataset_counts = {}
     for dataset in datasets:
         dir = record_dir / dataset.name
@@ -284,7 +291,7 @@ def init_logging():
     Logs will go to stderr.
     """
 
-    fmt = "%(process)d %(thread)s:%(levelname)7s %(message)s"
+    fmt = "%(asctime)s %(process)d %(thread)s:%(levelname)7s %(message)s"
     logging.basicConfig(
         stream=sys.stderr, level=logging.INFO, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"
     )
