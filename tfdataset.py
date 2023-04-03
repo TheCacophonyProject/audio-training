@@ -238,12 +238,12 @@ def get_dataset(filenames, labels, **args):
         # labels_2 = args.get("labels_2")
 
         dist = get_distribution(dataset, batched=False)
-        bird_c = dist[0]
+        bird_c = dist[labels.index("bird")]
         for i, d in enumerate(dist):
             logging.info("First dataset have %s for %s", d, labels[i])
 
         dataset_2 = load_dataset(second, len(labels), args)
-        dataset_2.take(bird_c)
+        dataset_2 = dataset_2.take(bird_c)
         logging.info("concatenating second dataset %s", second[0])
         dist = get_distribution(dataset_2, batched=False)
         for i, d in enumerate(dist):
