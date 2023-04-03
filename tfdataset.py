@@ -241,7 +241,6 @@ def get_dataset(filenames, labels, **args):
         bird_c = dist[labels.index("bird")]
         for i, d in enumerate(dist):
             logging.info("First dataset have %s for %s", d, labels[i])
-
         dataset_2 = load_dataset(second, len(labels), args)
         dataset_2 = dataset_2.take(bird_c)
         logging.info("concatenating second dataset %s", second[0])
@@ -410,45 +409,8 @@ def read_tfrecord(
     }
 
     example = tf.io.parse_single_example(example, tfrecord_format)
-
-    # label = tf.cast(example["audio/class/label"], tf.int32)
-
-    # raw = example["audio/raw"]
-    # # raw = tf.reshape(raw, [144000])
-    # n_fft = 48000 // 10
-    # # raw = tf.expand_dims(raw, axis=1)
-    # spec = tf.signal.stft(
-    #     raw, frame_length=n_fft, frame_step=n_fft // 3, fft_length=n_fft, pad_end=True
-    # )
-    # spec = tf.abs(spec)
-    #
-    # mel_spectrogram = tfio.audio.melscale(
-    #     spec, rate=48000, mels=80, fmin=50, fmax=11000
-    # )
-    # mel = tfio.audio.dbscale(mel_spectrogram, top_db=80)
-    # mel = librosa.feature.melspectrogram(
-    #     y=raw,
-    #     sr=sr,
-    #     n_fft=n_fft,
-    #     hop_length=n_fft // 3,
-    #     fmin=50,
-    #     fmax=11000,
-    #     n_mels=80,
-    # )
-    #
     mel = example["audio/mel"]
-    # mfcc = example["audio/mfcc"]
-    # mel = tf.expand_dims(mel, axis=2)
-    #
-    # audio_data = tf.reshape(audio_data, [*sftf_s, 1])
-    #
-    # mfcc = example["audio/mfcc"]
-    # mfcc = tf.reshape(mfcc, [*mfcc_s, 1])
-    # # mfcc
-    # mfcc = tf.image.resize_with_pad(mfcc, mel_s[0], mel_s[1])
-    # full_mfcc = tf.zeros((mel_s[0], mel_s[1]))
     mel = tf.reshape(mel, [*mel_s, 1])
-    # mel = tf.concat((mel, mfcc), axis=0)
     if augment:
         logging.info("Augmenting")
         # tf.random.uniform()
@@ -461,56 +423,12 @@ def read_tfrecord(
         mel_m = tf.expand_dims(mel_m, axis=1)
         # mean over each mel bank
         mel = mel - mel_m
-    # mel = tf.expand_dims(mel, axis=2)
     #
     if Z_NORM:
         print("Subbing znorm")
         mel = (mel - zvals["mean"]) / zvals["std"]
-    # # mel_h = tf.experimental.numpy.copy(mel)
-    # # # print(mel_h.shape)
-    # # mel_h = mel_h[human_mel[0] : human_mel[0] + human_mel[1]]
-    # # mel_more = tf.experimental.numpy.copy(mel)
-    # # mel_more = mel_more[morepork_mel[0] : morepork_mel[0] + morepork_mel[1]]
-    # #
-    # # # or
-    # # # full scale zero out other values
-    # # # mel_h = tf.experimental.numpy.copy(mel)
-    # # # mel_h = tf.reshape(mel_h, [*mel_s])
-    # # # mel_h = tf.math.multiply(mel_h, tf_human_mask)
-    # # mel_h = tf.expand_dims(mel_h, axis=2)
-    # # #
-    # # # mel_more = tf.experimental.numpy.copy(mel)
-    # # # mel_more = tf.reshape(mel_more, [*mel_s])
-    # # # mel_more = tf.math.multiply(mel_more, tf_more_mask)
-    # # mel_more = tf.expand_dims(mel_more, axis=2)
-    # # mel = tf.expand_dims(mel, axis=2)
-    # #
-    # # # mfcc = tf.reshape(mfcc, [*mfcc_s])
-    # # # mfcc_max = tf.math.reduce_max(mfcc)
-    # # # mfcc = tf.math.subtract(mfcc, mfcc_max)
-    # # # mfcc = tf.math.divide(mfcc, 2)
-    # # length = example["audio/length"]
-    # # start = example["audio/start_s"]
-    # # # image = tf.image.grayscale_to_rgb(audio_data)
-    # #
-    # # # if we want mfcc, i think that we would want to normalized both specs first
-    # # # spec_mf = tf.concat((audio_data, mfcc), axis=0)
-    # # # mel_mf = tf.concat((mel, mfcc), axis=0)
-    # #
-    # # # mel_mf = mel
-    # # # mel_mf = tf.reshape(mel_mf, [*mel_mf.shape, 1])
-    # # # image = tf.concat((mel_mf, mel_mf, mel_mf), axis=2)
-    # #
-    # #
-    # # mel_more = tf.image.resize(mel_more, (128, 61))
-    # # mel_h = tf.image.resize(mel_h, (128, 61))
-    # # image = tf.concat((mel_h, mel_more, mel), axis=2)
-    # image = tf.concat((mel, mel, mel), axis=2)
     image = mel
-    #
-    # image = tf.image.resize(image, (90 * 2, 80 * 2))
 
-    # image = data_augmentation(image)
     if preprocess_fn is not None:
         logging.info("Preprocessing with %s", preprocess_fn)
         raise Exception("Done preprocess for audio")
@@ -529,8 +447,6 @@ def read_tfrecord(
             label = tf.reduce_max(
                 tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
             )
-
-        # return image, label
 
         return image, label
 
@@ -601,6 +517,7 @@ def main():
     # return
     datasets = ["other-training-data", "training-data", "chime-training-data"]
     datasets = ["training-data"]
+    datsaets = ["cp-training"]
     filenames = []
     labels = set()
     for d in datasets:
@@ -659,7 +576,7 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
     # mfcc = image_batch[1]
     # sftf = image_batch[1]
     # image_batch = image_batch[0]
-    plt.figure(figsize=(200, 200))
+    plt.figure(figsize=(20, 20))
     # mfcc = image_batch[2]
     image_batch = image_batch
     print("images in batch", len(image_batch), len(label_batch))
@@ -678,7 +595,7 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
         # print("showing", image_batch[n].shape, sftf[n].shape)
         p = n
         i += 1
-        ax = plt.subplot(num_images, 3, p + 1)
+        ax = plt.subplot(num_images // 3 + 1, 3, p + 1)
         # plot_spec(image_batch[n][:, :, 0], ax)
         # # plt.imshow(np.uint8(image_batch[n]))
         spc = None
@@ -718,7 +635,7 @@ def plot_mfcc(mfccs, ax):
 def plot_mel(mel, ax):
     # power = librosa.db_to_power(mel.numpy())
     img = librosa.display.specshow(
-        mel.numpy(), x_axis="time", y_axis="mel", sr=48000, fmax=11000, ax=ax
+        mel.numpy(), x_axis="time", y_axis="mel", sr=48000, fmax=11000, fmin=50, ax=ax
     )
 
 
