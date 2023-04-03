@@ -128,9 +128,10 @@ def preprocess(data):
     return tf.keras.applications.inception_v3.preprocess_input(x), y
 
 
-def get_distribution(dataset):
+def get_distribution(dataset, batched=True):
     true_categories = [y for x, y in dataset]
-    true_categories = tf.concat(true_categories, axis=0)
+    if batched:
+        true_categories = tf.concat(true_categories, axis=0)
     num_labels = len(true_categories[0])
     if len(true_categories) == 0:
         return None
@@ -230,7 +231,25 @@ def get_dataset(filenames, labels, **args):
 
     # print("keys", keys, " values", values)
     # 1 / 0
+
     dataset = load_dataset(filenames, len(labels), args)
+    if args.get("filenames_2") is not None:
+        second = args.get("filenames_2")
+        # labels_2 = args.get("labels_2")
+
+        dist = get_distribution(dataset, batched=False)
+        bird_c = dist[0]
+        for i, d in enumerate(dist):
+            logging.info("First dataset have %s for %s", d, labels[i])
+
+        dataset_2 = load_dataset(second, len(labels), args)
+        dataset_2.take(bird_c)
+        logging.info("concatenating second dataset %s", second[0])
+        dist = get_distribution(dataset_2, batched=False)
+        for i, d in enumerate(dist):
+            logging.info("Second dataset have %s for %s", d, labels[i])
+
+        dataset = dataset.concatenate(dataset_2)
 
     resample_data = args.get("resample", True)
     if resample_data:
@@ -594,13 +613,15 @@ def main():
         # species_list = ["bird", "human", "rain", "other"]
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-        filenames.extend(tf.io.gfile.glob(f"./{d}/validation/*.tfrecord"))
+        filenames.extend(tf.io.gfile.glob(f"./{d}/train/*.tfrecord"))
+    print(filenames)
     labels.add("bird")
     labels.add("noise")
     labels = list(labels)
 
     labels.sort()
     print(labels)
+    filenames_2 = tf.io.gfile.glob(f"./flickr-training-data/train/*.tfrecord")
     # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
     # weights = [0.5] * len(labels)
     resampled_ds, remapped = get_dataset(
@@ -611,6 +632,7 @@ def main():
         image_size=DIMENSIONS,
         augment=False,
         resample=False,
+        filenames_2=filenames_2
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
     # print(get_distribution(resampled_ds))

@@ -508,8 +508,11 @@ class AudioModel:
     def load_datasets(self, base_dir, labels, shape, test=False):
         datasets = ["other-training-data", "training-data", "chime-training-data"]
         datasets = ["training-data"]
+        flickr = "/data/audio-data/flickr-training-data"
         labels = set()
         filenames = []
+        second_filenames = tf.io.gfile.glob(f"{flickr}/train/*.tfrecord")
+
         for d in datasets:
             # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
             filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/train/*.tfrecord"))
@@ -541,13 +544,16 @@ class AudioModel:
             augment=False,
             resample=False,
             excluded_labels=excluded_labels,
-            mean_sub=self.mean_sub
+            mean_sub=self.mean_sub,
+            filenames_2=second_filenames
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
         filenames = []
         for d in datasets:
             # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
             filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/validation/*.tfrecord"))
+        second_filenames = tf.io.gfile.glob(f"{flickr}/validation/*.tfrecord")
+
         logging.info("Loading Val")
         self.validation, _ = get_dataset(
             # dir,
@@ -557,7 +563,8 @@ class AudioModel:
             image_size=self.input_shape,
             resample=False,
             excluded_labels=excluded_labels,
-            mean_sub=self.mean_sub
+            mean_sub=self.mean_sub,
+            filenames_2=second_filenames
             # preprocess_fn=self.preprocess_fn,
         )
 
@@ -567,6 +574,8 @@ class AudioModel:
             for d in datasets:
                 # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
                 filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/test/*.tfrecord"))
+            second_filenames = tf.io.gfile.glob(f"{flickr}/test/*.tfrecord")
+
             self.test, _ = get_dataset(
                 # dir,
                 filenames,
@@ -575,7 +584,8 @@ class AudioModel:
                 image_size=self.input_shape,
                 resample=False,
                 excluded_labels=excluded_labels,
-                mean_sub=self.mean_sub
+                mean_sub=self.mean_sub,
+                filenames_2=second_filenames
                 # preprocess_fn=self.preprocess_fn,
             )
         self.remapped = remapped
