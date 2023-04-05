@@ -640,6 +640,7 @@ def load_data(
     n_fft=None,
     end=None,
 ):
+    print("hop length is", hop_length)
     sr_stride = int(segment_stride * sr)
 
     if n_fft is None:
@@ -684,7 +685,7 @@ def load_data(
             hop_length=hop_length,
             fmin=50,
             fmax=11000,
-            n_mels=80,
+            n_mels=128,
         )
         mel_pcen = librosa.feature.melspectrogram(
             y=s_data,
@@ -693,9 +694,10 @@ def load_data(
             hop_length=hop_length,
             fmin=50,
             fmax=11000,
-            n_mels=80,
+            n_mels=128,
             power=1,
         )
+        print(mel.shape)
         pcen_S = librosa.pcen(mel_pcen * (2**31), sr=sr, hop_length=hop_length)
         mfcc = librosa.feature.mfcc(
             y=s_data,
@@ -704,7 +706,7 @@ def load_data(
             htk=True,
             fmin=50,
             fmax=11000,
-            n_mels=80,
+            n_mels=128,
         )
         return spectogram, mel, mfcc, s_data, data_length, mel_pcen
     except:
