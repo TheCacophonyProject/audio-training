@@ -196,6 +196,7 @@ def main():
     dataset = AudioDataset("all")
     dataset.load_meta(args.dir)
     # dataset.load_meta()
+    return
     dataset.print_counts()
     datasets = split_randomly(dataset, no_test=args.no_test)
     dataset.print_counts()
