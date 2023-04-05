@@ -119,6 +119,7 @@ def get_data(args):
     filename = args[1]
     resample = args[2]
     samples = args[3]
+    signals = args[4]
     samples = sorted(
         samples,
         key=lambda sample: sample.start,
@@ -137,7 +138,7 @@ def get_data(args):
     # )
     try:
         aro = audioread.ffdec.FFmpegAudioFile(filename)
-        frames, sr = librosa.load(aro, sr=None, offset=start, duration=end - start)
+        frames, sr = librosa.load(aro, sr=None)
         aro.close()
     except Exception as ex:
         print("Error loading rec ", filename, ex)
@@ -146,17 +147,24 @@ def get_data(args):
         except:
             pass
         return (rec_id, None, None)
+
+    for s in signals:
+        s_f = int((s[0]) * sr)
+        s_e = int((s[1]) * sr)
+        s_f = max(0, s_f)
+        signal_frames.extend(frames[s_f:s_e])
     if resample is not None and resample != sr:
         frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
         sr = resample
 
     data = [None] * len(samples)
-
+    signal_frames = np.array(signal_fr)
     for i, sample in enumerate(samples):
         try:
             spectogram, mel, mfcc, s_data, raw_length, pcen = load_data(
-                sample.start - start, frames, sr, end=sample.end - start
+                sample.start, signal_frames, sr, end=sample.end, hop_length=281
             )
+            print("mel is", mel.shape)
             # print("adjusted start is", sample.start, " becomes", sample.start - start)
             if spectogram is None:
                 print("error loading", rec_id)
@@ -219,7 +227,13 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
             for rec_id, rec_samples in samples_by_rec.items():
                 # sample.rec.rec_data = None
                 pool_data.append(
-                    (rec_id, rec_samples[0].rec.filename, 48000, rec_samples)
+                    (
+                        rec_id,
+                        rec_samples[0].rec.filename,
+                        48000,
+                        rec_samples,
+                        rec_samples[0].rec.signals,
+                    )
                 )
             with Pool(processes=8) as pool:
                 for i in pool.imap_unordered(get_data, pool_data):

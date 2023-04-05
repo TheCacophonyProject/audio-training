@@ -278,6 +278,36 @@ class Recording:
             self.tracks,
             key=lambda track: track.start,
         )
+        for t in self.tracks:
+            # signals = [
+            # s
+            offset = 0
+            t_s = None
+            t_e = 0
+            for s in self.signals:
+                if ((t.end - t.start) + (s[1] - s[0])) > max(t.end, s[1]) - min(
+                    t.start, s[0]
+                ):
+                    pre_sig = s[0] - t.start
+                    if t_s is None:
+                        if pre_sig < 0:
+                            # interlap
+                            t_s = offset - pre_sig
+                        else:
+                            t_s = offset
+
+                    if t.end < s[1]:
+                        t_e = offset + (s[1] - t.end)
+                        break
+                    else:
+                        t_e = offset + (s[1] - s[0])
+                elif t_s is not None:
+                    # Done
+                    break
+                offset += s[1] - s[0]
+            print("track ", t.start, t.end, " now has", t_s, t_e, t.human_tags)
+            t.start = t_s
+            t.end = t_e
         self.samples = []
         if len(sorted_tracks) == 0:
             return
@@ -291,129 +321,44 @@ class Recording:
         bin_id = f"{self.id}-{bin}"
         tracks = [track.id]
         while True:
-            # choose a signal if it overlaps
-            signals = [
-                s
-                for s in self.signals
-                if ((end - start) + (s[1] - s[0])) > max(end, s[1]) - min(start, s[0])
-            ]
-            if len(signals) == 0:
-                logging.warn(
-                    "Skipping %s-%s rec %s track %s", start, end, self.id, tracks[0]
-                )
-            else:
-                signal_s = signals[0][0]
-                signal_e = signals[-1][1]
-                s_starts = np.array([s[0] for s in signals])
-                weights = np.array([s[1] - s[0] for s in signals])
-                middles = np.array([((s[1] + s[0]) / 2) for s in signals])
 
-                median_s = np.average(s_starts, weights=weights)
-                median_mid = np.average(middles, weights=weights)
-                adjust_s = []
-                start_s = None
-                max_gap = 0.2
-                end_s = None
-                for s in signals:
-                    if start_s is None:
-                        start_s = s
-                        end_s = s
-                    else:
-                        if (s[0] - start_s[1]) < max_gap:
-                            # print("Gap is", start_s[1], s[0])
-                            end_s = s
-                            continue
-                        else:
-                            adjust_s.append((start_s[0], end_s[1]))
-                            start_s = s
-                            end_s = s
-                adjust_s.append((start_s[0], end_s[1]))
-
-                adjust_signal_time = [
-                    min(end, s[1]) - max(start, s[0]) for s in adjust_s
-                ]
-                adjust_signal_time = sum(adjust_signal_time)
-                noise = [
-                    s
-                    for s in self.noises
-                    if (end - start + s[1] - s[0]) > min(start, s[0]) + max(end, s[1])
-                ]
-                signal_time = [min(end, s[1]) - max(start, s[0]) for s in signals]
-                signal_time = sum(signal_time)
-                noise_time = [min(end, s[1]) - max(start, s[0]) for s in noise]
-                noise_time = sum(noise_time)
-                print(
-                    "for start",
-                    start,
-                    end,
-                    " have signals",
-                    signal_time,
-                    noise_time,
-                    "adjusted s",
-                    adjust_signal_time,
-                )
-                print(
-                    "Signal start to end is",
-                    signal_s,
-                    signal_e,
-                    "MEdian START",
-                    median_s,
-                    "MEDIAN MID",
-                    median_mid,
-                )
-                print("SS", signals)
-                print("ADJU", adjust_s)
-                lengths = [s[1] - s[0] for s in adjust_s]
-                print("Adjusted lengths", adjust_s)
-                # check enough signal and if not enough might just be one long semgnet inside
-                if adjust_signal_time < 1.5 and signal_e > end - 0.5:
-
-                    logging.warn(
-                        "Skipping %s-%s rec %s track %s weak signal %s",
-                        start,
-                        end,
-                        self.id,
-                        tracks[0],
-                        signal_time,
-                    )
+            logging.info("Using %s %s", start, end)
+            # start = round(start, 1)
+            # end = round(end, 1)
+            other_tracks = []
+            tracks = [track.id]
+            labels = set(track.human_tags)
+            for t in sorted_tracks[i:]:
+                # starts in this sample
+                if t.start > end:
+                    break
+                if t.start < start:
+                    s = start
                 else:
-                    logging.info("Using %s %s", start, end)
-                    # start = round(start, 1)
-                    # end = round(end, 1)
-                    other_tracks = []
-                    tracks = [track.id]
-                    labels = set(track.human_tags)
-                    for t in sorted_tracks[i:]:
-                        # starts in this sample
-                        if t.start > end:
-                            break
-                        if t.start < start:
-                            s = start
-                        else:
-                            s = t.start
+                    s = t.start
 
-                        if t.end > end:
-                            # possible to miss out on some of a track
-                            e = end
-                        else:
-                            e = t.end
-                        intersect = e - s
-                        if intersect > SEGMENT_STRIDE:
-                            # if t.start<= start and t.end <= end:
-                            other_tracks.append(t)
-                            labels = labels | t.human_tags
-                            tracks.append(t.id)
-                    self.samples.append(
-                        AudioSample(
-                            self,
-                            labels,
-                            start,
-                            min(track.end, end),
-                            tracks,
-                            SAMPLE_GROUP_ID,
-                            bin_id,
-                        )
-                    )
+                if t.end > end:
+                    # possible to miss out on some of a track
+                    e = end
+                else:
+                    e = t.end
+                intersect = e - s
+                if intersect > SEGMENT_STRIDE:
+                    # if t.start<= start and t.end <= end:
+                    other_tracks.append(t)
+                    labels = labels | t.human_tags
+                    tracks.append(t.id)
+            self.samples.append(
+                AudioSample(
+                    self,
+                    labels,
+                    start,
+                    min(track.end, end),
+                    tracks,
+                    SAMPLE_GROUP_ID,
+                    bin_id,
+                )
+            )
             # print("sample length is", self.samples[-1].length)
             start += SEGMENT_STRIDE
             # print("track end is ", track.end, " and start is", start)
