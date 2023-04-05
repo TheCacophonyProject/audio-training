@@ -640,7 +640,6 @@ def load_data(
     n_fft=None,
     end=None,
 ):
-    print("hop length is", hop_length)
     sr_stride = int(segment_stride * sr)
 
     if n_fft is None:
@@ -697,7 +696,6 @@ def load_data(
             n_mels=128,
             power=1,
         )
-        print(mel.shape)
         pcen_S = librosa.pcen(mel_pcen * (2**31), sr=sr, hop_length=hop_length)
         mfcc = librosa.feature.mfcc(
             y=s_data,
