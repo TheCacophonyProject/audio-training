@@ -329,7 +329,7 @@ def create_signal_data(dataset, output_path, labels):
                 )
 
             # print("adding data", len(track_data), key)
-        # save_data(audio_data, output_path, min_seconds=10)
+        save_data(audio_data, output_path, min_seconds=10)
     save_data(audio_data, output_path, min_seconds=None)
 
 
