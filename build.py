@@ -20,6 +20,9 @@ import numpy as np
 from audiodataset import AudioDataset, RELABEL, SEGMENT_LENGTH, SEGMENT_STRIDE
 from audiowriter import create_tf_records
 import warnings
+import math
+from pathlib import Path
+import soundfile as sf
 
 # warnings.filterwarnings("ignore")
 # remove librosa pysound warnings
@@ -196,7 +199,7 @@ def main():
     dataset = AudioDataset("all")
     dataset.load_meta(args.dir)
     # dataset.load_meta()
-    return
+    # return
     dataset.print_counts()
     datasets = split_randomly(dataset, no_test=args.no_test)
     dataset.print_counts()
@@ -213,6 +216,14 @@ def main():
         print("setting all labels", all_labels)
     validate_datasets(datasets)
     base_dir = "."
+    record_dir = os.path.join(base_dir, "signal-data/")
+    for dataset in datasets:
+        dir = os.path.join(record_dir, dataset.name)
+
+        print("Saving signal")
+        create_signal_data(dataset, Path(dir), datasets[0].labels)
+        # r_counts = dataset.get_rec_counts()
+    return
     record_dir = os.path.join(base_dir, "training-data/")
     print("saving to", record_dir)
     dataset_counts = {}
@@ -265,6 +276,80 @@ def validate_datasets(datasets):
 
     for t in val_tracks:
         assert t not in test_tracks
+
+
+def create_signal_data(dataset, output_path, labels):
+    if output_path.is_dir():
+        logging.info("Clearing dir %s", output_path)
+        for child in output_path.glob("*"):
+            if child.is_file():
+                child.unlink()
+    output_path.mkdir(parents=True, exist_ok=True)
+    recs = dataset.recs
+    np.random.shuffle(recs)
+    audio_data = {}
+    print("recs are", len(recs))
+    sr = 48000
+    for r in recs:
+        r.space_signals()
+        loaded = r.load_recording(resample=sr)
+        if not loaded:
+            continue
+        for t in r.tracks:
+            track_data = []
+            # print("Checking", t, r.signals)
+            for s in r.signals:
+                if ((t.end - t.start) + (s[1] - s[0])) > max(t.end, s[1]) - min(
+                    t.start, s[0]
+                ):
+                    # print("signal at ", t.start, t.end, s)
+                    pre_sig = s[0] - t.start
+                    t_e = min(s[1], t.end) * sr
+                    t_s = max(s[0], t.start) * sr
+                    t_e = math.ceil(t_e)
+                    t_s = math.floor(t_s)
+                    # print("getting data from", len(r.rec_data), t_s, t_e)
+                    track_data.extend(r.rec_data[t_s:t_e])
+                elif s[0] > t.start:
+                    break
+            key = t.tags_key
+            if key in audio_data:
+                offset = len(audio_data[key][1])
+                audio_data[key][1].extend(track_data)
+                meta = audio_data[key][2]["recs"]
+                rec_meta = meta.setdefault(r.id, {})
+                rec_meta[t.id] = [offset, offset + len(track_data)]
+            else:
+                audio_data[key] = (
+                    1,
+                    track_data,
+                    {
+                        "recs": {r.id: {t.id: [0, len(track_data)]}},
+                    },
+                )
+
+            # print("adding data", len(track_data), key)
+        # save_data(audio_data, output_path, min_seconds=10)
+    save_data(audio_data, output_path, min_seconds=None)
+
+
+def save_data(audio_data, output_dir, sr=48000, min_seconds=10):
+    for l in audio_data.keys():
+        data = audio_data[l]
+        if len(data) == 0:
+            continue
+        if min_seconds is None or len(data[1]) > sr * min_seconds:
+            name = output_dir / f"{l}-{data[0]}.wav"
+            sf.write(str(name), data[1], sr)
+            name = output_dir / f"{l}-{data[0]}.txt"
+
+            with open(name, "w") as f:
+                json.dump(data[2], f, indent=4)
+            print("Saving", name)
+            # data[0] += 1
+            # data[1] = []
+            # data[2] = {"recs": {}}
+            audio_data[l] = (data[0] + 1, [], {"recs": {}})
 
 
 def parse_args():

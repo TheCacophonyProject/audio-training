@@ -50,6 +50,7 @@ class AudioDataset:
         # self.base_path = Path(base_path)
         self.name = name
         self.recs = []
+        self.rec_keys = []
         self.labels = set()
         # self.samples_by_label
         self.samples = []
@@ -175,6 +176,9 @@ class AudioDataset:
             )
 
     def add_sample(self, sample):
+        if sample.rec.id not in self.rec_keys:
+            self.recs.append(sample.rec)
+            self.rec_keys.append(sample.rec.id)
         self.samples.append(sample)
         for t in sample.tags:
             self.labels.add(t)
@@ -271,6 +275,30 @@ class Recording:
         self.samples = []
         self.load_samples()
 
+    def space_signals(self, spacing=0.1):
+        # print("prev have", len(self.signals))
+        # for s in self.signals:
+        #     print(s)
+        new_signals = []
+        prev_s = None
+        for s in self.signals:
+            if prev_s is None:
+                prev_s = s
+            else:
+                if s[0] < prev_s[1] + spacing:
+                    # combine them
+                    prev_s[1] = s[1]
+                else:
+                    new_signals.append(prev_s)
+                    prev_s = s
+        if prev_s is not None:
+            new_signals.append(prev_s)
+        #
+        # print("spaced have", len(new_signals))
+        # for s in new_signals:
+        #     print(s)
+        self.signals = new_signals
+
     def load_samples(self):
         global SAMPLE_GROUP_ID
         SAMPLE_GROUP_ID += 1
@@ -305,9 +333,9 @@ class Recording:
                     # Done
                     break
                 offset += s[1] - s[0]
-            print("track ", t.start, t.end, " now has", t_s, t_e, t.human_tags)
-            t.start = t_s
-            t.end = t_e
+            # print("track ", t.start, t.end, " now has", t_s, t_e, t.human_tags)
+            # t.start = t_s
+            # t.end = t_e
         self.samples = []
         if len(sorted_tracks) == 0:
             return
@@ -322,7 +350,7 @@ class Recording:
         tracks = [track.id]
         while True:
 
-            logging.info("Using %s %s", start, end)
+            # logging.info("Using %s %s", start, end)
             # start = round(start, 1)
             # end = round(end, 1)
             other_tracks = []
@@ -547,6 +575,12 @@ class Track:
     @property
     def tags(self):
         return self.human_tags
+
+    @property
+    def tags_key(self):
+        tags = list(self.human_tags)
+        tags.sort()
+        return "-".join(tags)
 
     @property
     def tag(self):

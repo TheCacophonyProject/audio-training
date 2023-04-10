@@ -152,16 +152,16 @@ def signal_noise(file, hop_length=281):
         noise.append((noise_start * 281 / sr, (i - 1) * 281 / sr))
     # cv2.imshow("b", indicator_vector)
     # cv2.waitKey()
-    signal_frames = []
-    for s in signals:
-        s_f = int((s[0]) * sr)
-        s_e = int((s[1]) * sr)
-        s_f = max(0, s_f)
-        signal_frames.extend(frames[s_f:s_e])
-
-    signal_frames = np.array(signal_frames)
-    name = file.parent / f"{file.stem}-signal.wav"
-    sf.write(str(name), signal_frames, sr)
+    # signal_frames = []
+    # for s in signals:
+    #     s_f = int((s[0]) * sr)
+    #     s_e = int((s[1]) * sr)
+    #     s_f = max(0, s_f)
+    #     signal_frames.extend(frames[s_f:s_e])
+    #
+    # signal_frames = np.array(signal_frames)
+    # name = file.parent / f"{file.stem}-signal.wav"
+    # sf.write(str(name), signal_frames, sr)
 
     return signals, noise
 
