@@ -58,9 +58,11 @@ class AudioDataset:
     def load_meta(self, base_path):
         meta_files = Path(base_path).glob("**/*.txt")
         for f in meta_files:
-            print(f)
             meta = load_metadata(f)
-            r = Recording(meta, f.with_suffix(".m4a"))
+            audio_f = f.with_suffix(".m4a")
+            if not audio_f.exists():
+                audio_f = f.with_suffix(".wav")
+            r = Recording(meta, audio_f)
             self.add_recording(r)
             self.samples.extend(r.samples)
 
@@ -216,6 +218,23 @@ def filter_track(track):
     return False
 
 
+def get_samples(rec_frames, sample):
+    end = 0
+    start = 0
+    while end < len(frames):
+        AudioSample(
+            self,
+            labels,
+            start,
+            min(track.end, end),
+            tracks,
+            SAMPLE_GROUP_ID,
+            bin_id,
+        )
+        start += SEGMENT_STRIDE
+        end = start + SEGMENT_LENGTH
+
+
 class AudioSample:
     def __init__(self, rec, tags, start, end, track_ids, group_id, bin_id=None):
         self.rec = rec
@@ -256,13 +275,12 @@ class Recording:
         self.rec_date = metadata.get("recordingDateTime")
         self.signals = metadata.get("signal", [])
         self.noises = metadata.get("noise", [])
-
         if self.rec_date is not None:
             self.rec_date = parse_date(self.rec_date)
 
         self.tracks = []
         self.human_tags = set()
-        for track in metadata.get("tracks"):
+        for track in metadata.get("tracks", []):
             t = Track(track, self.filename, self.id, self)
             if filter_track(t):
                 continue
@@ -273,6 +291,7 @@ class Recording:
         self.rec_data = None
         self.resampled = False
         self.samples = []
+
         self.load_samples()
 
     def space_signals(self, spacing=0.1):
@@ -306,40 +325,43 @@ class Recording:
             self.tracks,
             key=lambda track: track.start,
         )
-        for t in self.tracks:
-            # signals = [
-            # s
-            offset = 0
-            t_s = None
-            t_e = 0
-            for s in self.signals:
-                if ((t.end - t.start) + (s[1] - s[0])) > max(t.end, s[1]) - min(
-                    t.start, s[0]
-                ):
-                    pre_sig = s[0] - t.start
-                    if t_s is None:
-                        if pre_sig < 0:
-                            # interlap
-                            t_s = offset - pre_sig
-                        else:
-                            t_s = offset
-
-                    if t.end < s[1]:
-                        t_e = offset + (s[1] - t.end)
-                        break
-                    else:
-                        t_e = offset + (s[1] - s[0])
-                elif t_s is not None:
-                    # Done
-                    break
-                offset += s[1] - s[0]
-            # print("track ", t.start, t.end, " now has", t_s, t_e, t.human_tags)
-            # t.start = t_s
-            # t.end = t_e
+        # for t in self.tracks:
+        #     # signals = [
+        #     # s
+        #     offset = 0
+        #     t_s = None
+        #     t_e = 0
+        #     for s in self.signals:
+        #         if ((t.end - t.start) + (s[1] - s[0])) > max(t.end, s[1]) - min(
+        #             t.start, s[0]
+        #         ):
+        #             pre_sig = s[0] - t.start
+        #             if t_s is None:
+        #                 if pre_sig < 0:
+        #                     # interlap
+        #                     t_s = offset - pre_sig
+        #                 else:
+        #                     t_s = offset
+        #
+        #             if t.end < s[1]:
+        #                 t_e = offset + (s[1] - t.end)
+        #                 break
+        #             else:
+        #                 t_e = offset + (s[1] - s[0])
+        #         elif t_s is not None:
+        #             # Done
+        #             break
+        # offset += s[1] - s[0]
+        # print("track ", t.start, t.end, " now has", t_s, t_e, t.human_tags)
+        # t.start = t_s
+        # t.end = t_e
         self.samples = []
         if len(sorted_tracks) == 0:
             return
         track = sorted_tracks[0]
+        # print("have", len(sorted_tracks), "tracks")
+        # for t in sorted_tracks:
+        # print("Tracks is", t.filename, t.start, t.end)
         start = track.start
         end = start + SEGMENT_LENGTH
         i = 1
@@ -348,6 +370,7 @@ class Recording:
         bin = 0
         bin_id = f"{self.id}-{bin}"
         tracks = [track.id]
+        # print("rec-", self.id, "tracks is", track.start, track.end, track.id)
         while True:
 
             # logging.info("Using %s %s", start, end)
@@ -682,7 +705,7 @@ def load_data(
             hop_length=hop_length,
             fmin=50,
             fmax=11000,
-            n_mels=80,
+            n_mels=120,
         )
         mel_pcen = librosa.feature.melspectrogram(
             y=s_data,
@@ -691,7 +714,7 @@ def load_data(
             hop_length=hop_length,
             fmin=50,
             fmax=11000,
-            n_mels=80,
+            n_mels=120,
             power=1,
         )
         pcen_S = librosa.pcen(mel_pcen * (2**31), sr=sr, hop_length=hop_length)
@@ -702,7 +725,7 @@ def load_data(
             htk=True,
             fmin=50,
             fmax=11000,
-            n_mels=80,
+            n_mels=120,
         )
         return spectogram, mel, mfcc, s_data, data_length, mel_pcen
     except:

@@ -28,7 +28,7 @@ fp = None
 
 DIMENSIONS = (160, 188)
 
-mel_s = (80, 188)
+mel_s = (120, 401)
 sftf_s = (2401, 188)
 mfcc_s = (20, 188)
 DIMENSIONS = mel_s

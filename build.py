@@ -17,7 +17,14 @@ import sys
 # from config.config import Config
 import numpy as np
 
-from audiodataset import AudioDataset, RELABEL, SEGMENT_LENGTH, SEGMENT_STRIDE
+from audiodataset import (
+    AudioDataset,
+    RELABEL,
+    SEGMENT_LENGTH,
+    SEGMENT_STRIDE,
+    Track,
+    AudioSample,
+)
 from audiowriter import create_tf_records
 import warnings
 import math
@@ -192,9 +199,73 @@ def split_randomly(dataset, test_clips=[], no_test=False):
     return train, validation, test
 
 
+def dataset_from_signal(args):
+    signal_dir = Path(args.dir)
+    sets = ["train", "validation", "test"]
+    r_id = 0
+    t_id = 0
+    dataset_counts = {}
+    datesets = []
+    all_labels = set()
+    for s in sets:
+        set_dir = signal_dir / s
+        dataset = AudioDataset("all")
+        dataset.load_meta(set_dir)
+        for r in dataset.recs:
+            r_id += 1
+            r.id = r_id
+            file_name = r.filename.stem
+            label_i = file_name.rindex("-")
+            label = file_name[:label_i]
+            r.human_tags.add(label)
+            tags = [{"automatic": False, "what": label}]
+            t_id += 1
+            t = Track(
+                {"id": t_id, "start": 0, "end": None, "tags": tags}, r.filename, r.id, r
+            )
+            r.tracks.append(t)
+            sample = AudioSample(r, r.human_tags, 0, None, [t.id], 1)
+            r.samples = [sample]
+            dataset.samples.extend(r.samples)
+            dataset.labels.add(label)
+        dataset.print_counts()
+        dataset.print_sample_counts()
+        datesets.append(dataset)
+        all_labels.update(dataset.labels)
+    all_labels = list(all_labels)
+    all_labels.sort()
+    for dataset in datesets:
+        dataset.labels = all_labels
+        dir = signal_dir / "training-data" / s
+        create_tf_records(dataset, dir, dataset.labels, num_shards=100)
+        r_counts = dataset.get_rec_counts()
+        for k, v in r_counts.items():
+            r_counts[k] = len(v)
+
+        dataset_counts[dataset.name] = {
+            "rec_counts": r_counts,
+            "sample_counts": dataset.get_counts(),
+        }
+    meta_filename = signal_dir / "training-data" / "training-meta.json"
+    meta_data = {
+        "segment_length": SEGMENT_LENGTH,
+        "segment_stride": SEGMENT_STRIDE,
+        "labels": all_labels,
+        "type": "audio",
+        "counts": dataset_counts,
+        "by_label": False,
+        "relabbled": RELABEL,
+    }
+    with open(meta_filename, "w") as f:
+        json.dump(meta_data, f, indent=4)
+
+
 def main():
     init_logging()
     args = parse_args()
+    if args.signal:
+        dataset_from_signal(args)
+        return
     # config = load_config(args.config_file)
     dataset = AudioDataset("all")
     dataset.load_meta(args.dir)
@@ -356,6 +427,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--dir", help="Dir to load")
     parser.add_argument("--no-test", action="count", help="NO test set")
+    parser.add_argument("--signal", action="count", help="Load signal data")
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     args = parser.parse_args()
