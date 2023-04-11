@@ -327,8 +327,8 @@ def create_signal_data(dataset, output_path, labels):
                         "recs": {r.id: {t.id: [0, len(track_data)]}},
                     },
                 )
-
-            # print("adding data", len(track_data), key)
+        r.rec_data = None
+        # print("adding data", len(track_data), key)
         save_data(audio_data, output_path, min_seconds=10)
     save_data(audio_data, output_path, min_seconds=None)
 
