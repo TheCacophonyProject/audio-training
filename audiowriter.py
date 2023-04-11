@@ -163,6 +163,7 @@ def get_data(rec):
         except Exception as ex:
             print("Error ", rec_id, ex)
         # sample.sr = sr
+
     return samples
 
 
@@ -204,6 +205,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
             loaded = []
             pool_data = []
             samples_by_rec = {}
+            logging.info("Size pre is %s", getsize(local_set))
             #
             # for sample in local_set:
             #     if sample.rec_id not in samples_by_rec:
@@ -250,9 +252,17 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     # count += 1
                 except Exception as e:
                     logging.error("Error saving ", exc_info=True)
+            saved_s = len(loaded)
+            del loaded
+            loaded = None
             logging.info(
-                "Saved %s memory %s", len(local_set), psutil.virtual_memory()[2]
+                "Saved %s recs %s samples memory %s",
+                len(local_set),
+                saved_s,
+                psutil.virtual_memory()[2],
             )
+            logging.info("Size post is %s", getsize(local_set))
+
     except:
         logging.error("Error saving track info", exc_info=True)
     for writer in writers:

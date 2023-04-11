@@ -87,8 +87,9 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             hop_length=hop_length,
             fmin=50,
             fmax=11000,
-            n_mels=80,
+            n_mels=120,
         )
+        print(mel.shape)
         half = mel[:, 75:]
         if np.amax(half) == np.amin(half):
             print("mel max is same")
@@ -186,7 +187,7 @@ def main():
     mean_sub = meta.get("mean_sub", False)
     use_mfcc = meta.get("use_mfcc", False)
     hop_length = meta.get("hop_length", 640)
-
+    hop_length = 281
     # print("stride is", segment_stride)
     # segment_length = 2
     segment_stride = 0.5

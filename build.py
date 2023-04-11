@@ -209,7 +209,7 @@ def dataset_from_signal(args):
     all_labels = set()
     for s in sets:
         set_dir = signal_dir / s
-        dataset = AudioDataset("all")
+        dataset = AudioDataset(s)
         dataset.load_meta(set_dir)
         for r in dataset.recs:
             r_id += 1
@@ -236,7 +236,7 @@ def dataset_from_signal(args):
     all_labels.sort()
     for dataset in datesets:
         dataset.labels = all_labels
-        dir = signal_dir / "training-data" / s
+        dir = signal_dir / "training-data" / dataset.name
         create_tf_records(dataset, dir, dataset.labels, num_shards=100)
         r_counts = dataset.get_rec_counts()
         for k, v in r_counts.items():

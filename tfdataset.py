@@ -28,7 +28,7 @@ fp = None
 
 DIMENSIONS = (160, 188)
 
-mel_s = (120, 401)
+mel_s = (120, 428)
 sftf_s = (2401, 188)
 mfcc_s = (20, 188)
 DIMENSIONS = mel_s
@@ -341,13 +341,7 @@ def resample(dataset, labels):
             logging.info("Have %s for %s", dist[i], labels[i])
     # GP TESTING Just to remove some labels
     dist = dist / np.sum(dist)
-    print(dist)
-    rej = dataset.rejection_resample(
-        class_func=class_func,
-        target_dist=dist,
-    )
-    dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
-    return dataset
+
     zeros = dist[dist == 0]
     non_zero_labels = num_labels - len(zeros)
     target_dist[:] = 1 / non_zero_labels
@@ -517,7 +511,7 @@ def main():
     # return
     datasets = ["other-training-data", "training-data", "chime-training-data"]
     datasets = ["training-data"]
-    datsaets = ["cp-training"]
+    datasets = ["signal-data/training-data"]
     filenames = []
     labels = set()
     for d in datasets:
@@ -538,7 +532,7 @@ def main():
 
     labels.sort()
     print(labels)
-    filenames_2 = tf.io.gfile.glob(f"./flickr-training-data/train/*.tfrecord")
+    # filenames_2 = tf.io.gfile.glob(f"./flickr-training-data/train/*.tfrecord")
     # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
     # weights = [0.5] * len(labels)
     resampled_ds, remapped = get_dataset(
@@ -549,7 +543,7 @@ def main():
         image_size=DIMENSIONS,
         augment=False,
         resample=False,
-        filenames_2=filenames_2
+        # filenames_2=filenames_2
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
     # print(get_distribution(resampled_ds))
@@ -605,7 +599,7 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
         # # plt.axis("off")
         # ax = plt.subplot(num_images, 3, p + 1)
         # plot_mel(image_batch[n][:, :, 0], ax)
-        plot_mfcc(image_batch[n][:, :, 0], ax)
+        plot_mel(image_batch[n][:, :, 0], ax)
 
         #
         # ax = plt.subplot(num_images, 3, p + 2)
@@ -635,7 +629,14 @@ def plot_mfcc(mfccs, ax):
 def plot_mel(mel, ax):
     # power = librosa.db_to_power(mel.numpy())
     img = librosa.display.specshow(
-        mel.numpy(), x_axis="time", y_axis="mel", sr=48000, fmax=11000, fmin=50, ax=ax
+        mel.numpy(),
+        x_axis="time",
+        y_axis="mel",
+        sr=48000,
+        fmax=11000,
+        fmin=50,
+        ax=ax,
+        hop_length=201,
     )
 
 
