@@ -18,11 +18,15 @@ import librosa.display
 import audioread.ffdec  # Use ffmpeg decoder
 from custommels import mel_spec
 
-SEGMENT_LENGTH = 2.5  # seconds
-SEGMENT_STRIDE = 1  # of a second
-FRAME_LENGTH = 255
-HOP_LENGTH = 281
-
+#
+# SEGMENT_LENGTH = 2.5  # seconds
+# SEGMENT_STRIDE = 1  # of a second
+# HOP_LENGTH = 281
+# BREAK_FREQ = 1750
+# HTK = True
+# FMIN = 50
+# FMAX = 11000
+# N_MELS = 120
 REJECT_TAGS = ["unidentified", "other", "mammal", "sheep"]
 
 ACCEPT_TAGS = None
@@ -46,9 +50,22 @@ RELABEL["norfolk golden whistler"] = "whistler"
 SAMPLE_GROUP_ID = 0
 
 
+class Config:
+    def __init__(self, **args):
+        self.segment_length = args.get("seg_length", 2.5)
+        self.segment_stride = args.get("stride", 1)
+        self.hop_length = args.get("hop_length", 281)
+        self.break_freq = args.get("break_freq", 1750)
+        self.htk = not args.get("slaney", False)
+        self.fmin = args.get("fmin", 50)
+        self.fmax = args.get("fmax", 11000)
+        self.n_mels = args.get("mels", 120)
+
+
 class AudioDataset:
-    def __init__(self, name):
+    def __init__(self, name, config):
         # self.base_path = Path(base_path)
+        self.config = config
         self.name = name
         self.recs = []
         self.rec_keys = []
@@ -63,7 +80,7 @@ class AudioDataset:
             audio_f = f.with_suffix(".m4a")
             if not audio_f.exists():
                 audio_f = f.with_suffix(".wav")
-            r = Recording(meta, audio_f)
+            r = Recording(meta, audio_f, self.config)
             self.add_recording(r)
             self.samples.extend(r.samples)
 
@@ -274,7 +291,7 @@ class AudioSample:
 
 
 class Recording:
-    def __init__(self, metadata, filename):
+    def __init__(self, metadata, filename, config):
         self.filename = filename
         self.metadata = metadata
         self.id = metadata.get("id")
@@ -300,7 +317,7 @@ class Recording:
         self.resampled = False
         self.samples = []
 
-        self.load_samples()
+        self.load_samples(config.segment_length, config.segment_stride)
 
     def space_signals(self, spacing=0.1):
         # print("prev have", len(self.signals))
@@ -326,7 +343,7 @@ class Recording:
         #     print(s)
         self.signals = new_signals
 
-    def load_samples(self):
+    def load_samples(self, segment_length, segment_stride):
         global SAMPLE_GROUP_ID
         SAMPLE_GROUP_ID += 1
         sorted_tracks = sorted(
@@ -371,7 +388,7 @@ class Recording:
         # for t in sorted_tracks:
         # print("Tracks is", t.filename, t.start, t.end)
         start = track.start
-        end = start + SEGMENT_LENGTH
+        end = start + segment_length
         i = 1
         labels = set()
         labels = labels | track.human_tags
@@ -402,7 +419,7 @@ class Recording:
                 else:
                     e = t.end
                 intersect = e - s
-                if intersect > SEGMENT_STRIDE:
+                if intersect > segment_stride:
                     # if t.start<= start and t.end <= end:
                     other_tracks.append(t)
                     labels = labels | t.human_tags
@@ -419,9 +436,9 @@ class Recording:
                 )
             )
             # print("sample length is", self.samples[-1].length)
-            start += SEGMENT_STRIDE
+            start += segment_stride
             # print("track end is ", track.end, " and start is", start)
-            if (track.end - start) < SEGMENT_LENGTH / 2:
+            if (track.end - start) < segment_length / 2:
                 old_end = track.end
                 track = None
                 # get new track
@@ -443,7 +460,7 @@ class Recording:
                 if track is None:
                     # got all tracks
                     break
-            end = start + SEGMENT_LENGTH
+            end = start + segment_length
         # other_tracks = [t for t in sorted_tracks[i:] if t.start<= start and t.end >= end]
         # for t in sorted_tracks:
         # for s in self.samples:
@@ -660,16 +677,22 @@ Tag = namedtuple("Tag", "what confidence automatic original")
 
 
 def load_data(
+    config,
     start_s,
     frames,
     sr,
-    segment_l=SEGMENT_LENGTH,
-    segment_stride=SEGMENT_STRIDE,
-    hop_length=HOP_LENGTH,
     n_fft=None,
     end=None,
 ):
+    segment_l = config.segment_length
+    segment_stride = config.segment_stride
     sr_stride = int(segment_stride * sr)
+    hop_length = config.hop_length
+    fmin = config.fmin
+    fmax = config.fmax
+    n_mels = config.n_mels
+    htk = config.htk
+    break_freq = config.break_freq
 
     if n_fft is None:
         n_fft = sr // 10
@@ -704,27 +727,32 @@ def load_data(
             # offset = np.random.randint(0, extra_frames)
             offset = 0
             s_data[offset : offset + len(sub)] = sub
-        spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
-        mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000)
-
-        # these should b derivable from spectogram but the librosa exmaples produce different results....
-        # mel = librosa.feature.melspectrogram(
-        #     y=s_data,
-        #     sr=sr,
-        #     n_fft=n_fft,
-        #     hop_length=hop_length,
-        #     fmin=50,
-        #     fmax=11000,
-        #     n_mels=120,
-        # )
+        if htk:
+            spectogram = np.abs(
+                librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length)
+            )
+            mel = mel_spec(
+                spectogram, sr, n_fft, hop_length, n_mels, fmin, fmax, break_freq
+            )
+        else:
+            # these should b derivable from spectogram but the librosa exmaples produce different results....
+            mel = librosa.feature.melspectrogram(
+                y=s_data,
+                sr=sr,
+                n_fft=n_fft,
+                hop_length=hop_length,
+                fmin=fmin,
+                fmax=fmax,
+                n_mels=n_mels,
+            )
         mel_pcen = librosa.feature.melspectrogram(
             y=s_data,
             sr=sr,
             n_fft=n_fft,
             hop_length=hop_length,
-            fmin=50,
-            fmax=11000,
-            n_mels=120,
+            fmin=fmin,
+            fmax=fmax,
+            n_mels=n_mels,
             power=1,
         )
         pcen_S = librosa.pcen(mel_pcen * (2**31), sr=sr, hop_length=hop_length)
@@ -732,17 +760,17 @@ def load_data(
             y=s_data,
             sr=sr,
             hop_length=hop_length,
-            htk=True,
-            fmin=50,
-            fmax=11000,
-            n_mels=120,
+            htk=htk,
+            fmin=fmin,
+            fmax=fmax,
+            n_mels=n_mels,
         )
         return spectogram, mel, mfcc, s_data, data_length, mel_pcen
     except:
         logging.error(
             "Error getting segment  start %s lenght %s",
             start_s,
-            SEGMENT_LENGTH,
+            config.segment_length,
             exc_info=True,
         )
-    return None, None, None, None, None
+    return None, None, None, None, None, None

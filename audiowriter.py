@@ -44,7 +44,7 @@ import tensorflow as tf
 import tfrecord_util
 import librosa
 
-from audiodataset import load_data, SpectrogramData, SEGMENT_LENGTH
+from audiodataset import load_data, SpectrogramData
 from multiprocessing import Pool
 
 import psutil
@@ -113,6 +113,14 @@ def create_tf_example(sample, labels):
     return example, 0
 
 
+config = None
+
+
+def worker_init(c):
+    global config
+    config = c
+
+
 def get_data(rec):
     # print("got args", args)
     # rec_id = args[0]
@@ -141,18 +149,18 @@ def get_data(rec):
         frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
         sr = resample
     rec.tracks[0].end = len(frames) / sr
-    rec.load_samples()
+    rec.load_samples(config.segment_length, config.segment_stride)
     samples = rec.samples
     rec.sample_rate = resample
     for i, sample in enumerate(samples):
         try:
             spectogram, mel, mfcc, s_data, raw_length, pcen = load_data(
-                sample.start, frames, sr, end=sample.end, hop_length=281
+                config, sample.start, frames, sr, end=sample.end
             )
             # print("mel is", mel.shape)
             # print("adjusted start is", sample.start, " becomes", sample.start - start)
             if spectogram is None:
-                print("error loading", rec_id)
+                print("error loading", rec.id)
                 continue
             spec = SpectrogramData(
                 spectogram, mel, mfcc, s_data.copy(), raw_length, pcen
@@ -160,8 +168,8 @@ def get_data(rec):
             # data[i] = spec
             sample.spectogram_data = spec
             sample.sample_rate = resample
-        except Exception as ex:
-            print("Error ", rec_id, ex)
+        except:
+            logging.error("Error %s ", rec.id, exc_info=True)
         # sample.sr = sr
 
     return samples
@@ -216,7 +224,9 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                 # sample.rec.rec_data = None
                 pool_data.append(rec)
             loaded = []
-            with Pool(processes=8) as pool:
+            with Pool(
+                initializer=worker_init, initargs=(dataset.config,), processes=8
+            ) as pool:
                 for data in pool.imap_unordered(get_data, pool_data):
                     if data is None:
                         continue

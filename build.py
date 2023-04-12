@@ -17,14 +17,7 @@ import sys
 # from config.config import Config
 import numpy as np
 
-from audiodataset import (
-    AudioDataset,
-    RELABEL,
-    SEGMENT_LENGTH,
-    SEGMENT_STRIDE,
-    Track,
-    AudioSample,
-)
+from audiodataset import AudioDataset, RELABEL, Track, AudioSample, Config
 from audiowriter import create_tf_records
 import warnings
 import math
@@ -182,10 +175,10 @@ def split_randomly(dataset, test_clips=[], no_test=False):
     # split data randomly such that a clip is only in one dataset
     # have tried many ways to split i.e. location and cameras found this is simplest
     # and the results are the same
-    train = AudioDataset("train")
+    train = AudioDataset("train", dataset.config)
     train.enable_augmentation = True
-    validation = AudioDataset("validation")
-    test = AudioDataset("test")
+    validation = AudioDataset("validation", dataset.config)
+    test = AudioDataset("test", dataset.config)
 
     for label in dataset.labels:
         split_label(
@@ -292,11 +285,21 @@ def dataset_from_signal(args):
 def main():
     init_logging()
     args = parse_args()
+    # print(args, args.__dict__)
+    config = Config(**vars(args))
+    # SEGMENT_LENGTH = args.seg_length
+    # SEGMENT_STRIDE = args.stride
+    # HOP_LENGTH = args.hop_length
+    # BREAK_FREQ = args.break_freq
+    # HTK = not args.slaney
+    # FMIN = args.fmin
+    # FMAX = args.fmax
+    # N_MELS = args.mels
     if args.signal:
         dataset_from_signal(args)
         return
     # config = load_config(args.config_file)
-    dataset = AudioDataset("all")
+    dataset = AudioDataset("all", config)
     dataset.load_meta(args.dir)
     # dataset.load_meta()
     # return
@@ -344,14 +347,21 @@ def main():
     # dont need dataset anymore just need some meta
     meta_filename = f"{base_dir}/training-data/training-meta.json"
     meta_data = {
-        "segment_length": SEGMENT_LENGTH,
-        "segment_stride": SEGMENT_STRIDE,
+        # "segment_length": SEGMENT_LENGTH,
+        # "segment_stride": SEGMENT_STRIDE,
+        # "hop_length": HOP_LENGTH,
+        # "n_mels": N_MELS,
+        # "fmin": FMIN,
+        # "fmax": FMAX,
+        # "break_freq": BREAK_FREQ,
+        # "htk": HTK,
         "labels": datasets[0].labels,
         "type": "audio",
         "counts": dataset_counts,
         "by_label": False,
         "relabbled": RELABEL,
     }
+    meta_data.update(config.__dict__)
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4)
 
@@ -463,6 +473,17 @@ def parse_args():
     )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
+    parser.add_argument("-m", "--mels", default=120, help="Number of mels to use")
+    parser.add_argument("-b", "--break-freq", default=1750, help="Break freq to use")
+    parser.add_argument(
+        "--slaney", action="count", help="Use slaney or htk (htk for custom break freq)"
+    )
+    parser.add_argument("--hop-length", default=281, help="Number of hops to use")
+    parser.add_argument("--fmin", default=50, help="Min freq")
+    parser.add_argument("--fmax", default=11000, help="Max Freq")
+    parser.add_argument("--seg-length", default=2.5, help="Segment length in seconds")
+    parser.add_argument("--stride", default=1, help="Segment stride")
+
     args = parser.parse_args()
     return args
 
