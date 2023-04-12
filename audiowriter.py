@@ -251,7 +251,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     # do this by group where group is a track_id
                     # (possibly should be a recording id where we have more data)
                     # means we can KFold our dataset files if we want
-                    writer = writers[sample.group % num_shards]
+                    writer = writers[count % num_shards]
                     writer.write(tf_example.SerializeToString())
                     sample.spectogram_data = None
 
