@@ -33,7 +33,7 @@ chime_labels = {
 
 
 def flickr_data():
-    config = Config({})
+    config = Config()
     dataset = AudioDataset("Flickr", config)
     p = Path("./flickr/wavs")
     wav_files = list(p.glob("*.wav"))
@@ -43,7 +43,7 @@ def flickr_data():
         id, id_2, speaker = rec_name.stem.split("_")
         id = f"{id}-{id_2}-{speaker}"
 
-        r = Recording({"id": id, "tracks": []}, rec_name)
+        r = Recording({"id": id, "tracks": []}, rec_name, config)
         tags = [{"automatic": False, "what": label}]
         # try:
         #     y, sr = librosa.load(rec_name)
