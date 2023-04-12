@@ -706,6 +706,7 @@ def load_data(
             s_data[offset : offset + len(sub)] = sub
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
         mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000)
+        print("mel is", mel.shape)
 
         # these should b derivable from spectogram but the librosa exmaples produce different results....
         # mel = librosa.feature.melspectrogram(

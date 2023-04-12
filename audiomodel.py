@@ -507,7 +507,7 @@ class AudioModel:
 
     def load_datasets(self, base_dir, labels, shape, test=False):
         datasets = ["other-training-data", "training-data", "chime-training-data"]
-        datasets = ["training-data"]
+        datasets = ["signal-data/training-data"]
         flickr = "/data/audio-data/flickr-training-data"
         labels = set()
         filenames = []
