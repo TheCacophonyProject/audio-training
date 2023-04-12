@@ -137,11 +137,11 @@ def get_data(rec):
             pass
         return None
     # hack to handle getting new samples without knowing length until load
-    rec.tracks[0].end = len(frames) / sr
-    rec.load_samples()
     if resample is not None and resample != sr:
         frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
         sr = resample
+    rec.tracks[0].end = len(frames) / sr
+    rec.load_samples()
     samples = rec.samples
     rec.sample_rate = resample
     for i, sample in enumerate(samples):
