@@ -35,6 +35,7 @@ from tfdataset import get_dataset
 
 import soundfile as sf
 import matplotlib
+from custommels import mel_spec
 
 matplotlib.use("TkAgg")
 
@@ -79,16 +80,17 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             s_data = frames[-sample_size:]
         else:
             s_data = frames[start_offset : start_offset + sample_size]
-
-        mel = librosa.feature.melspectrogram(
-            y=s_data,
-            sr=sr,
-            n_fft=n_fft,
-            hop_length=hop_length,
-            fmin=50,
-            fmax=11000,
-            n_mels=120,
-        )
+        spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
+        mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000)
+        # mel = librosa.feature.melspectrogram(
+        #     y=s_data,
+        #     sr=sr,
+        #     n_fft=n_fft,
+        #     hop_length=hop_length,
+        #     fmin=50,
+        #     fmax=11000,
+        #     n_mels=120,
+        # )
         half = mel[:, 75:]
         if np.amax(half) == np.amin(half):
             print("mel max is same")

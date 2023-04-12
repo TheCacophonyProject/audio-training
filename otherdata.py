@@ -3,7 +3,7 @@ import csv
 import logging
 import sys
 from pathlib import Path
-from audiodataset import Track, Recording, AudioDataset, RELABEL
+from audiodataset import Track, Recording, AudioDataset, RELABEL, AudioSample
 from build import split_randomly
 import psutil
 
@@ -12,6 +12,7 @@ csv_files = [
     "/data/audio-data/warblrb10k_public/warblrb10k_public_metadata.csv",
     "/data//audio-data/ff1010bird/ff1010bird_metadata.csv",
 ]
+
 
 out_dir = Path("./other-data")
 from audiowriter import create_tf_records
@@ -43,20 +44,23 @@ def flickr_data():
 
         r = Recording({"id": id, "tracks": []}, rec_name)
         tags = [{"automatic": False, "what": label}]
-        try:
-            y, sr = librosa.load(rec_name)
-            end = librosa.get_duration(y=y, sr=sr)
-            y = None
-            sr = None
-        except:
-            continue
-        t = Track({"id": id, "start": 0, "end": end, "tags": tags}, rec_name, r.id, r)
-        r.load_samples()
+        # try:
+        #     y, sr = librosa.load(rec_name)
+        #     end = librosa.get_duration(y=y, sr=sr)
+        #     y = None
+        #     sr = None
+        # except:
+        #     continue
+        t = Track({"id": id, "start": 0, "end": None, "tags": tags}, rec_name, r.id, r)
+        # r.load_samples()
         r.human_tags.add(label)
         r.tracks.append(t)
-        r.load_samples()
+        sample = AudioSample(r, r.human_tags, 0, None, [t.id], 1)
+        r.samples = [sample]
         dataset.add_recording(r)
         dataset.samples.extend(r.samples)
+        dataset.labels.add(label)
+
     logging.info("Loaded samples mem %s", psutil.virtual_memory()[2])
     dataset.print_counts()
     # return
@@ -194,7 +198,7 @@ def chime_data():
 def main():
     init_logging()
     flickr_data()
-    # return
+    return
     chime_data()
     # return
     dataset = AudioDataset("Other")
