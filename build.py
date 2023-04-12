@@ -316,14 +316,15 @@ def main():
         print("setting all labels", all_labels)
     validate_datasets(datasets)
     base_dir = "."
-    record_dir = os.path.join(base_dir, "signal-data/")
-    for dataset in datasets:
-        dir = os.path.join(record_dir, dataset.name)
+    if args.create_signal_wavs:
+        record_dir = os.path.join(base_dir, "signal-data/")
+        for dataset in datasets:
+            dir = os.path.join(record_dir, dataset.name)
 
-        print("Saving signal")
-        create_signal_data(dataset, Path(dir), datasets[0].labels)
-        # r_counts = dataset.get_rec_counts()
-    return
+            print("Saving signal")
+            create_signal_data(dataset, Path(dir), datasets[0].labels)
+            # r_counts = dataset.get_rec_counts()
+        return
     record_dir = os.path.join(base_dir, "training-data/")
     print("saving to", record_dir)
     dataset_counts = {}
@@ -457,6 +458,9 @@ def parse_args():
     parser.add_argument("-d", "--dir", help="Dir to load")
     parser.add_argument("--no-test", action="count", help="NO test set")
     parser.add_argument("--signal", action="count", help="Load signal data")
+    parser.add_argument(
+        "--create-signal-wavs", action="count", help="Create signal wavs"
+    )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     args = parser.parse_args()

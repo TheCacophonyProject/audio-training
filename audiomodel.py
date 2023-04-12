@@ -82,7 +82,7 @@ class AudioModel:
 
     def cross_fold_train(self, run_name="test", epochs=15, multi=True):
         datasets = ["other-training-data", "training-data", "chime-training-data"]
-        datasets = ["training-data"]
+        datasets = ["signal-data/training-data"]
         labels = set()
         filenames = []
         for d in datasets:
@@ -1010,7 +1010,7 @@ def main():
 
         preprocess = get_preprocess_fn(model_name)
         dataset, _ = get_dataset(
-            tf.io.gfile.glob(f"./training-data/test/*.tfrecord"),
+            tf.io.gfile.glob(f"./signal-data/training-data/test/*.tfrecord"),
             labels,
             image_size=DIMENSIONS,
             shuffle=False,
