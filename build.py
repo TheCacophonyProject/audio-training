@@ -208,6 +208,7 @@ def dataset_from_signal(args):
     datesets = []
     all_labels = set()
     for s in sets:
+        print("calculating ", s)
         set_dir = signal_dir / s
         dataset = AudioDataset(s)
         dataset.load_meta(set_dir)
@@ -232,8 +233,36 @@ def dataset_from_signal(args):
         dataset.print_sample_counts()
         datesets.append(dataset)
         all_labels.update(dataset.labels)
+        l_counts = dataset.get_rec_counts()
+        human_counts = l_counts.get("human", [])
+        human_counts = len(human_counts)
+        recs_by_label = {}
+        logging.info("Keeping %s birds", human_counts)
+        to_delete = []
+        for r in dataset.recs:
+
+            tag = r.tracks[0].tag
+            logging.info("tag is %s - %s", tag, r.filename)
+            if tag not in ["bird", "human"]:
+                to_delete.append(r)
+                continue
+            if tag not in recs_by_label:
+                recs_by_label[tag] = []
+            recs_by_label[tag].append(r)
+
+        bird_recs = recs_by_label.get("bird")
+        random.shuffle(bird_recs)
+        to_remove = bird_recs[human_counts:]
+        to_remove.extend(to_delete)
+        for rec in to_remove:
+            dataset.remove_rec(rec)
+        # just save birds and humans for now and make same count
+        dataset.print_counts()
+        dataset.print_sample_counts()
+
     all_labels = list(all_labels)
     all_labels.sort()
+    all_labels = ["bird"."human"]
     for dataset in datesets:
         dataset.labels = all_labels
         dir = signal_dir / "training-data" / dataset.name

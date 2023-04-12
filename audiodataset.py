@@ -92,6 +92,13 @@ class AudioDataset:
                     counts[tag] = 0
         return counts
 
+    def remove_rec(self, rec):
+        self.recs.remove(rec)
+        for s in rec.samples:
+            self.samples.remove(s)
+        if rec.id in self.rec_keys:
+            self.rec_keys.remove(rec.id)
+
     def print_counts(self):
         counts = {}
         original_c = {}
