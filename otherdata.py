@@ -3,7 +3,7 @@ import csv
 import logging
 import sys
 from pathlib import Path
-from audiodataset import Track, Recording, AudioDataset, RELABEL, AudioSample
+from audiodataset import Track, Recording, AudioDataset, RELABEL, AudioSample, Config
 from build import split_randomly
 import psutil
 
@@ -33,7 +33,8 @@ chime_labels = {
 
 
 def flickr_data():
-    dataset = AudioDataset("Flickr")
+    config = Config({})
+    dataset = AudioDataset("Flickr", config)
     p = Path("./flickr/wavs")
     wav_files = list(p.glob("*.wav"))
     for rec_name in wav_files:
@@ -99,7 +100,7 @@ def flickr_data():
         "by_label": False,
         "relabbled": RELABEL,
     }
-
+    meta_data.update(config.__dict__)
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4)
 
