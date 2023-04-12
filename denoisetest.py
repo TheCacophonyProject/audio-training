@@ -77,6 +77,7 @@ def plot_spectrogram(spectrogram, ax):
 
 def signal_noise(file, hop_length=281):
     frames, sr = load_recording(file)
+
     # frames = frames[:sr]
     n_fft = sr // 10
     # frames = frames[: sr * 3]
@@ -217,10 +218,40 @@ def process_signal(f):
     return
 
 
+def add_noise(file):
+    AddGaussianNoise(min_amplitude=0.001, max_amplitude=0.015, p=0.5),
+
+
+def add_white_noise(file):
+
+    frames, sr = load_recording(file)
+    transform = AddGaussianNoise(min_amplitude=0.001, max_amplitude=0.015, p=1.0)
+    augmented_sound = transform(frames, sample_rate=sr)
+
+
+def mix_file(file, mix):
+    from audiomentations import AddBackgroundNoise, PolarityInversion
+
+    print("mixxing", mix, " with ", file)
+    transform = AddBackgroundNoise(
+        sounds_path=[mix],
+        min_snr_in_db=3.0,
+        max_snr_in_db=30.0,
+        noise_transform=PolarityInversion(),
+        p=1.0,
+    )
+    frames, sr = load_recording(file)
+    augmented_sound = transform(frames, sample_rate=sr)
+    name = Path(".") / f"mixed.wav"
+    sf.write(str(name), augmented_sound, 48000)
+
+
 def main():
     init_logging()
     args = parse_args()
-    process(args.file)
+    mix_file(args.file, args.mix)
+    # process(args.file)
+    # process_signal(args.file)
     # data = np.array(data)
 
 
@@ -228,6 +259,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--confusion", help="Save confusion matrix for model")
     parser.add_argument("--dataset", help="Dataset to predict")
+    parser.add_argument("--mix", help="File to mix name")
 
     parser.add_argument("file", help="Run name")
 

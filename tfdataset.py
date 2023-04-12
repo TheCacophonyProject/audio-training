@@ -10,6 +10,7 @@ import json
 import logging
 import librosa
 import librosa.display
+from custommels import mel_f
 
 # import tensorflow_io as tfio
 
@@ -25,7 +26,12 @@ BIRD_LABELS = ["whistler", "kiwi", "morepork", "bird"]
 # NOISE_LABELS = []
 insect = None
 fp = None
-
+HOP_LENGTH = 281
+N_MELS = 120
+SR = 48000
+BREAK_FREQ = 1750
+MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, SR / 10, BREAK_FREQ)
+MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 DIMENSIONS = (160, 188)
 
 mel_s = (120, 428)
@@ -233,6 +239,13 @@ def get_dataset(filenames, labels, **args):
     # 1 / 0
 
     dataset = load_dataset(filenames, len(labels), args)
+    # logit = np.zeros((num_labels), np.bool)
+    # morepork_i = 19
+    # labels.index("morepork")
+    # logit[morepork_i] = 1
+    # logit = tf.constant(logit, dtype=tf.bool)
+    # filter_labels = lambda x, y: tf.reduce_any(tf.math.logical_and(y[0] > 0, logit))
+    # dataset = dataset.filter(filter_labels)
     if args.get("filenames_2") is not None:
         second = args.get("filenames_2")
         # labels_2 = args.get("labels_2")
@@ -320,6 +333,17 @@ def get_weighting(dataset, labels):
 
 
 def resample(dataset, labels):
+    target_dist[:] = 1 / len(labels)
+
+    rej = dataset.rejection_resample(
+        class_func=class_func,
+        target_dist=target_dist,
+    )
+    dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
+    return dataset
+
+
+def resample_old(dataset, labels):
     excluded_labels = []
     # excluded_labels = ["human", "bird", "morepork", "kiwi"]
     num_labels = len(labels)
@@ -361,7 +385,6 @@ def resample(dataset, labels):
         # print("adjusting for ", labels[i])
         target_dist[i] = max(0, target_dist[i])
     target_dist = target_dist / np.sum(target_dist)
-    print(target_dist)
     rej = dataset.rejection_resample(
         class_func=class_func,
         target_dist=target_dist,
@@ -395,15 +418,25 @@ def read_tfrecord(
         # "audio/mel_w": tf.io.FixedLenFeature((), tf.int64),
         # "audio/mel_h": tf.io.FixedLenFeature((), tf.int64),
         # "audio/mfcc_w": tf.io.FixedLenFeature((), tf.int64),
-        # "audio/raw": tf.io.FixedLenFeature(
-        #     [
-        #         144000,
-        #     ],
-        #     dtype=tf.float32,
-        # ),
+        "audio/raw": tf.io.FixedLenFeature(
+            [
+                144000,
+            ],
+            dtype=tf.float32,
+        ),
     }
 
     example = tf.io.parse_single_example(example, tfrecord_format)
+    raw = example["audio/raw"]
+    tf.signal.stft(
+        raw,
+        SR / 10,
+        HOP_LENGTH,
+        fft_length=SR / 10,
+        window_fn=tf.signal.hann_window,
+        pad_end=False,
+        name=None,
+    )
     mel = example["audio/mel"]
     mel = tf.reshape(mel, [*mel_s, 1])
     if augment:

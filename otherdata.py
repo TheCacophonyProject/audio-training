@@ -72,7 +72,7 @@ def flickr_data():
     logging.info("Loaded samples mem %s", psutil.virtual_memory()[2])
     dataset.print_counts()
     # return
-    datasets = split_randomly(dataset, no_test=True)
+    datasets = split_randomly(dataset, no_test=False)
     logging.info("Split samples mem %s", psutil.virtual_memory()[2])
 
     all_labels = set()
