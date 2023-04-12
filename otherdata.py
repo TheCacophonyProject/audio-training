@@ -6,6 +6,7 @@ from pathlib import Path
 from audiodataset import Track, Recording, AudioDataset, RELABEL, AudioSample, Config
 from build import split_randomly
 import psutil
+import random
 
 # csv_files = ["./ff10/ff1010bird_metadata.csv"]
 csv_files = [
@@ -35,8 +36,12 @@ chime_labels = {
 def flickr_data():
     config = Config()
     dataset = AudioDataset("Flickr", config)
-    p = Path("./flickr/wavs")
+    # p = Path("./flickr/wavs")
+    p = Path("/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/wavs")
+
     wav_files = list(p.glob("*.wav"))
+    random.shuffle(wav_files)
+
     for rec_name in wav_files:
         label = "human"
         id = None
@@ -61,6 +66,8 @@ def flickr_data():
         dataset.add_recording(r)
         dataset.samples.extend(r.samples)
         dataset.labels.add(label)
+        if len(dataset.recs) > len(wav_files) / 3:
+            break
 
     logging.info("Loaded samples mem %s", psutil.virtual_memory()[2])
     dataset.print_counts()
