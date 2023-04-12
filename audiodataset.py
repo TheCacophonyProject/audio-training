@@ -16,11 +16,12 @@ import math
 import librosa.display
 
 import audioread.ffdec  # Use ffmpeg decoder
+from custommels import mel_spec
 
 SEGMENT_LENGTH = 2.5  # seconds
 SEGMENT_STRIDE = 1  # of a second
 FRAME_LENGTH = 255
-
+HOP_LENGTH = 281
 
 REJECT_TAGS = ["unidentified", "other", "mammal", "sheep"]
 
@@ -664,7 +665,7 @@ def load_data(
     sr,
     segment_l=SEGMENT_LENGTH,
     segment_stride=SEGMENT_STRIDE,
-    hop_length=281,
+    hop_length=HOP_LENGTH,
     n_fft=None,
     end=None,
 ):
@@ -704,16 +705,18 @@ def load_data(
             offset = 0
             s_data[offset : offset + len(sub)] = sub
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
+        mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000)
+
         # these should b derivable from spectogram but the librosa exmaples produce different results....
-        mel = librosa.feature.melspectrogram(
-            y=s_data,
-            sr=sr,
-            n_fft=n_fft,
-            hop_length=hop_length,
-            fmin=50,
-            fmax=11000,
-            n_mels=120,
-        )
+        # mel = librosa.feature.melspectrogram(
+        #     y=s_data,
+        #     sr=sr,
+        #     n_fft=n_fft,
+        #     hop_length=hop_length,
+        #     fmin=50,
+        #     fmax=11000,
+        #     n_mels=120,
+        # )
         mel_pcen = librosa.feature.melspectrogram(
             y=s_data,
             sr=sr,

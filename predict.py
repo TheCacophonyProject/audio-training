@@ -89,7 +89,6 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             fmax=11000,
             n_mels=120,
         )
-        print(mel.shape)
         half = mel[:, 75:]
         if np.amax(half) == np.amin(half):
             print("mel max is same")
@@ -265,14 +264,14 @@ def main():
         if multi_label:
             # print("doing multi", prediction * 100)
             for i, p in enumerate(prediction):
-                if p >= 0.8:
+                if p >= 0.7:
                     label = labels[i]
                     results.append((p, label))
                     track_labels.append(label)
         else:
             best_i = np.argmax(prediction)
             best_p = prediction[best_i]
-            if best_p > 0.8:
+            if best_p > 0.7:
                 label = labels[best_i]
                 results.append((best_p, label))
                 track_labels.append[label]

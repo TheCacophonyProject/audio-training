@@ -261,7 +261,7 @@ def dataset_from_signal(args):
 
     all_labels = list(all_labels)
     all_labels.sort()
-    all_labels = ["bird"."human"]
+    all_labels = ["bird", "human"]
     for dataset in datesets:
         dataset.labels = all_labels
         dir = signal_dir / "training-data" / dataset.name
@@ -283,6 +283,7 @@ def dataset_from_signal(args):
         "counts": dataset_counts,
         "by_label": False,
         "relabbled": RELABEL,
+        "hop_length": HOP_LENGTH,
     }
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4)

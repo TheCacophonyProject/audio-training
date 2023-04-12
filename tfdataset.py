@@ -21,8 +21,8 @@ AUTOTUNE = tf.data.AUTOTUNE
 # BATCH_SIZE = 64
 NOISE_LABELS = ["wind", "vehicle", "dog", "rain", "static", "noise", "cat"]
 BIRD_LABELS = ["whistler", "kiwi", "morepork", "bird"]
-BIRD_LABELS = ["bird"]
-NOISE_LABELS = []
+# BIRD_LABELS = ["bird"]
+# NOISE_LABELS = []
 insect = None
 fp = None
 
