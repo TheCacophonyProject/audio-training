@@ -545,7 +545,7 @@ class AudioModel:
             resample=False,
             excluded_labels=excluded_labels,
             mean_sub=self.mean_sub,
-            filenames_2=second_filenames
+            # filenames_2=second_filenames
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
         filenames = []
@@ -564,7 +564,7 @@ class AudioModel:
             resample=False,
             excluded_labels=excluded_labels,
             mean_sub=self.mean_sub,
-            filenames_2=second_filenames
+            # filenames_2=second_filenames
             # preprocess_fn=self.preprocess_fn,
         )
 
@@ -585,7 +585,7 @@ class AudioModel:
                 resample=False,
                 excluded_labels=excluded_labels,
                 mean_sub=self.mean_sub,
-                filenames_2=second_filenames
+                # filenames_2=second_filenames
                 # preprocess_fn=self.preprocess_fn,
             )
         self.remapped = remapped
@@ -995,7 +995,7 @@ def main():
             compile=False,
         )
 
-        model.load_weights(load_model / "val_loss").expect_partial()
+        # model.load_weights(load_model / "val_loss").expect_partial()
 
         meta_file = load_model / "metadata.txt"
         print("Meta", meta_file)
