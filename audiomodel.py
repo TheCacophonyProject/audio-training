@@ -368,9 +368,9 @@ class AudioModel:
         if run_name is None:
             run_name = self.params.model_name
         self.model.save(os.path.join(self.checkpoint_folder, run_name))
-        self.save_metadata(run_name, history, test_results, multi_label)
         if self.test is not None:
             confusion(self.model, self.labels, self.test, run_name)
+        self.save_metadata(run_name, history, test_results, multi_label)
 
     def save_metadata(
         self, run_name=None, history=None, test_results=None, multi_label=False
@@ -587,6 +587,7 @@ class AudioModel:
                 resample=False,
                 excluded_labels=excluded_labels,
                 mean_sub=self.mean_sub,
+                shuffle=False,
                 # filenames_2=second_filenames
                 # preprocess_fn=self.preprocess_fn,
             )
