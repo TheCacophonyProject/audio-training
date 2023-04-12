@@ -242,7 +242,6 @@ def dataset_from_signal(args):
         for r in dataset.recs:
 
             tag = r.tracks[0].tag
-            logging.info("tag is %s - %s", tag, r.filename)
             if tag not in ["bird", "human"]:
                 to_delete.append(r)
                 continue

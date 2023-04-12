@@ -273,9 +273,10 @@ def get_dataset(filenames, labels, **args):
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
     dataset = dataset.cache()
-    dataset = dataset.shuffle(
-        4096, reshuffle_each_iteration=args.get("reshuffle", True)
-    )
+    if args.get("shuffle", True):
+        dataset = dataset.shuffle(
+            4096, reshuffle_each_iteration=args.get("reshuffle", True)
+        )
     dist = get_distribution(dataset)
     for i, d in enumerate(dist):
         logging.info("Have %s for %s", d, labels[i])
