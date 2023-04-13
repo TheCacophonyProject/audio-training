@@ -60,4 +60,5 @@ def mel_spec(stft, sr, n_fft, hop_length, n_mels, fmin, fmax, break_freq=1750):
     # fft_windows = librosa.stft(data, n_fft=n_fft, hop_length=hop_length)
     magnitude = np.abs(stft) ** 2
     mels = mel_f(sr, n_mels, fmin, fmax, n_fft, break_freq)
+    print(mels.shape, " multi ", magnitude.shape)
     return mels.dot(magnitude)
