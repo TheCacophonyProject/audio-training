@@ -16,11 +16,10 @@ import tensorflow_io as tfio
 from audiomentations import AddBackgroundNoise, PolarityInversion, Compose
 import soundfile as sf
 
-BIRD_PATH = "/home/gp/cacophony/classifier-data/test-audio"
+BIRD_PATH = []
+NOISE_PATH = []
 
-NOISE_PATH = "/home/gp/cacophony/classifier-data/test-audio"
-BIRD_PATH = "./birds"
-NOISE_PATH = "./noise"
+
 # seed = 1341
 # tf.random.set_seed(seed)
 # np.random.seed(seed)
@@ -29,6 +28,18 @@ AUTOTUNE = tf.data.AUTOTUNE
 # BATCH_SIZE = 64
 NOISE_LABELS = ["wind", "vehicle", "dog", "rain", "static", "noise", "cat"]
 BIRD_LABELS = ["whistler", "kiwi", "morepork", "bird"]
+
+signals = Path("./signal-data")
+wavs = list(signals.glob("*.wav"))
+for w in wavs:
+
+    if "bird" in w.stem:
+        BIRD_PATH.append(w)
+    else:
+        for noise in NOISE_LABELS:
+            if noise in w.stem:
+                NOISE_PATH.append(w)
+                break
 # BIRD_LABELS = ["bird"]
 # NOISE_LABELS = []
 insect = None
@@ -116,6 +127,7 @@ def load_dataset(filenames, num_labels, args):
             preprocess_fn=preprocess_fn,
             one_hot=one_hot,
             mean_sub=args.get("mean_sub", False),
+            add_noise=args.get("add_noise", False),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -246,7 +258,6 @@ def get_dataset(filenames, labels, **args):
     # 1 / 0
 
     dataset = load_dataset(filenames, len(labels), args)
-    dataset = dataset.take(3)
     # logit = np.zeros((num_labels), np.bool)
     # morepork_i = 19
     # labels.index("morepork")
@@ -262,6 +273,7 @@ def get_dataset(filenames, labels, **args):
         bird_c = dist[labels.index("bird")]
         for i, d in enumerate(dist):
             logging.info("First dataset have %s for %s", d, labels[i])
+        args["add_noise"] = True
         dataset_2 = load_dataset(second, len(labels), args)
         dataset_2 = dataset_2.take(bird_c)
         logging.info("concatenating second dataset %s", second[0])
@@ -405,7 +417,7 @@ def resample_old(dataset, labels):
 augmentations_pipeline = Compose(
     [
         AddBackgroundNoise(
-            sounds_path=[BIRD_PATH],
+            sounds_path=BIRD_PATH,
             min_snr_in_db=3.0,
             max_snr_in_db=30.0,
             noise_transform=PolarityInversion(),
@@ -416,7 +428,6 @@ augmentations_pipeline = Compose(
 
 
 def apply_bird(x):
-    print("aply bird", x.shape)
     shifted = augmentations_pipeline(x, 48000)
     return shifted
 
@@ -425,7 +436,7 @@ def apply_bird(x):
 noise_pipe = Compose(
     [
         AddBackgroundNoise(
-            sounds_path=[NOISE_PATH],
+            sounds_path=NOISE_PATH,
             min_snr_in_db=3.0,
             max_snr_in_db=30.0,
             noise_transform=PolarityInversion(),
@@ -436,7 +447,6 @@ noise_pipe = Compose(
 
 
 def apply_noise(x):
-    print("apply noise")
     shifted = noise_pipe(x, 48000)
     return shifted
 
@@ -478,7 +488,6 @@ def read_tfrecord(
 
     example = tf.io.parse_single_example(example, tfrecord_format)
     raw = example["audio/raw"]
-    add_noise = True
     label = tf.cast(example["audio/class/text"], tf.string)
     labels = tf.strings.split(label, sep="\n")
     global remapped_y, extra_label_map
@@ -486,9 +495,10 @@ def read_tfrecord(
     labels = remapped_y.lookup(labels)
     labels = tf.concat([labels, extra], axis=0)
     if add_noise:
+        logging.info("Adding noise to dataset")
         rand_i = tf.random.uniform(shape=[1])[0]
-        if tf.math.greater(rand_i, 0):
-            if tf.math.greater(rand_i, 0):
+        if tf.math.greater(rand_i, 0.5):
+            if tf.math.greater(rand_i, 0.75):
                 raw = tf.numpy_function(
                     apply_bird,
                     inp=[raw],
@@ -557,7 +567,7 @@ def read_tfrecord(
         print("Subbing znorm")
         mel = (mel - zvals["mean"]) / zvals["std"]
     image = mel
-    image = raw
+    print(image.shape)
     if preprocess_fn is not None:
         logging.info("Preprocessing with %s", preprocess_fn)
         raise Exception("Done preprocess for audio")
@@ -660,7 +670,7 @@ def main():
 
     labels.sort()
     print(labels)
-    # filenames_2 = tf.io.gfile.glob(f"./flickr-training-data/train/*.tfrecord")
+    filenames_2 = tf.io.gfile.glob(f"./flickr-training-data/train/*.tfrecord")
     # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
     # weights = [0.5] * len(labels)
     resampled_ds, remapped = get_dataset(
@@ -671,7 +681,7 @@ def main():
         image_size=DIMENSIONS,
         augment=False,
         resample=False,
-        # filenames_2=filenames_2
+        filenames_2=filenames_2
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
     # print(get_distribution(resampled_ds))
@@ -727,7 +737,9 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
         plt.title(f"{lbl} ({spc}")
         # # plt.axis("off")
         # ax = plt.subplot(num_images, 3, p + 1)
-        # plot_mel(image_batch[n][:, :, 0], ax)
+        img = image_batch[n]
+        print("image is", img.shape)
+        plot_mel(image_batch[n][:, :, 0], ax)
         # plot_mel(image_batch[n][:, :, 0], ax)
 
         #
@@ -747,9 +759,9 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
         # plot_mfcc(image_batch[n][:, :, 0], ax)
         # plt.title(labels[np.argmax(label_batch[n])] + " mfcc")
         # plt.axis("off")
-        name = Path(".") / f"{n}.wav"
-        print(image_batch[n].shape)
-        sf.write(str(name), image_batch[n], 48000)
+        # name = Path(".") / f"{n}.wav"
+        # print(image_batch[n].shape)
+        # sf.write(str(name), image_batch[n], 48000)
     plt.show()
 
 
