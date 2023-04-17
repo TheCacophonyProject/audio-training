@@ -399,7 +399,7 @@ def get_dataset(filenames, labels, **args):
 def get_weighting(dataset, labels):
     weighting = {}
     for i in range(len(labels)):
-        weghting[i] = 1
+        weighting[i] = 1
     return weighting
     excluded_labels = []
     dont_weigh = []
