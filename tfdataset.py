@@ -42,6 +42,9 @@ for w in wavs:
                 break
 # BIRD_LABELS = ["bird"]
 # NOISE_LABELS = []
+NOISE_PATH = NOISE_PATH[:2]
+BIRD_PATH = BIRD_PATH[:2]
+NOISE_LABELS = []
 insect = None
 fp = None
 HOP_LENGTH = 281
@@ -117,6 +120,36 @@ def load_dataset(filenames, num_labels, args):
     one_hot = args.get("one_hot", True)
     dataset = dataset.apply(tf.data.experimental.ignore_errors())
     # dataset = dataset.filter(filter_short)
+    dist = dataset.map(
+        partial(
+            read_distribution,
+            num_labels=num_labels,
+            image_size=image_size,
+            labeled=labeled,
+            augment=augment,
+            preprocess_fn=preprocess_fn,
+            one_hot=one_hot,
+            mean_sub=args.get("mean_sub", False),
+            add_noise=args.get("add_noise", False),
+        ),
+        num_parallel_calls=AUTOTUNE,
+        deterministic=deterministic,
+    )
+
+    true_categories = [y for y in dist]
+    num_labels = len(true_categories[0])
+    if len(true_categories) == 0:
+        return None
+    classes = []
+    for y in true_categories:
+        non_zero = tf.where(y).numpy()
+        classes.extend(non_zero.flatten())
+    classes = np.array(classes)
+
+    c = Counter(list(classes))
+    dist = np.empty((num_labels), dtype=np.float32)
+    for i in range(num_labels):
+        dist[i] = c[i]
     dataset = dataset.map(
         partial(
             read_tfrecord,
@@ -137,7 +170,7 @@ def load_dataset(filenames, num_labels, args):
 
     filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
     dataset = dataset.filter(filter_excluded)
-    return dataset
+    return dataset, dist
 
 
 def filter_short(example):
@@ -154,6 +187,7 @@ def preprocess(data):
 
 
 def get_distribution(dataset, batched=True):
+    dataset.map
     true_categories = [y for x, y in dataset]
     if batched:
         true_categories = tf.concat(true_categories, axis=0)
@@ -257,7 +291,7 @@ def get_dataset(filenames, labels, **args):
     # print("keys", keys, " values", values)
     # 1 / 0
 
-    dataset = load_dataset(filenames, len(labels), args)
+    dataset, dist = load_dataset(filenames, len(labels), args)
     # logit = np.zeros((num_labels), np.bool)
     # morepork_i = 19
     # labels.index("morepork")
@@ -265,24 +299,26 @@ def get_dataset(filenames, labels, **args):
     # logit = tf.constant(logit, dtype=tf.bool)
     # filter_labels = lambda x, y: tf.reduce_any(tf.math.logical_and(y[0] > 0, logit))
     # dataset = dataset.filter(filter_labels)
+    epoch_size = np.sum(dist)
+
     if args.get("filenames_2") is not None:
         second = args.get("filenames_2")
         # labels_2 = args.get("labels_2")
 
-        dist = get_distribution(dataset, batched=False)
+        # dist = get_distribution(dataset, batched=False)
         bird_c = dist[labels.index("bird")]
         for i, d in enumerate(dist):
             logging.info("First dataset have %s for %s", d, labels[i])
         args["add_noise"] = True
-        dataset_2 = load_dataset(second, len(labels), args)
+        dataset_2, dist_2 = load_dataset(second, len(labels), args)
         dataset_2 = dataset_2.take(bird_c)
         logging.info("concatenating second dataset %s", second[0])
         dist = get_distribution(dataset_2, batched=False)
-        for i, d in enumerate(dist):
-            logging.info("Second dataset have %s for %s", d, labels[i])
+        for i, d in enumerate(dist_2):
+            logging.info("Second dataset pre taking have %s for %s", d, labels[i])
 
         dataset = dataset.concatenate(dataset_2)
-
+        epoch_size += min(np.sum(dist_2), bird_c)
     resample_data = args.get("resample", True)
     if resample_data:
         logging.info("Resampling data")
@@ -293,7 +329,7 @@ def get_dataset(filenames, labels, **args):
         )
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
-    epoch_size = len([0 for x, y in dataset])
+    # epoch_size = len([0 for x, y in dataset])
     logging.info("Setting dataset size to %s", epoch_size)
     if not args.get("only_features", False):
         dataset = dataset.repeat(2)
@@ -451,6 +487,7 @@ def apply_noise(x):
     return shifted
 
 
+@tf.function
 def read_tfrecord(
     example,
     image_size,
@@ -584,6 +621,47 @@ def read_tfrecord(
         return image, label
 
     return image
+
+
+def read_distribution(
+    example,
+    image_size,
+    num_labels,
+    labeled,
+    augment=False,
+    preprocess_fn=None,
+    one_hot=True,
+    mean_sub=False,
+    add_noise=False,
+):
+    bird_l = tf.constant(["bird"])
+    tf_more_mask = tf.constant(morepork_mask)
+    tf_human_mask = tf.constant(human_mask)
+    tfrecord_format = {
+        "audio/class/text": tf.io.FixedLenFeature((), tf.string),
+    }
+
+    example = tf.io.parse_single_example(example, tfrecord_format)
+    label = tf.cast(example["audio/class/text"], tf.string)
+    labels = tf.strings.split(label, sep="\n")
+    global remapped_y, extra_label_map
+    extra = extra_label_map.lookup(labels)
+    labels = remapped_y.lookup(labels)
+    labels = tf.concat([labels, extra], axis=0)
+    if add_noise:
+        rand_i = tf.random.uniform(shape=[1])[0]
+        if tf.math.greater(rand_i, 0.75):
+            # make sure bird in labels
+            extra = remapped_y.lookup(bird_l)
+            labels = tf.concat([labels, extra], axis=0)
+
+    # make sure bird in labels
+    extra = remapped_y.lookup(bird_l)
+    label = tf.concat([labels, extra], axis=0)
+    if one_hot:
+        label = tf.reduce_max(tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0)
+
+    return label
 
 
 def class_func(features, label):
