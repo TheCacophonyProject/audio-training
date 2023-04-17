@@ -547,7 +547,7 @@ class AudioModel:
             mean_sub=self.mean_sub,
             deterministic=True,
             shuffle=False,
-            # filenames_2=second_filenames
+            filenames_2=second_filenames
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
         filenames = []
@@ -566,7 +566,7 @@ class AudioModel:
             resample=False,
             excluded_labels=excluded_labels,
             mean_sub=self.mean_sub,
-            # filenames_2=second_filenames
+            filenames_2=second_filenames
             # preprocess_fn=self.preprocess_fn,
         )
 
@@ -588,7 +588,7 @@ class AudioModel:
                 excluded_labels=excluded_labels,
                 mean_sub=self.mean_sub,
                 shuffle=False,
-                # filenames_2=second_filenames
+                filenames_2=second_filenames
                 # preprocess_fn=self.preprocess_fn,
             )
         self.remapped = remapped
