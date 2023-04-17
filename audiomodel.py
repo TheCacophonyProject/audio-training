@@ -27,7 +27,7 @@ from tfdataset import (
     DIMENSIONS,
     get_weighting,
     NOISE_LABELS,
-    BIRD_LABELS,
+    SPECIFIC_BIRD_LABELS,
 )
 import time
 from pathlib import Path
@@ -105,7 +105,7 @@ class AudioModel:
             self.labels.append("noise")
         excluded_labels = []
         for l in self.labels:
-            if l not in BIRD_LABELS and l not in ["noise", "human"]:
+            if l not in SPECIFIC_BIRD_LABELS and l not in ["noise", "human"]:
                 excluded_labels.append(l)
         filenames = np.array(filenames)
         test_percent = 0.2
@@ -531,7 +531,7 @@ class AudioModel:
         logging.info("Loading train")
         excluded_labels = []
         for l in self.labels:
-            if l not in BIRD_LABELS and l not in ["noise", "human"]:
+            if l not in SPECIFIC_BIRD_LABELS and l not in ["noise", "human"]:
                 excluded_labels.append(l)
 
         logging.info("labels are %s Excluding %s", self.labels, excluded_labels)
@@ -588,7 +588,7 @@ class AudioModel:
                 excluded_labels=excluded_labels,
                 mean_sub=self.mean_sub,
                 shuffle=False,
-                filenames_2=second_filenames
+                # filenames_2=second_filenames
                 # preprocess_fn=self.preprocess_fn,
             )
         self.remapped = remapped

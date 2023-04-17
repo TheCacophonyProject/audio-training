@@ -27,9 +27,46 @@ AUTOTUNE = tf.data.AUTOTUNE
 # IMAGE_SIZE = [256, 256]
 # BATCH_SIZE = 64
 NOISE_LABELS = ["wind", "vehicle", "dog", "rain", "static", "noise", "cat"]
-BIRD_LABELS = ["whistler", "kiwi", "morepork", "bird"]
+SPECIFIC_BIRD_LABELS = ["whistler", "kiwi", "morepork", "bird"]
+GENERIC_BIRD_LABELS = [
+    "australian magpie",
+    "bellbird",
+    "bird",
+    "blackbird",
+    "california quail",
+    "canada goose",
+    "common starling",
+    "crimson rosella",
+    "fantail",
+    "grey warbler",
+    "house sparrow",
+    "kiwi",
+    "little owl",
+    "magpie",
+    "morepork",
+    "norfolk gerygone",
+    "norfolk parrot",
+    "norfolk robin",
+    "north island robin",
+    "parakeet",
+    "red-crowned parakeet",
+    "robin",
+    "sacred kingfisher",
+    "silvereye",
+    "slender-billed white-eye",
+    "song thrush",
+    "sooty tern",
+    "sparrow",
+    "spur-winged plover",
+    "starling",
+    "thrush",
+    "tui",
+    "whistler",
+    "white tern",
+]
 
-signals = Path("./signal-data")
+OTHER_BIRD = ["chicken", "rooster", "frog", "insect"]
+signals = Path("./signal-data/train")
 wavs = list(signals.glob("*.wav"))
 for w in wavs:
 
@@ -231,10 +268,11 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
         labels = new_labels
     for l in labels:
         if l in NOISE_LABELS:
-            remap_label = "noise"
-            extra_label_map[l] = new_labels.index("noise")
+            if noise in new_labels:
+                remap_label = "noise"
+                extra_label_map[l] = new_labels.index("noise")
             continue
-        elif l in BIRD_LABELS:
+        elif l in SPECIFIC_BIRD_LABELS:
             if l != "bird":
                 extra_label_map[l] = new_labels.index("bird")
             # or l == "human":
@@ -244,7 +282,7 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
                 extra_label_map[l] = new_labels.index("noise")
 
             continue
-        else:
+        elif l in GENERIC_BIRD_LABELS:
             remap_label = "bird"
             if l != "bird":
                 extra_label_map[l] = new_labels.index("bird")
@@ -309,11 +347,16 @@ def get_dataset(filenames, labels, **args):
         bird_c = dist[labels.index("bird")]
         for i, d in enumerate(dist):
             logging.info("First dataset have %s for %s", d, labels[i])
-        args["add_noise"] = True
+        # args["add_noise"] = True
         dataset_2, dist_2 = load_dataset(second, len(labels), args)
-        dataset_2 = dataset_2.take(bird_c)
+        # dataset = dataset.take(min(np.sum(dist_2), 5000))
+        if bird_c > dist_2[labels.index("human")]:
+            dataset = dataset.take(dist_2[labels.index("human")])
+        else:
+            dataset_2 = dataset_2.take(bird_c)
+
         logging.info("concatenating second dataset %s", second[0])
-        dist = get_distribution(dataset_2, batched=False)
+        # dist = get_distribution(dataset_2, batched=False)
         for i, d in enumerate(dist_2):
             logging.info("Second dataset pre taking have %s for %s", d, labels[i])
 
@@ -346,14 +389,18 @@ def get_dataset(filenames, labels, **args):
         dataset = dataset.shuffle(
             4096, reshuffle_each_iteration=args.get("reshuffle", True)
         )
-    dist = get_distribution(dataset)
-    for i, d in enumerate(dist):
-        logging.info("Have %s for %s", d, labels[i])
+    # dist = get_distribution(dataset)
+    # for i, d in enumerate(dist):
+    # logging.info("Have %s for %s", d, labels[i])
 
     return dataset, remapped
 
 
 def get_weighting(dataset, labels):
+    weighting = {}
+    for i in range(len(labels)):
+        weghting[i] = 1
+    return weighting
     excluded_labels = []
     dont_weigh = []
     for l in labels:
