@@ -16,12 +16,21 @@ from multiprocessing import Pool
 
 
 def load_recording(file, resample=48000):
-    aro = audioread.ffdec.FFmpegAudioFile(file)
-    frames, sr = librosa.load(aro)
-    aro.close()
-    if resample is not None and resample != sr:
-        frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
-        sr = resample
+    aro = None
+    try:
+        aro = audioread.ffdec.FFmpegAudioFile(file)
+        frames, sr = librosa.load(aro)
+        aro.close()
+        if resample is not None and resample != sr:
+            frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
+            sr = resample
+    except:
+        try:
+            aro.close()
+        except:
+            pass
+        logging.error("Could not load %s",file, exc_info=True)
+        return None,None
     return frames, sr
 
 
@@ -53,23 +62,32 @@ NOISE_LABELS = ["wind", "vehicle", "dog", "rain", "static", "noise", "cat"]
 NOISE_PATH = []
 BIRD_PATH = []
 signals = Path("./signal-data/train")
+bad_signals = signals.parent/"bad-train"
+bad_signals.mkdir(parents=True, exist_ok=True)
+
 wavs = list(signals.glob("*.wav"))
 for w in wavs:
 
     if "bird" in w.stem:
-        frames, sr = load_recording(w)
-        if len(frames) / sr < 4:
-            logging.info("skipping %s", w)
-            continue
+        #frames, sr = load_recording(w)
+       # if frames is None:
+        #    w.rename(bad_signals/w.name)
+        #    continue
+        #if len(frames) / sr < 4:
+        #    logging.info("skipping %s", w)
+        #    continue
         BIRD_PATH.append(w)
     else:
         for noise in NOISE_LABELS:
-            frames, sr = load_recording(w)
-            if len(frames) / sr < 4:
-                logging.info("skipping %s", w)
-
-                continue
             if noise in w.stem:
+                #frames, sr = load_recording(w)
+                #if frames is None:
+                #    w.rename(bad_signals/w.name)
+
+                 #   continue
+                #if len(frames) / sr < 4:
+                #    logging.info("skipping %s", w)
+                #    continue
                 NOISE_PATH.append(w)
                 break
 
@@ -143,6 +161,8 @@ def mix_noise(w):
     # noisy_p = Path("./flickr/noisy-wavs")
     label = ""
     frames, sr = load_recording(w)
+    if frames is None:
+        return
     rand_f = np.random.rand()
     if rand_f > 0.5:
         frames = add_bird(frames, 48000)
