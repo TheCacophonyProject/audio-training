@@ -12,6 +12,7 @@ import soundfile as sf
 import random
 import audioread.ffdec  # Use ffmpeg decoder
 import numpy as np
+from multiprocessing import Pool
 
 # csv_files = ["./ff10/ff1010bird_metadata.csv"]
 csv_files = [
@@ -57,11 +58,11 @@ for w in wavs:
 # BIRD_PATH = BIRD_PATH[:2]
 
 
-def add_noise():
+def process_noise():
     noisy_p = Path(
         "/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/noisy-wavs"
     )
-    # noisy_p = Path("./flickr/noisy-wavs")
+    noisy_p = Path("./flickr/noisy-wavs")
     if noisy_p.is_dir():
         logging.info("Clearing dir %s", noisy_p)
         for child in noisy_p.glob("*"):
@@ -70,7 +71,30 @@ def add_noise():
     noisy_p.mkdir(parents=True, exist_ok=True)
 
     p = Path("/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/wavs")
-    # p = Path("./flickr/wavs")
+    p = Path("./flickr/wavs")
+
+    wav_files = list(p.glob("*.wav"))
+    random.shuffle(wav_files)
+    num_noisy = len(wav_files) // 2
+    # wav_files = wav_files[:num_noisy]
+    logging.info("adding noise to %s", len(wav_files))
+    count = 0
+    with Pool(processes=8, initializer=worker_init) as pool:
+        [0 for x in pool.imap_unordered(mix_noise, wav_files, chunksize=8)]
+    # pool.wait()
+    logging.info("Finished adding noise for %s", len(wav_files))
+
+
+add_noise = None
+add_bird = None
+count = 0
+
+
+def worker_init():
+    global add_noise
+    global add_bird
+    global count
+    random.shuffle(NOISE_PATH)
     add_noise = AddBackgroundNoise(
         sounds_path=NOISE_PATH,
         min_snr_in_db=3.0,
@@ -78,6 +102,8 @@ def add_noise():
         noise_transform=PolarityInversion(),
         p=1,
     )
+    random.shuffle(BIRD_PATH)
+
     add_bird = AddBackgroundNoise(
         sounds_path=BIRD_PATH,
         min_snr_in_db=3.0,
@@ -85,27 +111,31 @@ def add_noise():
         noise_transform=PolarityInversion(),
         p=1,
     )
-    wav_files = list(p.glob("*.wav"))
-    random.shuffle(wav_files)
-    num_noisy = len(wav_files) // 2
-    wav_files = wav_files[:num_noisy]
-    logging.info("adding noise to %s", len(wav_files))
-    count = 0
-    for w in wav_files:
-        count += 1
-        label = ""
-        frames, sr = load_recording(w)
-        rand_f = np.random.rand()
-        if rand_f > 0.5:
-            frames = add_bird(frames, 48000)
-            label = "bird"
-        else:
-            frames = add_noise(frames, 48000)
-            label = "noise"
-        name = noisy_p / f"{label}-{w.stem}.wav"
-        sf.write(str(name), frames, 48000)
-        if count % 50 == 0:
-            logging.info("saved %s/%s", count, len(wav_files))
+
+
+def mix_noise(w):
+    global add_noise
+    global add_bird
+    noisy_p = Path(
+        "/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/noisy-wavs"
+    )
+    noisy_p = Path("./flickr/noisy-wavs")
+    label = ""
+    frames, sr = load_recording(w)
+    rand_f = np.random.rand()
+    if rand_f > 0.5:
+        frames = add_bird(frames, 48000)
+        label = "bird"
+    else:
+        frames = add_noise(frames, 48000)
+        label = "noise"
+    name = noisy_p / f"{label}-{w.stem}.wav"
+    logging.info("Saving %s", name)
+    sf.write(str(name), frames, 48000)
+    global count
+    count += 1
+    if count % 50 == 0:
+        logging.info("Saved %s", count)
 
 
 def load_recording(file, resample=48000):
@@ -290,7 +320,7 @@ def chime_data():
 
 def main():
     init_logging()
-    add_noise()
+    process_noise()
     return
     flickr_data()
     return
