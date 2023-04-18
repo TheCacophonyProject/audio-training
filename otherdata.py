@@ -14,6 +14,17 @@ import audioread.ffdec  # Use ffmpeg decoder
 import numpy as np
 from multiprocessing import Pool
 
+
+def load_recording(file, resample=48000):
+    aro = audioread.ffdec.FFmpegAudioFile(file)
+    frames, sr = librosa.load(aro)
+    aro.close()
+    if resample is not None and resample != sr:
+        frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
+        sr = resample
+    return frames, sr
+
+
 # csv_files = ["./ff10/ff1010bird_metadata.csv"]
 csv_files = [
     "/data/audio-data/warblrb10k_public/warblrb10k_public_metadata.csv",
@@ -145,16 +156,6 @@ def mix_noise(w):
     count += 1
     if count % 50 == 0:
         logging.info("Saved %s", count)
-
-
-def load_recording(file, resample=48000):
-    aro = audioread.ffdec.FFmpegAudioFile(file)
-    frames, sr = librosa.load(aro)
-    aro.close()
-    if resample is not None and resample != sr:
-        frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
-        sr = resample
-    return frames, sr
 
 
 def flickr_data():
