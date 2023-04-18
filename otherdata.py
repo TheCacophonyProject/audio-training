@@ -48,12 +48,15 @@ for w in wavs:
     if "bird" in w.stem:
         frames, sr = load_recording(w)
         if len(frames) / sr < 4:
+            logging.info("skipping %s", w)
             continue
         BIRD_PATH.append(w)
     else:
         for noise in NOISE_LABELS:
             frames, sr = load_recording(w)
             if len(frames) / sr < 4:
+                logging.info("skipping %s", w)
+
                 continue
             if noise in w.stem:
                 NOISE_PATH.append(w)
@@ -69,7 +72,7 @@ def process_noise():
     noisy_p = Path(
         "/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/noisy-wavs"
     )
-    noisy_p = Path("./flickr/noisy-wavs")
+    # noisy_p = Path("./flickr/noisy-wavs")
     if noisy_p.is_dir():
         logging.info("Clearing dir %s", noisy_p)
         for child in noisy_p.glob("*"):
@@ -78,7 +81,7 @@ def process_noise():
     noisy_p.mkdir(parents=True, exist_ok=True)
 
     p = Path("/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/wavs")
-    p = Path("./flickr/wavs")
+    # p = Path("./flickr/wavs")
 
     wav_files = list(p.glob("*.wav"))
     random.shuffle(wav_files)
@@ -126,7 +129,7 @@ def mix_noise(w):
     noisy_p = Path(
         "/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/noisy-wavs"
     )
-    noisy_p = Path("./flickr/noisy-wavs")
+    # noisy_p = Path("./flickr/noisy-wavs")
     label = ""
     frames, sr = load_recording(w)
     rand_f = np.random.rand()
@@ -328,8 +331,8 @@ def chime_data():
 
 def main():
     init_logging()
-    # process_noise()
-    # return
+    process_noise()
+    return
     flickr_data()
     return
     chime_data()
