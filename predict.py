@@ -167,10 +167,10 @@ def main():
     prec_at_k = tf.keras.metrics.TopKCategoricalAccuracy()
     model = tf.keras.models.load_model(
         str(load_model),
-        custom_objects={
-            "hamming_loss": hamming,
-            "top_k_categorical_accuracy": prec_at_k,
-        },
+        # custom_objects={
+        #     "hamming_loss": hamming,
+        #     "top_k_categorical_accuracy": prec_at_k,
+        # },
         compile=False,
     )
     # model = tf.keras.models.load_model(str(load_model))

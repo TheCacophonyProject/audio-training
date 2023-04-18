@@ -7,6 +7,11 @@ from audiodataset import Track, Recording, AudioDataset, RELABEL, AudioSample, C
 from build import split_randomly
 import psutil
 import random
+from audiomentations import AddBackgroundNoise, PolarityInversion, Compose
+import soundfile as sf
+import random
+import audioread.ffdec  # Use ffmpeg decoder
+import numpy as np
 
 # csv_files = ["./ff10/ff1010bird_metadata.csv"]
 csv_files = [
@@ -31,6 +36,86 @@ chime_labels = {
     "S": "silence",
     "U": "unknown",
 }
+NOISE_LABELS = ["wind", "vehicle", "dog", "rain", "static", "noise", "cat"]
+
+NOISE_PATH = []
+BIRD_PATH = []
+signals = Path("./signal-data/train")
+wavs = list(signals.glob("*.wav"))
+for w in wavs:
+
+    if "bird" in w.stem:
+        BIRD_PATH.append(w)
+    else:
+        for noise in NOISE_LABELS:
+            if noise in w.stem:
+                NOISE_PATH.append(w)
+                break
+# BIRD_LABELS = ["bird"]
+# NOISE_LABELS = []
+# NOISE_PATH = NOISE_PATH[:2]
+# BIRD_PATH = BIRD_PATH[:2]
+
+
+def add_noise():
+    noisy_p = Path(
+        "/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/noisy-wavs"
+    )
+    # noisy_p = Path("./flickr/noisy-wavs")
+    if noisy_p.is_dir():
+        logging.info("Clearing dir %s", noisy_p)
+        for child in noisy_p.glob("*"):
+            if child.is_file():
+                child.unlink()
+    noisy_p.mkdir(parents=True, exist_ok=True)
+
+    p = Path("/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/wavs")
+    # p = Path("./flickr/wavs")
+    add_noise = AddBackgroundNoise(
+        sounds_path=NOISE_PATH,
+        min_snr_in_db=3.0,
+        max_snr_in_db=30.0,
+        noise_transform=PolarityInversion(),
+        p=1,
+    )
+    add_bird = AddBackgroundNoise(
+        sounds_path=BIRD_PATH,
+        min_snr_in_db=3.0,
+        max_snr_in_db=30.0,
+        noise_transform=PolarityInversion(),
+        p=1,
+    )
+    wav_files = list(p.glob("*.wav"))
+    random.shuffle(wav_files)
+    num_noisy = len(wav_files) // 2
+    wav_files = wav_files[:num_noisy]
+    logging.info("adding noise to %s", len(wav_files))
+    count = 0
+    for w in wav_files:
+        count += 1
+        label = ""
+        frames, sr = load_recording(w)
+        rand_f = np.random.rand()
+        if rand_f > 0.5:
+            frames = add_bird(frames, 48000)
+            label = "bird"
+        else:
+            frames = add_noise(frames, 48000)
+            label = "noise"
+        name = noisy_p / f"{label}-{w.stem}.wav"
+        sf.write(str(name), frames, 48000)
+        if count % 50 == 0:
+            logging.info("saved %s/%s", count, len(wav_files))
+
+
+def load_recording(file, resample=48000):
+    aro = audioread.ffdec.FFmpegAudioFile(file)
+    frames, sr = librosa.load(aro)
+    aro.close()
+    if resample is not None and resample != sr:
+        frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
+        sr = resample
+    return frames, sr
 
 
 def flickr_data():
@@ -205,6 +290,8 @@ def chime_data():
 
 def main():
     init_logging()
+    add_noise()
+    return
     flickr_data()
     return
     chime_data()
