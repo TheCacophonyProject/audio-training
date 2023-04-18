@@ -46,12 +46,19 @@ wavs = list(signals.glob("*.wav"))
 for w in wavs:
 
     if "bird" in w.stem:
+        frames, sr = load_recording(w)
+        if len(frames) / sr < 4:
+            continue
         BIRD_PATH.append(w)
     else:
         for noise in NOISE_LABELS:
+            frames, sr = load_recording(w)
+            if len(frames) / sr < 4:
+                continue
             if noise in w.stem:
                 NOISE_PATH.append(w)
                 break
+
 # BIRD_LABELS = ["bird"]
 # NOISE_LABELS = []
 # NOISE_PATH = NOISE_PATH[:2]
@@ -130,7 +137,6 @@ def mix_noise(w):
         frames = add_noise(frames, 48000)
         label = "noise"
     name = noisy_p / f"{label}-{w.stem}.wav"
-    logging.info("Saving %s", name)
     sf.write(str(name), frames, 48000)
     global count
     count += 1
@@ -151,10 +157,12 @@ def load_recording(file, resample=48000):
 def flickr_data():
     config = Config()
     dataset = AudioDataset("Flickr", config)
-    # p = Path("./flickr/wavs")
-    p = Path("/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/wavs")
+    p = Path("./flickr/wavs")
+    # p = Path("/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/wavs")
 
     wav_files = list(p.glob("*.wav"))
+    p = Path("./flickr/noisy-wavs")
+    wav_files.extend(list(p.glob("*.wav")))
     random.shuffle(wav_files)
 
     for rec_name in wav_files:
@@ -320,8 +328,8 @@ def chime_data():
 
 def main():
     init_logging()
-    process_noise()
-    return
+    # process_noise()
+    # return
     flickr_data()
     return
     chime_data()

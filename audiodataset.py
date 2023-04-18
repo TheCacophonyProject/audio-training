@@ -598,7 +598,6 @@ class Track:
                 [self.id],
                 SAMPLE_GROUP_ID,
             )
-            print(mfcc.shape)
             sample.spectogram_data = SpectrogramData(
                 spectogram,
                 mel,
@@ -734,6 +733,7 @@ def load_data(
             mel = mel_spec(
                 spectogram, sr, n_fft, hop_length, n_mels, fmin, fmax, break_freq
             )
+            print("Custom mel", break_freq)
         else:
             # these should b derivable from spectogram but the librosa exmaples produce different results....
             mel = librosa.feature.melspectrogram(
