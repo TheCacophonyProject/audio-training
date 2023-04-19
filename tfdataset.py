@@ -454,19 +454,9 @@ def get_weighting(dataset, labels):
 
 
 def resample(dataset, labels, og):
-    num_labels = len(labels)
-    og_dist = np.empty((num_labels), dtype=np.float32)
-    for i, l in enumerate(labels):
-        og_dist[i] = og[i] / np.sum(og)
-    num_labels = len(labels)
     target_dist = np.empty((num_labels), dtype=np.float32)
     target_dist[:] = 1 / len(labels)
 
-    for i, l in enumerate(labels):
-        if l not in ["human", "bird"]:
-            target_dist[i] = og_dist[i]
-
-    print("original dist", og_dist, target_dist)
     rej = dataset.rejection_resample(
         class_func=class_func,
         target_dist=target_dist,
