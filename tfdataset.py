@@ -157,37 +157,7 @@ def load_dataset(filenames, num_labels, args):
     one_hot = args.get("one_hot", True)
     dataset = dataset.apply(tf.data.experimental.ignore_errors())
     # dataset = dataset.filter(filter_short)
-    dist = dataset.map(
-        partial(
-            read_distribution,
-            num_labels=num_labels,
-            image_size=image_size,
-            labeled=labeled,
-            augment=augment,
-            preprocess_fn=preprocess_fn,
-            one_hot=one_hot,
-            mean_sub=args.get("mean_sub", False),
-            add_noise=args.get("add_noise", False),
-            no_bird=args.get("no_bird", False),
-        ),
-        num_parallel_calls=AUTOTUNE,
-        deterministic=deterministic,
-    )
 
-    true_categories = [y for y in dist]
-    num_labels = len(true_categories[0])
-    if len(true_categories) == 0:
-        return None
-    classes = []
-    for y in true_categories:
-        non_zero = tf.where(y).numpy()
-        classes.extend(non_zero.flatten())
-    classes = np.array(classes)
-
-    c = Counter(list(classes))
-    dist = np.empty((num_labels), dtype=np.float32)
-    for i in range(num_labels):
-        dist[i] = c[i]
     dataset = dataset.map(
         partial(
             read_tfrecord,
@@ -209,7 +179,7 @@ def load_dataset(filenames, num_labels, args):
 
     filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
     dataset = dataset.filter(filter_excluded)
-    return dataset, dist
+    return dataset
 
 
 def filter_short(example):
@@ -338,47 +308,34 @@ def get_dataset(filenames, labels, **args):
     # print("keys", keys, " values", values)
     # 1 / 0
 
-    dataset, dist = load_dataset(filenames, len(labels), args)
-    # logit = np.zeros((num_labels), np.bool)
-    # morepork_i = 19
-    # labels.index("morepork")
-    # logit[morepork_i] = 1
-    # logit = tf.constant(logit, dtype=tf.bool)
-    # filter_labels = lambda x, y: tf.reduce_any(tf.math.logical_and(y[0] > 0, logit))
-    # dataset = dataset.filter(filter_labels)
-    epoch_size = np.sum(dist)
+    dataset = load_dataset(filenames, len(labels), args)
+    dist = get_distribution(dataset)
 
+    for i, d in enumerate(dist):
+        logging.info("First dataset have %s for %s", d, labels[i])
     if args.get("filenames_2") is not None:
         second = args.get("filenames_2")
-        # labels_2 = args.get("labels_2")
-
-        # dist = get_distribution(dataset, batched=False)
         bird_c = dist[labels.index("bird")]
-        for i, d in enumerate(dist):
-            logging.info("First dataset have %s for %s", d, labels[i])
-        # args["add_noise"] = True
+
         args["no_bird"] = True
         # added bird noise to human recs but it messes model, so dont use for now
-        dataset_2, dist_2 = load_dataset(second, len(labels), args)
+        dataset_2 = load_dataset(second, len(labels), args)
         # dataset = dataset.take(min(np.sum(dist_2), 5000))
-        if not resample:
-            if bird_c > dist_2[labels.index("human")]:
-                dataset = dataset.take(dist_2[labels.index("human")])
-                epoch_size = dist_2[labels.index("human")] + np.sum(dist_2)
 
-            else:
-                bird_c = bird_c - dist[labels.index("human")]
-                dataset_2 = dataset_2.take(bird_c)
-                epoch_size += bird_c
+        if not resample:
+            bird_c = bird_c - dist[labels.index("human")]
+            dataset_2 = dataset_2.take(bird_c)
+            epoch_size += bird_c
 
         logging.info("concatenating second dataset %s", second[0])
         # dist = get_distribution(dataset_2, batched=False)
-        for i, d in enumerate(dist_2):
-            logging.info("Second dataset pre taking have %s for %s", d, labels[i])
-
-        dataset = dataset.concatenate(dataset_2)
-        for i, d in enumerate(dist):
-            dist[i] += dist_2[i]
+        # for i, d in enumerate(dist_2):
+        # logging.info("Second dataset pre taking have %s for %s", d, labels[i])
+        dataset = tf.data.Dataset.sample_from_datasets(
+            [dataset, dataset_2], rerandomize_each_iteration=True
+        )
+        # for i, d in enumerate(dist):
+        # dist[i] += dist_2[i]
 
     resample_data = args.get("resample", True)
     if resample_data:
@@ -713,56 +670,6 @@ def read_tfrecord(
         return image, label
 
     return image
-
-
-def read_distribution(
-    example,
-    image_size,
-    num_labels,
-    labeled,
-    augment=False,
-    preprocess_fn=None,
-    one_hot=True,
-    mean_sub=False,
-    add_noise=False,
-    no_bird=False,
-):
-    bird_l = tf.constant(["bird"])
-    tf_more_mask = tf.constant(morepork_mask)
-    tf_human_mask = tf.constant(human_mask)
-    tfrecord_format = {
-        "audio/class/text": tf.io.FixedLenFeature((), tf.string),
-    }
-
-    example = tf.io.parse_single_example(example, tfrecord_format)
-    label = tf.cast(example["audio/class/text"], tf.string)
-    labels = tf.strings.split(label, sep="\n")
-    global remapped_y, extra_label_map
-    extra = extra_label_map.lookup(labels)
-    labels = remapped_y.lookup(labels)
-    labels = tf.concat([labels, extra], axis=0)
-    if add_noise:
-        rand_i = tf.random.uniform(shape=[1])[0]
-        if tf.math.greater(rand_i, 0.75):
-            # make sure bird in labels
-            extra = remapped_y.lookup(bird_l)
-            labels = tf.concat([labels, extra], axis=0)
-
-    # make sure bird in labels
-    extra = remapped_y.lookup(bird_l)
-    label = tf.concat([labels, extra], axis=0)
-    if one_hot:
-        label = tf.reduce_max(tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0)
-    if no_bird:
-        logging.info("no bird")
-        no_bird_mask = np.ones(num_labels, dtype=np.bool)
-        no_bird_mask[bird_i] = 0
-        no_bird_mask = tf.constant(no_bird_mask)
-        label = tf.cast(label, tf.bool)
-        label = tf.math.logical_and(label, no_bird_mask)
-
-        label = tf.cast(label, tf.int32)
-    return label
 
 
 def class_func(features, label):

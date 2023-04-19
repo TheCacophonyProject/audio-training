@@ -427,7 +427,7 @@ class AudioModel:
             cls=MetaJSONEncoder,
         )
 
-    def build_model(self, num_labels, bad=False, multi_label=False):
+    def build_model(self, num_labels, bad=True, multi_label=False):
         if bad:
             self.model = badwinner.build_model(
                 self.input_shape, None, num_labels, multi_label=multi_label
