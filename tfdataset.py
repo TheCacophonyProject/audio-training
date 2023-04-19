@@ -309,7 +309,7 @@ def get_dataset(filenames, labels, **args):
     # 1 / 0
 
     dataset = load_dataset(filenames, len(labels), args)
-    dist = get_distribution(dataset)
+    dist = get_distribution(dataset, batched=False)
 
     for i, d in enumerate(dist):
         logging.info("First dataset have %s for %s", d, labels[i])
@@ -349,7 +349,7 @@ def get_dataset(filenames, labels, **args):
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     # epoch_size = len([0 for x, y in dataset])
 
-    dist = get_distribution(dataset)
+    dist = get_distribution(dataset, batched=False)
     for i, d in enumerate(dist):
         logging.info("Have %s for %s", d, labels[i])
     epoch_size = np.sum(dist)
