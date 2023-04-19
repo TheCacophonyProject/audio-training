@@ -733,7 +733,6 @@ def load_data(
             mel = mel_spec(
                 spectogram, sr, n_fft, hop_length, n_mels, fmin, fmax, break_freq
             )
-            print("Custom mel", break_freq)
         else:
             # these should b derivable from spectogram but the librosa exmaples produce different results....
             mel = librosa.feature.melspectrogram(
@@ -745,26 +744,29 @@ def load_data(
                 fmax=fmax,
                 n_mels=n_mels,
             )
-        mel_pcen = librosa.feature.melspectrogram(
-            y=s_data,
-            sr=sr,
-            n_fft=n_fft,
-            hop_length=hop_length,
-            fmin=fmin,
-            fmax=fmax,
-            n_mels=n_mels,
-            power=1,
-        )
-        pcen_S = librosa.pcen(mel_pcen * (2**31), sr=sr, hop_length=hop_length)
-        mfcc = librosa.feature.mfcc(
-            y=s_data,
-            sr=sr,
-            hop_length=hop_length,
-            htk=htk,
-            fmin=fmin,
-            fmax=fmax,
-            n_mels=n_mels,
-        )
+        # mel_pcen = librosa.feature.melspectrogram(
+        #     y=s_data,
+        #     sr=sr,
+        #     n_fft=n_fft,
+        #     hop_length=hop_length,
+        #     fmin=fmin,
+        #     fmax=fmax,
+        #     n_mels=n_mels,
+        #     power=1,
+        # )
+        # pcen_S = librosa.pcen(mel_pcen * (2**31), sr=sr, hop_length=hop_length)
+        mfcc = None
+        pcen_s = None
+        mel_pcen = None
+        # mfcc = librosa.feature.mfcc(
+        #     y=s_data,
+        #     sr=sr,
+        #     hop_length=hop_length,
+        #     htk=htk,
+        #     fmin=fmin,
+        #     fmax=fmax,
+        #     n_mels=n_mels,
+        # )
         return spectogram, mel, mfcc, s_data, data_length, mel_pcen
     except:
         logging.error(

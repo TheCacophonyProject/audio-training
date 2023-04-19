@@ -82,8 +82,8 @@ def create_tf_example(sample, labels):
           ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
     data = sample.spectogram_data
-    audio_data = librosa.amplitude_to_db(data.spect)
-    mel = librosa.power_to_db(data.mel)
+    # audio_data = librosa.amplitude_to_db(data.spect)
+    mel = librosa.power_to_db(data.mel, ref=np.max)
     tags = sample.tags_s
     track_ids = " ".join(map(str, sample.track_ids))
     feature_dict = {
@@ -95,16 +95,16 @@ def create_tf_example(sample, labels):
         "audio/start_s": tfrecord_util.float_feature(sample.start),
         "audio/class/text": tfrecord_util.bytes_feature(tags.encode("utf8")),
         # "audio/class/label": tfrecord_util.int64_feature(labels.index(tags.tag)),
-        "audio/sftf": tfrecord_util.float_list_feature(audio_data.ravel()),
+        # "audio/sftf": tfrecord_util.float_list_feature(audio_data.ravel()),
         "audio/mel": tfrecord_util.float_list_feature(mel.ravel()),
-        "audio/pcen": tfrecord_util.float_list_feature(data.pcen.ravel()),
-        "audio/mfcc": tfrecord_util.float_list_feature(data.mfcc.ravel()),
-        "audio/sftf_w": tfrecord_util.int64_feature(audio_data.shape[1]),
-        "audio/sftf_h": tfrecord_util.int64_feature(audio_data.shape[0]),
+        # "audio/pcen": tfrecord_util.float_list_feature(data.pcen.ravel()),
+        # "audio/mfcc": tfrecord_util.float_list_feature(data.mfcc.ravel()),
+        # "audio/sftf_w": tfrecord_util.int64_feature(audio_data.shape[1]),
+        # "audio/sftf_h": tfrecord_util.int64_feature(audio_data.shape[0]),
         "audio/mel_w": tfrecord_util.int64_feature(mel.shape[1]),
         "audio/mel_h": tfrecord_util.int64_feature(mel.shape[0]),
-        "audio/mfcc_h": tfrecord_util.int64_feature(data.mfcc.shape[1]),
-        "audio/mfcc_w": tfrecord_util.int64_feature(data.mfcc.shape[0]),
+        # "audio/mfcc_h": tfrecord_util.int64_feature(data.mfcc.shape[1]),
+        # "audio/mfcc_w": tfrecord_util.int64_feature(data.mfcc.shape[0]),
         "audio/raw": tfrecord_util.float_list_feature(np.float32(data.raw)),
         "audio/raw_l": tfrecord_util.int64_feature(len(data.raw)),
     }
@@ -122,16 +122,6 @@ def worker_init(c):
 
 
 def get_data(rec):
-    # print("got args", args)
-    # rec_id = args[0]
-    # filename = args[1]
-    # resample = args[2]
-    # samples = args[3]
-    # signals = args[4]
-    # samples = sorted(
-    #     samples,
-    #     key=lambda sample: sample.start,
-    # )
     resample = 48000
     try:
         aro = audioread.ffdec.FFmpegAudioFile(rec.filename)
@@ -213,7 +203,6 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
             loaded = []
             pool_data = []
             samples_by_rec = {}
-            logging.info("Size pre is %s", getsize(local_set))
             #
             # for sample in local_set:
             #     if sample.rec_id not in samples_by_rec:
@@ -271,7 +260,6 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                 saved_s,
                 psutil.virtual_memory()[2],
             )
-            logging.info("Size post is %s", getsize(local_set))
 
     except:
         logging.error("Error saving track info", exc_info=True)

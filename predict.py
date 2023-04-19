@@ -100,8 +100,21 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             return mels, length
             # 1 / 0
 
-        mel = librosa.power_to_db(mel)
+        mel_no_ref = librosa.power_to_db(mel)
+        a_max = tf.math.reduce_max(mel_no_ref)
+        a_min = tf.math.reduce_min(mel_no_ref)
+        range = a_max - a_min
+        mel_no_ref = 80 * (mel_no_ref - a_min) / range
+        # mel_no_ref = 80 * mel_no_ref
+        mel_no_ref -= 80
+        mel_no_ref = np.array(mel_no_ref)
+        plot_mel(mel_no_ref, 1)
+        mel_ref = librosa.power_to_db(mel, ref=np.max)
+        plot_mel(mel_ref, 2)
 
+        print(mel_no_ref)
+        print(mel_ref)
+        1 / 0
         i += 1
         mel = tf.expand_dims(mel, axis=2)
 
@@ -144,12 +157,14 @@ def plot_mfcc(mfcc):
 
 
 def plot_mel(mel, i=0):
-    plt.figure(figsize=(10, 10))
+    fig = plt.figure(figsize=(10, 10))
 
     ax = plt.subplot(1, 1, 1)
     img = librosa.display.specshow(
         mel, x_axis="time", y_axis="mel", sr=48000, fmax=11000, ax=ax
     )
+    fig.colorbar(img, ax=ax, format="%+2.f dB")
+
     # plt.show()
     plt.savefig(f"mel-power-{i}.png", format="png")
     plt.clf()

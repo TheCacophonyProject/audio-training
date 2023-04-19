@@ -38,8 +38,18 @@ import badwinner
 from sklearn.model_selection import KFold
 import tensorflow_addons as tfa
 
+# import resnet
+
 training_dir = "training-data"
 other_training_dir = "training-data"
+
+#
+# num_residual_units = 2
+# momentum = 0.9
+# l2_weight = 0.0001
+# k = 2
+# lr_step_epoch = 100
+# lr_decay = 0.1
 
 
 class AudioModel:
@@ -294,6 +304,7 @@ class AudioModel:
         self.log_dir = self.log_dir / run_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.load_datasets(self.data_dir, self.labels, self.input_shape, test=True)
+        self.num_classes = len(self.labels)
         self.build_model(len(self.labels), multi_label=multi_label)
 
         if weights is not None:
@@ -416,7 +427,7 @@ class AudioModel:
             cls=MetaJSONEncoder,
         )
 
-    def build_model(self, num_labels, bad=True, multi_label=False):
+    def build_model(self, num_labels, bad=False, multi_label=False):
         if bad:
             self.model = badwinner.build_model(
                 self.input_shape, None, num_labels, multi_label=multi_label
@@ -428,10 +439,15 @@ class AudioModel:
             base_model, self.preprocess_fn = self.get_base_model((*self.input_shape, 3))
             x = norm_layer(input)
             x = base_model(x, training=True)
+            base_model.summary()
 
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
+            activation = "softmax"
+            if multi_label:
+                activation = "sigmoid"
+            logging.info("Using %s activation", activation)
             birds = tf.keras.layers.Dense(
-                num_labels, activation="softmax", name="prediction"
+                num_labels, activation=activation, name="prediction"
             )(x)
 
             outputs = [birds]
@@ -535,29 +551,29 @@ class AudioModel:
                 excluded_labels.append(l)
 
         logging.info("labels are %s Excluding %s", self.labels, excluded_labels)
-        self.train, remapped = get_dataset(
+        self.train, remapped, epoch_size = get_dataset(
             # dir,
             filenames,
             self.labels,
             batch_size=self.batch_size,
             image_size=self.input_shape,
             augment=False,
-            resample=False,
+            resample=True,
             excluded_labels=excluded_labels,
             mean_sub=self.mean_sub,
             deterministic=True,
             shuffle=False,
-            filenames_2=second_filenames
+            # filenames_2=second_filenames
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
+        self.num_train_instance = epoch_size
         filenames = []
         for d in datasets:
             # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
             filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/validation/*.tfrecord"))
         second_filenames = tf.io.gfile.glob(f"{flickr}/validation/*.tfrecord")
-
         logging.info("Loading Val")
-        self.validation, _ = get_dataset(
+        self.validation, _, _ = get_dataset(
             # dir,
             filenames,
             self.labels,
@@ -566,7 +582,7 @@ class AudioModel:
             resample=False,
             excluded_labels=excluded_labels,
             mean_sub=self.mean_sub,
-            filenames_2=second_filenames
+            # filenames_2=second_filenames
             # preprocess_fn=self.preprocess_fn,
         )
 
@@ -578,7 +594,7 @@ class AudioModel:
                 filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/test/*.tfrecord"))
             second_filenames = tf.io.gfile.glob(f"{flickr}/test/*.tfrecord")
 
-            self.test, _ = get_dataset(
+            self.test, _, _ = get_dataset(
                 # dir,
                 filenames,
                 self.labels,
@@ -588,7 +604,7 @@ class AudioModel:
                 excluded_labels=excluded_labels,
                 mean_sub=self.mean_sub,
                 shuffle=False,
-                filenames_2=second_filenames
+                # filenames_2=second_filenames
                 # preprocess_fn=self.preprocess_fn,
             )
         self.remapped = remapped
@@ -597,6 +613,23 @@ class AudioModel:
 
     def get_base_model(self, input_shape, weights="imagenet"):
         pretrained_model = self.model_name
+        # if pretrained_model == "wr-resnet":
+        #     decay_step = lr_step_epoch * self.num_train_instance / self.batch_size
+        #
+        #     hp = resnet.HParams(
+        #         batch_size=self.batch_size,
+        #         num_classes=self.num_classes,
+        #         num_residual_units=num_residual_units,
+        #         k=k,
+        #         weight_decay=l2_weight,
+        #         initial_lr=self.learning_rate,
+        #         decay_step=decay_step,
+        #         lr_decay=lr_decay,
+        #         momentum=momentum,
+        #     )
+        #     network = resnet.ResNet(hp, input_shape, self.labels)
+        #     network.build_model()
+        #     return network, None
         if pretrained_model == "resnet":
             return (
                 tf.keras.applications.ResNet50(
@@ -1009,7 +1042,7 @@ def main():
         mean_sub = meta_data.get("mean_sub")
 
         preprocess = get_preprocess_fn(model_name)
-        dataset, _ = get_dataset(
+        dataset, _, _ = get_dataset(
             tf.io.gfile.glob(f"./signal-data/training-data/test/*.tfrecord"),
             labels,
             image_size=DIMENSIONS,

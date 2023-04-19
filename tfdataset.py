@@ -168,6 +168,7 @@ def load_dataset(filenames, num_labels, args):
             one_hot=one_hot,
             mean_sub=args.get("mean_sub", False),
             add_noise=args.get("add_noise", False),
+            no_bird=args.get("no_bird", False),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -198,6 +199,7 @@ def load_dataset(filenames, num_labels, args):
             one_hot=one_hot,
             mean_sub=args.get("mean_sub", False),
             add_noise=args.get("add_noise", False),
+            no_bird=args.get("no_bird", False),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -286,6 +288,8 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
             remap_label = "bird"
             if l != "bird":
                 extra_label_map[l] = new_labels.index("bird")
+        else:
+            continue
         if l == remap_label:
             continue
         if l in excluded_labels:
@@ -294,6 +298,9 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
         re_dic[l] = new_labels.index(remap_label)
         del remapped[l]
     return (extra_label_map, re_dic, new_labels)
+
+
+bird_i = None
 
 
 def get_dataset(filenames, labels, **args):
@@ -314,6 +321,8 @@ def get_dataset(filenames, labels, **args):
     logging.info(
         "Remapped %s extra mapping %s new labels %s", remapped, extra_label_map, labels
     )
+    global bird_i
+    bird_i = labels.index("bird")
     # extra tags, since we have multi label problem, morepork is a bird and morepork
     # cat is a cat but also "noise"
 
@@ -348,12 +357,19 @@ def get_dataset(filenames, labels, **args):
         for i, d in enumerate(dist):
             logging.info("First dataset have %s for %s", d, labels[i])
         # args["add_noise"] = True
+        args["no_bird"] = True
+        # added bird noise to human recs but it messes model, so dont use for now
         dataset_2, dist_2 = load_dataset(second, len(labels), args)
         # dataset = dataset.take(min(np.sum(dist_2), 5000))
-        if bird_c > dist_2[labels.index("human")]:
-            dataset = dataset.take(dist_2[labels.index("human")])
-        else:
-            dataset_2 = dataset_2.take(bird_c)
+        if not resample:
+            if bird_c > dist_2[labels.index("human")]:
+                dataset = dataset.take(dist_2[labels.index("human")])
+                epoch_size = dist_2[labels.index("human")] + np.sum(dist_2)
+
+            else:
+                bird_c = bird_c = dist[labels.index("human")]
+                dataset_2 = dataset_2.take(bird_c)
+                epoch_size += bird_c
 
         logging.info("concatenating second dataset %s", second[0])
         # dist = get_distribution(dataset_2, batched=False)
@@ -361,11 +377,13 @@ def get_dataset(filenames, labels, **args):
             logging.info("Second dataset pre taking have %s for %s", d, labels[i])
 
         dataset = dataset.concatenate(dataset_2)
-        epoch_size += min(np.sum(dist_2), bird_c)
+        for i, d in enumerate(dist):
+            dist[i] += dist_2[i]
+
     resample_data = args.get("resample", True)
     if resample_data:
         logging.info("Resampling data")
-        dataset = resample(dataset, labels)
+        dataset = resample(dataset, labels, dist)
     if args.get("shuffle", True):
         dataset = dataset.shuffle(
             4096, reshuffle_each_iteration=args.get("reshuffle", True)
@@ -389,11 +407,11 @@ def get_dataset(filenames, labels, **args):
         dataset = dataset.shuffle(
             4096, reshuffle_each_iteration=args.get("reshuffle", True)
         )
-    # dist = get_distribution(dataset)
-    # for i, d in enumerate(dist):
-    # logging.info("Have %s for %s", d, labels[i])
+    dist = get_distribution(dataset)
+    for i, d in enumerate(dist):
+        logging.info("Have %s for %s", d, labels[i])
 
-    return dataset, remapped
+    return dataset, remapped, epoch_size
 
 
 def get_weighting(dataset, labels):
@@ -435,9 +453,20 @@ def get_weighting(dataset, labels):
     return weights
 
 
-def resample(dataset, labels):
+def resample(dataset, labels, og):
+    num_labels = len(labels)
+    og_dist = np.empty((num_labels), dtype=np.float32)
+    for i, l in enumerate(labels):
+        og_dist[i] = og[i] / np.sum(og)
+    num_labels = len(labels)
+    target_dist = np.empty((num_labels), dtype=np.float32)
     target_dist[:] = 1 / len(labels)
 
+    for i, l in enumerate(labels):
+        if l not in ["human", "bird"]:
+            target_dist[i] = og_dist[i]
+
+    print("original dist", og_dist, target_dist)
     rej = dataset.rejection_resample(
         class_func=class_func,
         target_dist=target_dist,
@@ -602,6 +631,7 @@ def read_tfrecord(
     one_hot=True,
     mean_sub=False,
     add_noise=False,
+    no_bird=False,
 ):
     bird_l = tf.constant(["bird"])
     tf_more_mask = tf.constant(morepork_mask)
@@ -638,7 +668,16 @@ def read_tfrecord(
 
     # mel =
     mel = example["audio/mel"]
-    mel = tf.reshape(mel, [*mel_s, 1])
+    mel = tf.reshape(mel, [*mel_s])
+    # put mel into ref db
+    a_max = tf.math.reduce_max(mel)
+    a_min = tf.math.reduce_min(mel)
+    m_range = a_max - a_min
+    mel = 80 * (mel - a_min) / m_range
+    # mel_no_ref = 80 * mel_no_ref
+    mel -= 80
+    mel = tf.expand_dims(mel, axis=2)
+    # mel = tf.repeat(mel, 3, axis=2)
     if augment:
         logging.info("Augmenting")
         # tf.random.uniform()
@@ -669,6 +708,15 @@ def read_tfrecord(
             label = tf.reduce_max(
                 tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
             )
+        if no_bird:
+            logging.info("no bird")
+            no_bird_mask = np.ones(num_labels, dtype=np.bool)
+            no_bird_mask[bird_i] = 0
+            no_bird_mask = tf.constant(no_bird_mask)
+            label = tf.cast(label, tf.bool)
+            label = tf.math.logical_and(label, no_bird_mask)
+
+            label = tf.cast(label, tf.int32)
 
         return image, label
 
@@ -685,6 +733,7 @@ def read_distribution(
     one_hot=True,
     mean_sub=False,
     add_noise=False,
+    no_bird=False,
 ):
     bird_l = tf.constant(["bird"])
     tf_more_mask = tf.constant(morepork_mask)
@@ -712,7 +761,15 @@ def read_distribution(
     label = tf.concat([labels, extra], axis=0)
     if one_hot:
         label = tf.reduce_max(tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0)
+    if no_bird:
+        logging.info("no bird")
+        no_bird_mask = np.ones(num_labels, dtype=np.bool)
+        no_bird_mask[bird_i] = 0
+        no_bird_mask = tf.constant(no_bird_mask)
+        label = tf.cast(label, tf.bool)
+        label = tf.math.logical_and(label, no_bird_mask)
 
+        label = tf.cast(label, tf.int32)
     return label
 
 
@@ -799,7 +856,6 @@ def main():
     labels = list(labels)
 
     labels.sort()
-    print(labels)
     filenames_2 = tf.io.gfile.glob(f"./flickr-training-data/train/*.tfrecord")
     # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
     # weights = [0.5] * len(labels)
@@ -810,7 +866,7 @@ def main():
         batch_size=32,
         image_size=DIMENSIONS,
         augment=False,
-        resample=False,
+        resample=True,
         filenames_2=filenames_2
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
@@ -839,7 +895,7 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
     # mfcc = image_batch[1]
     # sftf = image_batch[1]
     # image_batch = image_batch[0]
-    plt.figure(figsize=(20, 20))
+    fig = plt.figure(figsize=(20, 20))
     # mfcc = image_batch[2]
     image_batch = image_batch
     print("images in batch", len(image_batch), len(label_batch))

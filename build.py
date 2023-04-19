@@ -193,6 +193,8 @@ def split_randomly(dataset, test_clips=[], no_test=False):
 
 
 def dataset_from_signal(args):
+    config = Config(**vars(args))
+
     signal_dir = Path(args.dir)
     sets = ["train", "validation", "test"]
     r_id = 0
@@ -203,7 +205,7 @@ def dataset_from_signal(args):
     for s in sets:
         print("calculating ", s)
         set_dir = signal_dir / s
-        dataset = AudioDataset(s)
+        dataset = AudioDataset(s, config)
         dataset.load_meta(set_dir)
         for r in dataset.recs:
             r_id += 1
@@ -227,34 +229,33 @@ def dataset_from_signal(args):
         datesets.append(dataset)
         all_labels.update(dataset.labels)
         l_counts = dataset.get_rec_counts()
-        human_counts = l_counts.get("human", [])
-        human_counts = len(human_counts)
-        recs_by_label = {}
-        logging.info("Keeping %s birds", human_counts)
-        to_delete = []
-        for r in dataset.recs:
+        # human_counts = l_counts.get("human", [])
+        # human_counts = len(human_counts)
+        # recs_by_label = {}
+        # to_delete = []
+        # for r in dataset.recs:
+        #
+        #     tag = r.tracks[0].tag
+        #     if tag not in ["bird", "human"]:
+        #         to_delete.append(r)
+        #         continue
+        #     if tag not in recs_by_label:
+        #         recs_by_label[tag] = []
+        #     recs_by_label[tag].append(r)
 
-            tag = r.tracks[0].tag
-            if tag not in ["bird", "human"]:
-                to_delete.append(r)
-                continue
-            if tag not in recs_by_label:
-                recs_by_label[tag] = []
-            recs_by_label[tag].append(r)
-
-        bird_recs = recs_by_label.get("bird")
-        random.shuffle(bird_recs)
-        to_remove = bird_recs[human_counts:]
-        to_remove.extend(to_delete)
-        for rec in to_remove:
-            dataset.remove_rec(rec)
+        # bird_recs = recs_by_label.get("bird")
+        # random.shuffle(bird_recs)
+        # to_remove = bird_recs[human_counts:]
+        # to_remove.extend(to_delete)
+        # for rec in to_remove:
+        #     dataset.remove_rec(rec)
         # just save birds and humans for now and make same count
         dataset.print_counts()
         dataset.print_sample_counts()
 
     all_labels = list(all_labels)
     all_labels.sort()
-    all_labels = ["bird", "human"]
+    # all_labels = ["bird", "human"]
     for dataset in datesets:
         dataset.labels = all_labels
         dir = signal_dir / "training-data" / dataset.name
@@ -269,15 +270,14 @@ def dataset_from_signal(args):
         }
     meta_filename = signal_dir / "training-data" / "training-meta.json"
     meta_data = {
-        "segment_length": SEGMENT_LENGTH,
-        "segment_stride": SEGMENT_STRIDE,
         "labels": all_labels,
         "type": "audio",
         "counts": dataset_counts,
         "by_label": False,
         "relabbled": RELABEL,
-        "hop_length": HOP_LENGTH,
     }
+    meta_data.update(config.__dict__)
+
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4)
 
