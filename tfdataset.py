@@ -367,7 +367,7 @@ def get_dataset(filenames, labels, **args):
                 epoch_size = dist_2[labels.index("human")] + np.sum(dist_2)
 
             else:
-                bird_c = bird_c = dist[labels.index("human")]
+                bird_c = bird_c - dist[labels.index("human")]
                 dataset_2 = dataset_2.take(bird_c)
                 epoch_size += bird_c
 
