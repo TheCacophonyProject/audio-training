@@ -391,6 +391,11 @@ def get_dataset(filenames, labels, **args):
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     # epoch_size = len([0 for x, y in dataset])
+
+    dist = get_distribution(dataset)
+    for i, d in enumerate(dist):
+        logging.info("Have %s for %s", d, labels[i])
+    epoch_size = np.sum(dist)
     logging.info("Setting dataset size to %s", epoch_size)
     if not args.get("only_features", False):
         dataset = dataset.repeat(2)
@@ -407,9 +412,6 @@ def get_dataset(filenames, labels, **args):
         dataset = dataset.shuffle(
             4096, reshuffle_each_iteration=args.get("reshuffle", True)
         )
-    dist = get_distribution(dataset)
-    for i, d in enumerate(dist):
-        logging.info("Have %s for %s", d, labels[i])
 
     return dataset, remapped, epoch_size
 
