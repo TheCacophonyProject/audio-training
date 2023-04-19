@@ -558,7 +558,7 @@ class AudioModel:
             batch_size=self.batch_size,
             image_size=self.input_shape,
             augment=False,
-            resample=True,
+            resample=False,
             excluded_labels=excluded_labels,
             mean_sub=self.mean_sub,
             deterministic=True,
