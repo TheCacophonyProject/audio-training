@@ -198,7 +198,7 @@ def process_signal(f):
         if not file.exists():
             logging.info("Not recording for %s", f)
             return
-        r = Recording(meta, file)
+        # r = Recording(meta, file, None)
 
         logging.info("Calcing %s", file)
         signals, noise = signal_noise(file)
@@ -249,8 +249,8 @@ def mix_file(file, mix):
 def main():
     init_logging()
     args = parse_args()
-    mix_file(args.file, args.mix)
-    # process(args.file)
+    # mix_file(args.file, args.mix)
+    process(args.file)
     # process_signal(args.file)
     # data = np.array(data)
 

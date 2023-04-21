@@ -67,6 +67,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         mean_sub,
         use_mfcc,
     )
+    logging.info("sample is %s", length)
     mels = []
     i = 0
     n_fft = sr // 10
@@ -100,22 +101,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             return mels, length
             # 1 / 0
 
-        mel_no_ref = librosa.power_to_db(mel)
-        a_max = tf.math.reduce_max(mel_no_ref)
-        a_min = tf.math.reduce_min(mel_no_ref)
-        range = a_max - a_min
-        mel_no_ref = 80 * (mel_no_ref - a_min) / range
-        # mel_no_ref = 80 * mel_no_ref
-        mel_no_ref -= 80
-        mel_no_ref = np.array(mel_no_ref)
-        plot_mel(mel_no_ref, 1)
-        mel_ref = librosa.power_to_db(mel, ref=np.max)
-        plot_mel(mel_ref, 2)
-
-        print(mel_no_ref)
-        print(mel_ref)
-        1 / 0
-        i += 1
+        mel = librosa.power_to_db(mel, ref=np.max)
         mel = tf.expand_dims(mel, axis=2)
 
         if use_mfcc:
@@ -141,6 +127,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         # mean over each mel bank
         # print("mean of mel is", round(1000 * np.mean(mel), 4))
         mels.append(mel)
+        i += 1
         # break
     return mels, length
 

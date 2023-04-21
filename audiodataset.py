@@ -350,36 +350,7 @@ class Recording:
             self.tracks,
             key=lambda track: track.start,
         )
-        # for t in self.tracks:
-        #     # signals = [
-        #     # s
-        #     offset = 0
-        #     t_s = None
-        #     t_e = 0
-        #     for s in self.signals:
-        #         if ((t.end - t.start) + (s[1] - s[0])) > max(t.end, s[1]) - min(
-        #             t.start, s[0]
-        #         ):
-        #             pre_sig = s[0] - t.start
-        #             if t_s is None:
-        #                 if pre_sig < 0:
-        #                     # interlap
-        #                     t_s = offset - pre_sig
-        #                 else:
-        #                     t_s = offset
-        #
-        #             if t.end < s[1]:
-        #                 t_e = offset + (s[1] - t.end)
-        #                 break
-        #             else:
-        #                 t_e = offset + (s[1] - s[0])
-        #         elif t_s is not None:
-        #             # Done
-        #             break
-        # offset += s[1] - s[0]
-        # print("track ", t.start, t.end, " now has", t_s, t_e, t.human_tags)
-        # t.start = t_s
-        # t.end = t_e
+
         self.samples = []
         if len(sorted_tracks) == 0:
             return

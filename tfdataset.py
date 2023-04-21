@@ -327,7 +327,7 @@ def get_dataset(filenames, labels, **args):
             dataset_2 = dataset_2.take(bird_c)
             epoch_size += bird_c
 
-        logging.info("concatenating second dataset %s", second[0])
+        # logging.info("concatenating second dataset %s", second[0])
         # dist = get_distribution(dataset_2, batched=False)
         # for i, d in enumerate(dist_2):
         # logging.info("Second dataset pre taking have %s for %s", d, labels[i])

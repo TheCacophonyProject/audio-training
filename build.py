@@ -282,6 +282,38 @@ def dataset_from_signal(args):
         json.dump(meta_data, f, indent=4)
 
 
+def trim_noise(dataset):
+    dataset.samples = []
+    # set tracks to start at first signal within the track start end and end with last signal
+    for r in dataset.recs:
+        for t in r.tracks:
+            offset = 0
+            t_s = None
+            t_e = 0
+            for s in r.signals:
+                if ((t.end - t.start) + (s[1] - s[0])) > max(t.end, s[1]) - min(
+                    t.start, s[0]
+                ):
+                    if t_s is None:
+                        t_s = max(t.start, s[0])
+
+                    if t.end < s[1]:
+                        t_e = t.end
+                        break
+                    else:
+                        t_e = s[1]
+                elif t_s is not None:
+                    # Done
+                    break
+        offset += s[1] - s[0]
+        print("track ", t.start, t.end, " now has", t_s, t_e, t.human_tags)
+        t.start = t_s
+        t.end = t_e
+        r.samples = []
+        r.load_samples(dataset.config.segment_length, dataset.config.segment_stride)
+        dataset.samples.extend(r.samples)
+
+
 def main():
     init_logging()
     args = parse_args()
@@ -301,6 +333,8 @@ def main():
     # config = load_config(args.config_file)
     dataset = AudioDataset("all", config)
     dataset.load_meta(args.dir)
+    trim_noise(dataset)
+    # return
     # dataset.load_meta()
     # return
     dataset.print_counts()
