@@ -138,7 +138,7 @@ def get_data(rec):
     if resample is not None and resample != sr:
         frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
         sr = resample
-    rec.tracks[0].end = len(frames) / sr
+    # rec.tracks[0].end = len0(frames) / sr
     rec.load_samples(config.segment_length, config.segment_stride)
     samples = rec.samples
     rec.sample_rate = resample

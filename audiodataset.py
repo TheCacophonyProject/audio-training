@@ -439,8 +439,10 @@ class Recording:
             end = start + segment_length
         # other_tracks = [t for t in sorted_tracks[i:] if t.start<= start and t.end >= end]
         # for t in sorted_tracks:
+        # for t in self.tracks:
+        #     print(self.id, "have track from ", t.start, t.end)
         # for s in self.samples:
-        # print("Have sample", s.start, s.end, s.tags, self.filename)
+        #     print(self.id, "Have sample", s.start, s.end, s.tags, self.filename)
 
     def load_recording(self, resample=None):
         try:
