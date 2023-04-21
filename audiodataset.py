@@ -319,6 +319,11 @@ class Recording:
 
         self.load_samples(config.segment_length, config.segment_stride)
 
+    def recalc_tags(self):
+        for track in self.tracks:
+            for tag in track.human_tags:
+                self.human_tags.add(tag)
+
     def space_signals(self, spacing=0.1):
         # print("prev have", len(self.signals))
         # for s in self.signals:

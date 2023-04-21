@@ -286,6 +286,7 @@ def trim_noise(dataset):
     dataset.samples = []
     # set tracks to start at first signal within the track start end and end with last signal
     for r in dataset.recs:
+        tracks_del = []
         for t in r.tracks:
             offset = 0
             t_s = None
@@ -306,12 +307,19 @@ def trim_noise(dataset):
                     # Done
                     break
         offset += s[1] - s[0]
-        print("track ", t.start, t.end, " now has", t_s, t_e, t.human_tags)
+        if t.start is None:
+            logging.warn("Rec %s track %s has no signal data", r.id, t.id)
+            tracks_del.append(t)
+        # r.tracks.remove()
+        # print("track ", t.start, t.end, " now has", t_s, t_e, t.human_tags)
         t.start = t_s
         t.end = t_e
-        r.samples = []
-        r.load_samples(dataset.config.segment_length, dataset.config.segment_stride)
-        dataset.samples.extend(r.samples)
+    for t in tracks_del:
+        r.tracks.remove(t)
+    r.recalc_tags()
+    r.samples = []
+    r.load_samples(dataset.config.segment_length, dataset.config.segment_stride)
+    dataset.samples.extend(r.samples)
 
 
 def main():
