@@ -286,6 +286,7 @@ def trim_noise(dataset):
     dataset.samples = []
     # set tracks to start at first signal within the track start end and end with last signal
     for r in dataset.recs:
+        # r.space_signals()
         tracks_del = []
         for t in r.tracks:
             offset = 0

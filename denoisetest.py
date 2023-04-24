@@ -60,21 +60,6 @@ def load_recording(file, resample=48000):
     return frames, sr
 
 
-def plot_spectrogram(spectrogram, ax):
-    if len(spectrogram.shape) > 2:
-        assert len(spectrogram.shape) == 3
-        spectrogram = np.squeeze(spectrogram, axis=-1)
-    # Convert the frequencies to log scale and transpose, so that the time is
-    # represented on the x-axis (columns).
-    # Add an epsilon to avoid taking a log of zero.
-    log_spec = np.log(spectrogram + np.finfo(float).eps)
-    height = log_spec.shape[0]
-    width = log_spec.shape[1]
-    X = np.linspace(0, np.size(spectrogram), num=width, dtype=int)
-    Y = range(height)
-    ax.pcolormesh(X, Y, log_spec)
-
-
 def signal_noise(file, hop_length=281):
     frames, sr = load_recording(file)
 
@@ -82,7 +67,7 @@ def signal_noise(file, hop_length=281):
     n_fft = sr // 10
     # frames = frames[: sr * 3]
     spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
-    # plot_spec(spectogram)
+
     a_max = np.amax(spectogram)
     spectogram = spectogram / a_max
     row_medians = np.median(spectogram, axis=1)
@@ -163,8 +148,34 @@ def signal_noise(file, hop_length=281):
     # signal_frames = np.array(signal_frames)
     # name = file.parent / f"{file.stem}-signal.wav"
     # sf.write(str(name), signal_frames, sr)
-
+    # print("signals are", signals)
+    # signals = space_signals(signals, spacing=0.1)
+    # print("spaced", signals)
+    # spectogram = librosa.amplitude_to_db(spectogram, ref=np.max)
+    # plot_spec(spectogram, signals, len(frames) / sr)
     return signals, noise
+
+
+def space_signals(signals, spacing=0.1):
+    # print("prev have", len(self.signals))
+    # for s in self.signals:
+    #     print(s)
+    new_signals = []
+    prev_s = None
+    for s in signals:
+        if prev_s is None:
+            prev_s = s
+        else:
+            if s[0] < prev_s[1] + spacing:
+                # combine them
+                prev_s = (prev_s[0], s[1])
+            else:
+                new_signals.append(prev_s)
+                prev_s = s
+    if prev_s is not None:
+        new_signals.append(prev_s)
+
+    return new_signals
 
 
 def load_metadata(filename):
@@ -202,6 +213,7 @@ def process_signal(f):
 
         logging.info("Calcing %s", file)
         signals, noise = signal_noise(file)
+
         meta["signal"] = signals
         meta["noise"] = noise
         json.dump(
@@ -250,6 +262,8 @@ def main():
     init_logging()
     args = parse_args()
     # mix_file(args.file, args.mix)
+    signal_noise(args.file)
+    return
     process(args.file)
     # process_signal(args.file)
     # data = np.array(data)
@@ -296,17 +310,35 @@ class Track:
         return meta
 
 
-def plot_spec(spec):
+def plot_spec(spec, signals, length):
     plt.figure(figsize=(10, 10))
 
     ax = plt.subplot(1, 1, 1)
 
-    img = librosa.display.specshow(spec, sr=48000, y_axis="log", x_axis="time", ax=ax)
-    ax.set_title("Power spectrogram")
-    plt.show()
-    # plt.savefig(f"mel-power-{i}.png", format="png")
-    plt.clf()
-    plt.close()
+    img = librosa.display.specshow(
+        spec, sr=48000, y_axis="log", x_axis="time", ax=ax, hop_length=281
+    )
+    plt.savefig("temp.png")
+    import cv2
+
+    img = cv2.imread("temp.png")
+
+    height, width, _ = img.shape
+    width = 900 - 130
+    t_p = width / length
+
+    for s in signals:
+        start = int(s[0] * t_p) + 130
+        end = int(s[1] * t_p) + 130
+        print("Drawing signal", s, " at ", start, "-", end, " for shape", img.shape)
+        cv2.rectangle(img, (start, 10), (end, height - 10), (0, 255, 0), 3)
+    # ax.set_title("Power spectrogram")
+    # plt.show()
+    # plt.clf()
+    # plt.close()
+    cv2.imshow("a", img)
+    cv2.moveWindow("a", 0, 0)
+    cv2.waitKey()
 
 
 def plot_mfcc(mfcc):
