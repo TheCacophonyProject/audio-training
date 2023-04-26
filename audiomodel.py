@@ -563,7 +563,7 @@ class AudioModel:
             mean_sub=self.mean_sub,
             deterministic=True,
             shuffle=False,
-            filenames_2=filenames
+            filenames_2=second_filenames,
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
         self.num_train_instance = epoch_size

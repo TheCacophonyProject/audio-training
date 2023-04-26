@@ -36,6 +36,7 @@ from tfdataset import get_dataset
 import soundfile as sf
 import matplotlib
 from custommels import mel_spec
+from denoisetest import signal_noise, space_signals
 
 matplotlib.use("TkAgg")
 
@@ -50,6 +51,52 @@ def load_recording(file, resample=48000):
         frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
         sr = resample
     return frames, sr
+
+
+def preprocess_file_signals(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
+    signals, noise = signal_noise(file)
+    signals = space_signals(signals)
+    frames, sr = load_recording(file)
+    mels = []
+    n_fft = sr // 10
+
+    for s in signals:
+        print("doing singal", s)
+        start = s[0]
+        end = start + seg_length
+        # end = s[0]
+        count = 0
+        while end < s[1] or count == 0:
+            print("doing", start, end)
+            start_sr = int(start * sr)
+            end_sr = int(min(end, s[1]) * sr)
+
+            data = frames[start_sr:end_sr]
+            if len(data) < sr * seg_length:
+                data_2 = np.zeros((int(sr * seg_length)))
+                data_2[: len(data)] = data
+                data = data_2
+
+            spectogram = np.abs(librosa.stft(data, n_fft=n_fft, hop_length=hop_length))
+            mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000)
+
+            half = mel[:, 75:]
+            if np.amax(half) == np.amin(half):
+                print("mel max is same")
+                strides_per = math.ceil(seg_length / 2.0 / stride) + 1
+                mels = mels[:-strides_per]
+                print("remove last ", strides_per, len(mels))
+                return mels, len(frames) / sr
+                # 1 / 0
+
+            mel = librosa.power_to_db(mel, ref=np.max)
+            mel = tf.expand_dims(mel, axis=2)
+            start += stride
+            end = start + seg_length
+
+            count += 1
+            mels.append(mel)
+    return mels, len(frames) / sr
 
 
 def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
@@ -247,7 +294,7 @@ def main():
         return
     if args.file:
         file = Path(args.file)
-        data, length = preprocess_file(
+        data, length = preprocess_file_signals(
             file, segment_length, segment_stride, hop_length, mean_sub, use_mfcc
         )
         data = np.array(data)

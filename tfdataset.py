@@ -310,6 +310,7 @@ def get_dataset(filenames, labels, **args):
 
     dataset = load_dataset(filenames, len(labels), args)
     dist = get_distribution(dataset, batched=False)
+    resample_data = args.get("resample", True)
 
     for i, d in enumerate(dist):
         logging.info("First dataset have %s for %s", d, labels[i])
@@ -322,7 +323,7 @@ def get_dataset(filenames, labels, **args):
         dataset_2 = load_dataset(second, len(labels), args)
         # dataset = dataset.take(min(np.sum(dist_2), 5000))
 
-        if not resample:
+        if not resample_data:
             bird_c = bird_c - dist[labels.index("human")]
             dataset_2 = dataset_2.take(bird_c)
             epoch_size += bird_c
