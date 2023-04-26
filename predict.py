@@ -55,7 +55,7 @@ def load_recording(file, resample=48000):
 
 def preprocess_file_signals(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
     signals, noise = signal_noise(file)
-    signals = space_signals(signals)
+    # signals = space_signals(signals)
     frames, sr = load_recording(file)
     mels = []
     n_fft = sr // 10
@@ -173,6 +173,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             mel = mel - mel__m
         # mean over each mel bank
         # print("mean of mel is", round(1000 * np.mean(mel), 4))
+        mel = tf.repeat(mel, 3, axis=2)
         mels.append(mel)
         i += 1
         # break
@@ -224,7 +225,7 @@ def main():
     )
     # model = tf.keras.models.load_model(str(load_model))
 
-    # model.load_weights(load_model / "val_loss").expect_partial()
+    model.load_weights(load_model / "val_loss").expect_partial()
     # model.save(load_model / "frozen_model")
     # 1 / 0
     with open(load_model / "metadata.txt", "r") as f:
@@ -294,7 +295,7 @@ def main():
         return
     if args.file:
         file = Path(args.file)
-        data, length = preprocess_file_signals(
+        data, length = preprocess_file(
             file, segment_length, segment_stride, hop_length, mean_sub, use_mfcc
         )
         data = np.array(data)

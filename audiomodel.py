@@ -68,9 +68,8 @@ class AudioModel:
         self.input_shape = DIMENSIONS
         self.preprocess_fn = None
         self.learning_rate = 0.01
-        self.segment_length = None
-        self.segment_stride = None
         self.mean_sub = False
+        self.training_data_meta = None
         self.load_meta()
 
     def load_meta(self):
@@ -83,8 +82,7 @@ class AudioModel:
         # if "noise" not in self.labels:
         # self.labels.append("noise")
         self.labels.sort()
-        self.segment_length = meta.get("segment_length", 3)
-        self.segment_stride = meta.get("segment_stride", 1.5)
+        self.training_data_meta = meta
 
     def load_weights(self, weights_file):
         logging.info("Loading %s", weights_file)
@@ -390,11 +388,10 @@ class AudioModel:
         if run_name is None:
             run_name = self.params.model_name
         model_stats = {}
+        model_stats.update(self.training_data_meta)
         model_stats["name"] = self.model_name
         model_stats["labels"] = self.labels
         model_stats["multi_label"] = multi_label
-        model_stats["segment_stride"] = self.segment_stride
-        model_stats["segment_length"] = self.segment_length
         model_stats["mean_sub"] = self.mean_sub
 
         # model_stats["hyperparams"] = self.params
@@ -610,6 +607,7 @@ class AudioModel:
         self.remapped = remapped
         for l in excluded_labels:
             self.labels.remove(l)
+        self.training_data_meta = meta
 
     def get_base_model(self, input_shape, weights="imagenet"):
         pretrained_model = self.model_name

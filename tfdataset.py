@@ -81,7 +81,7 @@ for w in wavs:
 # NOISE_LABELS = []
 NOISE_PATH = NOISE_PATH[:2]
 BIRD_PATH = BIRD_PATH[:2]
-NOISE_LABELS = []
+# NOISE_LABELS = []
 insect = None
 fp = None
 HOP_LENGTH = 281
@@ -240,7 +240,7 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
         labels = new_labels
     for l in labels:
         if l in NOISE_LABELS:
-            if noise in new_labels:
+            if "noise" in new_labels:
                 remap_label = "noise"
                 extra_label_map[l] = new_labels.index("noise")
             continue
@@ -250,8 +250,8 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
             # or l == "human":
             continue
         elif l == "human":
-            if "noise" in new_labels:
-                extra_label_map[l] = new_labels.index("noise")
+            # if "noise" in new_labels:
+            #     extra_label_map[l] = new_labels.index("noise")
 
             continue
         elif l in GENERIC_BIRD_LABELS:
@@ -326,7 +326,6 @@ def get_dataset(filenames, labels, **args):
         if not resample_data:
             bird_c = bird_c - dist[labels.index("human")]
             dataset_2 = dataset_2.take(bird_c)
-            epoch_size += bird_c
 
         # logging.info("concatenating second dataset %s", second[0])
         # dist = get_distribution(dataset_2, batched=False)
