@@ -455,9 +455,6 @@ class AudioModel:
         else:
             acc = tf.metrics.categorical_accuracy
 
-        hamming = tfa.metrics.HammingLoss(mode="multilabel", threshold=0.8)
-
-        prec_at_k = tf.keras.metrics.TopKCategoricalAccuracy()
         self.model.compile(
             optimizer=optimizer(lr=self.learning_rate),
             loss=loss(multi_label),
@@ -466,9 +463,6 @@ class AudioModel:
                 tf.keras.metrics.AUC(),
                 tf.keras.metrics.Recall(),
                 tf.keras.metrics.Precision(),
-                hamming,
-                # f1,
-                prec_at_k,
             ],
         )
 
@@ -476,11 +470,9 @@ class AudioModel:
         metrics = [
             "val_loss",
             "val_binary_accuracy",
-            "val_top_k_categorical_accuracy",
             "val_precision",
             "val_auc",
             "val_recall",
-            "val_hamming_loss",
         ]
         checks = []
         for m in metrics:
@@ -1018,12 +1010,9 @@ def main():
     if args.confusion is not None:
         load_model = Path("./train/checkpoints") / args.name
         logging.info("Loading %s with weights %s", load_model, "val_acc")
-        hamming = tfa.metrics.HammingLoss(mode="multilabel", threshold=0.8)
-        prec_at_k = tf.keras.metrics.TopKCategoricalAccuracy()
         model = tf.keras.models.load_model(
             str(load_model),
             custom_objects={
-                "hamming_loss": hamming,
                 "top_k_categorical_accuracy": prec_at_k,
             },
             compile=False,
@@ -1052,7 +1041,6 @@ def main():
             mean_sub=mean_sub,
         )
 
-        hamming = tfa.metrics.HammingLoss(mode="multilabel", threshold=0.8)
         acc = tf.metrics.binary_accuracy
 
         prec_at_k = tf.keras.metrics.TopKCategoricalAccuracy()
@@ -1064,9 +1052,6 @@ def main():
                 tf.keras.metrics.AUC(),
                 tf.keras.metrics.Recall(),
                 tf.keras.metrics.Precision(),
-                hamming,
-                # f1,
-                prec_at_k,
             ],
         )
         model.evaluate(dataset)
