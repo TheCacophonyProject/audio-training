@@ -527,8 +527,8 @@ class AudioModel:
         self.labels = labels
         if "bird" not in self.labels:
             self.labels.append("bird")
-        # if "noise" not in self.labels:
-        # self.labels.append("noise")
+        if "noise" not in self.labels:
+            self.labels.append("noise")
         self.labels.sort()
         logging.info("Loading train")
         excluded_labels = get_excluded_labels(self.labels)
@@ -1033,9 +1033,9 @@ def main():
         with open(meta_f, "r") as f:
             dataset_meta = json.load(f)
         labels = dataset_meta.get("labels")
-        if "bird" not in self.labels:
+        if "bird" not in labels:
             labels.append("bird")
-        if "noise" not in self.labels:
+        if "noise" not in labels:
             labels.append("noise")
         excluded_labels = get_excluded_labels(labels)
 
@@ -1052,7 +1052,8 @@ def main():
             mean_sub=mean_sub,
             excluded_labels=excluded_labels,
         )
-
+        for l in excluded_labels:
+            labels.remove(l)
         acc = tf.metrics.binary_accuracy
 
         model.compile(
