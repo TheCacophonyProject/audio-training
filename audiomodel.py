@@ -79,8 +79,8 @@ class AudioModel:
         self.labels = meta.get("labels", [])
         if "bird" not in self.labels:
             self.labels.append("bird")
-        # if "noise" not in self.labels:
-        # self.labels.append("noise")
+        if "noise" not in self.labels:
+            self.labels.append("noise")
         self.labels.sort()
         self.training_data_meta = meta
 
@@ -111,10 +111,7 @@ class AudioModel:
             self.labels.append("bird")
         if "noise" not in self.labels:
             self.labels.append("noise")
-        excluded_labels = []
-        for l in self.labels:
-            if l not in SPECIFIC_BIRD_LABELS and l not in ["noise", "human"]:
-                excluded_labels.append(l)
+        excluded_labels = get_excluded_labels(self.labels)
         filenames = np.array(filenames)
         test_percent = 0.2
         test_i = int(test_percent * len(filenames))
@@ -424,7 +421,7 @@ class AudioModel:
             cls=MetaJSONEncoder,
         )
 
-    def build_model(self, num_labels, bad=True, multi_label=False):
+    def build_model(self, num_labels, bad=False, multi_label=False):
         if bad:
             self.model = badwinner.build_model(
                 self.input_shape, None, num_labels, multi_label=multi_label
@@ -534,10 +531,7 @@ class AudioModel:
         # self.labels.append("noise")
         self.labels.sort()
         logging.info("Loading train")
-        excluded_labels = []
-        for l in self.labels:
-            if l not in SPECIFIC_BIRD_LABELS and l not in ["noise", "human"]:
-                excluded_labels.append(l)
+        excluded_labels = get_excluded_labels(self.labels)
 
         logging.info("labels are %s Excluding %s", self.labels, excluded_labels)
         self.train, remapped, epoch_size = get_dataset(
@@ -1003,18 +997,22 @@ def plot_confusion_matrix(cm, class_names):
     return figure
 
 
+def get_excluded_labels(labels):
+    excluded_labels = []
+    for l in labels:
+        if l not in SPECIFIC_BIRD_LABELS and l not in ["noise", "human"]:
+            excluded_labels.append(l)
+    return excluded_labels
+
+
 def main():
     init_logging()
     args = parse_args()
-    print(args)
     if args.confusion is not None:
         load_model = Path("./train/checkpoints") / args.name
         logging.info("Loading %s with weights %s", load_model, "val_acc")
         model = tf.keras.models.load_model(
             str(load_model),
-            custom_objects={
-                "top_k_categorical_accuracy": prec_at_k,
-            },
             compile=False,
         )
 
@@ -1029,6 +1027,19 @@ def main():
         mean_sub = meta_data.get("mean_sub")
 
         preprocess = get_preprocess_fn(model_name)
+        base_dir = Path("./signal-data/training-data/")
+        meta_f = base_dir / "training-meta.json"
+        dataset_meta = None
+        with open(meta_f, "r") as f:
+            dataset_meta = json.load(f)
+        labels = dataset_meta.get("labels")
+        if "bird" not in self.labels:
+            labels.append("bird")
+        if "noise" not in self.labels:
+            labels.append("noise")
+        excluded_labels = get_excluded_labels(labels)
+
+        # self.labels = meta.get("labels", [])
         dataset, _, _ = get_dataset(
             tf.io.gfile.glob(f"./signal-data/training-data/test/*.tfrecord"),
             labels,
@@ -1039,11 +1050,11 @@ def main():
             reshuffle=False,
             batch_size=64,
             mean_sub=mean_sub,
+            excluded_labels=excluded_labels,
         )
 
         acc = tf.metrics.binary_accuracy
 
-        prec_at_k = tf.keras.metrics.TopKCategoricalAccuracy()
         model.compile(
             optimizer=optimizer(lr=1),
             loss=loss(True),

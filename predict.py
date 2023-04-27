@@ -173,7 +173,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             mel = mel - mel__m
         # mean over each mel bank
         # print("mean of mel is", round(1000 * np.mean(mel), 4))
-        mel = tf.repeat(mel, 3, axis=2)
+        # mel = tf.repeat(mel, 3, axis=2)
         mels.append(mel)
         i += 1
         # break
