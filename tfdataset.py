@@ -69,7 +69,6 @@ OTHER_BIRD = ["chicken", "rooster", "frog", "insect"]
 signals = Path("./signal-data/train")
 wavs = list(signals.glob("*.wav"))
 for w in wavs:
-
     if "bird" in w.stem:
         BIRD_PATH.append(w)
     else:
@@ -331,9 +330,7 @@ def get_dataset(filenames, labels, **args):
         # dist = get_distribution(dataset_2, batched=False)
         # for i, d in enumerate(dist_2):
         # logging.info("Second dataset pre taking have %s for %s", d, labels[i])
-        dataset = tf.data.Dataset.sample_from_datasets(
-            [dataset, dataset_2], rerandomize_each_iteration=True
-        )
+        dataset = tf.data.Dataset.sample_from_datasets([dataset, dataset_2])
         # for i, d in enumerate(dist):
         # dist[i] += dist_2[i]
 
@@ -413,7 +410,7 @@ def get_weighting(dataset, labels):
 
 
 def resample(dataset, labels, og):
-    target_dist = np.empty((num_labels), dtype=np.float32)
+    target_dist = np.empty((len(labels)), dtype=np.float32)
     target_dist[:] = 1 / len(labels)
 
     rej = dataset.rejection_resample(
