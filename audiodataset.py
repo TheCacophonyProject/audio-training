@@ -80,6 +80,11 @@ class AudioDataset:
             audio_f = f.with_suffix(".m4a")
             if not audio_f.exists():
                 audio_f = f.with_suffix(".wav")
+            if not audio_f.exists():
+                audio_f = f.with_suffix(".mp3")
+                print("found aud", audio_f)
+                # hack to find files, probably should look
+                # at all files in dir or store file in metadata
             r = Recording(meta, audio_f, self.config)
             self.add_recording(r)
             self.samples.extend(r.samples)

@@ -48,6 +48,7 @@ matplotlib.use("TkAgg")
 import cv2
 from audiodataset import Recording
 
+
 #
 #
 def load_recording(file, resample=48000):
@@ -205,7 +206,14 @@ def process(base_path):
 def process_signal(f):
     try:
         meta = load_metadata(f)
+        if meta.get("signal", None) is not None:
+            print("Already have signal data")
+            return
         file = f.with_suffix(".m4a")
+        if not file.exists():
+            file = f.with_suffix(".wav")
+        if not file.exists():
+            file = f.with_suffix(".mp3")
         if not file.exists():
             logging.info("Not recording for %s", f)
             return
@@ -213,7 +221,6 @@ def process_signal(f):
 
         logging.info("Calcing %s", file)
         signals, noise = signal_noise(file)
-
         meta["signal"] = signals
         meta["noise"] = noise
         json.dump(
@@ -235,7 +242,6 @@ def add_noise(file):
 
 
 def add_white_noise(file):
-
     frames, sr = load_recording(file)
     transform = AddGaussianNoise(min_amplitude=0.001, max_amplitude=0.015, p=1.0)
     augmented_sound = transform(frames, sample_rate=sr)
@@ -262,8 +268,8 @@ def main():
     init_logging()
     args = parse_args()
     # mix_file(args.file, args.mix)
-    signal_noise(args.file)
-    return
+    # signal_noise(args.file)
+    # return
     process(args.file)
     # process_signal(args.file)
     # data = np.array(data)
