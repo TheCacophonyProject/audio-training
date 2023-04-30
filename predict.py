@@ -37,10 +37,13 @@ import soundfile as sf
 import matplotlib
 from custommels import mel_spec
 from denoisetest import signal_noise, space_signals
+from plot_utils import plot_mel
 
 matplotlib.use("TkAgg")
 
 PROB_THRESH = 0.8
+
+
 #
 #
 def load_recording(file, resample=48000):
@@ -129,16 +132,8 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         else:
             s_data = frames[start_offset : start_offset + sample_size]
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
-        mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000)
-        # mel = librosa.feature.melspectrogram(
-        #     y=s_data,
-        #     sr=sr,
-        #     n_fft=n_fft,
-        #     hop_length=hop_length,
-        #     fmin=50,
-        #     fmax=11000,
-        #     n_mels=120,
-        # )
+
+        mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000, power=2)
         half = mel[:, 75:]
         if np.amax(half) == np.amin(half):
             print("mel max is same")
@@ -147,7 +142,6 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             print("remove last ", strides_per, len(mels))
             return mels, length
             # 1 / 0
-
         mel = librosa.power_to_db(mel, ref=np.max)
         mel = tf.expand_dims(mel, axis=2)
 
@@ -178,32 +172,6 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         i += 1
         # break
     return mels, length
-
-
-def plot_mfcc(mfcc):
-    plt.figure(figsize=(10, 10))
-
-    img = librosa.display.specshow(mfcc, x_axis="time", ax=ax)
-    ax = plt.subplot(1, 1, 1)
-    plt.show()
-    # plt.savefig(f"mel-power-{i}.png", format="png")
-    plt.clf()
-    plt.close()
-
-
-def plot_mel(mel, i=0):
-    fig = plt.figure(figsize=(10, 10))
-
-    ax = plt.subplot(1, 1, 1)
-    img = librosa.display.specshow(
-        mel, x_axis="time", y_axis="mel", sr=48000, fmax=11000, ax=ax
-    )
-    fig.colorbar(img, ax=ax, format="%+2.f dB")
-
-    # plt.show()
-    plt.savefig(f"mel-power-{i}.png", format="png")
-    plt.clf()
-    plt.close()
 
 
 def main():

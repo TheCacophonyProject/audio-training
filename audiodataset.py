@@ -373,7 +373,6 @@ class Recording:
         tracks = [track.id]
         # print("rec-", self.id, "tracks is", track.start, track.end, track.id)
         while True:
-
             # logging.info("Using %s %s", start, end)
             # start = round(start, 1)
             # end = round(end, 1)
@@ -711,6 +710,18 @@ def load_data(
             mel = mel_spec(
                 spectogram, sr, n_fft, hop_length, n_mels, fmin, fmax, break_freq
             )
+            mel_pcen = mel_spec(
+                spectogram,
+                sr,
+                n_fft,
+                hop_length,
+                n_mels,
+                fmin,
+                fmax,
+                break_freq,
+                power=1,
+            )
+
         else:
             # these should b derivable from spectogram but the librosa exmaples produce different results....
             mel = librosa.feature.melspectrogram(
@@ -732,10 +743,9 @@ def load_data(
         #     n_mels=n_mels,
         #     power=1,
         # )
-        # pcen_S = librosa.pcen(mel_pcen * (2**31), sr=sr, hop_length=hop_length)
+        pcen_s = librosa.pcen(mel_pcen * (2**31), sr=sr, hop_length=hop_length)
         mfcc = None
-        pcen_s = None
-        mel_pcen = None
+        # pcen_s = None
         # mfcc = librosa.feature.mfcc(
         #     y=s_data,
         #     sr=sr,
@@ -745,7 +755,7 @@ def load_data(
         #     fmax=fmax,
         #     n_mels=n_mels,
         # )
-        return spectogram, mel, mfcc, s_data, data_length, mel_pcen
+        return spectogram, mel, mfcc, s_data, data_length, pcen_s
     except:
         logging.error(
             "Error getting segment  start %s lenght %s",

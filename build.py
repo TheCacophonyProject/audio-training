@@ -27,11 +27,13 @@ import soundfile as sf
 # warnings.filterwarnings("ignore")
 # remove librosa pysound warnings
 
-MAX_TEST_BINS = 10
-MAX_TEST_SAMPLES = 10
+MAX_TEST_BINS = None
+MAX_TEST_SAMPLES = None
 MIN_SAMPLES = 10
 MIN_BINS = 10
 LOW_SAMPLES_LABELS = []
+VAL_PERCENT = 0.15
+TEST_PERCENT = 0.05
 
 
 def split_label(
@@ -77,10 +79,11 @@ def split_label(
 
     if label in LOW_SAMPLES_LABELS:
         min_t = 10
-    num_validate_samples = max(num_samples * 0.15, min_t)
-    num_test_samples = (
-        min(MAX_TEST_SAMPLES, max(num_samples * 0.05, min_t)) - existing_test_count
-    )
+    num_validate_samples = max(num_samples * VAL_PERCENT, min_t)
+    num_test_samples = max(num_samples * TEST_PERCENT, min_t)
+    if MAX_TEST_SAMPLES is not None:
+        num_test_samples = min(MAX_TEST_SAMPLES, num_test_samples)
+    num_test_samples -= existing_test_count
     # should have test covered by test set
 
     min_t = MIN_BINS
@@ -88,10 +91,13 @@ def split_label(
     if label in LOW_SAMPLES_LABELS or total_bins < 20:
         min_t = 1
 
-    num_validate_bins = max(total_bins * 0.15, min_t)
-    num_test_bins = (
-        min(MAX_TEST_BINS, max(total_bins * 0.05, min_t)) - existing_test_count
-    )
+    num_validate_bins = max(total_bins * VAL_PERCENT, min_t)
+    num_test_bins = max(total_bins * TEST_PERCENT, min_t)
+    if MAX_TEST_BINS is not None:
+        num_test_bins = min(MAX_TEST_BINS, num_test_bins)
+
+    num_test_bins -= existing_test_count
+
     bin_limit = num_validate_bins
     sample_limit = num_validate_samples
     bins = set()

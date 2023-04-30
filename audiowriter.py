@@ -97,7 +97,7 @@ def create_tf_example(sample, labels):
         # "audio/class/label": tfrecord_util.int64_feature(labels.index(tags.tag)),
         # "audio/sftf": tfrecord_util.float_list_feature(audio_data.ravel()),
         "audio/mel": tfrecord_util.float_list_feature(mel.ravel()),
-        # "audio/pcen": tfrecord_util.float_list_feature(data.pcen.ravel()),
+        "audio/pcen": tfrecord_util.float_list_feature(data.pcen.ravel()),
         # "audio/mfcc": tfrecord_util.float_list_feature(data.mfcc.ravel()),
         # "audio/sftf_w": tfrecord_util.int64_feature(audio_data.shape[1]),
         # "audio/sftf_h": tfrecord_util.int64_feature(audio_data.shape[0]),
