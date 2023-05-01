@@ -180,11 +180,13 @@ def mix_noise(w):
 def flickr_data():
     config = Config()
     dataset = AudioDataset("Flickr", config)
-    p = Path("./flickr/wavs")
-    # p = Path("/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/wavs")
+    # p = Path("./flickr/wavs")
+    p = Path("/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/wavs")
 
     wav_files = list(p.glob("*.wav"))
-    noisy_p = Path("./flickr/noisy-wavs")
+    noisy_p = Path(
+        "/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/noisy-wavs"
+    )
     # noisy_wav_files.extend(list(p.glob("*.wav")))
     random.shuffle(wav_files)
 
@@ -238,7 +240,7 @@ def flickr_data():
     all_labels.sort()
     for d in datasets:
         d.labels = all_labels
-    base_dir = Path(".")
+    base_dir = Path("/data/audio-data/")
     record_dir = base_dir / "flickr-training-data/"
     print("saving to", record_dir)
     logging.info("Saving pre samples mem %s", psutil.virtual_memory()[2])
