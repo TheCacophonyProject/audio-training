@@ -134,37 +134,41 @@ def get_data(rec):
         except:
             pass
         return None
-    # hack to handle getting new samples without knowing length until load
-    if resample is not None and resample != sr:
-        frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
-        sr = resample
-    for t in rec.tracks:
-        if t.end is None:
-            t.end = len(frames) / sr
-    # rec.tracks[0].end = len0(frames) / sr
-    rec.load_samples(config.segment_length, config.segment_stride)
-    samples = rec.samples
-    rec.sample_rate = resample
-    for i, sample in enumerate(samples):
-        try:
-            spectogram, mel, mfcc, s_data, raw_length, pcen = load_data(
-                config, sample.start, frames, sr, end=sample.end
-            )
-            # print("mel is", mel.shape)
-            # print("adjusted start is", sample.start, " becomes", sample.start - start)
-            if spectogram is None:
-                print("error loading", rec.id)
-                continue
-            spec = SpectrogramData(
-                spectogram, mel, mfcc, s_data.copy(), raw_length, pcen
-            )
-            # data[i] = spec
-            sample.spectogram_data = spec
-            sample.sample_rate = resample
-        except:
-            logging.error("Error %s ", rec.id, exc_info=True)
-        # sample.sr = sr
-
+    try:
+        # hack to handle getting new samples without knowing length until load
+        if resample is not None and resample != sr:
+            frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
+            sr = resample
+        for t in rec.tracks:
+            if t.end is None:
+                t.end = len(frames) / sr
+        # rec.tracks[0].end = len0(frames) / sr
+        rec.load_samples(config.segment_length, config.segment_stride)
+        samples = rec.samples
+        rec.sample_rate = resample
+        for i, sample in enumerate(samples):
+            try:
+                spectogram, mel, mfcc, s_data, raw_length, pcen = load_data(
+                    config, sample.start, frames, sr, end=sample.end
+                )
+                # print("mel is", mel.shape)
+                # print("adjusted start is", sample.start, " becomes", sample.start - start)
+                if spectogram is None:
+                    print("error loading", rec.id)
+                    continue
+                spec = SpectrogramData(
+                    spectogram, mel, mfcc, s_data.copy(), raw_length, pcen
+                )
+                # data[i] = spec
+                sample.spectogram_data = spec
+                sample.sample_rate = resample
+            except:
+                logging.error("Error %s ", rec.id, exc_info=True)
+            # sample.sr = sr
+    except:
+        logging.error("Got error %s", exc_info=True)
+        print("ERRR return None")
+        return None
     return samples
 
 
@@ -197,7 +201,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     for i in range(num_shards):
         name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
         writers.append(tf.io.TFRecordWriter(str(output_path / name)))
-    load_first = 100
+    load_first = 32
     try:
         count = 0
         while len(samples) > 0:
