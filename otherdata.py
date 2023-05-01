@@ -29,8 +29,8 @@ def load_recording(file, resample=48000):
             aro.close()
         except:
             pass
-        logging.error("Could not load %s",file, exc_info=True)
-        return None,None
+        logging.error("Could not load %s", file, exc_info=True)
+        return None, None
     return frames, sr
 
 
@@ -62,30 +62,29 @@ NOISE_LABELS = ["wind", "vehicle", "dog", "rain", "static", "noise", "cat"]
 NOISE_PATH = []
 BIRD_PATH = []
 signals = Path("./signal-data/train")
-bad_signals = signals.parent/"bad-train"
+bad_signals = signals.parent / "bad-train"
 bad_signals.mkdir(parents=True, exist_ok=True)
 
 wavs = list(signals.glob("*.wav"))
 for w in wavs:
-
     if "bird" in w.stem:
-        #frames, sr = load_recording(w)
-       # if frames is None:
+        # frames, sr = load_recording(w)
+        # if frames is None:
         #    w.rename(bad_signals/w.name)
         #    continue
-        #if len(frames) / sr < 4:
+        # if len(frames) / sr < 4:
         #    logging.info("skipping %s", w)
         #    continue
         BIRD_PATH.append(w)
     else:
         for noise in NOISE_LABELS:
             if noise in w.stem:
-                #frames, sr = load_recording(w)
-                #if frames is None:
+                # frames, sr = load_recording(w)
+                # if frames is None:
                 #    w.rename(bad_signals/w.name)
 
-                 #   continue
-                #if len(frames) / sr < 4:
+                #   continue
+                # if len(frames) / sr < 4:
                 #    logging.info("skipping %s", w)
                 #    continue
                 NOISE_PATH.append(w)
@@ -185,34 +184,28 @@ def flickr_data():
     # p = Path("/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/wavs")
 
     wav_files = list(p.glob("*.wav"))
-    p = Path("./flickr/noisy-wavs")
-    wav_files.extend(list(p.glob("*.wav")))
+    noisy_p = Path("./flickr/noisy-wavs")
+    # noisy_wav_files.extend(list(p.glob("*.wav")))
     random.shuffle(wav_files)
 
     for rec_name in wav_files:
-        label = "human"
-        id = None
-        id, id_2, speaker = rec_name.stem.split("_")
-        id = f"{id}-{id_2}-{speaker}"
-
-        r = Recording({"id": id, "tracks": []}, rec_name, config)
-        tags = [{"automatic": False, "what": label}]
-        # try:
-        #     y, sr = librosa.load(rec_name)
-        #     end = librosa.get_duration(y=y, sr=sr)
-        #     y = None
-        #     sr = None
-        # except:
-        #     continue
-        t = Track({"id": id, "start": 0, "end": None, "tags": tags}, rec_name, r.id, r)
-        # r.load_samples()
-        r.human_tags.add(label)
-        r.tracks.append(t)
-        sample = AudioSample(r, r.human_tags, 0, None, [t.id], 1)
-        r.samples = [sample]
-        dataset.add_recording(r)
-        dataset.samples.extend(r.samples)
-        dataset.labels.add(label)
+        rand_f = np.random.rand()
+        added = False
+        if rand_f > 0.7:
+            noisy_name = noisy_p / f"bird-{rec_name.name}"
+            if noisy_name.exists():
+                add_rec(dataset, noisy_name, ["human", "bird"], config)
+                logging.info("Adding %s %s %s", noisy_name, " from ", rec_name)
+                added = True
+            else:
+                noisy_name = noisy_p / f"noise-{rec_name.name}"
+                print("looking for %s", noisy_name)
+                if noisy_name.exists():
+                    add_rec(dataset, noisy_name, ["human", "noise"], config)
+                    print("Adding %s %s %s", noisy_name, " from ", rec_name)
+                    added = True
+        if not added:
+            add_rec(dataset, rec_name, ["human"], config)
         if len(dataset.recs) > len(wav_files) / 3:
             break
 
@@ -220,6 +213,18 @@ def flickr_data():
     dataset.print_counts()
     # return
     datasets = split_randomly(dataset, no_test=False)
+    # for d in datasets:
+    #     for r in d.recs:
+    #         name = r.filename
+    #         noisy_name = noisy_p / f"bird-{name.name}"
+    #         if noisy_name.exists():
+    #             add_rec(d, noisy_name, ["human", "bird"], config)
+    #             logging.info("Adding %s %s %s", noisy_name, " from ", name)
+    #         noisy_name = noisy_p / f"noise-{name.name}"
+    #
+    #         if noisy_name.exists():
+    #             add_rec(dataset, noisy_name, ["human", "noise"], config)
+    #             print("Adding %s %s %s", noisy_name, " from ", name)
     logging.info("Split samples mem %s", psutil.virtual_memory()[2])
 
     all_labels = set()
@@ -257,6 +262,33 @@ def flickr_data():
     meta_data.update(config.__dict__)
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4)
+
+
+def add_rec(dataset, rec_name, labels, config):
+    id = None
+    id, id_2, speaker = rec_name.stem.split("_")
+    id = f"{id}-{id_2}-{speaker}"
+    r = Recording({"id": id, "tracks": []}, rec_name, config)
+    for l in labels:
+        tags = [{"automatic": False, "what": l}]
+        r.human_tags.add(l)
+
+    # try:
+    #     y, sr = librosa.load(rec_name)
+    #     end = librosa.get_duration(y=y, sr=sr)
+    #     y = None
+    #     sr = None
+    # except:
+    #     continue
+    t = Track({"id": id, "start": 0, "end": None, "tags": tags}, rec_name, r.id, r)
+    # r.load_samples()
+    r.tracks.append(t)
+    sample = AudioSample(r, r.human_tags, 0, None, [t.id], 1)
+    r.samples = [sample]
+    dataset.add_recording(r)
+    dataset.samples.extend(r.samples)
+    for l in labels:
+        dataset.labels.add(l)
 
 
 #  Child speech
@@ -352,8 +384,8 @@ def chime_data():
 
 def main():
     init_logging()
-    process_noise()
-    return
+    # process_noise()
+    # return
     flickr_data()
     return
     chime_data()
