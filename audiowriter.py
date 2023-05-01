@@ -128,7 +128,7 @@ def get_data(rec):
         frames, sr = librosa.load(aro, sr=None)
         aro.close()
     except Exception as ex:
-        print("Error loading rec ", filename, ex)
+        print("Error loading rec ", rec.filename, ex)
         try:
             aro.close()
         except:
