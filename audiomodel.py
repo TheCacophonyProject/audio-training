@@ -460,7 +460,6 @@ class AudioModel:
                 tf.keras.metrics.AUC(),
                 tf.keras.metrics.Recall(),
                 tf.keras.metrics.Precision(),
-                macro_f1,
             ],
         )
 
@@ -760,7 +759,6 @@ def loss(multi_label=False, smoothing=0):
         # return tf.keras.losses.BinaryFocalCrossentropy(
         #     gamma=2.0, from_logits=False, apply_class_balancing=True
         # )
-        return macro_f1
         logging.info("Using binary")
         softmax = tf.keras.losses.BinaryCrossentropy(
             label_smoothing=smoothing,
@@ -1012,7 +1010,7 @@ def main():
     init_logging()
     args = parse_args()
     if args.confusion is not None:
-        load_model = Path("./train/checkpoints") / args.name
+        load_model = Path(".") / args.name
         logging.info("Loading %s with weights %s", load_model, "val_acc")
         model = tf.keras.models.load_model(
             str(load_model),
@@ -1025,7 +1023,10 @@ def main():
         print("Meta", meta_file)
         with open(str(meta_file), "r") as f:
             meta_data = json.load(f)
+
         labels = meta_data.get("labels")
+        print("model labels are", labels)
+        # labels = meta_file.get("labels")
         model_name = meta_data.get("name")
         mean_sub = meta_data.get("mean_sub")
 
@@ -1035,7 +1036,7 @@ def main():
         dataset_meta = None
         with open(meta_f, "r") as f:
             dataset_meta = json.load(f)
-        labels = dataset_meta.get("labels")
+        # labels = dataset_meta.get("labels")
         if "bird" not in labels:
             labels.append("bird")
         if "noise" not in labels:
@@ -1044,7 +1045,7 @@ def main():
             labels.append("other")
         labels.sort()
         excluded_labels = get_excluded_labels(labels)
-
+        print(labels)
         # self.labels = meta.get("labels", [])
         dataset, _, _ = get_dataset(
             tf.io.gfile.glob(f"./training-data/test/*.tfrecord"),
@@ -1072,9 +1073,11 @@ def main():
                 tf.keras.metrics.Precision(),
             ],
         )
-        model.evaluate(dataset)
+        # model.evaluate(dataset)
 
         if dataset is not None:
+            best_threshold(model, labels, dataset, args.confusion)
+            return
             confusion(model, labels, dataset, args.confusion)
 
     else:
@@ -1150,6 +1153,39 @@ def macro_soft_f1(y, y_hat):
     return macro_cost
 
 
+def best_threshold(model, labels, dataset, filename):
+    y_pred = model.predict(dataset)
+    print(y_pred.shape)
+    from sklearn.preprocessing import LabelBinarizer
+    from sklearn.metrics import RocCurveDisplay
+
+    true_categories = [y for x, y in dataset]
+    true_categories = tf.concat(true_categories, axis=0)
+
+    true_categories = np.array(true_categories)
+    label_binarizer = LabelBinarizer().fit(true_categories)
+    y_onehot_test = label_binarizer.transform(true_categories)
+    # y_onehot_test.shape  # (n_samples, n_classes)
+    print(label_binarizer.classes_)
+    for i, class_of_interest in enumerate(labels):
+        # class_of_interest = "virginica"
+        class_id = np.flatnonzero(label_binarizer.classes_ == i)[0]
+        print("plt show for", class_of_interest, y_pred[:, class_id])
+        RocCurveDisplay.from_predictions(
+            y_onehot_test[:, class_id],
+            y_pred[:, class_id],
+            name=f"{class_of_interest} vs the rest",
+            color="darkorange",
+        )
+        plt.plot([0, 1], [0, 1], "k--", label="chance level (AUC = 0.5)")
+        plt.axis("square")
+        plt.xlabel("False Positive Rate")
+        plt.ylabel("True Positive Rate")
+        plt.title("One-vs-Rest ROC curves:\nVirginica vs (Setosa & Versicolor)")
+        plt.legend()
+        plt.savefig(f"{labels[i]}-{filename}.png", format="png")
+
+
 def macro_f1(y, y_hat, thresh=0.5):
     """Compute the macro F1-score on a batch of observations (average F1 across labels)
 
@@ -1161,6 +1197,8 @@ def macro_f1(y, y_hat, thresh=0.5):
     Returns:
         macro_f1 (scalar Tensor): value of macro F1 for the batch
     """
+    y = tf.cast(y, tf.float32)
+    y_hat = tf.cast(y_hat, tf.float32)
     y_pred = tf.cast(tf.greater(y_hat, thresh), tf.float32)
     tp = tf.cast(tf.math.count_nonzero(y_pred * y, axis=0), tf.float32)
     fp = tf.cast(tf.math.count_nonzero(y_pred * (1 - y), axis=0), tf.float32)
