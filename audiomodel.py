@@ -1037,7 +1037,7 @@ def main():
         dataset_meta = None
         with open(meta_f, "r") as f:
             dataset_meta = json.load(f)
-        # labels = dataset_meta.get("labels")
+        labels = dataset_meta.get("labels")
         if "bird" not in labels:
             labels.append("bird")
         if "noise" not in labels:

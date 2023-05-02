@@ -275,6 +275,7 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
 
 
 bird_i = None
+noise_i = None
 
 
 def get_dataset(filenames, labels, **args):
@@ -296,7 +297,10 @@ def get_dataset(filenames, labels, **args):
         "Remapped %s extra mapping %s new labels %s", remapped, extra_label_map, labels
     )
     global bird_i
+    global noise_i
     bird_i = labels.index("bird")
+    noise_i = labels.index("noise")
+
     # extra tags, since we have multi label problem, morepork is a bird and morepork
     # cat is a cat but also "noise"
 
@@ -666,6 +670,10 @@ def read_tfrecord(
             no_bird_mask = tf.constant(no_bird_mask)
             label = tf.cast(label, tf.bool)
             label = tf.math.logical_and(label, no_bird_mask)
+            no_noise_mask = np.ones(num_labels, dtype=np.bool)
+            no_noise_mask[noise_i] = 0
+            no_noise_mask = tf.constant(no_noise_mask)
+            label = tf.math.logical_and(label, no_noise_mask)
 
             label = tf.cast(label, tf.int32)
 
