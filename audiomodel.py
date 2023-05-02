@@ -1002,7 +1002,7 @@ def plot_confusion_matrix(cm, class_names):
 def get_excluded_labels(labels):
     excluded_labels = []
     for l in labels:
-        if l not in SPECIFIC_BIRD_LABELS and l not in ["noise", "human"]:
+        if l not in SPECIFIC_BIRD_LABELS and l not in ["noise", "human", "other"]:
             excluded_labels.append(l)
     return excluded_labels
 
