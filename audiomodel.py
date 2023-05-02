@@ -90,7 +90,7 @@ class AudioModel:
 
     def cross_fold_train(self, run_name="test", epochs=15, multi=True):
         datasets = ["other-training-data", "training-data", "chime-training-data"]
-        datasets = ["signal-data/training-data"]
+        datasets = ["./training-data"]
         labels = set()
         filenames = []
         for d in datasets:
@@ -509,7 +509,7 @@ class AudioModel:
 
     def load_datasets(self, base_dir, labels, shape, test=False):
         datasets = ["other-training-data", "training-data", "chime-training-data"]
-        datasets = ["signal-data/training-data"]
+        datasets = ["./training-data"]
         flickr = "/data/audio-data/flickr-training-data"
         labels = set()
         filenames = []
@@ -529,6 +529,8 @@ class AudioModel:
             self.labels.append("bird")
         if "noise" not in self.labels:
             self.labels.append("noise")
+        if "other" not in self.labels:
+            self.labels.append("other")
         self.labels.sort()
         logging.info("Loading train")
         excluded_labels = get_excluded_labels(self.labels)
@@ -1027,7 +1029,7 @@ def main():
         mean_sub = meta_data.get("mean_sub")
 
         preprocess = get_preprocess_fn(model_name)
-        base_dir = Path("./signal-data/training-data/")
+        base_dir = Path("./training-data/")
         meta_f = base_dir / "training-meta.json"
         dataset_meta = None
         with open(meta_f, "r") as f:
@@ -1041,7 +1043,7 @@ def main():
 
         # self.labels = meta.get("labels", [])
         dataset, _, _ = get_dataset(
-            tf.io.gfile.glob(f"./signal-data/training-data/test/*.tfrecord"),
+            tf.io.gfile.glob(f"./training-data/test/*.tfrecord"),
             labels,
             image_size=DIMENSIONS,
             shuffle=False,

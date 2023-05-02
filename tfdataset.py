@@ -65,7 +65,7 @@ GENERIC_BIRD_LABELS = [
     "white tern",
 ]
 
-OTHER_BIRD = ["chicken", "rooster", "frog", "insect"]
+OTHER_LABELS = ["chicken", "rooster", "frog", "insect"]
 signals = Path("./signal-data/train")
 wavs = list(signals.glob("*.wav"))
 for w in wavs:
@@ -238,10 +238,15 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
     if not keep_excluded_in_extra:
         labels = new_labels
     for l in labels:
+        print("Remapping", l)
         if l in NOISE_LABELS:
             if "noise" in new_labels:
                 remap_label = "noise"
                 extra_label_map[l] = new_labels.index("noise")
+            continue
+        elif l in OTHER_LABELS:
+            if "other" in new_labels:
+                extra_label_map[l] = new_labels.index("other")
             continue
         elif l in SPECIFIC_BIRD_LABELS:
             if l != "bird":
@@ -615,13 +620,13 @@ def read_tfrecord(
     # mel =
     mel = example["audio/mel"]
     mel = tf.reshape(mel, [*mel_s])
-    # put mel into ref db
-    a_max = tf.math.reduce_max(mel)
-    a_min = tf.math.reduce_min(mel)
-    m_range = a_max - a_min
-    mel = 80 * (mel - a_min) / m_range
-    # mel_no_ref = 80 * mel_no_ref
-    mel -= 80
+    # # put mel into ref db
+    # a_max = tf.math.reduce_max(mel)
+    # a_min = tf.math.reduce_min(mel)
+    # m_range = a_max - a_min
+    # mel = 80 * (mel - a_min) / m_range
+    # # mel_no_ref = 80 * mel_no_ref
+    # mel -= 80
     mel = tf.expand_dims(mel, axis=2)
     # mel = tf.repeat(mel, 3, axis=2)
     if augment:
@@ -755,15 +760,15 @@ def main():
     filenames_2 = tf.io.gfile.glob(f"./flickr-training-data/train/*.tfrecord")
     # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
     # weights = [0.5] * len(labels)
-    resampled_ds, remapped = get_dataset(
+    resampled_ds, remapped, _ = get_dataset(
         # dir,
         filenames,
         labels,
         batch_size=32,
         image_size=DIMENSIONS,
         augment=False,
-        resample=True,
-        filenames_2=filenames_2
+        resample=False,
+        # filenames_2=filenames_2
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
     # print(get_distribution(resampled_ds))
@@ -802,7 +807,12 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
         # print(image_batch[n].numpy().shape)
         # print(image_batch[n])
         # return
-        lbl = labels[np.argmax(label_batch[n])]
+        lbl = []
+        for l_i, l in enumerate(label_batch[n]):
+            if l == 1:
+                lbl.append(labels[l_i])
+        # print(label_batch[n][label_batch[n] == 1], "BB")
+        # lbl = labels[np.argmax(label_batch[n])]
         # if lbl != "morepork":
         # continue
         # if rec_batch[n] != 1384657:

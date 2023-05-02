@@ -75,10 +75,10 @@ def preprocess_file_signals(file, seg_length, stride, hop_length, mean_sub, use_
             end_sr = int(min(end, s[1]) * sr)
 
             data = frames[start_sr:end_sr]
-            if len(data) < sr * seg_length:
-                data_2 = np.zeros((int(sr * seg_length)))
-                data_2[: len(data)] = data
-                data = data_2
+            # if len(data) < sr * seg_length:
+            #     data_2 = np.zeros((int(sr * seg_length)))
+            #     data_2[: len(data)] = data
+            #     data = data_2
 
             spectogram = np.abs(librosa.stft(data, n_fft=n_fft, hop_length=hop_length))
             mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000)
@@ -92,7 +92,8 @@ def preprocess_file_signals(file, seg_length, stride, hop_length, mean_sub, use_
                 return mels, len(frames) / sr
                 # 1 / 0
 
-            mel = librosa.power_to_db(mel, ref=np.max)
+            mel = librosa.power_to_db(mel)
+
             mel = tf.expand_dims(mel, axis=2)
             start += stride
             end = start + seg_length
@@ -106,7 +107,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
     frames, sr = load_recording(file)
     length = len(frames) / sr
     end = 0
-    sample_size = int(seg_length * sr)
+    sample_size = int(2.5 * sr)
     logging.info(
         "sr %s seg %s sample size %s stride %s hop%s mean sub %s mfcc %s",
         sr,
@@ -125,15 +126,21 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
     while end < (length + stride):
         start_offset = i * sr_stride
 
-        end = i * stride + seg_length
+        end = i * stride + 2.5
 
         if end > length:
             s_data = frames[-sample_size:]
         else:
             s_data = frames[start_offset : start_offset + sample_size]
+        if len(s_data) < 2.5 * sr:
+            print("data is", len(s_data) / sr)
+            s_data = np.pad(s_data, (0, int(1.5 * sr)))
+            print("data is now", len(s_data) / sr)
+
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
 
         mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000, power=2)
+        print(mel.shape)
         half = mel[:, 75:]
         if np.amax(half) == np.amin(half):
             print("mel max is same")
@@ -143,6 +150,9 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             return mels, length
             # 1 / 0
         mel = librosa.power_to_db(mel, ref=np.max)
+        print("Start is", end - 1)
+        # plot_mel(mel, i)
+
         mel = tf.expand_dims(mel, axis=2)
 
         if use_mfcc:
@@ -193,7 +203,7 @@ def main():
     )
     # model = tf.keras.models.load_model(str(load_model))
 
-    model.load_weights(load_model / "val_loss").expect_partial()
+    # model.load_weights(load_model / "val_loss").expect_partial()
     # model.save(load_model / "frozen_model")
     # 1 / 0
     with open(load_model / "metadata.txt", "r") as f:
@@ -209,7 +219,7 @@ def main():
     hop_length = 281
     # print("stride is", segment_stride)
     # segment_length = 2
-    segment_stride = 0.5
+    # segment_stride = 0.5
     # multi_label = True
     # labels = ["bird", "human"]
     start = 0
@@ -273,6 +283,7 @@ def main():
     tracks = []
     start = 0
     active_tracks = {}
+    segment_length = 1
     for prediction in predictions:
         print("at", start, np.round(prediction * 100))
         # break
