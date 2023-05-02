@@ -863,7 +863,7 @@ def log_confusion_matrix(epoch, logs, model, dataset, writer, labels):
 def confusion(model, labels, dataset, filename="confusion.png"):
     from sklearn.preprocessing import MultiLabelBinarizer
 
-    mlb = MultiLabelBinarizer(classes=[0, 1, 2, 3, 4, 5])
+    mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
     true_categories = [y for x, y in dataset]
     true_categories = tf.concat(true_categories, axis=0)
     y_true = []
@@ -1039,6 +1039,9 @@ def main():
             labels.append("bird")
         if "noise" not in labels:
             labels.append("noise")
+        if "other" not in labels:
+            labels.append("other")
+        labels.sort()
         excluded_labels = get_excluded_labels(labels)
 
         # self.labels = meta.get("labels", [])
