@@ -37,6 +37,7 @@ import matplotlib.pyplot as plt
 import badwinner
 from sklearn.model_selection import KFold
 import tensorflow_addons as tfa
+import math
 
 # import resnet
 
@@ -1154,6 +1155,9 @@ def macro_soft_f1(y, y_hat):
 
 
 def best_threshold(model, labels, dataset, filename):
+    from sklearn.metrics import roc_curve, auc
+
+    # sklearn.metrics.auc(
     y_pred = model.predict(dataset)
     print(y_pred.shape)
     from sklearn.preprocessing import LabelBinarizer
@@ -1170,13 +1174,19 @@ def best_threshold(model, labels, dataset, filename):
     for i, class_of_interest in enumerate(labels):
         # class_of_interest = "virginica"
         class_id = np.flatnonzero(label_binarizer.classes_ == i)[0]
-        print("plt show for", class_of_interest, y_pred[:, class_id])
-        RocCurveDisplay.from_predictions(
-            y_onehot_test[:, class_id],
-            y_pred[:, class_id],
-            name=f"{class_of_interest} vs the rest",
-            color="darkorange",
+        print("plt show for", class_of_interest)
+
+        fpr, tpr, thresholds = roc_curve(
+            y_onehot_test[:, class_id], y_pred[:, class_id]
         )
+        # RocCurveDisplay.from_predictions(
+        #     y_onehot_test[:, class_id],
+        #     y_pred[:, class_id],
+        #     name=f"{class_of_interest} vs the rest",
+        #     color="darkorange",
+        # )
+        plt.plot(fpr, tpr, marker=".", label=class_of_interest)
+
         plt.plot([0, 1], [0, 1], "k--", label="chance level (AUC = 0.5)")
         plt.axis("square")
         plt.xlabel("False Positive Rate")
@@ -1184,6 +1194,16 @@ def best_threshold(model, labels, dataset, filename):
         plt.title("One-vs-Rest ROC curves:\nVirginica vs (Setosa & Versicolor)")
         plt.legend()
         plt.savefig(f"{labels[i]}-{filename}.png", format="png")
+        plt.clf()
+        print(tpr.shape, tpr.dtype, fpr.shape)
+        # tpr = np.array(tpr)
+        # fpr = np.array(fpr)
+        gmeans = np.sqrt(tpr * (1 - fpr))
+        ix = np.argmax(gmeans)
+        print("Best Threshold=%f, G-Mean=%.3f" % (thresholds[ix], gmeans[ix]))
+        # for area, thresh in zip(areas, thresholds):
+        #     # print("f", f, t)
+        #     print("Thresholds are", thresh, area)
 
 
 def macro_f1(y, y_hat, thresh=0.5):
