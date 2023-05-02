@@ -322,7 +322,7 @@ def get_dataset(filenames, labels, **args):
         second = args.get("filenames_2")
         bird_c = dist[labels.index("bird")]
 
-        args["no_bird"] = True
+        # args["no_bird"] = True
         # added bird noise to human recs but it messes model, so dont use for now
         dataset_2 = load_dataset(second, len(labels), args)
         # dataset = dataset.take(min(np.sum(dist_2), 5000))
