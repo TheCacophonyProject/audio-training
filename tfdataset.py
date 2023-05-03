@@ -195,13 +195,16 @@ def preprocess(data):
 
 
 def get_distribution(dataset, batched=True):
-    dataset.map
     true_categories = [y for x, y in dataset]
+    num_labels = len(true_categories[0])
+    dist = np.zeros((num_labels), dtype=np.float32)
+
+    if len(true_categories) == 0:
+        return dist
     if batched:
         true_categories = tf.concat(true_categories, axis=0)
-    num_labels = len(true_categories[0])
     if len(true_categories) == 0:
-        return None
+        return dist
     classes = []
     for y in true_categories:
         non_zero = tf.where(y).numpy()
@@ -209,7 +212,6 @@ def get_distribution(dataset, batched=True):
     classes = np.array(classes)
 
     c = Counter(list(classes))
-    dist = np.empty((num_labels), dtype=np.float32)
     for i in range(num_labels):
         dist[i] = c[i]
     return dist

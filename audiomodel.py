@@ -901,8 +901,8 @@ def confusion(model, labels, dataset, filename="confusion.png"):
                     tp += 1
                 else:
                     fp += 1
-                for lbl_p in p:
-                    wrong_labels[labels[lbl_p]] += 1
+                    for lbl_p in p:
+                        wrong_labels[labels[lbl_p]] += 1
             else:
                 neg_c += 1
                 if i in p:
@@ -1068,8 +1068,8 @@ def main():
         )
         for l in excluded_labels:
             labels.remove(l)
-        acc = tf.metrics.binary_accuracy
-
+        # acc = tf.metrics.binary_accuracy
+        acc = tf.keras.metrics.BinaryAccuracy()
         model.compile(
             optimizer=optimizer(lr=1),
             loss=loss(True),
@@ -1084,7 +1084,7 @@ def main():
 
         if dataset is not None:
             best_threshold(model, labels, dataset, args.confusion)
-            return
+            # return
             confusion(model, labels, dataset, args.confusion)
 
     else:
