@@ -176,7 +176,7 @@ def load_dataset(filenames, num_labels, args):
     filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[1]))
     dataset = dataset.filter(filter_nan)
 
-    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
+    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y[0]), 0)
     dataset = dataset.filter(filter_excluded)
     return dataset
 
@@ -207,7 +207,7 @@ def get_distribution(dataset, batched=True):
         return dist
     classes = []
     for y in true_categories:
-        non_zero = tf.where(y).numpy()
+        non_zero = tf.where(y[0]).numpy()
         classes.extend(non_zero.flatten())
     classes = np.array(classes)
 
@@ -323,11 +323,11 @@ def get_dataset(filenames, labels, **args):
     bird_mask[bird_i] = 1
     bird_mask = tf.constant(bird_mask)
     filter_non_bird = lambda x, y: tf.math.reduce_any(
-        tf.math.logical_and(tf.cast(y, tf.bool), bird_mask)
+        tf.math.logical_and(tf.cast(y[0], tf.bool), bird_mask)
     )
     bird_dataset = dataset.filter(filter_non_bird)
     non_bird_filter = lambda x, y: not tf.math.reduce_any(
-        tf.math.logical_and(tf.cast(y, tf.bool), bird_mask)
+        tf.math.logical_and(tf.cast(y[0], tf.bool), bird_mask)
     )
     dataset = dataset.filter(non_bird_filter)
 
@@ -362,7 +362,7 @@ def get_dataset(filenames, labels, **args):
         # logging.info("Second dataset pre taking have %s for %s", d, labels[i])
         dataset = tf.data.Dataset.sample_from_datasets(
             [bird_dataset, dataset, dataset_2],
-            stop_on_empty_dataset == args.get("stop_on_empty", True),
+            stop_on_empty_dataset=args.get("stop_on_empty", True),
             rerandomize_each_iteration=True,
         )
         # for i, d in enumerate(dist):
@@ -622,13 +622,15 @@ def read_tfrecord(
     tf_more_mask = tf.constant(morepork_mask)
     tf_human_mask = tf.constant(human_mask)
     tfrecord_format = {
+        "audio/rec_id": tf.io.FixedLenFeature((), tf.string),
+        "audio/track_id": tf.io.FixedLenFeature((), tf.string),
+        "audio/start_s": tf.io.FixedLenFeature(1, tf.float32),
         # "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
         "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
         # "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
         # "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
         "audio/class/text": tf.io.FixedLenFeature((), tf.string),
         # "audio/length": tf.io.FixedLenFeature((), tf.int64),
-        # "audio/start_s": tf.io.FixedLenFeature(1, tf.float32),
         # "audio/sftf_w": tf.io.FixedLenFeature((), tf.int64),
         # "audio/sftf_h": tf.io.FixedLenFeature((), tf.int64),
         # "audio/mel_w": tf.io.FixedLenFeature((), tf.int64),
@@ -706,8 +708,12 @@ def read_tfrecord(
             label = tf.math.logical_and(label, no_noise_mask)
 
             label = tf.cast(label, tf.int32)
+        # DEBUG STUFF
+        r = example["audio/rec_id"]
+        t = example["audio/track_id"]
+        s = example["audio/start_s"]
 
-        return image, label
+        return image, (label, r, t, s)
 
     return image
 
