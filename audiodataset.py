@@ -685,8 +685,11 @@ def load_data(
         end = int(end * sr)
     data_length = segment_l
     try:
+        #  use if dont want padding
+        # s_data = frames[start : int(segment_l * sr + start)]
         # zero pad shorter
-        s_data = frames[start : int(segment_l * sr + start)]
+        s_data = frames[start:end]
+
         data_length = len(s_data) / sr
         # if end > len(frames):
         #     sub = frames[start:end]
