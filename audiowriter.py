@@ -127,8 +127,8 @@ def get_data(rec):
         aro = audioread.ffdec.FFmpegAudioFile(rec.filename)
         frames, sr = librosa.load(aro, sr=None)
         aro.close()
-    except Exception as ex:
-        print("Error loading rec ", rec.filename, ex)
+    except:
+        logging.error("Error loading rec %s ", rec.filename, exc_info=True)
         try:
             aro.close()
         except:
@@ -154,7 +154,7 @@ def get_data(rec):
                 # print("mel is", mel.shape)
                 # print("adjusted start is", sample.start, " becomes", sample.start - start)
                 if spectogram is None:
-                    print("error loading", rec.id)
+                    logging.warn("error loading", rec.id)
                     continue
                 spec = SpectrogramData(
                     spectogram, mel, mfcc, s_data.copy(), raw_length, pcen

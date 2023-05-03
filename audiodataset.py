@@ -711,6 +711,7 @@ def load_data(
             # offset = np.random.randint(0, extra_frames)
             offset = 0
             s_data[offset : offset + len(sub)] = sub
+        assert len(s_data) == segment_l * sr
         if htk:
             spectogram = np.abs(
                 librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length)
