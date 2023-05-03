@@ -296,7 +296,7 @@ class AudioModel:
                 # else:
                 #     json_history[key] = item
 
-    def train_model(self, run_name="test", epochs=100, weights=None, multi_label=False):
+    def train_model(self, run_name="test", epochs=20, weights=None, multi_label=False):
         self.log_dir = self.log_dir / run_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.load_datasets(self.data_dir, self.labels, self.input_shape, test=True)

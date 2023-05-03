@@ -80,7 +80,7 @@ for w in wavs:
 # NOISE_LABELS = []
 NOISE_PATH = NOISE_PATH[:2]
 BIRD_PATH = BIRD_PATH[:2]
-# NOISE_LABELS = []
+NOISE_LABELS = []
 insect = None
 fp = None
 HOP_LENGTH = 281
@@ -331,16 +331,14 @@ def get_dataset(filenames, labels, **args):
 
     b_dist = get_distribution(dataset, batched=False)
     for i, d in enumerate(b_dist):
-        logging.info("Have %s for %s", d, labels[i])
+        logging.info("Non Bird Have %s for %s", d, labels[i])
     dist = get_distribution(bird_dataset, batched=False)
     for i, d in enumerate(dist):
         logging.info("Bird D Have %s for %s", d, labels[i])
     # dist = get_distribution(dataset, batched=False)
 
     resample_data = args.get("resample", True)
-
-    for i, d in enumerate(dist):
-        logging.info("First dataset have %s for %s", d, labels[i])
+    non_bird_c = np.sum(b_dist)
     if args.get("filenames_2") is not None:
         second = args.get("filenames_2")
         bird_c = dist[labels.index("bird")]
@@ -353,8 +351,9 @@ def get_dataset(filenames, labels, **args):
         # if not resample_data:
         # bird_c = bird_c - dist[labels.index("human")]
         # dataset_2 = dataset_2.take(bird_c)
-        # bird_dataset = bird_dataset.take(1000)
-        # dataset_2 = dataset_2.take(1000)
+        logging.info("Taking %s", non_bird_c)
+        bird_dataset = bird_dataset.take(non_bird_c)
+        dataset_2 = dataset_2.take(non_bird_c)
         # logging.info("concatenating second dataset %s", second[0])
         # dist = get_distribution(dataset_2, batched=False)
         # for i, d in enumerate(dist_2):
@@ -364,7 +363,10 @@ def get_dataset(filenames, labels, **args):
         )
         # for i, d in enumerate(dist):
         # dist[i] += dist_2[i]
-
+    else:
+        dataset = tf.data.Dataset.sample_from_datasets(
+            [bird_dataset, dataset], stop_on_empty_dataset=True
+        )
     resample_data = args.get("resample", True)
     if resample_data:
         logging.info("Resampling data")
