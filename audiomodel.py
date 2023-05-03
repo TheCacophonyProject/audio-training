@@ -865,14 +865,17 @@ def confusion(model, labels, dataset, filename="confusion.png"):
 
     mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
     true_categories = [y for x, y in dataset]
-    true_categories = tf.concat(true_categories, axis=0)
+    # true_categories = tf.concat(true_categories, axis=0)
     y_true = []
-    for y in true_categories:
-        non_zero = tf.where(y).numpy()
-        y_true.append(list(non_zero.flatten()))
+    other_info = []
+    for batch in true_categories:
+        for y in batch:
+            non_zero = tf.where(y[0]).numpy()
+            y_true.append(list(non_zero.flatten()))
+            other_info.append(f"rec:{y[1]}-tracks:{y[2]}-start:{y[3]}")
     y_true = y_true
 
-    true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    # true_categories = np.int64(tf.argmax(true_categories, axis=1))
     y_pred = model.predict(dataset)
 
     predicted_categories = []
@@ -893,7 +896,8 @@ def confusion(model, labels, dataset, filename="confusion.png"):
         neg_c = 0
         wrong_labels = {}
         for ll in labels:
-            wrong_labels[ll] = 0
+            wrong_labels[ll] = []
+        index = 0
         for y, p in zip(y_true, predicted_categories):
             if i in y:
                 lbl_count += 1
@@ -902,14 +906,14 @@ def confusion(model, labels, dataset, filename="confusion.png"):
                 else:
                     fp += 1
                     for lbl_p in p:
-                        wrong_labels[labels[lbl_p]] += 1
+                        wrong_labels[labels[lbl_p]].append(other_info[index])
             else:
                 neg_c += 1
                 if i in p:
                     fn += 1
                 else:
                     tn += 1
-
+            index += 1
         print("Have", lbl_count)
         print("Incorrects are", wrong_labels)
         if lbl_count == 0:
@@ -1084,7 +1088,7 @@ def main():
         # model.evaluate(dataset)
 
         if dataset is not None:
-            best_threshold(model, labels, dataset, args.confusion)
+            # best_threshold(model, labels, dataset, args.confusion)
             # return
             confusion(model, labels, dataset, args.confusion)
 
