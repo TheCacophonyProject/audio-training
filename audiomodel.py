@@ -891,6 +891,9 @@ def confusion(model, labels, dataset, filename="confusion.png"):
         fp = 0
         tn = 0
         neg_c = 0
+        wrong_labels = {}
+        for ll in labels:
+            wrong_labels[ll] = 0
         for y, p in zip(y_true, predicted_categories):
             if i in y:
                 lbl_count += 1
@@ -898,6 +901,8 @@ def confusion(model, labels, dataset, filename="confusion.png"):
                     tp += 1
                 else:
                     fp += 1
+                for lbl_p in p:
+                    wrong_labels[labels[lbl_p]] += 1
             else:
                 neg_c += 1
                 if i in p:
@@ -906,6 +911,7 @@ def confusion(model, labels, dataset, filename="confusion.png"):
                     tn += 1
 
         print("Have", lbl_count)
+        print("Incorrects are", wrong_labels)
         if lbl_count == 0:
             continue
         print(
