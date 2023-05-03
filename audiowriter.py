@@ -141,6 +141,9 @@ def get_data(rec):
             sr = resample
         for t in rec.tracks:
             if t.end is None:
+                logging.info(
+                    "Track end is none so setting to rec length %s", len(frames) / sr
+                )
                 t.end = len(frames) / sr
         # rec.tracks[0].end = len0(frames) / sr
         rec.load_samples(config.segment_length, config.segment_stride)
@@ -201,7 +204,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     for i in range(num_shards):
         name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
         writers.append(tf.io.TFRecordWriter(str(output_path / name)))
-    load_first = 32
+    load_first = 100
     try:
         count = 0
         while len(samples) > 0:
