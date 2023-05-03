@@ -315,9 +315,28 @@ def get_dataset(filenames, labels, **args):
 
     # print("keys", keys, " values", values)
     # 1 / 0
-
+    num_labels = len(labels)
     dataset = load_dataset(filenames, len(labels), args)
-    dist = get_distribution(dataset, batched=False)
+    bird_mask = np.zeros(num_labels, dtype=np.bool)
+    bird_mask[bird_i] = 1
+    bird_mask = tf.constant(bird_mask)
+    filter_non_bird = lambda x, y: tf.math.reduce_any(
+        tf.math.logical_and(tf.cast(y, tf.bool), bird_mask)
+    )
+    bird_dataset = dataset.filter(filter_non_bird)
+    non_bird_filter = lambda x, y: not tf.math.reduce_any(
+        tf.math.logical_and(tf.cast(y, tf.bool), bird_mask)
+    )
+    dataset = dataset.filter(non_bird_filter)
+
+    b_dist = get_distribution(dataset, batched=False)
+    for i, d in enumerate(b_dist):
+        logging.info("Have %s for %s", d, labels[i])
+    dist = get_distribution(bird_dataset, batched=False)
+    for i, d in enumerate(dist):
+        logging.info("Bird D Have %s for %s", d, labels[i])
+    # dist = get_distribution(dataset, batched=False)
+
     resample_data = args.get("resample", True)
 
     for i, d in enumerate(dist):
@@ -331,15 +350,18 @@ def get_dataset(filenames, labels, **args):
         dataset_2 = load_dataset(second, len(labels), args)
         # dataset = dataset.take(min(np.sum(dist_2), 5000))
 
-        if not resample_data:
-            bird_c = bird_c - dist[labels.index("human")]
-            dataset_2 = dataset_2.take(bird_c)
-
+        # if not resample_data:
+        # bird_c = bird_c - dist[labels.index("human")]
+        # dataset_2 = dataset_2.take(bird_c)
+        # bird_dataset = bird_dataset.take(1000)
+        # dataset_2 = dataset_2.take(1000)
         # logging.info("concatenating second dataset %s", second[0])
         # dist = get_distribution(dataset_2, batched=False)
         # for i, d in enumerate(dist_2):
         # logging.info("Second dataset pre taking have %s for %s", d, labels[i])
-        dataset = tf.data.Dataset.sample_from_datasets([dataset, dataset_2])
+        dataset = tf.data.Dataset.sample_from_datasets(
+            [bird_dataset, dataset, dataset_2], stop_on_empty_dataset=True
+        )
         # for i, d in enumerate(dist):
         # dist[i] += dist_2[i]
 
