@@ -869,10 +869,11 @@ def confusion(model, labels, dataset, filename="confusion.png"):
     y_true = []
     other_info = []
     for batch in true_categories:
-        for y in batch:
-            non_zero = tf.where(y[0]).numpy()
+
+        for y, r, t, s in zip(batch[0], batch[1], batch[2], batch[3]):
+            non_zero = tf.where(y).numpy()
             y_true.append(list(non_zero.flatten()))
-            other_info.append(f"rec:{y[1]}-tracks:{y[2]}-start:{y[3]}")
+            other_info.append(f"rec:{r}-tracks:{t}-start:{s}")
     y_true = y_true
 
     # true_categories = np.int64(tf.argmax(true_categories, axis=1))
