@@ -1065,6 +1065,7 @@ def main():
             batch_size=64,
             mean_sub=mean_sub,
             excluded_labels=excluded_labels,
+            stop_on_empty=False,
         )
         for l in excluded_labels:
             labels.remove(l)
