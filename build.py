@@ -48,8 +48,12 @@ def split_label(
     sample_bins = set()
     tracks = set()
     num_samples = 0
+    rec_by_id = {}
+    for r in dataset.recs:
+        rec_by_id[r.id] = r
     for s in dataset.samples:
-        if label not in s.rec.human_tags:
+        rec = rec_by_id[s.rec_id]
+        if label not in rec.human_tags:
             continue
         # for s in rec.samples:
         if label in s.tags:
@@ -125,7 +129,8 @@ def split_label(
                 bins.add(sample.bin_id)
                 label_count += 1
                 recs.add(sample.rec_id)
-                add_to.add_sample(sample)
+                rec = rec_by_id[sample.rec_id]
+                add_to.add_sample(rec, sample)
                 dataset.remove(sample)
             samples_by_bin[sample_bin] = []
             last_index = i
@@ -154,7 +159,8 @@ def split_label(
     for i, sample_bin in enumerate(sample_bins):
         samples = samples_by_bin[sample_bin]
         for sample in samples:
-            train_c.add_sample(sample)
+            rec = rec_by_id[sample.rec_id]
+            train_c.add_sample(rec, sample)
             dataset.remove(sample)
 
             added += 1

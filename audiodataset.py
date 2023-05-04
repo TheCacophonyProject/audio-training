@@ -207,10 +207,10 @@ class AudioDataset:
                 "%s: %s ( %s ) used as %s", k, v, len(rec_counts[k]), RELABEL[k]
             )
 
-    def add_sample(self, sample):
-        if sample.rec.id not in self.rec_keys:
-            self.recs.append(sample.rec)
-            self.rec_keys.append(sample.rec.id)
+    def add_sample(self, rec, sample):
+        if sample.rec_id not in self.rec_keys:
+            self.recs.append(rec)
+            self.rec_keys.append(rec.id)
         self.samples.append(sample)
         for t in sample.tags:
             self.labels.add(t)
@@ -267,7 +267,6 @@ def get_samples(rec_frames, sample):
 
 class AudioSample:
     def __init__(self, rec, tags, start, end, track_ids, group_id, bin_id=None):
-        self.rec = rec
         self.rec_id = rec.id
         self.tags = list(tags)
         self.tags.sort()
@@ -276,6 +275,7 @@ class AudioSample:
         self.track_ids = track_ids
         self.spectogram_data = None
         self.sr = None
+
         self.group = group_id
         if bin_id is None:
             self.bin_id = f"{self.rec_id}"
@@ -678,11 +678,11 @@ def load_data(
     if n_fft is None:
         n_fft = sr // 10
     start = start_s * sr
-    start = int(start)
+    start = round(start)
     if end is None:
-        end = int(segment_l * sr) + start
+        end = round(segment_l * sr) + start
     else:
-        end = int(end * sr)
+        end = round(end * sr)
     data_length = segment_l
     try:
         #  use if dont want padding
@@ -711,7 +711,7 @@ def load_data(
             # offset = np.random.randint(0, extra_frames)
             offset = 0
             s_data[offset : offset + len(sub)] = sub
-        assert len(s_data) == segment_l * sr
+        assert len(s_data) == int(segment_l * sr)
         if htk:
             spectogram = np.abs(
                 librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length)
