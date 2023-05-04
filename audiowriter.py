@@ -156,7 +156,7 @@ def get_data(rec):
                 )
                 # print("mel is", mel.shape)
                 # print("adjusted start is", sample.start, " becomes", sample.start - start)
-                if spectogram is None:
+                if mel is None:
                     logging.warn("error loading %s", rec.id)
                     continue
                 spec = SpectrogramData(
@@ -204,7 +204,8 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     for i in range(num_shards):
         name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
         writers.append(tf.io.TFRecordWriter(str(output_path / name)))
-    load_first = 100
+    processes = 8
+    load_first = processes * 2
     try:
         count = 0
         while len(samples) > 0:
@@ -224,7 +225,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                 pool_data.append(rec)
             loaded = []
             with Pool(
-                initializer=worker_init, initargs=(dataset.config,), processes=8
+                initializer=worker_init, initargs=(dataset.config,), processes=processes
             ) as pool:
                 for data in pool.imap_unordered(get_data, pool_data):
                     if data is None:
@@ -306,7 +307,10 @@ def getsize(obj):
         for obj in objects:
             if not isinstance(obj, BLACKLIST) and id(obj) not in seen_ids:
                 seen_ids.add(id(obj))
-                size += sys.getsizeof(obj)
+                if isinstance(obj, np.ndarray):
+                    size += obj.nbytes
+                else:
+                    size += sys.getsizeof(obj)
                 need_referents.append(obj)
         objects = get_referents(*need_referents)
     return size * 0.000001

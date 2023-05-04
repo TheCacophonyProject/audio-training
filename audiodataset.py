@@ -764,7 +764,7 @@ def load_data(
         #     fmax=fmax,
         #     n_mels=n_mels,
         # )
-        return spectogram, mel, mfcc, s_data, data_length, pcen_s
+        return None, mel, mfcc, s_data, data_length, pcen_s
     except:
         logging.error(
             "Error getting segment  start %s lenght %s",
