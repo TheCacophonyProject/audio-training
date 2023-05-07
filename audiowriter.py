@@ -169,7 +169,7 @@ def get_data(rec):
                 logging.error("Error %s ", rec.id, exc_info=True)
             # sample.sr = sr
     except:
-        logging.error("Got error %s", exc_info=True)
+        logging.error("Got error", exc_info=True)
         print("ERRR return None")
         return None
     return samples

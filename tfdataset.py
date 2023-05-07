@@ -50,6 +50,7 @@ GENERIC_BIRD_LABELS = [
     "north island robin",
     "parakeet",
     "red-crowned parakeet",
+    "rifleman",
     "robin",
     "sacred kingfisher",
     "silvereye",
@@ -196,6 +197,8 @@ def preprocess(data):
 
 def get_distribution(dataset, batched=True):
     true_categories = [y for x, y in dataset]
+    if len(true_categories) == 0:
+        return None
     num_labels = len(true_categories[0])
     dist = np.zeros((num_labels), dtype=np.float32)
 
@@ -305,7 +308,7 @@ def get_dataset(filenames, labels, **args):
 
     # extra tags, since we have multi label problem, morepork is a bird and morepork
     # cat is a cat but also "noise"
-
+    extra_label_map["-10"] = -10
     extra_label_map = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(list(extra_label_map.keys())),
@@ -322,30 +325,30 @@ def get_dataset(filenames, labels, **args):
     bird_mask = np.zeros(num_labels, dtype=np.bool)
     bird_mask[bird_i] = 1
     bird_mask = tf.constant(bird_mask)
-    filter_non_bird = lambda x, y: tf.math.reduce_any(
-        tf.math.logical_and(tf.cast(y, tf.bool), bird_mask)
+    bird_filter = lambda x, y: tf.math.reduce_all(
+        tf.math.equal(tf.cast(y, tf.bool), bird_mask)
     )
-    bird_dataset = dataset.filter(filter_non_bird)
-    non_bird_filter = lambda x, y: not tf.math.reduce_any(
-        tf.math.logical_and(tf.cast(y, tf.bool), bird_mask)
+    bird_dataset = dataset.filter(bird_filter)
+    others_filter = lambda x, y: not tf.math.reduce_all(
+        tf.math.equal(tf.cast(y, tf.bool), bird_mask)
     )
-    dataset = dataset.filter(non_bird_filter)
+    dataset = dataset.filter(others_filter)
 
-    b_dist = get_distribution(dataset, batched=False)
-    for i, d in enumerate(b_dist):
+    other_dist = get_distribution(dataset, batched=False)
+    for i, d in enumerate(other_dist):
         logging.info("Non Bird Have %s for %s", d, labels[i])
-    dist = get_distribution(bird_dataset, batched=False)
-    for i, d in enumerate(dist):
+    bird_dist = get_distribution(bird_dataset, batched=False)
+    for i, d in enumerate(bird_dist):
         logging.info("Bird D Have %s for %s", d, labels[i])
     # dist = get_distribution(dataset, batched=False)
 
     resample_data = args.get("resample", True)
-    non_bird_c = np.sum(b_dist)
+    non_bird_c = np.sum(other_dist)
     if args.get("filenames_2") is not None:
         second = args.get("filenames_2")
-        bird_c = dist[labels.index("bird")]
+        # bird_c = dist[labels.index("bird")]
 
-        # args["no_bird"] = True
+        args["no_bird"] = True
         # added bird noise to human recs but it messes model, so dont use for now
         dataset_2 = load_dataset(second, len(labels), args)
         # dataset = dataset.take(min(np.sum(dist_2), 5000))
@@ -355,7 +358,6 @@ def get_dataset(filenames, labels, **args):
         # dataset_2 = dataset_2.take(bird_c)
         logging.info("Taking %s", non_bird_c)
         bird_dataset = bird_dataset.take(non_bird_c)
-        dataset_2 = dataset_2.take(non_bird_c)
         # logging.info("concatenating second dataset %s", second[0])
         # dist = get_distribution(dataset_2, batched=False)
         # for i, d in enumerate(dist_2):

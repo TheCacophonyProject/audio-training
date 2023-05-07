@@ -60,7 +60,7 @@ class AudioModel:
         self.checkpoint_folder = Path("./train/checkpoints")
         self.log_dir = Path("./train/logs")
         self.data_dir = "."
-        self.model_name = "inceptionv3"
+        self.model_name = "wr-resnet"
         self.batch_size = 32
         self.validation = None
         self.test = None
@@ -430,10 +430,11 @@ class AudioModel:
         else:
             norm_layer = tf.keras.layers.Normalization()
             norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
-            input = tf.keras.Input(shape=(*self.input_shape, 3), name="input")
+            input = tf.keras.Input(shape=(*self.input_shape, 1), name="input")
             base_model, self.preprocess_fn = self.get_base_model((*self.input_shape, 3))
             x = norm_layer(input)
-            x = base_model(x, training=True)
+            x = base_model(x)
+            # , training=True)
             base_model.summary()
 
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
@@ -530,8 +531,8 @@ class AudioModel:
             self.labels.append("bird")
         if "noise" not in self.labels:
             self.labels.append("noise")
-        if "other" not in self.labels:
-            self.labels.append("other")
+        # if "other" not in self.labels:
+        # self.labels.append("other")
         self.labels.sort()
         logging.info("Loading train")
         excluded_labels = get_excluded_labels(self.labels)
@@ -600,6 +601,16 @@ class AudioModel:
 
     def get_base_model(self, input_shape, weights="imagenet"):
         pretrained_model = self.model_name
+        if pretrained_model == "wr-resnet":
+            model = resnet.CNN(
+                input_shape[0],
+                input_shape[1],
+                1,
+                len(self.labels),
+                3,
+                self.learning_rate,
+            )
+            return model.model, None
         # if pretrained_model == "wr-resnet":
         #     decay_step = lr_step_epoch * self.num_train_instance / self.batch_size
         #
@@ -617,7 +628,7 @@ class AudioModel:
         #     network = resnet.ResNet(hp, input_shape, self.labels)
         #     network.build_model()
         #     return network, None
-        if pretrained_model == "resnet":
+        elif pretrained_model == "resnet":
             return (
                 tf.keras.applications.ResNet50(
                     weights=weights,
@@ -725,7 +736,9 @@ class AudioModel:
 
 
 def get_preprocess_fn(pretrained_model):
-    if pretrained_model == "resnet":
+    if pretrained_model == "wr-resnet":
+        return None
+    elif pretrained_model == "resnet":
         return tf.keras.applications.resnet.preprocess_input
 
     elif pretrained_model == "resnetv2":
@@ -1008,7 +1021,7 @@ def plot_confusion_matrix(cm, class_names):
 def get_excluded_labels(labels):
     excluded_labels = []
     for l in labels:
-        if l not in SPECIFIC_BIRD_LABELS and l not in ["noise", "human", "other"]:
+        if l not in SPECIFIC_BIRD_LABELS and l not in ["noise", "human"]:
             excluded_labels.append(l)
     return excluded_labels
 
