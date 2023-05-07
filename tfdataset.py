@@ -364,7 +364,7 @@ def get_dataset(filenames, labels, **args):
         # logging.info("Second dataset pre taking have %s for %s", d, labels[i])
         dataset = tf.data.Dataset.sample_from_datasets(
             [bird_dataset, dataset, dataset_2],
-            stop_on_empty_dataset == args.get("stop_on_empty", True),
+            # stop_on_empty_dataset=args.get("stop_on_empty", True),
             rerandomize_each_iteration=True,
         )
         # for i, d in enumerate(dist):
