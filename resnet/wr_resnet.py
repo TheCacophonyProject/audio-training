@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 # https://arxiv.org/pdf/1605.07146.pdf
-def WRResNet(input_shape=(120, 120, 3), classes=6, depth=28, k=10):
+def WRResNet(input_shape=(120, 480, 3), classes=6, depth=28, k=10):
     filters = [16, 16 * k, 32 * k, 64 * k]
     # Define the input as a tensor with shape input_shape
     X_input = tf.keras.Input(input_shape)
@@ -156,4 +156,64 @@ def convolutional_block(X, f, filters, stage, block, s=2):
     return X
 
 
-WRResNet()
+# https://arxiv.org/pdf/1812.01187.pdf birdnet used also
+def basic_block_tweaked(X, f, filters, stage, block, stride=1):
+    # defining name basis
+    conv_name_base = "res" + str(stage) + block + "_branch"
+    bn_name_base = "bn" + str(stage) + block + "_branch"
+
+    # Retrieve Filters
+    F1, F2 = filters
+
+    # Save the input value. You'll need this later to add back to the main path.
+
+    X_shortcut = X
+    # First component of main path
+    X = tf.keras.layers.BatchNormalization(axis=3, name=bn_name_base + "2a0")(X)
+    X = tf.keras.layers.Activation("relu")(X)
+    X = tf.keras.layers.Conv2D(
+        filters=F1,
+        kernel_size=(1, 1),
+        strides=1,
+        padding="same",
+        name=conv_name_base + "2a0",
+        kernel_initializer=tf.keras.initializers.GlorotUniform(seed=0),
+    )(X)
+
+    X = tf.keras.layers.BatchNormalization(axis=3, name=bn_name_base + "2a")(X)
+    X = tf.keras.layers.Activation("relu")(X)
+    X = tf.keras.layers.Conv2D(
+        filters=F1,
+        kernel_size=(3, 3),
+        strides=stride,
+        padding="same",
+        name=conv_name_base + "21",
+        kernel_initializer=tf.keras.initializers.GlorotUniform(seed=0),
+    )(X)
+
+    X = tf.keras.layers.Dropout(rate=0.1)(X)
+    # , training=istraining_ph)
+
+    # Second component of main path
+    X = tf.keras.layers.BatchNormalization(axis=3, name=bn_name_base + "2b")(X)
+    X = tf.keras.layers.Activation("relu")(X)
+    X = tf.keras.layers.Conv2D(
+        filters=F2,
+        kernel_size=(3, 3),
+        strides=1,
+        padding="same",
+        name=conv_name_base + "2b",
+        kernel_initializer=tf.keras.initializers.GlorotUniform(seed=0),
+    )(X)
+
+    X_shortcut = tf.keras.layers.AveragePooling2D(pool_size=stride, strides=stride)(
+        X_shortcut
+    )
+
+    X_shortcut = tf.keras.layers.Conv2D(X.shape[-1], strides=1, kernel_size=1)(
+        X_shortcut
+    )
+    # Final step: Add shortcut value to main path, and pass it through a RELU activation
+    X = tf.keras.layers.Add()([X, X_shortcut])
+    X = tf.keras.layers.Activation("relu")(X)
+    return X

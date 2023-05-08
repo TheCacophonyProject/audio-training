@@ -1080,7 +1080,7 @@ def main():
         for l in excluded_labels:
             labels.remove(l)
         # acc = tf.metrics.binary_accuracy
-        acc = tf.keras.metrics.BinaryAccuracy()
+        acc = tf.keras.metrics.BinaryAccuracy(threshold=0.7)
         model.compile(
             optimizer=optimizer(lr=1),
             loss=loss(True),

@@ -24,6 +24,10 @@ import logging
 import tensorflow as tf
 
 
+# Worth looking into lme pooling as proposed in  https://github.com/f0k/birdclef2018/blob/master/experiments/model.py
+# Research/2018-birdclef.pdf
+
+
 def build_model(input_shape, norm_layer, num_labels, multi_label=False):
     input = tf.keras.Input(shape=(*input_shape, 1), name="input")
     # x = norm_layer(input)
@@ -73,7 +77,7 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
 def main():
     init_logging()
     args = parse_args()
-    build_model((80, 226), None, 2)
+    build_model((80, 480), None, 2)
 
 
 def parse_args():

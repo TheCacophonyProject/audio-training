@@ -140,7 +140,6 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
 
         mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000, power=2)
-        print(mel.shape)
         half = mel[:, 75:]
         if np.amax(half) == np.amin(half):
             print("mel max is same")
@@ -150,7 +149,6 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             return mels, length
             # 1 / 0
         mel = librosa.power_to_db(mel, ref=np.max)
-        print("Start is", end - 1)
         # plot_mel(mel, i)
 
         mel = tf.expand_dims(mel, axis=2)
@@ -170,11 +168,17 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             mfcc = tf.image.resize_with_pad(mfcc, mel.shape[0], mel.shape[1])
             plot_mfcc(mfcc[:, :, 0])
             mel = tf.concat((mel, mfcc), axis=0)
+        mean_sub = True
         if mean_sub:
-            mel_m = tf.reduce_mean(mel, axis=1)
+            mel_m = tf.reduce_mean(mel, axis=0)
 
-            mel_m = tf.expand_dims(mel_m, axis=1)
-            mel = mel - mel__m
+            mel_m = tf.expand_dims(mel_m, axis=0)
+            print("Subbing mean", mel_m.shape, mel.shape)
+            plot_mel(mel)
+
+            mel = mel - mel_m
+            plot_mel(mel)
+            1 / 0
         # mean over each mel bank
         # print("mean of mel is", round(1000 * np.mean(mel), 4))
         # mel = tf.repeat(mel, 3, axis=2)
@@ -219,7 +223,7 @@ def main():
     hop_length = 281
     # print("stride is", segment_stride)
     # segment_length = 2
-    # segment_stride = 0.5
+    segment_stride = 0.5
     # multi_label = True
     # labels = ["bird", "human"]
     start = 0
@@ -348,6 +352,20 @@ def main():
         start += segment_stride
     for t in tracks:
         print(f"{t.start}-{t.end} have {t.label}")
+
+    signals, noise = signal_noise(file)
+    print("Have ", len(signals), " possible signals")
+    chirps = 0
+    for s in signals:
+        for t in tracks:
+            # overlap
+            if ((t.end - t.start) + (s[1] - s[0])) > max(t.end, s[1]) - min(
+                t.start, s[0]
+            ):
+                print("Have track", t, " for ", s, t.start, t.end)
+                if track.label in ["bird", "kiwi", "whistler", "morepork"]:
+                    chirps += 1
+    print("Have ", chirps, " chirps")
 
 
 def parse_args():
