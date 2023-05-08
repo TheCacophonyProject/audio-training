@@ -39,7 +39,7 @@ from sklearn.model_selection import KFold
 import tensorflow_addons as tfa
 import math
 
-# import resnet
+from resnet import wr_resnet
 
 training_dir = "training-data"
 other_training_dir = "training-data"
@@ -422,7 +422,7 @@ class AudioModel:
             cls=MetaJSONEncoder,
         )
 
-    def build_model(self, num_labels, bad=True, multi_label=False):
+    def build_model(self, num_labels, bad=False, multi_label=False):
         if bad:
             self.model = badwinner.build_model(
                 self.input_shape, None, num_labels, multi_label=multi_label
@@ -431,13 +431,14 @@ class AudioModel:
             norm_layer = tf.keras.layers.Normalization()
             norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
             input = tf.keras.Input(shape=(*self.input_shape, 1), name="input")
-            base_model, self.preprocess_fn = self.get_base_model((*self.input_shape, 3))
+
+            base_model, self.preprocess_fn = self.get_base_model((*self.input_shape, 1))
             x = norm_layer(input)
             x = base_model(x)
             # , training=True)
             base_model.summary()
 
-            x = tf.keras.layers.GlobalAveragePooling2D()(x)
+            # x = tf.keras.layers.GlobalAveragePooling2D()(x)
             activation = "softmax"
             if multi_label:
                 activation = "sigmoid"
@@ -602,15 +603,11 @@ class AudioModel:
     def get_base_model(self, input_shape, weights="imagenet"):
         pretrained_model = self.model_name
         if pretrained_model == "wr-resnet":
-            model = resnet.CNN(
-                input_shape[0],
-                input_shape[1],
-                1,
+            model = wr_resnet.WRResNet(
+                input_shape,
                 len(self.labels),
-                3,
-                self.learning_rate,
             )
-            return model.model, None
+            return model, None
         # if pretrained_model == "wr-resnet":
         #     decay_step = lr_step_epoch * self.num_train_instance / self.batch_size
         #
