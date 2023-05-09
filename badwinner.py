@@ -32,15 +32,10 @@ class MagTransform(tf.keras.layers.Layer):
     def __init__(self):
         super(MagTransform, self).__init__()
         self.a = tf.Variable(initial_value=0, dtype="float32", trainable=True)
-        # 1/ (1 + exp(−a))
-
-    # def build(self, input_shape):
-    #     self.kernel = self.add_weight(
-    #         "kernel", shape=[int(input_shape[-1]), self.num_outputs]
-    #     )
+        self.power = tf.math.sigmoid(self.a)
 
     def call(self, inputs):
-        return tf.math.pow(inputs, self.a)
+        return tf.math.pow(inputs, self.power)
 
 
 def build_model(input_shape, norm_layer, num_labels, multi_label=False):
