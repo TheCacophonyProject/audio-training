@@ -28,13 +28,30 @@ import tensorflow as tf
 # Research/2018-birdclef.pdf
 
 
+class MagTransform(tf.keras.layers.Layer):
+    def __init__(self):
+        super(MagTransform, self).__init__()
+        self.a = tf.Variable(initial_value=0, dtype="float32", trainable=True)
+        # 1/ (1 + exp(−a))
+
+    # def build(self, input_shape):
+    #     self.kernel = self.add_weight(
+    #         "kernel", shape=[int(input_shape[-1]), self.num_outputs]
+    #     )
+
+    def call(self, inputs):
+        return tf.math.pow(inputs, self.a)
+
+
 def build_model(input_shape, norm_layer, num_labels, multi_label=False):
     input = tf.keras.Input(shape=(*input_shape, 1), name="input")
     # x = norm_layer(input)
     filters = 16
     # if multi_label:
     # filters = 32
-    x = tf.keras.layers.BatchNormalization()(input)
+    # y = x σ(a) , where σ(a) = 1/ (1 + exp(−a))
+    x = MagTransform()(input)
+    x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Conv2D(filters, (3, 3), activation=tf.keras.layers.LeakyReLU())(
         x
     )

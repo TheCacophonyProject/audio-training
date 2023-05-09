@@ -168,16 +168,30 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             mfcc = tf.image.resize_with_pad(mfcc, mel.shape[0], mel.shape[1])
             plot_mfcc(mfcc[:, :, 0])
             mel = tf.concat((mel, mfcc), axis=0)
-        mean_sub = True
+        mean_sub = False
         if mean_sub:
             mel_m = tf.reduce_mean(mel, axis=0)
-
             mel_m = tf.expand_dims(mel_m, axis=0)
-            print("Subbing mean", mel_m.shape, mel.shape)
-            plot_mel(mel)
+            plot_mel(mel.numpy()[:, :, 0])
 
-            mel = mel - mel_m
-            plot_mel(mel)
+            mel_time = mel - mel_m
+            a_max = tf.math.reduce_max(mel_time)
+            a_min = tf.math.reduce_min(mel_time)
+            m_range = a_max - a_min
+            mel_time = 80 * (mel_time - a_min) / m_range
+            # mel_no_ref = 80 * mel_no_ref
+            mel_time -= 80
+            plot_mel(mel_time.numpy()[:, :, 0])
+            mel_m = tf.reduce_mean(mel, axis=1)
+            mel_m = tf.expand_dims(mel_m, axis=1)
+            mel_time = mel - mel_m
+            a_max = tf.math.reduce_max(mel_time)
+            a_min = tf.math.reduce_min(mel_time)
+            m_range = a_max - a_min
+            mel_time = 80 * (mel_time - a_min) / m_range
+            # mel_no_ref = 80 * mel_no_ref
+            mel_time -= 80
+            plot_mel(mel_time.numpy()[:, :, 0])
             1 / 0
         # mean over each mel bank
         # print("mean of mel is", round(1000 * np.mean(mel), 4))
@@ -220,6 +234,8 @@ def main():
     mean_sub = meta.get("mean_sub", False)
     use_mfcc = meta.get("use_mfcc", False)
     hop_length = meta.get("hop_length", 640)
+    prob_thresh = meta.get("threshold", 0.5)
+
     hop_length = 281
     # print("stride is", segment_stride)
     # segment_length = 2
