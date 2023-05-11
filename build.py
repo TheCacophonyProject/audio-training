@@ -101,7 +101,11 @@ def split_label(
         num_test_bins = min(MAX_TEST_BINS, num_test_bins)
 
     num_test_bins -= existing_test_count
-
+    if label == "rifleman":
+        num_validate_bins = 2
+        num_validate_samples = 2
+        num_test_bins = 1
+        num_test_samples = 1
     bin_limit = num_validate_bins
     sample_limit = num_validate_samples
     bins = set()
