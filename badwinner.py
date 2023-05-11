@@ -32,7 +32,7 @@ class MagTransform(tf.keras.layers.Layer):
     def __init__(self):
         super(MagTransform, self).__init__()
         self.a = self.add_weight(
-            initializer=tf.keras.initializers.Constant(value=0),
+            initializer=tf.keras.initializers.Constant(value=0.0),
             name="a-power",
             dtype="float32",
             shape=(),
@@ -40,7 +40,7 @@ class MagTransform(tf.keras.layers.Layer):
         )
 
     def call(self, inputs):
-        c = tf.math.pow(tf.math.add(inputs, 80.0), tf.math.sigmoid(self.a))
+        c = tf.math.pow(inputs, tf.math.sigmoid(self.a))
         return c
 
 

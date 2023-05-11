@@ -81,7 +81,7 @@ for w in wavs:
 # NOISE_LABELS = []
 NOISE_PATH = NOISE_PATH[:2]
 BIRD_PATH = BIRD_PATH[:2]
-NOISE_LABELS = []
+# NOISE_LABELS = []
 insect = None
 fp = None
 HOP_LENGTH = 281
@@ -550,44 +550,44 @@ def apply_noise(x):
     return shifted
 
 
-def raw_from_mel(example):
-    # if add_noise:
-    #     logging.info("Adding noise to dataset")
-    #     rand_i = tf.random.uniform(shape=[1])[0]
-    #     if tf.math.greater(rand_i, 0.5):
-    #         if tf.math.greater(rand_i, 0.75):
-    #             raw = tf.numpy_function(
-    #                 apply_bird,
-    #                 inp=[raw],
-    #                 Tout=tf.float32,
-    #                 name="apply_pipeline",
-    #             )
+def mel_from_raw(raw):
+    # # if add_noise:
+    # #     logging.info("Adding noise to dataset")
+    # #     rand_i = tf.random.uniform(shape=[1])[0]
+    # #     if tf.math.greater(rand_i, 0.5):
+    # #         if tf.math.greater(rand_i, 0.75):
+    # #             raw = tf.numpy_function(
+    # #                 apply_bird,
+    # #                 inp=[raw],
+    # #                 Tout=tf.float32,
+    # #                 name="apply_pipeline",
+    # #             )
+    # #
+    # #             # make sure bird in labels
+    # #             extra = remapped_y.lookup(bird_l)
+    # #             labels = tf.concat([labels, extra], axis=0)
+    # #
+    # #         else:
+    # #             # noise noise
+    # #             raw = tf.numpy_function(
+    # #                 apply_noise,
+    # #                 inp=[raw],
+    # #                 Tout=tf.float32,
+    # #                 name="apply_pipeline",
+    # #             )
+    # # augment = AddBackgroundNoise(
+    # #     sounds_path=[NOISE_PATH],
+    # #     min_snr_in_db=3.0,
+    # #     max_snr_in_db=30.0,
+    # #     noise_transform=PolarityInversion(),
+    # #     p=1,
+    # # )
     #
-    #             # make sure bird in labels
-    #             extra = remapped_y.lookup(bird_l)
-    #             labels = tf.concat([labels, extra], axis=0)
+    # # raw = augment(raw)
     #
-    #         else:
-    #             # noise noise
-    #             raw = tf.numpy_function(
-    #                 apply_noise,
-    #                 inp=[raw],
-    #                 Tout=tf.float32,
-    #                 name="apply_pipeline",
-    #             )
-    # augment = AddBackgroundNoise(
-    #     sounds_path=[NOISE_PATH],
-    #     min_snr_in_db=3.0,
-    #     max_snr_in_db=30.0,
-    #     noise_transform=PolarityInversion(),
-    #     p=1,
-    # )
-
-    # raw = augment(raw)
-
-    # make sure bird in labels
-    # extra = remapped_y.lookup(bird_l)
-    labels = tf.concat([labels, extra], axis=0)
+    # # make sure bird in labels
+    # # extra = remapped_y.lookup(bird_l)
+    # labels = tf.concat([labels, extra], axis=0)
     stft = tf.signal.stft(
         raw,
         4800,
@@ -599,9 +599,10 @@ def raw_from_mel(example):
     )
     stft = tf.transpose(stft, [1, 0])
     stft = tf.math.abs(stft)
-    stft = tf.math.square(stft)
+    # if you want power
+    # stft = tf.math.square(stft)
     mel = tf.tensordot(MEL_WEIGHTS, stft, 1)
-    mel = tfio.audio.dbscale(mel, top_db=80)
+    # mel = tfio.audio.dbscale(mel, top_db=80)
 
     mel = tf.expand_dims(mel, 2)
     return mel

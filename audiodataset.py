@@ -652,7 +652,9 @@ def plot_mel(mel):
     # plt.clf()
 
 
-SpectrogramData = namedtuple("SpectrogramData", "spect mel mfcc raw raw_length pcen")
+SpectrogramData = namedtuple(
+    "SpectrogramData", "spect mel mfcc raw raw_length pcen mel_s"
+)
 
 Tag = namedtuple("Tag", "what confidence automatic original")
 
@@ -717,7 +719,15 @@ def load_data(
                 librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length)
             )
             mel = mel_spec(
-                spectogram, sr, n_fft, hop_length, n_mels, fmin, fmax, break_freq
+                spectogram,
+                sr,
+                n_fft,
+                hop_length,
+                n_mels,
+                fmin,
+                fmax,
+                break_freq,
+                power=2,
             )
             mel_pcen = mel_spec(
                 spectogram,
@@ -730,7 +740,7 @@ def load_data(
                 break_freq,
                 power=1,
             )
-
+            print(mel_pcen.shape)
         else:
             # these should b derivable from spectogram but the librosa exmaples produce different results....
             mel = librosa.feature.melspectrogram(
@@ -764,7 +774,7 @@ def load_data(
         #     fmax=fmax,
         #     n_mels=n_mels,
         # )
-        return None, mel, mfcc, s_data, data_length, pcen_s
+        return None, mel, mfcc, s_data, data_length, pcen_s, mel_pcen
     except:
         logging.error(
             "Error getting segment  start %s lenght %s",
@@ -772,4 +782,4 @@ def load_data(
             config.segment_length,
             exc_info=True,
         )
-    return None, None, None, None, None, None
+    return None, None, None, None, None, None, None
