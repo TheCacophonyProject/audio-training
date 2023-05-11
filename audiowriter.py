@@ -125,6 +125,7 @@ def worker_init(c):
 
 def get_data(rec):
     resample = 48000
+    logging.info("Loading %s", rec.filename)
     try:
         aro = audioread.ffdec.FFmpegAudioFile(rec.filename)
         frames, sr = librosa.load(aro, sr=None)
@@ -166,9 +167,11 @@ def get_data(rec):
                 logging.error("Error %s ", rec.id, exc_info=True)
             # sample.sr = sr
     except:
-        logging.error("Got error", exc_info=True)
+        logging.error("Got error %s", rec.filename, exc_info=True)
         print("ERRR return None")
         return None
+    logging.info("Loaded %s", rec.filename)
+
     return samples
 
 
