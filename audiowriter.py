@@ -97,18 +97,18 @@ def create_tf_example(sample, labels):
         "audio/class/text": tfrecord_util.bytes_feature(tags.encode("utf8")),
         # "audio/class/label": tfrecord_util.int64_feature(labels.index(tags.tag)),
         # "audio/sftf": tfrecord_util.float_list_feature(audio_data.ravel()),
-        "audio/mel": tfrecord_util.float_list_feature(mel.ravel()),
-        "audio/pcen": tfrecord_util.float_list_feature(data.pcen.ravel()),
-        # "audio/mfcc": tfrecord_util.float_list_feature(data.mfcc.ravel()),
-        # "audio/sftf_w": tfrecord_util.int64_feature(audio_data.shape[1]),
-        # "audio/sftf_h": tfrecord_util.int64_feature(audio_data.shape[0]),
-        "audio/mel_w": tfrecord_util.int64_feature(mel.shape[1]),
-        "audio/mel_h": tfrecord_util.int64_feature(mel.shape[0]),
+        # "audio/mel": tfrecord_util.float_list_feature(mel.ravel()),
+        # "audio/pcen": tfrecord_util.float_list_feature(data.pcen.ravel()),
+        # # "audio/mfcc": tfrecord_util.float_list_feature(data.mfcc.ravel()),
+        # # "audio/sftf_w": tfrecord_util.int64_feature(audio_data.shape[1]),
+        # # "audio/sftf_h": tfrecord_util.int64_feature(audio_data.shape[0]),
+        # "audio/mel_w": tfrecord_util.int64_feature(mel.shape[1]),
+        # "audio/mel_h": tfrecord_util.int64_feature(mel.shape[0]),
         # "audio/mfcc_h": tfrecord_util.int64_feature(data.mfcc.shape[1]),
         # "audio/mfcc_w": tfrecord_util.int64_feature(data.mfcc.shape[0]),
-        "audio/raw": tfrecord_util.float_list_feature(np.float32(data.raw)),
-        "audio/raw_l": tfrecord_util.int64_feature(len(data.raw)),
-        "audio/mel_s    ": tfrecord_util.float_list_feature(data.mel_s.ravel()),
+        "audio/raw": tfrecord_util.float_list_feature(np.float32(data.stft.ravel())),
+        # "audio/raw_l": tfrecord_util.int64_feature(len(data.stft)),
+        # "audio/mel_s    ": tfrecord_util.float_list_feature(data.mel_s.ravel()),
     }
 
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
@@ -153,17 +153,12 @@ def get_data(rec):
         rec.sample_rate = resample
         for i, sample in enumerate(samples):
             try:
-                spectogram, mel, mfcc, s_data, raw_length, pcen, mel_s = load_data(
-                    config, sample.start, frames, sr, end=sample.end
-                )
+                spec = load_data(config, sample.start, frames, sr, end=sample.end)
                 # print("mel is", mel.shape)
                 # print("adjusted start is", sample.start, " becomes", sample.start - start)
-                if mel is None:
-                    logging.warn("error loading %s", rec.id)
+                if spec is None:
+                    logging.warn("error loading spec for %s", rec.id)
                     continue
-                spec = SpectrogramData(
-                    spectogram, mel, mfcc, s_data.copy(), raw_length, pcen, mel_s
-                )
                 # data[i] = spec
                 sample.spectogram_data = spec
                 sample.sr = resample

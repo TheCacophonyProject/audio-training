@@ -653,7 +653,7 @@ def plot_mel(mel):
 
 
 SpectrogramData = namedtuple(
-    "SpectrogramData", "spect mel mfcc raw raw_length pcen mel_s"
+    "SpectrogramData", "spect mel stft raw raw_length pcen mel_s"
 )
 
 Tag = namedtuple("Tag", "what confidence automatic original")
@@ -686,6 +686,7 @@ def load_data(
     else:
         end = round(end * sr)
     data_length = segment_l
+    spec = None
     try:
         #  use if dont want padding
         # s_data = frames[start : int(segment_l * sr + start)]
@@ -718,40 +719,40 @@ def load_data(
             spectogram = np.abs(
                 librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length)
             )
-            mel = mel_spec(
-                spectogram,
-                sr,
-                n_fft,
-                hop_length,
-                n_mels,
-                fmin,
-                fmax,
-                break_freq,
-                power=2,
-            )
-            mel_pcen = mel_spec(
-                spectogram,
-                sr,
-                n_fft,
-                hop_length,
-                n_mels,
-                fmin,
-                fmax,
-                break_freq,
-                power=1,
-            )
-            print(mel_pcen.shape)
-        else:
-            # these should b derivable from spectogram but the librosa exmaples produce different results....
-            mel = librosa.feature.melspectrogram(
-                y=s_data,
-                sr=sr,
-                n_fft=n_fft,
-                hop_length=hop_length,
-                fmin=fmin,
-                fmax=fmax,
-                n_mels=n_mels,
-            )
+        #     mel = mel_spec(
+        #         spectogram,
+        #         sr,
+        #         n_fft,
+        #         hop_length,
+        #         n_mels,
+        #         fmin,
+        #         fmax,
+        #         break_freq,
+        #         power=2,
+        #     )
+        #     mel_pcen = mel_spec(
+        #         spectogram,
+        #         sr,
+        #         n_fft,
+        #         hop_length,
+        #         n_mels,
+        #         fmin,
+        #         fmax,
+        #         break_freq,
+        #         power=1,
+        #     )
+        #     print(mel_pcen.shape)
+        # else:
+        #     # these should b derivable from spectogram but the librosa exmaples produce different results....
+        #     mel = librosa.feature.melspectrogram(
+        #         y=s_data,
+        #         sr=sr,
+        #         n_fft=n_fft,
+        #         hop_length=hop_length,
+        #         fmin=fmin,
+        #         fmax=fmax,
+        #         n_mels=n_mels,
+        #     )
         # mel_pcen = librosa.feature.melspectrogram(
         #     y=s_data,
         #     sr=sr,
@@ -762,7 +763,7 @@ def load_data(
         #     n_mels=n_mels,
         #     power=1,
         # )
-        pcen_s = librosa.pcen(mel_pcen * (2**31), sr=sr, hop_length=hop_length)
+        # pcen_s = librosa.pcen(mel_pcen * (2**31), sr=sr, hop_length=hop_length)
         mfcc = None
         # pcen_s = None
         # mfcc = librosa.feature.mfcc(
@@ -774,7 +775,7 @@ def load_data(
         #     fmax=fmax,
         #     n_mels=n_mels,
         # )
-        return None, mel, mfcc, s_data, data_length, pcen_s, mel_pcen
+        spec = SpectrogramData(None, None, spectogram, None, data_length, None, None)
     except:
         logging.error(
             "Error getting segment  start %s lenght %s",
@@ -782,4 +783,4 @@ def load_data(
             config.segment_length,
             exc_info=True,
         )
-    return None, None, None, None, None, None, None
+    return spec

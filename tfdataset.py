@@ -626,12 +626,12 @@ def read_tfrecord(
     tf_human_mask = tf.constant(human_mask)
     tfrecord_format = {
         # "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
-        "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
+        # "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
         # "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
         # "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
         "audio/class/text": tf.io.FixedLenFeature((), tf.string),
         # "audio/length": tf.io.FixedLenFeature((), tf.int64),
-        # "audio/start_s": tf.io.FixedLenFeature(1, tf.float32),
+        "audio/raw": tf.io.FixedLenFeature((2401, 428), tf.float32),
         # "audio/sftf_w": tf.io.FixedLenFeature((), tf.int64),
         # "audio/sftf_h": tf.io.FixedLenFeature((), tf.int64),
         # "audio/mel_w": tf.io.FixedLenFeature((), tf.int64),
@@ -653,10 +653,13 @@ def read_tfrecord(
     extra = extra_label_map.lookup(labels)
     labels = remapped_y.lookup(labels)
     labels = tf.concat([labels, extra], axis=0)
-
+    stft = example["audio/raw"]
+    stft = tf.reshape(stft, [2401, 428])
+    mel = tf.tensordot(MEL_WEIGHTS, stft, 1)
+    print(mel.shape)
     # mel =
-    mel = example["audio/mel"]
-    mel = tf.reshape(mel, [*mel_s])
+    # mel = example["audio/mel"]
+    # mel = tf.reshape(mel, [*mel_s])
     # # put mel into ref db
     # a_max = tf.math.reduce_max(mel)
     # a_min = tf.math.reduce_min(mel)
@@ -828,12 +831,7 @@ def main():
     print("looping")
     for e in range(1):
         for x, y in resampled_ds:
-            for x_2 in x:
-                print("x2 is", x_2)
-                c = tf.math.pow(x_2, tf.math.sigmoid(0.0))
-                print(c)
-                1 / 0
-            # show_batch(x, y, None, labels, None)
+            show_batch(x, y, None, labels, None)
 
             # show_batch(x, y[0], y[1], labels, species_list)
 
