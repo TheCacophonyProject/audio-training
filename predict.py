@@ -103,6 +103,25 @@ def preprocess_file_signals(file, seg_length, stride, hop_length, mean_sub, use_
     return mels, len(frames) / sr
 
 
+def db_check(file):
+    print(file)
+    frames, sr = load_recording(file)
+    s_data = frames[:sr]
+    n_fft = sr // 10
+    hop_length = 281
+    spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
+
+    mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000, power=1)
+    print(mel.shape, mel.dtype)
+    max_mel = np.amax(mel)
+    mel_db = librosa.amplitude_to_db(mel, ref=np.max)
+    mel_og = librosa.db_to_amplitude(mel_db, ref=np.max)
+    print(mel_og[0, :10])
+    print(mel[0, :10])
+
+    assert np.all(mel_og == mel)
+
+
 def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
     frames, sr = load_recording(file)
     length = len(frames) / sr
@@ -205,6 +224,8 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
 def main():
     init_logging()
     args = parse_args()
+    db_check(args.file)
+    return
     load_model = Path(args.model)
     # test(args.file)
     # return

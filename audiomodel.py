@@ -296,7 +296,7 @@ class AudioModel:
                 # else:
                 #     json_history[key] = item
 
-    def train_model(self, run_name="test", epochs=20, weights=None, multi_label=False):
+    def train_model(self, run_name="test", epochs=100, weights=None, multi_label=False):
         self.log_dir = self.log_dir / run_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.load_datasets(self.data_dir, self.labels, self.input_shape, test=True)
@@ -507,7 +507,10 @@ class AudioModel:
                 epoch, logs, self.model, self.validation, file_writer_cm, self.labels
             )
         )
-        # checks.append(cm_callback)
+        hist_callback = tf.keras.callbacks.LambdaCallback(
+            on_epoch_end=log_hist_weights(self.model, file_writer_cm)
+        )
+        checks.append(hist_callback)
         return checks
 
     def load_datasets(self, base_dir, labels, shape, test=False):
@@ -1080,7 +1083,7 @@ def main():
         for l in excluded_labels:
             labels.remove(l)
         # acc = tf.metrics.binary_accuracy
-        acc = tf.keras.metrics.BinaryAccuracy(threshold=0.7)
+        acc = tf.keras.metrics.BinaryAccuracy(threshold=0.5)
         model.compile(
             optimizer=optimizer(lr=1),
             loss=loss(True),
@@ -1276,6 +1279,17 @@ def macro_double_soft_f1(y, y_hat):
     )  # take into account both class 1 and class 0
     macro_cost = tf.reduce_mean(cost)  # average on all labels
     return macro_cost
+
+
+def log_hist_weights(model, writer):
+    def log_hist(epoch, logs):
+        # predict images
+        with writer.as_default():
+            for tf_var in model.trainable_weights:
+                print(tf_var)
+                tf.summary.histogram(tf_var.name, tf_var.numpy(), step=epoch)
+
+    return log_hist
 
 
 if __name__ == "__main__":

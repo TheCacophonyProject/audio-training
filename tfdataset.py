@@ -827,7 +827,12 @@ def main():
     print("looping")
     for e in range(1):
         for x, y in resampled_ds:
-            show_batch(x, y, None, labels, None)
+            for x_2 in x:
+                print("x2 is", x_2)
+                c = tf.math.pow(x_2, tf.math.sigmoid(0.0))
+                print(c)
+                1 / 0
+            # show_batch(x, y, None, labels, None)
 
             # show_batch(x, y[0], y[1], labels, species_list)
 
