@@ -1286,7 +1286,6 @@ def log_hist_weights(model, writer):
         # predict images
         with writer.as_default():
             for tf_var in model.trainable_weights:
-                print(tf_var)
                 tf.summary.histogram(tf_var.name, tf_var.numpy(), step=epoch)
 
     return log_hist
