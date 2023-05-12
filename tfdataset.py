@@ -656,7 +656,6 @@ def read_tfrecord(
     stft = example["audio/raw"]
     stft = tf.reshape(stft, [2401, 428])
     mel = tf.tensordot(MEL_WEIGHTS, stft, 1)
-    print(mel.shape)
     # mel =
     # mel = example["audio/mel"]
     # mel = tf.reshape(mel, [*mel_s])
@@ -686,7 +685,6 @@ def read_tfrecord(
         print("Subbing znorm")
         mel = (mel - zvals["mean"]) / zvals["std"]
     image = mel
-    print(image.shape)
     if preprocess_fn is not None:
         logging.info("Preprocessing with %s", preprocess_fn)
         raise Exception("Done preprocess for audio")
