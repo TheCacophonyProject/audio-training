@@ -67,20 +67,20 @@ GENERIC_BIRD_LABELS = [
 ]
 
 OTHER_LABELS = ["chicken", "rooster", "frog", "insect"]
-signals = Path("./signal-data/train")
-wavs = list(signals.glob("*.wav"))
-for w in wavs:
-    if "bird" in w.stem:
-        BIRD_PATH.append(w)
-    else:
-        for noise in NOISE_LABELS:
-            if noise in w.stem:
-                NOISE_PATH.append(w)
-                break
+# signals = Path("./signal-data/train")
+# wavs = list(signals.glob("*.wav"))
+# for w in wavs:
+#     if "bird" in w.stem:
+#         BIRD_PATH.append(w)
+#     else:
+#         for noise in NOISE_LABELS:
+#             if noise in w.stem:
+#                 NOISE_PATH.append(w)
+#                 break
 # BIRD_LABELS = ["bird"]
 # NOISE_LABELS = []
-NOISE_PATH = NOISE_PATH[:2]
-BIRD_PATH = BIRD_PATH[:2]
+# NOISE_PATH = NOISE_PATH[:2]
+# BIRD_PATH = BIRD_PATH[:2]
 # NOISE_LABELS = []
 insect = None
 fp = None
@@ -510,44 +510,6 @@ def resample_old(dataset, labels):
     )
     dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
     return dataset
-
-
-# bird noise
-augmentations_pipeline = Compose(
-    [
-        AddBackgroundNoise(
-            sounds_path=BIRD_PATH,
-            min_snr_in_db=3.0,
-            max_snr_in_db=30.0,
-            noise_transform=PolarityInversion(),
-            p=1,
-        )
-    ]
-)
-
-
-def apply_bird(x):
-    shifted = augmentations_pipeline(x, 48000)
-    return shifted
-
-
-# bird noise
-noise_pipe = Compose(
-    [
-        AddBackgroundNoise(
-            sounds_path=NOISE_PATH,
-            min_snr_in_db=3.0,
-            max_snr_in_db=30.0,
-            noise_transform=PolarityInversion(),
-            p=1,
-        )
-    ]
-)
-
-
-def apply_noise(x):
-    shifted = noise_pipe(x, 48000)
-    return shifted
 
 
 def mel_from_raw(raw):
