@@ -37,11 +37,10 @@ import soundfile as sf
 import matplotlib
 from custommels import mel_spec
 from denoisetest import signal_noise, space_signals
-from plot_utils import plot_mel
+from plot_utils import plot_mel, plot_mel_signals
+import matplotlib.patches as patches
 
 matplotlib.use("TkAgg")
-
-PROB_THRESH = 0.8
 
 
 #
@@ -103,23 +102,19 @@ def preprocess_file_signals(file, seg_length, stride, hop_length, mean_sub, use_
     return mels, len(frames) / sr
 
 
-def db_check(file):
-    print(file)
+def show_signals(file):
     frames, sr = load_recording(file)
-    s_data = frames[:sr]
+    signals, noise = signal_noise(file)
+
+    s_data = frames[3 * sr : int(5.5 * sr)]
+    print(s_data)
     n_fft = sr // 10
     hop_length = 281
     spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
 
     mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000, power=1)
-    print(mel.shape, mel.dtype)
-    max_mel = np.amax(mel)
-    mel_db = librosa.amplitude_to_db(mel, ref=np.max)
-    mel_og = librosa.db_to_amplitude(mel_db, ref=np.max)
-    print(mel_og[0, :10])
-    print(mel[0, :10])
 
-    assert np.all(mel_og == mel)
+    plot_mel_signals(mel, signals)
 
 
 def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
@@ -157,8 +152,16 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             print("data is now", len(s_data) / sr)
 
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
+        # spectogram = np.clip(spectogram, 0, np.mean(spectogram))
 
-        mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000, power=2)
+        print(spectogram.shape)
+        a_max = np.amax(spectogram[100:, :])
+        print("max above is", a_max, " below", np.amax(spectogram[:100, :]))
+        print("clipping to ", a_max)
+        # spectogram[:100, :] *= 0.5
+
+        # spectogram[:100, :]
+        mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000, power=1)
         half = mel[:, 75:]
         if np.amax(half) == np.amin(half):
             print("mel max is same")
@@ -167,9 +170,14 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             print("remove last ", strides_per, len(mels))
             return mels, length
             # 1 / 0
-        mel = librosa.power_to_db(mel, ref=np.max)
+        # mel = librosa.power_to_db(mel, ref=np.max)
+        # print("end is", end)
         # plot_mel(mel, i)
-
+        # mel2 = np.power(mel, 0.1)
+        # plot_mel(mel2, i)
+        pcen_S = librosa.pcen(mel * (2**31))
+        plot_mel(mel, 0)
+        plot_mel(pcen_S, 0)
         mel = tf.expand_dims(mel, axis=2)
 
         if use_mfcc:
@@ -217,15 +225,16 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         # mel = tf.repeat(mel, 3, axis=2)
         mels.append(mel)
         i += 1
-        # break
+        # if i == 3:
+        #     break
     return mels, length
 
 
 def main():
     init_logging()
     args = parse_args()
-    db_check(args.file)
-    return
+    # db_check(args.file)
+    # return
     load_model = Path(args.model)
     # test(args.file)
     # return
@@ -242,7 +251,7 @@ def main():
     )
     # model = tf.keras.models.load_model(str(load_model))
 
-    # model.load_weights(load_model / "val_loss").expect_partial()
+    model.load_weights(load_model / "val_binary_accuracy").expect_partial()
     # model.save(load_model / "frozen_model")
     # 1 / 0
     with open(load_model / "metadata.txt", "r") as f:
@@ -336,14 +345,14 @@ def main():
         if multi_label:
             # print("doing multi", prediction * 100)
             for i, p in enumerate(prediction):
-                if p >= PROB_THRESH:
+                if p >= prob_thresh:
                     label = labels[i]
                     results.append((p, label))
                     track_labels.append(label)
         else:
             best_i = np.argmax(prediction)
             best_p = prediction[best_i]
-            if best_p >= PROB_THRESH:
+            if best_p >= prob_thresh:
                 label = labels[best_i]
                 results.append((best_p, label))
                 track_labels.append[label]
@@ -399,8 +408,8 @@ def main():
             if ((t.end - t.start) + (s[1] - s[0])) > max(t.end, s[1]) - min(
                 t.start, s[0]
             ):
-                print("Have track", t, " for ", s, t.start, t.end)
-                if track.label in ["bird", "kiwi", "whistler", "morepork"]:
+                # print("Have track", t, " for ", s, t.start, t.end, t.label)
+                if t.label in ["bird", "kiwi", "whistler", "morepork"]:
                     chirps += 1
     print("Have ", chirps, " chirps")
 
