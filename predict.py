@@ -21,7 +21,7 @@ import tensorflow_addons as tfa
 # from config.config import Config
 import numpy as np
 
-from audiodataset import AudioDataset
+from audiodataset import AudioDataset, space_signals
 from audiowriter import create_tf_records
 import tensorflow as tf
 from tfdataset import get_dataset
@@ -154,10 +154,10 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
         # spectogram = np.clip(spectogram, 0, np.mean(spectogram))
 
-        print(spectogram.shape)
-        a_max = np.amax(spectogram[100:, :])
-        print("max above is", a_max, " below", np.amax(spectogram[:100, :]))
-        print("clipping to ", a_max)
+        # print(spectogram.shape)
+        # a_max = np.amax(spectogram[100:, :])
+        # print("max above is", a_max, " below", np.amax(spectogram[:100, :]))
+        # print("clipping to ", a_max)
         # spectogram[:100, :] *= 0.5
 
         # spectogram[:100, :]
@@ -175,9 +175,9 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         # plot_mel(mel, i)
         # mel2 = np.power(mel, 0.1)
         # plot_mel(mel2, i)
-        pcen_S = librosa.pcen(mel * (2**31))
-        plot_mel(mel, 0)
-        plot_mel(pcen_S, 0)
+        # pcen_S = librosa.pcen(mel * (2**31))
+        # plot_mel(mel, 0)
+        # plot_mel(pcen_S, 0)
         mel = tf.expand_dims(mel, axis=2)
 
         if use_mfcc:
@@ -251,7 +251,7 @@ def main():
     )
     # model = tf.keras.models.load_model(str(load_model))
 
-    model.load_weights(load_model / "val_binary_accuracy").expect_partial()
+    # model.load_weights(load_model / "val_binary_accuracy").expect_partial()
     # model.save(load_model / "frozen_model")
     # 1 / 0
     with open(load_model / "metadata.txt", "r") as f:
@@ -264,12 +264,13 @@ def main():
     mean_sub = meta.get("mean_sub", False)
     use_mfcc = meta.get("use_mfcc", False)
     hop_length = meta.get("hop_length", 640)
-    prob_thresh = meta.get("threshold", 0.5)
+    prob_thresh = meta.get("threshold", 0.7)
 
     hop_length = 281
     # print("stride is", segment_stride)
     # segment_length = 2
-    segment_stride = 0.5
+    # segment_stride = 0.5
+    # segment_stride = 0.1
     # multi_label = True
     # labels = ["bird", "human"]
     start = 0
@@ -333,7 +334,6 @@ def main():
     tracks = []
     start = 0
     active_tracks = {}
-    segment_length = 1
     for prediction in predictions:
         print("at", start, np.round(prediction * 100))
         # break
@@ -400,6 +400,7 @@ def main():
         print(f"{t.start}-{t.end} have {t.label}")
 
     signals, noise = signal_noise(file)
+    signals = space_signals(signals, 0.2)
     print("Have ", len(signals), " possible signals")
     chirps = 0
     for s in signals:
@@ -410,6 +411,7 @@ def main():
             ):
                 # print("Have track", t, " for ", s, t.start, t.end, t.label)
                 if t.label in ["bird", "kiwi", "whistler", "morepork"]:
+                    print("USING", s)
                     chirps += 1
     print("Have ", chirps, " chirps")
 

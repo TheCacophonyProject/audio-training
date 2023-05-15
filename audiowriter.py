@@ -205,73 +205,71 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
         name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
         writers.append(tf.io.TFRecordWriter(str(output_path / name)))
     processes = 8
-    load_first = processes * 2
+    load_first = processes * 8
     try:
-        count = 0
-        while len(samples) > 0:
-            local_set = samples[:load_first]
-            samples = samples[load_first:]
-            loaded = []
-            pool_data = []
-            samples_by_rec = {}
-            #
-            # for sample in local_set:
-            #     if sample.rec_id not in samples_by_rec:
-            #         samples_by_rec[sample.rec_id] = [sample]
-            #     else:
-            #         samples_by_rec[sample.rec_id].append(sample)
-            for rec in local_set:
-                # sample.rec.rec_data = None
-                pool_data.append(rec)
-            loaded = []
-            with Pool(
-                initializer=worker_init, initargs=(dataset.config,), processes=processes
-            ) as pool:
-                for data in pool.imap_unordered(get_data, pool_data):
+        with Pool(
+            initializer=worker_init,
+            initargs=(dataset.config,),
+            processes=processes,
+            maxtasksperchild=100,
+        ) as pool:
+            count = 0
+            while len(samples) > 0:
+                local_set = samples[:load_first]
+                samples = samples[load_first:]
+                loaded = []
+                pool_data = []
+                samples_by_rec = {}
+                #
+                # for sample in local_set:
+                #     if sample.rec_id not in samples_by_rec:
+                #         samples_by_rec[sample.rec_id] = [sample]
+                #     else:
+                #         samples_by_rec[sample.rec_id].append(sample)
+                for rec in local_set:
+                    # sample.rec.rec_data = None
+                    pool_data.append(rec)
+                loaded = []
+
+                for data in pool.imap_unordered(get_data, pool_data, chunksize=10):
                     if data is None:
                         continue
                     loaded.extend(data)
-                    # samples_by_rec[rec_id] = samples
-                    # rec_samples[0].rec.sample_rate = sr
-                    # for sample, d in zip(rec_samples, data):
-                    #     sample.spectogram_data = d
-                    #     sample.sr = sr
-            loaded = np.array(loaded, dtype=object)
-            np.random.shuffle(loaded)
-            logging.info("saving %s", len(loaded))
-            for sample in loaded:
-                if sample.spectogram_data is None:
-                    logging.info("spec data is none %s", sample.rec.id)
-                    continue
-                try:
-                    tf_example, num_annotations_skipped = create_tf_example(
-                        sample, labels
-                    )
-                    total_num_annotations_skipped += num_annotations_skipped
-                    # do this by group where group is a track_id
-                    # (possibly should be a recording id where we have more data)
-                    # means we can KFold our dataset files if we want
-                    writer = writers[count % num_shards]
-                    writer.write(tf_example.SerializeToString())
-                    sample.spectogram_data = None
+                loaded = np.array(loaded, dtype=object)
+                np.random.shuffle(loaded)
+                logging.info("saving %s", len(loaded))
+                for sample in loaded:
+                    if sample.spectogram_data is None:
+                        logging.info("spec data is none %s", sample.rec.id)
+                        continue
+                    try:
+                        tf_example, num_annotations_skipped = create_tf_example(
+                            sample, labels
+                        )
+                        total_num_annotations_skipped += num_annotations_skipped
+                        # do this by group where group is a track_id
+                        # (possibly should be a recording id where we have more data)
+                        # means we can KFold our dataset files if we want
+                        writer = writers[count % num_shards]
+                        writer.write(tf_example.SerializeToString())
+                        sample.spectogram_data = None
 
-                    # print("saving example", [count % num_shards])
-                    count += 1
-                    if count % 100 == 0:
-                        logging.info("saved %s", count)
-                    # count += 1
-                except Exception as e:
-                    logging.error("Error saving ", exc_info=True)
-            saved_s = len(loaded)
-            del loaded
-            loaded = None
-            logging.info(
-                "Saved %s recs %s samples memory %s",
-                len(local_set),
-                saved_s,
-                psutil.virtual_memory()[2],
-            )
-
+                        # print("saving example", [count % num_shards])
+                        count += 1
+                        if count % 100 == 0:
+                            logging.info("saved %s", count)
+                        # count += 1
+                    except Exception as e:
+                        logging.error("Error saving ", exc_info=True)
+                saved_s = len(loaded)
+                del loaded
+                loaded = None
+                logging.info(
+                    "Saved %s recs %s samples memory %s",
+                    len(local_set),
+                    saved_s,
+                    psutil.virtual_memory()[2],
+                )
     except:
         logging.error("Error saving track info", exc_info=True)
     for writer in writers:

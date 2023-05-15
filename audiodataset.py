@@ -330,28 +330,7 @@ class Recording:
                 self.human_tags.add(tag)
 
     def space_signals(self, spacing=0.1):
-        # print("prev have", len(self.signals))
-        # for s in self.signals:
-        #     print(s)
-        new_signals = []
-        prev_s = None
-        for s in self.signals:
-            if prev_s is None:
-                prev_s = s
-            else:
-                if s[0] < prev_s[1] + spacing:
-                    # combine them
-                    prev_s[1] = s[1]
-                else:
-                    new_signals.append(prev_s)
-                    prev_s = s
-        if prev_s is not None:
-            new_signals.append(prev_s)
-        #
-        # print("spaced have", len(new_signals))
-        # for s in new_signals:
-        #     print(s)
-        self.signals = new_signals
+        self.signals = space_signals(signals, spacing)
 
     def load_samples(self, segment_length, segment_stride):
         global SAMPLE_GROUP_ID
@@ -784,3 +763,28 @@ def load_data(
             exc_info=True,
         )
     return spec
+
+
+def space_signals(signals, spacing=0.1):
+    # print("prev have", len(self.signals))
+    # for s in self.signals:
+    #     print(s)
+    new_signals = []
+    prev_s = None
+    for s in signals:
+        if prev_s is None:
+            prev_s = s
+        else:
+            if s[0] < prev_s[1] + spacing:
+                # combine them
+                prev_s = (prev_s[0], s[1])
+            else:
+                new_signals.append(prev_s)
+                prev_s = s
+    if prev_s is not None:
+        new_signals.append(prev_s)
+    #
+    # print("spaced have", len(new_signals))
+    # for s in new_signals:
+    #     print(s)
+    return new_signals
