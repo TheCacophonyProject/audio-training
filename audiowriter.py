@@ -206,6 +206,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
         writers.append(tf.io.TFRecordWriter(str(output_path / name)))
     processes = 8
     load_first = processes * 8
+    total_saved_recs = 0
     try:
         with Pool(
             initializer=worker_init,
@@ -262,11 +263,13 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     except Exception as e:
                         logging.error("Error saving ", exc_info=True)
                 saved_s = len(loaded)
+                total_saved_recs += len(loaded)
                 del loaded
                 loaded = None
                 logging.info(
-                    "Saved %s recs %s samples memory %s",
+                    "Saved %s recs, total saved %s,  %s samples memory %s",
                     len(local_set),
+                    total_saved_recs,
                     saved_s,
                     psutil.virtual_memory()[2],
                 )
