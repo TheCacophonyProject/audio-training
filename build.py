@@ -29,8 +29,8 @@ import soundfile as sf
 
 MAX_TEST_BINS = None
 MAX_TEST_SAMPLES = None
-MIN_SAMPLES = 10
-MIN_BINS = 10
+MIN_SAMPLES = 100
+MIN_BINS = 100
 LOW_SAMPLES_LABELS = []
 VAL_PERCENT = 0.15
 TEST_PERCENT = 0.05
@@ -48,8 +48,12 @@ def split_label(
     sample_bins = set()
     tracks = set()
     num_samples = 0
+    rec_by_id = {}
+    for r in dataset.recs:
+        rec_by_id[r.id] = r
     for s in dataset.samples:
-        if label not in s.rec.human_tags:
+        rec = rec_by_id[s.rec_id]
+        if label not in rec.human_tags:
             continue
         # for s in rec.samples:
         if label in s.tags:
@@ -97,7 +101,11 @@ def split_label(
         num_test_bins = min(MAX_TEST_BINS, num_test_bins)
 
     num_test_bins -= existing_test_count
-
+    if label == "rifleman":
+        num_validate_bins = 2
+        num_validate_samples = 2
+        num_test_bins = 1
+        num_test_samples = 1
     bin_limit = num_validate_bins
     sample_limit = num_validate_samples
     bins = set()
@@ -125,7 +133,8 @@ def split_label(
                 bins.add(sample.bin_id)
                 label_count += 1
                 recs.add(sample.rec_id)
-                add_to.add_sample(sample)
+                rec = rec_by_id[sample.rec_id]
+                add_to.add_sample(rec, sample)
                 dataset.remove(sample)
             samples_by_bin[sample_bin] = []
             last_index = i
@@ -154,7 +163,8 @@ def split_label(
     for i, sample_bin in enumerate(sample_bins):
         samples = samples_by_bin[sample_bin]
         for sample in samples:
-            train_c.add_sample(sample)
+            rec = rec_by_id[sample.rec_id]
+            train_c.add_sample(rec, sample)
             dataset.remove(sample)
 
             added += 1

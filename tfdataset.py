@@ -50,6 +50,7 @@ GENERIC_BIRD_LABELS = [
     "north island robin",
     "parakeet",
     "red-crowned parakeet",
+    "rifleman",
     "robin",
     "sacred kingfisher",
     "silvereye",
@@ -66,21 +67,21 @@ GENERIC_BIRD_LABELS = [
 ]
 
 OTHER_LABELS = ["chicken", "rooster", "frog", "insect"]
-signals = Path("./signal-data/train")
-wavs = list(signals.glob("*.wav"))
-for w in wavs:
-    if "bird" in w.stem:
-        BIRD_PATH.append(w)
-    else:
-        for noise in NOISE_LABELS:
-            if noise in w.stem:
-                NOISE_PATH.append(w)
-                break
+# signals = Path("./signal-data/train")
+# wavs = list(signals.glob("*.wav"))
+# for w in wavs:
+#     if "bird" in w.stem:
+#         BIRD_PATH.append(w)
+#     else:
+#         for noise in NOISE_LABELS:
+#             if noise in w.stem:
+#                 NOISE_PATH.append(w)
+#                 break
 # BIRD_LABELS = ["bird"]
 # NOISE_LABELS = []
-NOISE_PATH = NOISE_PATH[:2]
-BIRD_PATH = BIRD_PATH[:2]
-NOISE_LABELS = []
+# NOISE_PATH = NOISE_PATH[:2]
+# BIRD_PATH = BIRD_PATH[:2]
+# NOISE_LABELS = []
 insect = None
 fp = None
 HOP_LENGTH = 281
@@ -196,6 +197,8 @@ def preprocess(data):
 
 def get_distribution(dataset, batched=True):
     true_categories = [y for x, y in dataset]
+    if len(true_categories) == 0:
+        return None
     num_labels = len(true_categories[0])
     dist = np.zeros((num_labels), dtype=np.float32)
 
@@ -305,7 +308,7 @@ def get_dataset(filenames, labels, **args):
 
     # extra tags, since we have multi label problem, morepork is a bird and morepork
     # cat is a cat but also "noise"
-
+    extra_label_map["-10"] = -10
     extra_label_map = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(list(extra_label_map.keys())),
@@ -322,30 +325,30 @@ def get_dataset(filenames, labels, **args):
     bird_mask = np.zeros(num_labels, dtype=np.bool)
     bird_mask[bird_i] = 1
     bird_mask = tf.constant(bird_mask)
-    filter_non_bird = lambda x, y: tf.math.reduce_any(
-        tf.math.logical_and(tf.cast(y[0], tf.bool), bird_mask)
+    bird_filter = lambda x, y: tf.math.reduce_all(
+        tf.math.equal(tf.cast(y, tf.bool), bird_mask)
     )
-    bird_dataset = dataset.filter(filter_non_bird)
-    non_bird_filter = lambda x, y: not tf.math.reduce_any(
-        tf.math.logical_and(tf.cast(y[0], tf.bool), bird_mask)
+    bird_dataset = dataset.filter(bird_filter)
+    others_filter = lambda x, y: not tf.math.reduce_all(
+        tf.math.equal(tf.cast(y, tf.bool), bird_mask)
     )
-    dataset = dataset.filter(non_bird_filter)
+    dataset = dataset.filter(others_filter)
 
-    b_dist = get_distribution(dataset, batched=False)
-    for i, d in enumerate(b_dist):
+    other_dist = get_distribution(dataset, batched=False)
+    for i, d in enumerate(other_dist):
         logging.info("Non Bird Have %s for %s", d, labels[i])
-    dist = get_distribution(bird_dataset, batched=False)
-    for i, d in enumerate(dist):
+    bird_dist = get_distribution(bird_dataset, batched=False)
+    for i, d in enumerate(bird_dist):
         logging.info("Bird D Have %s for %s", d, labels[i])
     # dist = get_distribution(dataset, batched=False)
 
     resample_data = args.get("resample", True)
-    non_bird_c = np.sum(b_dist)
+    non_bird_c = np.sum(other_dist)
     if args.get("filenames_2") is not None:
         second = args.get("filenames_2")
-        bird_c = dist[labels.index("bird")]
+        # bird_c = dist[labels.index("bird")]
 
-        # args["no_bird"] = True
+        args["no_bird"] = True
         # added bird noise to human recs but it messes model, so dont use for now
         dataset_2 = load_dataset(second, len(labels), args)
         # dataset = dataset.take(min(np.sum(dist_2), 5000))
@@ -355,14 +358,13 @@ def get_dataset(filenames, labels, **args):
         # dataset_2 = dataset_2.take(bird_c)
         logging.info("Taking %s", non_bird_c)
         bird_dataset = bird_dataset.take(non_bird_c)
-        dataset_2 = dataset_2.take(non_bird_c)
         # logging.info("concatenating second dataset %s", second[0])
         # dist = get_distribution(dataset_2, batched=False)
         # for i, d in enumerate(dist_2):
         # logging.info("Second dataset pre taking have %s for %s", d, labels[i])
         dataset = tf.data.Dataset.sample_from_datasets(
             [bird_dataset, dataset, dataset_2],
-            stop_on_empty_dataset=args.get("stop_on_empty", True),
+            # stop_on_empty_dataset=args.get("stop_on_empty", True),
             rerandomize_each_iteration=True,
         )
         # for i, d in enumerate(dist):
@@ -510,82 +512,44 @@ def resample_old(dataset, labels):
     return dataset
 
 
-# bird noise
-augmentations_pipeline = Compose(
-    [
-        AddBackgroundNoise(
-            sounds_path=BIRD_PATH,
-            min_snr_in_db=3.0,
-            max_snr_in_db=30.0,
-            noise_transform=PolarityInversion(),
-            p=1,
-        )
-    ]
-)
-
-
-def apply_bird(x):
-    shifted = augmentations_pipeline(x, 48000)
-    return shifted
-
-
-# bird noise
-noise_pipe = Compose(
-    [
-        AddBackgroundNoise(
-            sounds_path=NOISE_PATH,
-            min_snr_in_db=3.0,
-            max_snr_in_db=30.0,
-            noise_transform=PolarityInversion(),
-            p=1,
-        )
-    ]
-)
-
-
-def apply_noise(x):
-    shifted = noise_pipe(x, 48000)
-    return shifted
-
-
-def raw_from_mel(example):
-    # if add_noise:
-    #     logging.info("Adding noise to dataset")
-    #     rand_i = tf.random.uniform(shape=[1])[0]
-    #     if tf.math.greater(rand_i, 0.5):
-    #         if tf.math.greater(rand_i, 0.75):
-    #             raw = tf.numpy_function(
-    #                 apply_bird,
-    #                 inp=[raw],
-    #                 Tout=tf.float32,
-    #                 name="apply_pipeline",
-    #             )
+def mel_from_raw(raw):
+    # # if add_noise:
+    # #     logging.info("Adding noise to dataset")
+    # #     rand_i = tf.random.uniform(shape=[1])[0]
+    # #     if tf.math.greater(rand_i, 0.5):
+    # #         if tf.math.greater(rand_i, 0.75):
+    # #             raw = tf.numpy_function(
+    # #                 apply_bird,
+    # #                 inp=[raw],
+    # #                 Tout=tf.float32,
+    # #                 name="apply_pipeline",
+    # #             )
+    # #
+    # #             # make sure bird in labels
+    # #             extra = remapped_y.lookup(bird_l)
+    # #             labels = tf.concat([labels, extra], axis=0)
+    # #
+    # #         else:
+    # #             # noise noise
+    # #             raw = tf.numpy_function(
+    # #                 apply_noise,
+    # #                 inp=[raw],
+    # #                 Tout=tf.float32,
+    # #                 name="apply_pipeline",
+    # #             )
+    # # augment = AddBackgroundNoise(
+    # #     sounds_path=[NOISE_PATH],
+    # #     min_snr_in_db=3.0,
+    # #     max_snr_in_db=30.0,
+    # #     noise_transform=PolarityInversion(),
+    # #     p=1,
+    # # )
     #
-    #             # make sure bird in labels
-    #             extra = remapped_y.lookup(bird_l)
-    #             labels = tf.concat([labels, extra], axis=0)
+    # # raw = augment(raw)
     #
-    #         else:
-    #             # noise noise
-    #             raw = tf.numpy_function(
-    #                 apply_noise,
-    #                 inp=[raw],
-    #                 Tout=tf.float32,
-    #                 name="apply_pipeline",
-    #             )
-    # augment = AddBackgroundNoise(
-    #     sounds_path=[NOISE_PATH],
-    #     min_snr_in_db=3.0,
-    #     max_snr_in_db=30.0,
-    #     noise_transform=PolarityInversion(),
-    #     p=1,
-    # )
-
-    # raw = augment(raw)
-
-    # make sure bird in labels
-    # extra = remapped_y.lookup(bird_l)
-    labels = tf.concat([labels, extra], axis=0)
+    # # make sure bird in labels
+    # # extra = remapped_y.lookup(bird_l)
+    # labels = tf.concat([labels, extra], axis=0)
     stft = tf.signal.stft(
         raw,
         4800,
@@ -597,9 +561,10 @@ def raw_from_mel(example):
     )
     stft = tf.transpose(stft, [1, 0])
     stft = tf.math.abs(stft)
-    stft = tf.math.square(stft)
+    # if you want power
+    # stft = tf.math.square(stft)
     mel = tf.tensordot(MEL_WEIGHTS, stft, 1)
-    mel = tfio.audio.dbscale(mel, top_db=80)
+    # mel = tfio.audio.dbscale(mel, top_db=80)
 
     mel = tf.expand_dims(mel, 2)
     return mel
@@ -626,11 +591,12 @@ def read_tfrecord(
         "audio/track_id": tf.io.FixedLenFeature((), tf.string),
         "audio/start_s": tf.io.FixedLenFeature(1, tf.float32),
         # "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
-        "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
+        # "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
         # "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
         # "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
         "audio/class/text": tf.io.FixedLenFeature((), tf.string),
         # "audio/length": tf.io.FixedLenFeature((), tf.int64),
+        "audio/raw": tf.io.FixedLenFeature((2401, 428), tf.float32),
         # "audio/sftf_w": tf.io.FixedLenFeature((), tf.int64),
         # "audio/sftf_h": tf.io.FixedLenFeature((), tf.int64),
         # "audio/mel_w": tf.io.FixedLenFeature((), tf.int64),
@@ -652,10 +618,12 @@ def read_tfrecord(
     extra = extra_label_map.lookup(labels)
     labels = remapped_y.lookup(labels)
     labels = tf.concat([labels, extra], axis=0)
-
+    stft = example["audio/raw"]
+    stft = tf.reshape(stft, [2401, 428])
+    mel = tf.tensordot(MEL_WEIGHTS, stft, 1)
     # mel =
-    mel = example["audio/mel"]
-    mel = tf.reshape(mel, [*mel_s])
+    # mel = example["audio/mel"]
+    # mel = tf.reshape(mel, [*mel_s])
     # # put mel into ref db
     # a_max = tf.math.reduce_max(mel)
     # a_min = tf.math.reduce_min(mel)
@@ -682,7 +650,6 @@ def read_tfrecord(
         print("Subbing znorm")
         mel = (mel - zvals["mean"]) / zvals["std"]
     image = mel
-    print(image.shape)
     if preprocess_fn is not None:
         logging.info("Preprocessing with %s", preprocess_fn)
         raise Exception("Done preprocess for audio")

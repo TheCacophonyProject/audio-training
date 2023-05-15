@@ -207,10 +207,10 @@ class AudioDataset:
                 "%s: %s ( %s ) used as %s", k, v, len(rec_counts[k]), RELABEL[k]
             )
 
-    def add_sample(self, sample):
-        if sample.rec.id not in self.rec_keys:
-            self.recs.append(sample.rec)
-            self.rec_keys.append(sample.rec.id)
+    def add_sample(self, rec, sample):
+        if sample.rec_id not in self.rec_keys:
+            self.recs.append(rec)
+            self.rec_keys.append(rec.id)
         self.samples.append(sample)
         for t in sample.tags:
             self.labels.add(t)
@@ -267,7 +267,6 @@ def get_samples(rec_frames, sample):
 
 class AudioSample:
     def __init__(self, rec, tags, start, end, track_ids, group_id, bin_id=None):
-        self.rec = rec
         self.rec_id = rec.id
         self.tags = list(tags)
         self.tags.sort()
@@ -276,6 +275,7 @@ class AudioSample:
         self.track_ids = track_ids
         self.spectogram_data = None
         self.sr = None
+
         self.group = group_id
         if bin_id is None:
             self.bin_id = f"{self.rec_id}"
@@ -652,7 +652,9 @@ def plot_mel(mel):
     # plt.clf()
 
 
-SpectrogramData = namedtuple("SpectrogramData", "spect mel mfcc raw raw_length pcen")
+SpectrogramData = namedtuple(
+    "SpectrogramData", "spect mel stft raw raw_length pcen mel_s"
+)
 
 Tag = namedtuple("Tag", "what confidence automatic original")
 
@@ -678,15 +680,19 @@ def load_data(
     if n_fft is None:
         n_fft = sr // 10
     start = start_s * sr
-    start = int(start)
+    start = round(start)
     if end is None:
-        end = int(segment_l * sr) + start
+        end = round(segment_l * sr) + start
     else:
-        end = int(end * sr)
+        end = round(end * sr)
     data_length = segment_l
+    spec = None
     try:
+        #  use if dont want padding
+        # s_data = frames[start : int(segment_l * sr + start)]
         # zero pad shorter
-        s_data = frames[start : int(segment_l * sr + start)]
+        s_data = frames[start:end]
+
         data_length = len(s_data) / sr
         # if end > len(frames):
         #     sub = frames[start:end]
@@ -708,36 +714,45 @@ def load_data(
             # offset = np.random.randint(0, extra_frames)
             offset = 0
             s_data[offset : offset + len(sub)] = sub
+        assert len(s_data) == int(segment_l * sr)
         if htk:
             spectogram = np.abs(
                 librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length)
             )
-            mel = mel_spec(
-                spectogram, sr, n_fft, hop_length, n_mels, fmin, fmax, break_freq
-            )
-            mel_pcen = mel_spec(
-                spectogram,
-                sr,
-                n_fft,
-                hop_length,
-                n_mels,
-                fmin,
-                fmax,
-                break_freq,
-                power=1,
-            )
-
-        else:
-            # these should b derivable from spectogram but the librosa exmaples produce different results....
-            mel = librosa.feature.melspectrogram(
-                y=s_data,
-                sr=sr,
-                n_fft=n_fft,
-                hop_length=hop_length,
-                fmin=fmin,
-                fmax=fmax,
-                n_mels=n_mels,
-            )
+        #     mel = mel_spec(
+        #         spectogram,
+        #         sr,
+        #         n_fft,
+        #         hop_length,
+        #         n_mels,
+        #         fmin,
+        #         fmax,
+        #         break_freq,
+        #         power=2,
+        #     )
+        #     mel_pcen = mel_spec(
+        #         spectogram,
+        #         sr,
+        #         n_fft,
+        #         hop_length,
+        #         n_mels,
+        #         fmin,
+        #         fmax,
+        #         break_freq,
+        #         power=1,
+        #     )
+        #     print(mel_pcen.shape)
+        # else:
+        #     # these should b derivable from spectogram but the librosa exmaples produce different results....
+        #     mel = librosa.feature.melspectrogram(
+        #         y=s_data,
+        #         sr=sr,
+        #         n_fft=n_fft,
+        #         hop_length=hop_length,
+        #         fmin=fmin,
+        #         fmax=fmax,
+        #         n_mels=n_mels,
+        #     )
         # mel_pcen = librosa.feature.melspectrogram(
         #     y=s_data,
         #     sr=sr,
@@ -748,7 +763,7 @@ def load_data(
         #     n_mels=n_mels,
         #     power=1,
         # )
-        pcen_s = librosa.pcen(mel_pcen * (2**31), sr=sr, hop_length=hop_length)
+        # pcen_s = librosa.pcen(mel_pcen * (2**31), sr=sr, hop_length=hop_length)
         mfcc = None
         # pcen_s = None
         # mfcc = librosa.feature.mfcc(
@@ -760,7 +775,7 @@ def load_data(
         #     fmax=fmax,
         #     n_mels=n_mels,
         # )
-        return spectogram, mel, mfcc, s_data, data_length, pcen_s
+        spec = SpectrogramData(None, None, spectogram, None, data_length, None, None)
     except:
         logging.error(
             "Error getting segment  start %s lenght %s",
@@ -768,4 +783,4 @@ def load_data(
             config.segment_length,
             exc_info=True,
         )
-    return None, None, None, None, None, None
+    return spec

@@ -83,30 +83,32 @@ def create_tf_example(sample, labels):
     """
     data = sample.spectogram_data
     # audio_data = librosa.amplitude_to_db(data.spect)
-    mel = librosa.power_to_db(data.mel, ref=np.max)
+    # mel = librosa.power_to_db(data.mel, ref=np.max)
+    mel = data.mel
     tags = sample.tags_s
     track_ids = " ".join(map(str, sample.track_ids))
     feature_dict = {
         "audio/rec_id": tfrecord_util.bytes_feature(str(sample.rec_id).encode("utf8")),
         "audio/track_id": tfrecord_util.bytes_feature(track_ids.encode("utf8")),
-        "audio/sample_rate": tfrecord_util.int64_feature(sample.rec.sample_rate),
+        "audio/sample_rate": tfrecord_util.int64_feature(sample.sr),
         "audio/length": tfrecord_util.float_feature(sample.length),
         "audio/raw_length": tfrecord_util.float_feature(data.raw_length),
         "audio/start_s": tfrecord_util.float_feature(sample.start),
         "audio/class/text": tfrecord_util.bytes_feature(tags.encode("utf8")),
         # "audio/class/label": tfrecord_util.int64_feature(labels.index(tags.tag)),
         # "audio/sftf": tfrecord_util.float_list_feature(audio_data.ravel()),
-        "audio/mel": tfrecord_util.float_list_feature(mel.ravel()),
-        "audio/pcen": tfrecord_util.float_list_feature(data.pcen.ravel()),
-        # "audio/mfcc": tfrecord_util.float_list_feature(data.mfcc.ravel()),
-        # "audio/sftf_w": tfrecord_util.int64_feature(audio_data.shape[1]),
-        # "audio/sftf_h": tfrecord_util.int64_feature(audio_data.shape[0]),
-        "audio/mel_w": tfrecord_util.int64_feature(mel.shape[1]),
-        "audio/mel_h": tfrecord_util.int64_feature(mel.shape[0]),
+        # "audio/mel": tfrecord_util.float_list_feature(mel.ravel()),
+        # "audio/pcen": tfrecord_util.float_list_feature(data.pcen.ravel()),
+        # # "audio/mfcc": tfrecord_util.float_list_feature(data.mfcc.ravel()),
+        # # "audio/sftf_w": tfrecord_util.int64_feature(audio_data.shape[1]),
+        # # "audio/sftf_h": tfrecord_util.int64_feature(audio_data.shape[0]),
+        # "audio/mel_w": tfrecord_util.int64_feature(mel.shape[1]),
+        # "audio/mel_h": tfrecord_util.int64_feature(mel.shape[0]),
         # "audio/mfcc_h": tfrecord_util.int64_feature(data.mfcc.shape[1]),
         # "audio/mfcc_w": tfrecord_util.int64_feature(data.mfcc.shape[0]),
-        "audio/raw": tfrecord_util.float_list_feature(np.float32(data.raw)),
-        "audio/raw_l": tfrecord_util.int64_feature(len(data.raw)),
+        "audio/raw": tfrecord_util.float_list_feature(np.float32(data.stft.ravel())),
+        # "audio/raw_l": tfrecord_util.int64_feature(len(data.stft)),
+        # "audio/mel_s    ": tfrecord_util.float_list_feature(data.mel_s.ravel()),
     }
 
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
@@ -123,12 +125,13 @@ def worker_init(c):
 
 def get_data(rec):
     resample = 48000
+    logging.info("Loading %s", rec.filename)
     try:
         aro = audioread.ffdec.FFmpegAudioFile(rec.filename)
         frames, sr = librosa.load(aro, sr=None)
         aro.close()
-    except Exception as ex:
-        print("Error loading rec ", rec.filename, ex)
+    except:
+        logging.error("Error loading rec %s ", rec.filename, exc_info=True)
         try:
             aro.close()
         except:
@@ -141,6 +144,9 @@ def get_data(rec):
             sr = resample
         for t in rec.tracks:
             if t.end is None:
+                logging.info(
+                    "Track end is none so setting to rec length %s", len(frames) / sr
+                )
                 t.end = len(frames) / sr
         # rec.tracks[0].end = len0(frames) / sr
         rec.load_samples(config.segment_length, config.segment_stride)
@@ -148,27 +154,24 @@ def get_data(rec):
         rec.sample_rate = resample
         for i, sample in enumerate(samples):
             try:
-                spectogram, mel, mfcc, s_data, raw_length, pcen = load_data(
-                    config, sample.start, frames, sr, end=sample.end
-                )
+                spec = load_data(config, sample.start, frames, sr, end=sample.end)
                 # print("mel is", mel.shape)
                 # print("adjusted start is", sample.start, " becomes", sample.start - start)
-                if spectogram is None:
-                    print("error loading", rec.id)
+                if spec is None:
+                    logging.warn("error loading spec for %s", rec.id)
                     continue
-                spec = SpectrogramData(
-                    spectogram, mel, mfcc, s_data.copy(), raw_length, pcen
-                )
                 # data[i] = spec
                 sample.spectogram_data = spec
-                sample.sample_rate = resample
+                sample.sr = resample
             except:
                 logging.error("Error %s ", rec.id, exc_info=True)
             # sample.sr = sr
     except:
-        logging.error("Got error %s", exc_info=True)
+        logging.error("Got error %s", rec.filename, exc_info=True)
         print("ERRR return None")
         return None
+    logging.info("Loaded %s", rec.filename)
+
     return samples
 
 
@@ -201,7 +204,8 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     for i in range(num_shards):
         name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
         writers.append(tf.io.TFRecordWriter(str(output_path / name)))
-    load_first = 32
+    processes = 8
+    load_first = processes * 2
     try:
         count = 0
         while len(samples) > 0:
@@ -221,7 +225,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                 pool_data.append(rec)
             loaded = []
             with Pool(
-                initializer=worker_init, initargs=(dataset.config,), processes=8
+                initializer=worker_init, initargs=(dataset.config,), processes=processes
             ) as pool:
                 for data in pool.imap_unordered(get_data, pool_data):
                     if data is None:
@@ -303,7 +307,10 @@ def getsize(obj):
         for obj in objects:
             if not isinstance(obj, BLACKLIST) and id(obj) not in seen_ids:
                 seen_ids.add(id(obj))
-                size += sys.getsizeof(obj)
+                if isinstance(obj, np.ndarray):
+                    size += obj.nbytes
+                else:
+                    size += sys.getsizeof(obj)
                 need_referents.append(obj)
         objects = get_referents(*need_referents)
     return size * 0.000001

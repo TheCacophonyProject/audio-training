@@ -24,13 +24,36 @@ import logging
 import tensorflow as tf
 
 
+# Worth looking into lme pooling as proposed in  https://github.com/f0k/birdclef2018/blob/master/experiments/model.py
+# Research/2018-birdclef.pdf
+
+
+class MagTransform(tf.keras.layers.Layer):
+    def __init__(self):
+        super(MagTransform, self).__init__()
+        self.a = self.add_weight(
+            initializer=tf.keras.initializers.Constant(value=0.0),
+            name="a-power",
+            dtype="float32",
+            shape=(),
+            trainable=True,
+        )
+
+    def call(self, inputs):
+        c = tf.math.pow(inputs, tf.math.sigmoid(self.a))
+        return c
+
+
 def build_model(input_shape, norm_layer, num_labels, multi_label=False):
     input = tf.keras.Input(shape=(*input_shape, 1), name="input")
     # x = norm_layer(input)
     filters = 16
     # if multi_label:
     # filters = 32
-    x = tf.keras.layers.BatchNormalization()(input)
+    # y = x σ(a) , where σ(a) = 1/ (1 + exp(−a))
+
+    x = MagTransform()(input)
+    x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Conv2D(filters, (3, 3), activation=tf.keras.layers.LeakyReLU())(
         x
     )
@@ -63,8 +86,6 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
         activation = "sigmoid"
     logging.info("Using %s activation", activation)
     x = tf.keras.layers.Dense(num_labels, activation=activation)(x)
-    # x = tf.keras.layers.Dense(2, activation="softmax")(x)
-    # x = tf.keras.activations.sigmoid(x)
 
     model = tf.keras.models.Model(input, outputs=x)
     return model
@@ -73,7 +94,7 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
 def main():
     init_logging()
     args = parse_args()
-    build_model((80, 226), None, 2)
+    model = build_model((80, 480), None, 2)
 
 
 def parse_args():
