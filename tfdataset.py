@@ -103,7 +103,7 @@ human_max = np.where(mel_bins > 180)[0][0]
 
 # 60-180hz
 human_mel = (human_lowest, human_max)
-human_mask = np.zeros((mel_s), dtype=np.bool)
+human_mask = np.zeros((mel_s), dtype=bool)
 human_mask[human_mel[0] : human_mel[0] + human_mel[1]] = 1
 
 # 600-1200
@@ -115,7 +115,7 @@ more_max = np.where(mel_bins > 1200)[0][0]
 
 morepork_mel = (more_lower, more_max)
 
-morepork_mask = np.zeros((mel_s), dtype=np.bool)
+morepork_mask = np.zeros((mel_s), dtype=bool)
 morepork_mask[morepork_mel[0] : morepork_mel[0] + morepork_mel[1]] = 1
 
 with open(str("zvalues.txt"), "r") as f:
@@ -322,7 +322,7 @@ def get_dataset(filenames, labels, **args):
     # 1 / 0
     num_labels = len(labels)
     dataset = load_dataset(filenames, len(labels), args)
-    bird_mask = np.zeros(num_labels, dtype=np.bool)
+    bird_mask = np.zeros(num_labels, dtype=bool)
     bird_mask[bird_i] = 1
     bird_mask = tf.constant(bird_mask)
     bird_filter = lambda x, y: tf.math.reduce_all(

@@ -161,7 +161,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         # spectogram[:100, :] *= 0.5
 
         # spectogram[:100, :]
-        mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000, power=1)
+        mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000, power=2)
         half = mel[:, 75:]
         if np.amax(half) == np.amin(half):
             print("mel max is same")
@@ -171,8 +171,10 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             return mels, length
             # 1 / 0
         # mel = librosa.power_to_db(mel, ref=np.max)
-        # print("end is", end)
-        # plot_mel(mel, i)
+        print("end is", i * stride, mel.shape)
+        plot_mel(mel, i)
+        if i == 7:
+            break
         # mel2 = np.power(mel, 0.1)
         # plot_mel(mel2, i)
         # pcen_S = librosa.pcen(mel * (2**31))
@@ -265,7 +267,7 @@ def main():
     use_mfcc = meta.get("use_mfcc", False)
     hop_length = meta.get("hop_length", 640)
     prob_thresh = meta.get("threshold", 0.7)
-
+    prob_thresh = 0.5
     hop_length = 281
     # print("stride is", segment_stride)
     # segment_length = 2
