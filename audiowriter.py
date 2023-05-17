@@ -125,7 +125,6 @@ def worker_init(c):
 
 def get_data(rec):
     resample = 48000
-    logging.info("Loading %s", rec.filename)
     try:
         aro = audioread.ffdec.FFmpegAudioFile(rec.filename)
         frames, sr = librosa.load(aro, sr=None)
@@ -170,7 +169,6 @@ def get_data(rec):
         logging.error("Got error %s", rec.filename, exc_info=True)
         print("ERRR return None")
         return None
-    logging.info("Loaded %s", rec.filename)
 
     return samples
 
@@ -206,6 +204,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
         writers.append(tf.io.TFRecordWriter(str(output_path / name)))
     processes = 8
     load_first = processes * 8
+    total_recs = len(samples)
     total_saved_recs = 0
     try:
         with Pool(
@@ -263,13 +262,14 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     except Exception as e:
                         logging.error("Error saving ", exc_info=True)
                 saved_s = len(loaded)
-                total_saved_recs += len(loaded)
+                total_saved_recs += len(local_set)
                 del loaded
                 loaded = None
                 logging.info(
-                    "Saved %s recs, total saved %s,  %s samples memory %s",
+                    "Saved %s recs, total saved %s/ %s,  %s samples memory %s",
                     len(local_set),
                     total_saved_recs,
+                    total_recs,
                     saved_s,
                     psutil.virtual_memory()[2],
                 )
