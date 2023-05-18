@@ -211,7 +211,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
             initializer=worker_init,
             initargs=(dataset.config,),
             processes=processes,
-            maxtasksperchild=100,
+            maxtasksperchild=10,
         ) as pool:
             count = 0
             while len(samples) > 0:
@@ -231,7 +231,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     pool_data.append(rec)
                 loaded = []
 
-                for data in pool.imap_unordered(get_data, pool_data, chunksize=10):
+                for data in pool.imap_unordered(get_data, pool_data, chunksize=2):
                     if data is None:
                         continue
                     loaded.extend(data)

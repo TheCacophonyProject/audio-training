@@ -351,20 +351,9 @@ def get_dataset(filenames, labels, **args):
         args["no_bird"] = True
         # added bird noise to human recs but it messes model, so dont use for now
         dataset_2 = load_dataset(second, len(labels), args)
-        # dataset = dataset.take(min(np.sum(dist_2), 5000))
-
-        # if not resample_data:
-        # bird_c = bird_c - dist[labels.index("human")]
-        # dataset_2 = dataset_2.take(bird_c)
-        logging.info("Taking %s", non_bird_c)
-        bird_dataset = bird_dataset.take(non_bird_c)
-        # logging.info("concatenating second dataset %s", second[0])
-        # dist = get_distribution(dataset_2, batched=False)
-        # for i, d in enumerate(dist_2):
-        # logging.info("Second dataset pre taking have %s for %s", d, labels[i])
         dataset = tf.data.Dataset.sample_from_datasets(
             [bird_dataset, dataset, dataset_2],
-            # stop_on_empty_dataset=args.get("stop_on_empty", True),
+            stop_on_empty_dataset=args.get("stop_on_empty", True),
             rerandomize_each_iteration=True,
         )
         # for i, d in enumerate(dist):
@@ -661,6 +650,7 @@ def read_tfrecord(
             )
         if no_bird:
             logging.info("no bird")
+            # dont use bird or noise label from mixed ones
             no_bird_mask = np.ones(num_labels, dtype=np.bool)
             no_bird_mask[bird_i] = 0
             no_bird_mask = tf.constant(no_bird_mask)

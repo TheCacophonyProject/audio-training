@@ -29,8 +29,8 @@ import soundfile as sf
 
 MAX_TEST_BINS = None
 MAX_TEST_SAMPLES = None
-MIN_SAMPLES = 100
-MIN_BINS = 100
+MIN_SAMPLES = 10
+MIN_BINS = 10
 LOW_SAMPLES_LABELS = []
 VAL_PERCENT = 0.15
 TEST_PERCENT = 0.05
@@ -89,13 +89,15 @@ def split_label(
         num_test_samples = min(MAX_TEST_SAMPLES, num_test_samples)
     num_test_samples -= existing_test_count
     # should have test covered by test set
-
+    #  VALIDATION LIMITS
     min_t = MIN_BINS
     total_bins = len(sample_bins)
     if label in LOW_SAMPLES_LABELS or total_bins < 20:
         min_t = 1
 
     num_validate_bins = max(total_bins * VAL_PERCENT, min_t)
+
+    # TEST LIMITS
     num_test_bins = max(total_bins * TEST_PERCENT, min_t)
     if MAX_TEST_BINS is not None:
         num_test_bins = min(MAX_TEST_BINS, num_test_bins)
@@ -106,6 +108,7 @@ def split_label(
         num_validate_samples = 2
         num_test_bins = 1
         num_test_samples = 1
+
     bin_limit = num_validate_bins
     sample_limit = num_validate_samples
     bins = set()
