@@ -28,6 +28,7 @@ from tfdataset import (
     get_weighting,
     NOISE_LABELS,
     SPECIFIC_BIRD_LABELS,
+    get_excluded_labels,
 )
 import time
 from pathlib import Path
@@ -1017,14 +1018,6 @@ def plot_confusion_matrix(cm, class_names):
     plt.ylabel("True label")
     plt.xlabel("Predicted label")
     return figure
-
-
-def get_excluded_labels(labels):
-    excluded_labels = []
-    for l in labels:
-        if l not in SPECIFIC_BIRD_LABELS and l not in ["noise", "human"]:
-            excluded_labels.append(l)
-    return excluded_labels
 
 
 def main():

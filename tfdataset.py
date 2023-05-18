@@ -749,7 +749,7 @@ def main():
     labels.add("bird")
     labels.add("noise")
     labels = list(labels)
-
+    excluded_labels = get_excluded_labels(labels)
     labels.sort()
     filenames_2 = tf.io.gfile.glob(f"./flickr-training-data/train/*.tfrecord")
     # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
@@ -762,6 +762,7 @@ def main():
         image_size=DIMENSIONS,
         augment=False,
         resample=False,
+        excluded_labels=excluded_labels,
         # filenames_2=filenames_2
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
@@ -903,6 +904,14 @@ def init_logging():
     logging.basicConfig(
         stream=sys.stderr, level=logging.INFO, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"
     )
+
+
+def get_excluded_labels(labels):
+    excluded_labels = []
+    for l in labels:
+        if l not in SPECIFIC_BIRD_LABELS and l not in ["noise", "human"]:
+            excluded_labels.append(l)
+    return excluded_labels
 
 
 if __name__ == "__main__":
