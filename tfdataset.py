@@ -195,12 +195,12 @@ def preprocess(data):
     return tf.keras.applications.inception_v3.preprocess_input(x), y
 
 
-def get_distribution(dataset, batched=True):
+def get_distribution(dataset, num_labels, batched=True):
     true_categories = [y for x, y in dataset]
-    if len(true_categories) == 0:
-        return None
-    num_labels = len(true_categories[0])
     dist = np.zeros((num_labels), dtype=np.float32)
+    if len(true_categories) == 0:
+        return dist
+    num_labels = len(true_categories[0])
 
     if len(true_categories) == 0:
         return dist
@@ -281,6 +281,7 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
 
 bird_i = None
 noise_i = None
+bird_mask = None
 
 
 def get_dataset(filenames, labels, **args):
@@ -321,7 +322,7 @@ def get_dataset(filenames, labels, **args):
     # print("keys", keys, " values", values)
     # 1 / 0
     num_labels = len(labels)
-    dataset = load_dataset(filenames, len(labels), args)
+    dataset = load_dataset(filenames, num_labels, args)
     bird_mask = np.zeros(num_labels, dtype=bool)
     bird_mask[bird_i] = 1
     bird_mask = tf.constant(bird_mask)
@@ -334,10 +335,10 @@ def get_dataset(filenames, labels, **args):
     )
     dataset = dataset.filter(others_filter)
 
-    other_dist = get_distribution(dataset, batched=False)
+    other_dist = get_distribution(dataset, num_labels, batched=False)
     for i, d in enumerate(other_dist):
         logging.info("Non Bird Have %s for %s", d, labels[i])
-    bird_dist = get_distribution(bird_dataset, batched=False)
+    bird_dist = get_distribution(bird_dataset, num_labels, batched=False)
     for i, d in enumerate(bird_dist):
         logging.info("Bird D Have %s for %s", d, labels[i])
     # dist = get_distribution(dataset, batched=False)
@@ -376,9 +377,22 @@ def get_dataset(filenames, labels, **args):
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     # epoch_size = len([0 for x, y in dataset])
 
-    dist = get_distribution(dataset, batched=False)
+    weighting = np.ones((num_labels), dtype=np.float32)
+    weighting[bird_i] = 0.8
+    weighting = tf.constant(weighting)
+    specific_mask = np.zeros((num_labels), dtype=np.float32)
+    for i, l in enumerate(labels):
+        if l in SPECIFIC_BIRD_LABELS and l != "bird":
+            specific_mask[i] = 1
+    print("for labels", labels, " have ", specific_mask, " weighting bird", weighting)
+    specific_mask = tf.constant(specific_mask)
+
+    rest_weighting = tf.constant(tf.ones(num_labels))
+
+    dist = get_distribution(dataset, num_labels, batched=False)
     for i, d in enumerate(dist):
         logging.info("Have %s for %s", d, labels[i])
+
     epoch_size = np.sum(dist)
     logging.info("Setting dataset size to %s", epoch_size)
     # if not args.get("only_features", False):
@@ -391,6 +405,11 @@ def get_dataset(filenames, labels, **args):
     batch_size = args.get("batch_size", None)
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
+    dataset = dataset.map(
+        lambda x, y: weight_specific(
+            x, y, num_labels, weighting, specific_mask, rest_weighting
+        )
+    )
     dataset = dataset.cache()
     if args.get("shuffle", True):
         dataset = dataset.shuffle(
@@ -398,6 +417,23 @@ def get_dataset(filenames, labels, **args):
         )
 
     return dataset, remapped, epoch_size
+
+
+# WEIGHT getting bird wrong less than getting specific specis wrong
+# idea is  to insentivise learning specific birds
+def weight_specific(x, y, num_labels, weighting, specific_mask, rest_weighting):
+    # mask for all specifics
+    specifics = tf.tensordot(y, specific_mask, 1)
+    if specifics.shape == 0:
+        return x, y
+    specifics = tf.expand_dims(specifics, 1)
+    bird_weighted = specifics * weighting
+    rest = specifics - 1
+    rest = tf.math.abs(rest)
+    rest_weighting = tf.ones(num_labels)
+    rest_weight = rest * rest_weighting
+    mask = rest_weight + bird_weighted
+    return x, y * mask
 
 
 def get_weighting(dataset, labels):
@@ -412,7 +448,7 @@ def get_weighting(dataset, labels):
             continue
         dont_weigh.append(l)
     num_labels = len(labels)
-    dist = get_distribution(dataset)
+    dist = get_distribution(dataset, num_labels)
     zeros = dist[dist == 0]
     non_zero_labels = num_labels - len(zeros)
     total = 0
@@ -651,17 +687,18 @@ def read_tfrecord(
         if no_bird:
             logging.info("no bird")
             # dont use bird or noise label from mixed ones
-            no_bird_mask = np.ones(num_labels, dtype=np.bool)
+            no_bird_mask = np.ones(num_labels, dtype=bool)
             no_bird_mask[bird_i] = 0
             no_bird_mask = tf.constant(no_bird_mask)
             label = tf.cast(label, tf.bool)
             label = tf.math.logical_and(label, no_bird_mask)
-            no_noise_mask = np.ones(num_labels, dtype=np.bool)
+            no_noise_mask = np.ones(num_labels, dtype=bool)
             no_noise_mask[noise_i] = 0
             no_noise_mask = tf.constant(no_noise_mask)
             label = tf.math.logical_and(label, no_noise_mask)
 
             label = tf.cast(label, tf.int32)
+        label = tf.cast(label, tf.float32)
 
         return image, label
 
@@ -728,6 +765,30 @@ def calc_mean():
 # test stuff
 def main():
     init_logging()
+    y = np.zeros((3, 4), dtype=np.float32)
+    y[0][0] = 1
+    y[1][0] = 1
+    y[2][0] = 1
+    y[2][3] = 1
+    print(y)
+    num_labels = 4
+    bird_i = 0
+    weighting = np.ones((num_labels), dtype=np.float32)
+    weighting[bird_i] = 0.8
+    weighting = tf.constant(weighting)
+    specific_mask = np.zeros((num_labels), dtype=np.float32)
+    # for i, l in enumerate(labels):
+    #     if l in SPECIFIC_BIRD_LABELS and l != "bird":
+    #         specific_mask[i] = 1
+    # print("for labels", labels, " have ", specific_mask, " weighting bird", weighting)
+    specific_mask[3] = 1
+    specific_mask = tf.constant(specific_mask)
+
+    rest_weighting = tf.constant(tf.ones(num_labels))
+
+    x, y = weight_specific(None, y, 4, weighting, specific_mask, rest_weighting)
+    print(y)
+    return
     # calc_mean()
     # return
     datasets = ["other-training-data", "training-data", "chime-training-data"]
@@ -745,13 +806,13 @@ def main():
         # species_list = ["bird", "human", "rain", "other"]
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-        filenames.extend(tf.io.gfile.glob(f"./{d}/train/*.tfrecord"))
+        filenames.extend(tf.io.gfile.glob(f"./{d}/validation/*.tfrecord"))
     labels.add("bird")
     labels.add("noise")
     labels = list(labels)
     excluded_labels = get_excluded_labels(labels)
     labels.sort()
-    filenames_2 = tf.io.gfile.glob(f"./flickr-training-data/train/*.tfrecord")
+    filenames_2 = tf.io.gfile.glob(f"./flickr-training-data/validation/*.tfrecord")
     # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
     # weights = [0.5] * len(labels)
     resampled_ds, remapped, _ = get_dataset(
@@ -782,7 +843,8 @@ def main():
     print("looping")
     for e in range(1):
         for x, y in resampled_ds:
-            show_batch(x, y, None, labels, None)
+            print(y)
+            # show_batch(x, y, None, labels, None)
 
             # show_batch(x, y[0], y[1], labels, species_list)
 

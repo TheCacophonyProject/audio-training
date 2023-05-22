@@ -426,7 +426,7 @@ class AudioModel:
 
     def build_model(self, num_labels, bad=True, multi_label=False):
         if bad:
-            self.model = badwinner2.build_model(
+            self.model = badwinner.build_model(
                 self.input_shape, None, num_labels, multi_label=multi_label
             )
         else:
@@ -767,6 +767,17 @@ def get_preprocess_fn(pretrained_model):
         return tf.keras.applications.inception_v3.preprocess_input
     logging.warn("pretrained model %s has no preprocessing function", pretrained_model)
     return None
+
+
+def CustomBinaryCrossEntropy(y_true, y_pred):
+    y_pred = tf.keras.backend.clip(
+        y_pred, tf.keras.backend.epsilon(), 1 - tf.keras.backend.epsilon()
+    )
+
+    term_0 = (1 - y_true) * tf.math.log(1 - y_pred + tf.keras.backend.epsilon())
+    term_1 = y_true * tf.math.log(y_pred + tf.keras.backend.epsilon())
+    loss = tf.keras.backend.mean(term_0 + term_1, axis=1)
+    return -loss
 
 
 def loss(multi_label=False, smoothing=0):

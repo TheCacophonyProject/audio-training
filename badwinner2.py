@@ -43,6 +43,7 @@ class MagTransform(tf.keras.layers.Layer):
         c = tf.math.pow(inputs, tf.math.sigmoid(self.a))
         return c
 
+
 #         arch = 'conv:32x3x3
 # conv:32x3x3
 # pool:3x3
@@ -56,6 +57,7 @@ class MagTransform(tf.keras.layers.Layer):
 # # Conv:Fullx9x-1
 # Conv:Fullx1x1'
 
+
 def build_model(input_shape, norm_layer, num_labels, multi_label=False):
     input = tf.keras.Input(shape=(*input_shape, 1), name="input")
     # x = norm_layer(input)
@@ -65,67 +67,86 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
 
     x = MagTransform()(input)
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Conv2D(64, (3, 3), activation=tf.keras.layers.LeakyReLU())(
-        x
-    )
+    x = tf.keras.layers.Conv2D(64, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
-    x = tf.keras.layers.Conv2D(64, (3, 3), activation=tf.keras.layers.LeakyReLU())(
-        x
-    )
+    x = tf.keras.layers.Conv2D(64, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
     x = tf.keras.layers.MaxPool2D((3, 3))(x)
 
-    x = tf.keras.layers.Conv2D(128, (3, 3), activation=tf.keras.layers.LeakyReLU())(
-        x
-    )
+    x = tf.keras.layers.Conv2D(128, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Conv2D(128, (3, 3), activation=tf.keras.layers.LeakyReLU())(
-        x
-    )
+    x = tf.keras.layers.Conv2D(128, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    # x = tf.keras.layers.Conv2D(128, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    # x = tf.keras.layers.BatchNormalization()(x)
+
+    # Original is based of 90 mels, if we want to put all mels into a singl channel can add a nother conv
+    # see how they perform
+    # x = tf.keras.layers.Conv2D(128, (12, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    # x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Conv2D(128, (17, 3), activation=tf.keras.layers.LeakyReLU())(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
-    x = tf.keras.layers.Conv2D(128, (17, 3), activation=tf.keras.layers.LeakyReLU())(
-        x
-    )
-    x = tf.keras.layers.BatchNormalization()(x)
-
-    x = tf.keras.layers.MaxPool2D((5,3))(x)
+    x = tf.keras.layers.MaxPool2D((5, 3))(x)
     x = tf.keras.layers.Dropout(0.5)(x)
 
-
-# probably dont need to be as big
-    x = tf.keras.layers.Conv2D(1024, (1,9),activation=tf.keras.layers.LeakyReLU(),kernel_initializer= tf.keras.initializers.Orthogonal())(
-        x
-    )
+    # probably dont need to be as big
+    x = tf.keras.layers.Conv2D(
+        1024,
+        (1, 9),
+        activation=tf.keras.layers.LeakyReLU(),
+        kernel_initializer=tf.keras.initializers.Orthogonal(),
+    )(x)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Dropout(0.5)(x)
 
-    x = tf.keras.layers.Conv2D(1024, 1,activation=tf.keras.layers.LeakyReLU(),kernel_initializer= tf.keras.initializers.Orthogonal())(
-        x
-    )
+    x = tf.keras.layers.Conv2D(
+        1024,
+        1,
+        activation=tf.keras.layers.LeakyReLU(),
+        kernel_initializer=tf.keras.initializers.Orthogonal(),
+    )(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
     x = tf.keras.layers.Dropout(0.5)(x)
 
-    x = tf.keras.layers.Conv2D(num_labels, 1,activation=tf.keras.layers.LeakyReLU(),kernel_initializer= tf.keras.initializers.Orthogonal())(
-        x
-    )
-    x = logmeanexp(x,sharpness=1,axis = 2)
+    x = tf.keras.layers.Conv2D(
+        num_labels,
+        1,
+        activation=tf.keras.layers.LeakyReLU(),
+        kernel_initializer=tf.keras.initializers.Orthogonal(),
+    )(x)
+    x = logmeanexp(x, sharpness=1, axis=2)
     x = tf.keras.activations.sigmoid(x)
 
     model = tf.keras.models.Model(input, outputs=x)
     return model
 
+
 def logmeanexp(x, axis=None, keepdims=False, sharpness=5):
-     return tf.math.reduce_logsumexp(x*sharpness,axis = axis)/sharpness
+    return tf.math.reduce_logsumexp(x * sharpness, axis=axis) / sharpness
+
 
 def main():
     init_logging()
     args = parse_args()
-    model = build_model((80, 480), None, 2)
+    model = build_model((120, 480), None, 2)
     model.summary()
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(),
+        loss=CustomBinaryCrossEntropy,
+        metrics=tf.keras.metrics.AUC(),
+    )
+
+
+def CustomBinaryCrossEntropy(y_true, y_pred):
+    y_pred = tf.keras.backend.clip(y_pred, K.epsilon(), 1 - tf.keras.backend.epsilon())
+    term_0 = (1 - y_true) * tf.math.log(1 - y_pred + tf.keras.backend.epsilon())
+    term_1 = y_true * tf.math.log(y_pred + tf.keras.backend.epsilon())
+    return -tf.keras.backend.mean(term_0 + term_1, axis=0)
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
