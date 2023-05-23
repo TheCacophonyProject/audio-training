@@ -377,18 +377,6 @@ def get_dataset(filenames, labels, **args):
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     # epoch_size = len([0 for x, y in dataset])
 
-    weighting = np.ones((num_labels), dtype=np.float32)
-    weighting[bird_i] = 0.8
-    weighting = tf.constant(weighting)
-    specific_mask = np.zeros((num_labels), dtype=np.float32)
-    for i, l in enumerate(labels):
-        if l in SPECIFIC_BIRD_LABELS and l != "bird":
-            specific_mask[i] = 1
-    print("for labels", labels, " have ", specific_mask, " weighting bird", weighting)
-    specific_mask = tf.constant(specific_mask)
-
-    rest_weighting = tf.constant(tf.ones(num_labels))
-
     dist = get_distribution(dataset, num_labels, batched=False)
     for i, d in enumerate(dist):
         logging.info("Have %s for %s", d, labels[i])
@@ -405,11 +393,26 @@ def get_dataset(filenames, labels, **args):
     batch_size = args.get("batch_size", None)
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
-    dataset = dataset.map(
-        lambda x, y: weight_specific(
-            x, y, num_labels, weighting, specific_mask, rest_weighting
+
+    if args.get("weight_specific", False):
+        weighting = np.ones((num_labels), dtype=np.float32)
+        weighting[bird_i] = 0.8
+        weighting = tf.constant(weighting)
+        specific_mask = np.zeros((num_labels), dtype=np.float32)
+        for i, l in enumerate(labels):
+            if l in SPECIFIC_BIRD_LABELS and l != "bird":
+                specific_mask[i] = 1
+        print(
+            "for labels", labels, " have ", specific_mask, " weighting bird", weighting
         )
-    )
+        specific_mask = tf.constant(specific_mask)
+
+        rest_weighting = tf.constant(tf.ones(num_labels))
+        dataset = dataset.map(
+            lambda x, y: weight_specific(
+                x, y, num_labels, weighting, specific_mask, rest_weighting
+            )
+        )
     dataset = dataset.cache()
     if args.get("shuffle", True):
         dataset = dataset.shuffle(

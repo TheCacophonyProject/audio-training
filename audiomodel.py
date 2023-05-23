@@ -58,11 +58,11 @@ other_training_dir = "training-data"
 class AudioModel:
     VERSION = 1.0
 
-    def __init__(self):
+    def __init__(self, model_name="badwinner"):
         self.checkpoint_folder = Path("./train/checkpoints")
         self.log_dir = Path("./train/logs")
         self.data_dir = "."
-        self.model_name = "wr-resnet"
+        self.model_name = model_name
         self.batch_size = 32
         self.validation = None
         self.test = None
@@ -424,8 +424,15 @@ class AudioModel:
             cls=MetaJSONEncoder,
         )
 
-    def build_model(self, num_labels, bad=True, multi_label=False):
-        if bad:
+    def build_model(self, num_labels, multi_label=False):
+        if self.model_name == "badwinner2":
+            logging.info("Building bad winner2")
+            self.model = badwinner2.build_model(
+                self.input_shape, None, num_labels, multi_label=multi_label
+            )
+        elif self.model_name == "badwinner":
+            logging.info("Building bad winner")
+
             self.model = badwinner.build_model(
                 self.input_shape, None, num_labels, multi_label=multi_label
             )
@@ -1107,7 +1114,7 @@ def main():
             confusion(model, labels, dataset, args.confusion)
 
     else:
-        am = AudioModel()
+        am = AudioModel(args.model_name)
         if args.cross:
             am.cross_fold_train(run_name=args.name)
         else:
@@ -1123,14 +1130,17 @@ def parse_args():
     parser.add_argument("-w", "--weights", help="Weights to use")
     parser.add_argument("--cross", action="count", help="Cross fold val")
     parser.add_argument("--multi", default=True, action="count", help="Multi label")
+    parser.add_argument(
+        "--model-name",
+        default="badwinner",
+        help="Model to use badwinner, badwinner2, inc3",
+    )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("name", help="Run name")
 
     args = parser.parse_args()
-    print(args)
     args.multi = args.multi > 0
-    print(args.multi)
     return args
 
 

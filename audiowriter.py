@@ -197,11 +197,13 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     lbl_counts = [0] * num_labels
     # lbl_counts[l] = 0
     logging.info("labels are %s", labels)
+    options = tf.io.TFRecordOptions(compression_type="GZIP")
 
     writers = []
     for i in range(num_shards):
         name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
-        writers.append(tf.io.TFRecordWriter(str(output_path / name)))
+        writers.append(tf.io.TFRecordWriter(str(output_path / name), options=options))
+
     processes = 8
     load_first = processes * 8
     total_recs = len(samples)
