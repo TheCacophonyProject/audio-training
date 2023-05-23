@@ -61,7 +61,7 @@ class AudioModel:
     def __init__(self, model_name="badwinner"):
         self.checkpoint_folder = Path("./train/checkpoints")
         self.log_dir = Path("./train/logs")
-        self.data_dir = "."
+        self.data_dir = "/data/audio-data"
         self.model_name = model_name
         self.batch_size = 32
         self.validation = None
@@ -524,7 +524,7 @@ class AudioModel:
 
     def load_datasets(self, base_dir, labels, shape, test=False):
         datasets = ["other-training-data", "training-data", "chime-training-data"]
-        datasets = ["./training-data"]
+        datasets = ["training-data"]
         flickr = "/data/audio-data/flickr-training-data"
         labels = set()
         filenames = []
