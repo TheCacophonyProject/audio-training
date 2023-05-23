@@ -23,6 +23,7 @@ import argparse
 import logging
 import tensorflow as tf
 
+import tensorflow_probability as tfp
 
 # Worth looking into lme pooling as proposed in  https://github.com/f0k/birdclef2018/blob/master/experiments/model.py
 # Research/2018-birdclef.pdf
@@ -118,7 +119,7 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
         activation=tf.keras.layers.LeakyReLU(),
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
-    # x = logmeanexp(x, sharpness=1, axis=2)
+    x = logmeanexp(x, sharpness=1, axis=2)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
     x = tf.keras.activations.sigmoid(x)
@@ -128,7 +129,9 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
 
 
 def logmeanexp(x, axis=None, keepdims=False, sharpness=5):
-    return tf.math.reduce_logsumexp(x * sharpness, axis=axis) / sharpness
+    return (
+        tfp.math.reduce_logmeanexp(x * sharpness, axis=axis, keepdims=True) / sharpness
+    )
 
 
 def main():
