@@ -378,7 +378,7 @@ class Recording:
                 else:
                     e = t.end
                 intersect = e - s
-                if intersect > segment_stride:
+                if intersect > 0.5:
                     # if t.start<= start and t.end <= end:
                     other_tracks.append(t)
                     labels = labels | t.human_tags
