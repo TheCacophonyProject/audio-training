@@ -36,11 +36,13 @@ from tfdataset import get_dataset
 import soundfile as sf
 import matplotlib
 from custommels import mel_spec
-from denoisetest import signal_noise, space_signals
+from denoisetest import signal_noise, space_signals, signal_noise_data
 from plot_utils import plot_mel, plot_mel_signals
 import matplotlib.patches as patches
 
 matplotlib.use("TkAgg")
+
+CALL_LENGTH = 1
 
 
 #
@@ -102,19 +104,84 @@ def preprocess_file_signals(file, seg_length, stride, hop_length, mean_sub, use_
     return mels, len(frames) / sr
 
 
+def denoise_spec(spectogram, sr):
+    # And compute the spectrogram magnitude and phase
+    S_full, phase = librosa.magphase(spectogram)
+    S_filter = librosa.decompose.nn_filter(
+        S_full,
+        aggregate=np.median,
+        metric="cosine",
+        width=int(librosa.time_to_frames(2, sr=sr)),
+    )
+
+    # The output of the filter shouldn't be greater than the input
+    # if we assume signals are additive.  Taking the pointwise minimium
+    # with the input spectrum forces this.
+    S_filter = np.minimum(S_full, S_filter)
+    margin_i, margin_v = 2, 10
+    power = 2
+
+    mask_i = librosa.util.softmask(
+        S_filter, margin_i * (S_full - S_filter), power=power
+    )
+
+    mask_v = librosa.util.softmask(S_full - S_filter, margin_v * S_filter, power=power)
+    return mask_v * spectogram
+    # Once we have the masks, simply multiply them with the input spectrum
+    # to separate the components
+
+    S_foreground = mask_v * S_full
+    S_background = mask_i * S_full
+    print("mask", mask_v.shape, spectogram.shape, S_full.shape)
+    stft_fore = spectogram * mask_v
+    y_inv = librosa.griffinlim(np.abs(stft_fore))
+
+    import soundfile as sf
+
+    sf.write("foreground.wav", y_inv, sr)
+    plt.figure(figsize=(12, 8))
+    plt.subplot(3, 1, 1)
+    librosa.display.specshow(
+        librosa.amplitude_to_db(S_full[:], ref=np.max), y_axis="log", sr=sr
+    )
+    plt.title("Full spectrum")
+    plt.colorbar()
+
+    plt.subplot(3, 1, 2)
+    librosa.display.specshow(
+        librosa.amplitude_to_db(S_background[:], ref=np.max), y_axis="log", sr=sr
+    )
+    plt.title("Background")
+    plt.colorbar()
+    plt.subplot(3, 1, 3)
+    librosa.display.specshow(
+        librosa.amplitude_to_db(S_foreground[:], ref=np.max),
+        y_axis="log",
+        x_axis="time",
+        sr=sr,
+    )
+    plt.title("Foreground")
+    plt.colorbar()
+    plt.tight_layout()
+    plt.show()
+
+
 def show_signals(file):
     frames, sr = load_recording(file)
-    signals, noise = signal_noise(file)
 
-    s_data = frames[3 * sr : int(5.5 * sr)]
+    s_data = frames[: sr * 3]
     print(s_data)
     n_fft = sr // 10
     hop_length = 281
     spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
+    denoised_stft = denoise_spec(spectogram, sr)
+    # return
+    signals, noise = signal_noise_data(spectogram, sr)
+    signals2, noise = signal_noise_data(denoised_stft, sr)
+    mel = mel_spec(denoised_stft, sr, n_fft, hop_length, 120, 50, 11000, power=1)
+    # S = librosa.feature.melspectrogram(y=frames, sr=sr, power=1)
 
-    mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000, power=1)
-
-    plot_mel_signals(mel, signals)
+    plot_mel_signals(mel, signals, signals2)
 
 
 def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
@@ -152,6 +219,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             print("data is now", len(s_data) / sr)
 
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
+
         # spectogram = np.clip(spectogram, 0, np.mean(spectogram))
 
         # print(spectogram.shape)
@@ -161,7 +229,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         # spectogram[:100, :] *= 0.5
 
         # spectogram[:100, :]
-        mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000, power=2)
+        mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000, power=1)
         half = mel[:, 75:]
         if np.amax(half) == np.amin(half):
             print("mel max is same")
@@ -172,7 +240,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             # 1 / 0
         # mel = librosa.power_to_db(mel, ref=np.max)
         # plot_mel(mel, i)
-        # if i == 7:
+        # if i == 10:
         #     break
         # mel2 = np.power(mel, 0.1)
         # plot_mel(mel2, i)
@@ -234,6 +302,8 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
 def main():
     init_logging()
     args = parse_args()
+    # show_signals(args.file)
+    # return
     # db_check(args.file)
     # return
     load_model = Path(args.model)
@@ -267,6 +337,8 @@ def main():
     hop_length = meta.get("hop_length", 640)
     prob_thresh = meta.get("threshold", 0.7)
     hop_length = 281
+    segment_stride = 0.2
+    # segment_stride = 0.25
     # print("stride is", segment_stride)
     # segment_length = 2
     # segment_stride = 0.5
@@ -334,8 +406,8 @@ def main():
     tracks = []
     start = 0
     active_tracks = {}
-    for prediction in predictions:
-        print("at", start, np.round(prediction * 100))
+    for i, prediction in enumerate(predictions):
+        print("at", start, "-", start + segment_length, np.round(prediction * 100))
         # break
         if start + segment_length > length:
             print("final one")
@@ -368,10 +440,16 @@ def main():
             if track.label not in track_labels or (
                 track.label == "bird" and specific_bird
             ):
-                if specific_bird:
-                    track.end = start
-                else:
-                    track.end = track.end - segment_length / 2
+                # if specific_bird:
+                # pass
+                # track.end = start
+                track.end = start + CALL_LENGTH
+                # track.end = track.end - segment_stride
+                if track.end > length:
+                    track.end = length
+
+                # else:
+                # track.end = track.end - segment_length / 2
                 del active_tracks[track.label]
                 # print("removed", track.label)
 
@@ -382,11 +460,24 @@ def main():
                 continue
             track = active_tracks.get(label, None)
             if track is None:
-                track = Track(label, start, start + segment_length, r[0])
+                t_s = start
+                t_e = start + segment_length
+                if start > 0:
+                    t_s = start - segment_stride + segment_length - CALL_LENGTH
+
+                if (i + 1) < len(predictions):
+                    t_e = start + segment_stride + CALL_LENGTH
+                t_e = max(t_s, t_e)
+                track = Track(label, t_s, t_e, r[0])
+                # track = Track(label, start, start + segment_length, r[0])
+
                 tracks.append(track)
                 active_tracks[label] = track
+                print("Creating track for", label, track.start, track.end)
             else:
-                track.end = start + segment_length
+                track.end = start + segment_stride + CALL_LENGTH
+                # track.end = start - segment_stride
+
                 track.confidences.append(r[0])
             # else:
 
@@ -397,23 +488,66 @@ def main():
 
         start += segment_stride
     for t in tracks:
+        # new_start = t.start
+        # new_end = t.end
+        # if t.start > 0:
+        #     # since previous prediction wasnt this
+        #     # we could say that t.start - segment_stride + segment_length doesn't contain this species
+        #     # or is mid call so for safety can add a 0.5 to it
+        #     #  i.e. start is 5 - 7.5
+        #     # 4.75 - 7.25 has no bird
+        #     # so probably start should be  #7.25 - 0.5 for safety
+        #     new_start = t.start - segment_stride + segment_length - 1
+        #     # same for end
+        #     # at t.end + 1 - segment _length no bird, which probably means
+        #     #  i.e end is 5 (predicted on 2.5 - 5) has bird
+        #     #  2.75 - 5.25 no bird
+        #     #  so probably should end at 2.5 + 0.5 for safety
+        # if t.end < length:
+        #     new_end = t.end - segment_length + segment_stride + 1
+
         print(f"{t.start}-{t.end} have {t.label}")
 
     signals, noise = signal_noise(file)
     signals = space_signals(signals, 0.2)
     print("Have ", len(signals), " possible signals")
     chirps = 0
+    sorted_tracks = [
+        t for t in tracks if t.label in ["bird", "kiwi", "whistler", "morepork"]
+    ]
+    sorted_tracks = sorted(
+        sorted_tracks,
+        key=lambda track: track.start,
+    )
+    last_end = 0
+    track_index = 0
     for s in signals:
-        for t in tracks:
+        if track_index >= len(sorted_tracks):
+            break
+        while track_index < len(sorted_tracks):
+            t = sorted_tracks[track_index]
+            start = t.start
+            end = t.end
+            if start < last_end:
+                start = last_end
+                end = max(start, end)
             # overlap
-            if ((t.end - t.start) + (s[1] - s[0])) > max(t.end, s[1]) - min(
-                t.start, s[0]
-            ):
+            if ((end - start) + (s[1] - s[0])) > max(end, s[1]) - min(start, s[0]):
                 # print("Have track", t, " for ", s, t.start, t.end, t.label)
                 if t.label in ["bird", "kiwi", "whistler", "morepork"]:
-                    print("USING", s)
                     chirps += 1
-    print("Have ", chirps, " chirps")
+                if end > s[1]:
+                    # check next signal
+                    break
+            elif start > s[1]:
+                break
+            last_end = end
+            track_index += 1
+    gap = 0.20000001
+    max_chirps = length / gap
+    max_chirps = math.ceil(max_chirps)
+
+    print("Have ", chirps, " chirps/", max_chirps)
 
 
 def parse_args():

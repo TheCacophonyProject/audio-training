@@ -52,8 +52,8 @@ SAMPLE_GROUP_ID = 0
 
 class Config:
     def __init__(self, **args):
-        self.segment_length = args.get("seg_length", 2.5)
-        self.segment_stride = args.get("stride", 1)
+        self.segment_length = args.get("seg_length", 5)
+        self.segment_stride = args.get("stride", 4.5)
         self.hop_length = args.get("hop_length", 281)
         self.break_freq = args.get("break_freq", 1750)
         self.htk = not args.get("slaney", False)
@@ -339,7 +339,7 @@ class Recording:
             self.tracks,
             key=lambda track: track.start,
         )
-
+        actual_s = segment_stride
         self.samples = []
         if len(sorted_tracks) == 0:
             return
@@ -394,12 +394,18 @@ class Recording:
                     bin_id,
                 )
             )
+            if "morepork" in labels:
+                segment_stride = 3.5
+            else:
+                segment_stride = actual_s
             # print("sample length is", self.samples[-1].length)
             start += segment_stride
             # print("track end is ", track.end, " and start is", start)
             if (track.end - start) < segment_length / 2:
                 old_end = track.end
                 track = None
+                start = start - segment_length
+                # find the next track after start
                 # get new track
                 for z, t in enumerate(sorted_tracks[i:]):
                     # print("checking track ", t.human_tags, t.start)
@@ -423,9 +429,9 @@ class Recording:
         # other_tracks = [t for t in sorted_tracks[i:] if t.start<= start and t.end >= end]
         # for t in sorted_tracks:
         # for t in self.tracks:
-        #     print(self.id, "have track from ", t.start, t.end)
+        # print(self.id, "have track from ", t.start, t.end)
         # for s in self.samples:
-        #     print(self.id, "Have sample", s.start, s.end, s.tags, self.filename)
+        # print(self.id, "Have sample", s.start, s.end, s.tags, self.filename)
 
     def load_recording(self, resample=None):
         try:

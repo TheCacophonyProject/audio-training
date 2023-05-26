@@ -63,12 +63,14 @@ def load_recording(file, resample=48000):
 
 def signal_noise(file, hop_length=281):
     frames, sr = load_recording(file)
-
     # frames = frames[:sr]
     n_fft = sr // 10
     # frames = frames[: sr * 3]
     spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
+    return signal_noise_data(spectogram, sr, hop_length)
 
+
+def signal_noise_data(spectogram, sr, hop_length=281):
     a_max = np.amax(spectogram)
     spectogram = spectogram / a_max
     row_medians = np.median(spectogram, axis=1)
@@ -117,6 +119,7 @@ def signal_noise(file, hop_length=281):
     noise_start = -1
     signals = []
     noise = []
+
     for c in indicator_vector.T:
         # print("indicator", c)
         if c[0] == 255:
