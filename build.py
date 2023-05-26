@@ -360,9 +360,9 @@ def main():
     # config = load_config(args.config_file)
     dataset = AudioDataset("all", config)
     dataset.load_meta(args.dir)
-    for r in dataset.recs:
-        if "whistler" not in r.human_tags:
-            print(r.id, " missing", r.human_tags)
+    # for r in dataset.recs:
+    #     if "whistler" not in r.human_tags:
+    #         print(r.id, " missing", r.human_tags)
     # trim_noise(dataset)
     # return
     # dataset.load_meta()
@@ -370,6 +370,7 @@ def main():
     dataset.print_counts()
     datasets = split_randomly(dataset, no_test=args.no_test)
     dataset.print_counts()
+
     all_labels = set()
     for d in datasets:
         logging.info("%s Dataset", d.name)

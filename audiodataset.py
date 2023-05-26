@@ -332,7 +332,7 @@ class Recording:
     def space_signals(self, spacing=0.1):
         self.signals = space_signals(signals, spacing)
 
-    def load_samples(self, segment_length, segment_stride):
+    def load_samples_old(self, segment_length, segment_stride):
         global SAMPLE_GROUP_ID
         SAMPLE_GROUP_ID += 1
         sorted_tracks = sorted(
@@ -432,6 +432,74 @@ class Recording:
         # print(self.id, "have track from ", t.start, t.end)
         # for s in self.samples:
         # print(self.id, "Have sample", s.start, s.end, s.tags, self.filename)
+
+    def load_samples(self, segment_length, segment_stride):
+        self.samples = []
+        global SAMPLE_GROUP_ID
+        SAMPLE_GROUP_ID += 1
+        sorted_tracks = sorted(
+            self.tracks,
+            key=lambda track: track.start,
+        )
+        # can be used to seperate among train/val/test
+        bin_id = f"{self.id}-0"
+
+        actual_s = segment_stride
+        for track in self.tracks:
+            if "morepork" in track.human_tags:
+                # sometimes long tracks with multiple calls, think this should seperate them
+                segment_stride = 3.5
+            else:
+                segment_stride = actual_s
+            start = track.start
+            end = start + segment_length
+            end = min(end, track.end)
+            while True:
+                labels = set(track.human_tags)
+                other_tracks = []
+                for other_track in sorted_tracks:
+                    if track == other_track:
+                        continue
+
+                    # starts in this sample
+                    if other_track.start > end:
+                        break
+                    overlap = (
+                        (end - start)
+                        + (other_track.length)
+                        - (max(end, other_track.end) - min(start, other_track.start))
+                    )
+
+                    # enough overlap or we engulf the track
+                    if overlap > 0.5 or (overlap > 0 and end > other_track.end):
+                        # if t.start<= start and t.end <= end:
+                        other_tracks.append(other_track)
+                        labels = labels | other_track.human_tags
+
+                self.samples.append(
+                    AudioSample(
+                        self,
+                        labels,
+                        start,
+                        min(track.end, end),
+                        [track.id for t in other_tracks],
+                        SAMPLE_GROUP_ID,
+                        bin_id,
+                    )
+                )
+                start += segment_stride
+                end = start + segment_length
+                end = min(end, track.end)
+                if start > track.end:
+                    break
+
+        # other_tracks = [t for t in sorted_tracks[i:] if t.start<= start and t.end >= end]
+        # for t in sorted_tracks:
+        # print("FOR ", self.id)
+        # for t in self.tracks:
+        #     print(self.id, "have track from ", t.start, t.end)
+        # for s in self.samples:
+        #     print(self.id, "Have sample", s.start, s.end, s.tags, self.filename)
 
     def load_recording(self, resample=None):
         try:
@@ -700,10 +768,7 @@ def load_data(
             offset = 0
             s_data[offset : offset + len(sub)] = sub
         assert len(s_data) == int(segment_l * sr)
-        if htk:
-            spectogram = np.abs(
-                librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length)
-            )
+        spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
         #     mel = mel_spec(
         #         spectogram,
         #         sr,
