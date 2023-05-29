@@ -85,8 +85,8 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
 
     # Original is based of 90 mels, if we want to put all mels into a singl channel can add a nother conv
     # see how they perform
-    # x = tf.keras.layers.Conv2D(128, (12, 3), activation=tf.keras.layers.LeakyReLU())(x)
-    # x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Conv2D(128, (12, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Conv2D(128, (17, 3), activation=tf.keras.layers.LeakyReLU())(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
@@ -119,8 +119,8 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
         activation=tf.keras.layers.LeakyReLU(),
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
-    x = logmeanexp(x, sharpness=1, axis=2)
-    x = tf.keras.layers.GlobalAveragePooling2D()(x)
+    # x = logmeanexp(x, sharpness=1, axis=2)
+    x = tf.keras.layers.GlobalAveragePooling2D(keepdims=True)(x)
 
     x = tf.keras.activations.sigmoid(x)
 
@@ -137,7 +137,7 @@ def logmeanexp(x, axis=None, keepdims=False, sharpness=5):
 def main():
     init_logging()
     args = parse_args()
-    model = build_model((120, 480), None, 2)
+    model = build_model((120, 480), None, 6)
     model.summary()
     model.compile(
         optimizer=tf.keras.optimizers.Adam(),

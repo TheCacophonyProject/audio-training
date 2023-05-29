@@ -39,6 +39,8 @@ from custommels import mel_spec
 from denoisetest import signal_noise, space_signals, signal_noise_data
 from plot_utils import plot_mel, plot_mel_signals
 import matplotlib.patches as patches
+import tensorflow_hub as hub
+import csv
 
 matplotlib.use("TkAgg")
 
@@ -188,7 +190,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
     frames, sr = load_recording(file)
     length = len(frames) / sr
     end = 0
-    sample_size = int(2.5 * sr)
+    sample_size = int(seg_length * sr)
     logging.info(
         "sr %s seg %s sample size %s stride %s hop%s mean sub %s mfcc %s",
         sr,
@@ -207,19 +209,20 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
     while end < (length + stride):
         start_offset = i * sr_stride
 
-        end = i * stride + 2.5
+        end = i * stride + seg_length
 
         if end > length:
             s_data = frames[-sample_size:]
         else:
             s_data = frames[start_offset : start_offset + sample_size]
-        if len(s_data) < 2.5 * sr:
+        if len(s_data) < seg_length * sr:
             print("data is", len(s_data) / sr)
             s_data = np.pad(s_data, (0, int(1.5 * sr)))
             print("data is now", len(s_data) / sr)
 
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
-
+        # print(spectogram.shape)
+        # spectogram[:100, :] = 0
         # spectogram = np.clip(spectogram, 0, np.mean(spectogram))
 
         # print(spectogram.shape)
@@ -240,6 +243,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             # 1 / 0
         # mel = librosa.power_to_db(mel, ref=np.max)
         # plot_mel(mel, i)
+        # break
         # if i == 10:
         #     break
         # mel2 = np.power(mel, 0.1)
@@ -302,6 +306,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
 def main():
     init_logging()
     args = parse_args()
+    # get_speech_score(args.file)
     # show_signals(args.file)
     # return
     # db_check(args.file)
@@ -320,6 +325,7 @@ def main():
         # },
         compile=False,
     )
+    model.summary()
     # model = tf.keras.models.load_model(str(load_model))
 
     # model.load_weights(load_model / "val_binary_accuracy").expect_partial()
@@ -338,6 +344,7 @@ def main():
     prob_thresh = meta.get("threshold", 0.7)
     hop_length = 281
     segment_stride = 0.2
+    print("thresh is", prob_thresh)
     # segment_stride = 0.25
     # print("stride is", segment_stride)
     # segment_length = 2
@@ -407,7 +414,14 @@ def main():
     start = 0
     active_tracks = {}
     for i, prediction in enumerate(predictions):
-        print("at", start, "-", start + segment_length, np.round(prediction * 100))
+        print(
+            np.sum(prediction),
+            "at",
+            start,
+            "-",
+            start + segment_length,
+            np.round(prediction * 100),
+        )
         # break
         if start + segment_length > length:
             print("final one")
@@ -443,14 +457,15 @@ def main():
                 # if specific_bird:
                 # pass
                 # track.end = start
-                track.end = start + CALL_LENGTH
-                # track.end = track.end - segment_stride
+                # track.end = start + CALL_LENGTH
+                track.end = track.end - segment_stride
                 if track.end > length:
                     track.end = length
 
                 # else:
                 # track.end = track.end - segment_length / 2
-                del active_tracks[track.label]
+                if start >= track.end:
+                    del active_tracks[track.label]
                 # print("removed", track.label)
 
         for r in results:
@@ -468,16 +483,16 @@ def main():
                 if (i + 1) < len(predictions):
                     t_e = start + segment_stride + CALL_LENGTH
                 t_e = max(t_s, t_e)
-                track = Track(label, t_s, t_e, r[0])
-                # track = Track(label, start, start + segment_length, r[0])
-
+                # track = Track(label, t_s, t_e, r[0])
+                track = Track(label, start, start + segment_length, r[0])
+                print("Creating track", label, start)
                 tracks.append(track)
                 active_tracks[label] = track
-                print("Creating track for", label, track.start, track.end)
             else:
-                track.end = start + segment_stride + CALL_LENGTH
-                # track.end = start - segment_stride
-
+                # track.end = start + segment_stride + CALL_LENGTH
+                track.end = start + segment_length
+                if track.end > length:
+                    track.end = length
                 track.confidences.append(r[0])
             # else:
 
@@ -589,6 +604,58 @@ class Track:
         likelihood = float(round((100 * np.mean(np.array(self.confidences))), 2))
         meta["likelihood"] = likelihood
         return meta
+
+
+def get_speech_score(file):
+    """Check whether the audio contains human speech."""
+    speech_filter_width = 5
+    sr = 16000
+    class_names = class_names_from_csv(
+        "/home/gp/cacophony/chirp/models/yamnnet/assets/yamnet_class_map.csv"
+    )
+    audio, sr = load_recording(file, resample=sr)
+    yamnet_model_handle = "https://tfhub.dev/google/yamnet/1"
+    yamnet_model = hub.load(yamnet_model_handle)
+    # if self.speech_filter_threshold <= 0.0:
+    #   return -1.0
+    # resample audio to yamnet 16kHz target.
+
+    scores, embeddings, log_mel_spectrogram = yamnet_model(audio)
+    print(scores.shape)
+    for s in scores.numpy():
+        # print(s)
+        print(np.round(s * 100))
+        max_i = s.argmax()
+        print("At ", class_names[max_i], np.amax(s) * 100)
+    # print(
+    #     class_names[scores.numpy().mean(axis=0).argmax()]
+    # )  # # Apply a low-pass filter over the yamnet speech logits.
+
+
+# # This ensures that transient false positives don't ruin our day.
+# speech_logits = (
+#     np.convolve(speech_logits, np.ones([speech_filter_width]), 'valid') / width
+# )
+# return speech_logits.max()
+
+
+def class_names_from_csv(csv_file):
+    """Returns list of class names corresponding to score vector."""
+    # Open a file: file
+    import io
+
+    with open(csv_file, mode="r") as f:
+        class_map_csv_text = f.read()
+        # csv_r = csv.reader(f, delimiter=",", quotechar="|")
+        # for class_index, mid, display_name in csv.reader(csv_r):
+        #     print("have ", display_name, class_index)
+
+    class_map_csv = io.StringIO(class_map_csv_text)
+    class_names = [
+        display_name for (class_index, mid, display_name) in csv.reader(class_map_csv)
+    ]
+    class_names = class_names[1:]  # Skip CSV header
+    return class_names
 
 
 if __name__ == "__main__":

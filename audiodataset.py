@@ -275,7 +275,8 @@ class AudioSample:
         self.track_ids = track_ids
         self.spectogram_data = None
         self.sr = None
-
+        self.logits = None
+        self.embeddings = None
         self.group = group_id
         if bin_id is None:
             self.bin_id = f"{self.rec_id}"

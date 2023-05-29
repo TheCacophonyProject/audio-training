@@ -46,6 +46,7 @@ import librosa
 
 from audiodataset import load_data, SpectrogramData
 from multiprocessing import Pool
+import tensorflow_hub as hub
 
 import psutil
 
@@ -115,16 +116,77 @@ def create_tf_example(sample, labels):
     return example, 0
 
 
+EMBEDDING = "embedding"
+RAW_AUDIO = "raw_audio"
+RAW_AUDIO_SHAPE = "raw_audio_shape"
+LOGITS = "logits"
+EMBEDDING_SHAPE = "embedding_shape"
+
+
+def create_tf_embed(sample, labels):
+    tags = sample.tags_s
+    track_ids = " ".join(map(str, sample.track_ids))
+    feature_dict = {
+        "audio/rec_id": tfrecord_util.bytes_feature(str(sample.rec_id).encode("utf8")),
+        "audio/track_id": tfrecord_util.bytes_feature(track_ids.encode("utf8")),
+        "audio/sample_rate": tfrecord_util.int64_feature(sample.sr),
+        "audio/length": tfrecord_util.float_feature(sample.length),
+        "audio/start_s": tfrecord_util.float_feature(sample.start),
+        "audio/class/text": tfrecord_util.bytes_feature(tags.encode("utf8")),
+        EMBEDDING: tfrecord_util.float_list_feature(sample.embeddings.ravel()),
+        LOGITS: tfrecord_util.float_list_feature(sample.logits.ravel()),
+        EMBEDDING_SHAPE: (tfrecord_util.int64_list_feature(sample.embeddings.shape),),
+    }
+    example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
+    return example, 0
+
+
 config = None
+labels = None
+writer = None
+base_dir = None
+saved = 0
+writer_i = 0
+model = None
 
 
-def worker_init(c):
+def worker_init(c, l, d):
     global config
+    global labels
+    global base_dir
+    labels = l
     config = c
+    base_dir = d
+    assign_writer()
+
+    global model
+    # Load the model.
+    model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
+
+
+def close_writer(empty=None):
+    global writer
+    if writer is not None:
+        logging.info("Closing old writer")
+        writer.close()
+
+
+def assign_writer():
+    close_writer()
+    pid = os.getpid()
+    global writer_i
+    writer_i += 1
+    w = name = f"{writer_i}-{pid}.tfrecord"
+    logging.info("assigning writer %s", w)
+    options = tf.io.TFRecordOptions(compression_type="GZIP")
+    global writer
+    writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
 
 
 def get_data(rec):
+    global writer
     resample = 48000
+    tf_examples = []
     try:
         aro = audioread.ffdec.FFmpegAudioFile(rec.filename)
         frames, sr = librosa.load(aro, sr=None)
@@ -164,13 +226,102 @@ def get_data(rec):
                 sample.sr = resample
             except:
                 logging.error("Error %s ", rec.id, exc_info=True)
-            # sample.sr = sr
+            tf_example, num_annotations_skipped = create_tf_example(sample, labels)
+            writer.write(tf_example.SerializeToString())
+            sample = None
     except:
         logging.error("Got error %s", rec.filename, exc_info=True)
         print("ERRR return None")
         return None
+    global saved
+    saved += 1
 
-    return samples
+    logging.info("Total Saved %s", saved)
+    if saved > 200:
+        assign_writer()
+    # return tf_examples
+
+
+def save_embeddings(rec):
+    global writer
+    resample = 32000
+    tf_examples = []
+    try:
+        aro = audioread.ffdec.FFmpegAudioFile(rec.filename)
+        frames, sr = librosa.load(aro, sr=None)
+        aro.close()
+    except:
+        logging.error("Error loading rec %s ", rec.filename, exc_info=True)
+        try:
+            aro.close()
+        except:
+            pass
+        return None
+
+    try:
+        # hack to handle getting new samples without knowing length until load
+        if resample is not None and resample != sr:
+            frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
+            sr = resample
+        for t in rec.tracks:
+            if t.end is None:
+                logging.info(
+                    "Track end is none so setting to rec length %s", len(frames) / sr
+                )
+                t.end = len(frames) / sr
+        # rec.tracks[0].end = len0(frames) / sr
+        rec.load_samples(config.segment_length, config.segment_stride)
+        samples = rec.samples
+        rec.sample_rate = resample
+        for i, sample in enumerate(samples):
+            try:
+                start = sample.start * sr
+                start = round(start)
+                end = round(sample.end * sr)
+                s_data = frames[start:end]
+                data_length = len(s_data) / sr
+                if len(s_data) < int(config.segment_length * sr):
+                    s_data = np.pad(
+                        s_data, (0, config.segment_length * sr - len(s_data))
+                    )
+
+                sample.sr = resample
+                sample.spectogram_data = s_data
+            except:
+                logging.error("Error %s ", rec.id, exc_info=True)
+        get_embeddings(samples)
+        for s in samples:
+            print(
+                "embeddings",
+                s.embeddings.shape,
+                s.logits.shape,
+                s.embeddings.dtype,
+                s.logits.dtype,
+            )
+            tf_example, num_annotations_skipped = create_tf_embed(sample, labels)
+            writer.write(tf_example.SerializeToString())
+        sample = None
+    except:
+        logging.error("Got error %s", rec.filename, exc_info=True)
+        print("ERRR return None")
+        return None
+    global saved
+    saved += 1
+
+    logging.info("Total Saved %s", saved)
+    if saved > 200:
+        assign_writer()
+
+
+def get_embeddings(samples):
+    # model = models.TaxonomyModelTF(32000,"./models/chirp-model/", 5.0, 5.0)
+    input = np.array([s.spectogram_data for s in samples])
+    logging.info("Getting embeddings %s", len(samples))
+    for s in samples:
+        logits, embeddings = model.infer_tf(s.spectogram_data[np.newaxis, :])
+        s.logits = logits.numpy()[0]
+        s.embeddings = embeddings.numpy()[0]
+    # return logits, embeddings
 
 
 def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
@@ -197,23 +348,29 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     lbl_counts = [0] * num_labels
     # lbl_counts[l] = 0
     logging.info("labels are %s", labels)
-    options = tf.io.TFRecordOptions(compression_type="GZIP")
+    # options = tf.io.TFRecordOptions(compression_type="GZIP")
+    #
+    # writers = []
+    # for i in range(num_shards):
+    #     name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
+    #     writers.append(tf.io.TFRecordWriter(str(output_path / name), options=options))
 
-    writers = []
-    for i in range(num_shards):
-        name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
-        writers.append(tf.io.TFRecordWriter(str(output_path / name), options=options))
-
-    processes = 8
+    processes = 2
     load_first = processes * 8
     total_recs = len(samples)
     total_saved_recs = 0
+    resc_per_file = 1000
+    writer_i = 0
+    process_saved = 0
     try:
         with Pool(
             initializer=worker_init,
-            initargs=(dataset.config,),
+            initargs=(
+                dataset.config,
+                labels,
+                output_path,
+            ),
             processes=processes,
-            maxtasksperchild=10,
         ) as pool:
             count = 0
             while len(samples) > 0:
@@ -232,39 +389,44 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     # sample.rec.rec_data = None
                     pool_data.append(rec)
                 loaded = []
-
-                for data in pool.imap_unordered(get_data, pool_data, chunksize=2):
-                    if data is None:
-                        continue
-                    loaded.extend(data)
-                loaded = np.array(loaded, dtype=object)
-                np.random.shuffle(loaded)
-                logging.info("saving %s", len(loaded))
-                for sample in loaded:
-                    if sample.spectogram_data is None:
-                        logging.info("spec data is none %s", sample.rec.id)
-                        continue
-                    try:
-                        tf_example, num_annotations_skipped = create_tf_example(
-                            sample, labels
-                        )
-                        total_num_annotations_skipped += num_annotations_skipped
-                        # do this by group where group is a track_id
-                        # (possibly should be a recording id where we have more data)
-                        # means we can KFold our dataset files if we want
-                        writer = writers[count % num_shards]
-                        writer.write(tf_example.SerializeToString())
-                        sample.spectogram_data = None
-
-                        # print("saving example", [count % num_shards])
-                        count += 1
-                        if count % 100 == 0:
-                            logging.info("saved %s", count)
-                        # count += 1
-                    except Exception as e:
-                        logging.error("Error saving ", exc_info=True)
+                res = [
+                    0
+                    for data in pool.imap_unordered(
+                        save_embeddings, pool_data, chunksize=2
+                    )
+                ]
+                #     if data is None:
+                #         continue
+                #     loaded.extend(data)
+                # loaded = np.array(loaded, dtype=object)
+                # np.random.shuffle(loaded)
+                # logging.info("saving %s", len(loaded))
+                # for tf_example in loaded:
+                #     # if sample.spectogram_data is None:
+                #     #     logging.info("spec data is none %s", sample.rec.id)
+                #     #     continue
+                #     try:
+                #         #     tf_example, num_annotations_skipped = create_tf_example(
+                #         #         sample, labels
+                #         #     )
+                #         #     total_num_annotations_skipped += num_annotations_skipped
+                #         # do this by group where group is a track_id
+                #         # (possibly should be a recording id where we have more data)
+                #         # means we can KFold our dataset files if we want
+                #         writer = writers[count % num_shards]
+                #         writer.write(tf_example.SerializeToString())
+                #         sample.spectogram_data = None
+                #
+                #         # print("saving example", [count % num_shards])
+                #         count += 1
+                #         if count % 100 == 0:
+                #             logging.info("saved %s", count)
+                #         # count += 1
+                #     except Exception as e:
+                #         logging.error("Error saving ", exc_info=True)
                 saved_s = len(loaded)
                 total_saved_recs += len(local_set)
+
                 del loaded
                 loaded = None
                 logging.info(
@@ -275,6 +437,8 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     saved_s,
                     psutil.virtual_memory()[2],
                 )
+            empty = [None] * processes
+            [0 for data in pool.imap_unordered(close_writer, empty, chunksize=1)]
     except:
         logging.error("Error saving track info", exc_info=True)
     for writer in writers:

@@ -83,7 +83,7 @@ def plot_mel(mel, i=0):
         fmax=11000,
         fmin=50,
         ax=ax,
-        hop_length=201,
+        hop_length=281,
     )
     fig.colorbar(img, ax=ax, format="%+2.f dB")
 
