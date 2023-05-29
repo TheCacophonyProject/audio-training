@@ -67,57 +67,7 @@ GENERIC_BIRD_LABELS = [
 ]
 
 OTHER_LABELS = ["chicken", "rooster", "frog", "insect"]
-# signals = Path("./signal-data/train")
-# wavs = list(signals.glob("*.wav"))
-# for w in wavs:
-#     if "bird" in w.stem:
-#         BIRD_PATH.append(w)
-#     else:
-#         for noise in NOISE_LABELS:
-#             if noise in w.stem:
-#                 NOISE_PATH.append(w)
-#                 break
-# BIRD_LABELS = ["bird"]
-# NOISE_LABELS = []
-# NOISE_PATH = NOISE_PATH[:2]
-# BIRD_PATH = BIRD_PATH[:2]
-# NOISE_LABELS = []
-insect = None
-fp = None
-HOP_LENGTH = 281
-N_MELS = 120
-SR = 48000
-BREAK_FREQ = 1750
-MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, 4800, BREAK_FREQ)
-MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
-DIMENSIONS = (160, 188)
-
-mel_s = (120, 428)
-sftf_s = (2401, 188)
-mfcc_s = (20, 188)
-DIMENSIONS = mel_s
-mel_bins = librosa.mel_frequencies(128, fmax=48000 / 2)
-human_lowest = np.where(mel_bins < 60)[-1][-1]
-human_max = np.where(mel_bins > 180)[0][0]
-
-
-# 60-180hz
-human_mel = (human_lowest, human_max)
-human_mask = np.zeros((mel_s), dtype=bool)
-human_mask[human_mel[0] : human_mel[0] + human_mel[1]] = 1
-
-# 600-1200
-# frequency_min = 600
-# frequency_max = 1200
-more_lower = np.where(mel_bins < 600)[-1][-1]
-more_max = np.where(mel_bins > 1200)[0][0]
-
-
-morepork_mel = (more_lower, more_max)
-
-morepork_mask = np.zeros((mel_s), dtype=bool)
-morepork_mask[morepork_mel[0] : morepork_mel[0] + morepork_mel[1]] = 1
-
+DIMENSIONS = [1280]
 with open(str("zvalues.txt"), "r") as f:
     zvals = json.load(f)
 
@@ -176,7 +126,7 @@ def load_dataset(filenames, num_labels, args):
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
-    filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[1]))
+    filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
     dataset = dataset.filter(filter_nan)
 
     filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
@@ -492,76 +442,11 @@ def resample(dataset, labels, og):
     return dataset
 
 
-def resample_old(dataset, labels):
-    excluded_labels = []
-    # excluded_labels = ["human", "bird", "morepork", "kiwi"]
-    num_labels = len(labels)
-    true_categories = [y for x, y in dataset]
-    if len(true_categories) == 0:
-        return None
-    true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    c = Counter(list(true_categories))
-    print("COUNTER", c)
-    dist = np.empty((num_labels), dtype=np.float32)
-    target_dist = np.empty((num_labels), dtype=np.float32)
-    for i in range(num_labels):
-        if labels[i] in excluded_labels:
-            dist[i] = 0
-            logging.info("Excluding %s for %s", c[i], labels[i])
-
-        else:
-            dist[i] = c[i]
-
-            logging.info("Have %s for %s", dist[i], labels[i])
-    # GP TESTING Just to remove some labels
-    dist = dist / np.sum(dist)
-
-    zeros = dist[dist == 0]
-    non_zero_labels = num_labels - len(zeros)
-    target_dist[:] = 1 / non_zero_labels
-
-    dist = dist / np.sum(dist)
-    dist_max = np.max(dist)
-    # really this is what we want but when the values become too small they never get sampled
-    # so need to try reduce the large gaps in distribution
-    # can use class weights to adjust more, or just throw out some samples
-    max_range = target_dist[0] / 2
-    for i in range(num_labels):
-        if dist[i] == 0:
-            target_dist[i] = 0
-        # elif dist_max - dist[i] > (max_range * 2):
-        # target_dist[i] = dist[i]
-        # print("adjusting for ", labels[i])
-        target_dist[i] = max(0, target_dist[i])
-    target_dist = target_dist / np.sum(target_dist)
-    rej = dataset.rejection_resample(
-        class_func=class_func,
-        target_dist=target_dist,
-    )
-    dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
-    return dataset
-
-
-@tf.function
-def mel_from_raw(raw):
-    stft = tf.signal.stft(
-        raw,
-        4800,
-        HOP_LENGTH,
-        fft_length=4800,
-        window_fn=tf.signal.hann_window,
-        pad_end=True,
-        name=None,
-    )
-    stft = tf.transpose(stft, [1, 0])
-    stft = tf.math.abs(stft)
-    # if you want power
-    # stft = tf.math.square(stft)
-    mel = tf.tensordot(MEL_WEIGHTS, stft, 1)
-    # mel = tfio.audio.dbscale(mel, top_db=80)
-
-    mel = tf.expand_dims(mel, 2)
-    return mel
+EMBEDDING = "embedding"
+RAW_AUDIO = "raw_audio"
+RAW_AUDIO_SHAPE = "raw_audio_shape"
+LOGITS = "logits"
+EMBEDDING_SHAPE = "embedding_shape"
 
 
 @tf.function
@@ -578,73 +463,27 @@ def read_tfrecord(
     no_bird=False,
 ):
     bird_l = tf.constant(["bird"])
-    tf_more_mask = tf.constant(morepork_mask)
-    tf_human_mask = tf.constant(human_mask)
     tfrecord_format = {
-        # "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
-        # "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
-        # "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
-        # "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
         "audio/class/text": tf.io.FixedLenFeature((), tf.string),
-        # "audio/length": tf.io.FixedLenFeature((), tf.int64),
-        "audio/raw": tf.io.FixedLenFeature((2401, 428), tf.float32),
-        # "audio/sftf_w": tf.io.FixedLenFeature((), tf.int64),
-        # "audio/sftf_h": tf.io.FixedLenFeature((), tf.int64),
-        # "audio/mel_w": tf.io.FixedLenFeature((), tf.int64),
-        # "audio/mel_h": tf.io.FixedLenFeature((), tf.int64),
-        # "audio/mfcc_w": tf.io.FixedLenFeature((), tf.int64),
-        # "audio/raw": tf.io.FixedLenFeature(
-        #     [
-        #         120000,
-        #     ],
-        #     dtype=tf.float32,
-        # ),
+        EMBEDDING: tf.io.FixedLenFeature((1280), tf.float32),
     }
 
     example = tf.io.parse_single_example(example, tfrecord_format)
-    # raw = example["audio/raw"]
     label = tf.cast(example["audio/class/text"], tf.string)
     labels = tf.strings.split(label, sep="\n")
     global remapped_y, extra_label_map
     extra = extra_label_map.lookup(labels)
     labels = remapped_y.lookup(labels)
     labels = tf.concat([labels, extra], axis=0)
-    stft = example["audio/raw"]
-    stft = tf.reshape(stft, [2401, 428])
-    mel = tf.tensordot(MEL_WEIGHTS, stft, 1)
-    # mel =
-    # mel = example["audio/mel"]
-    # mel = tf.reshape(mel, [*mel_s])
-    # # put mel into ref db
-    # a_max = tf.math.reduce_max(mel)
-    # a_min = tf.math.reduce_min(mel)
-    # m_range = a_max - a_min
-    # mel = 80 * (mel - a_min) / m_range
-    # # mel_no_ref = 80 * mel_no_ref
-    # mel -= 80
-    mel = tf.expand_dims(mel, axis=2)
-    # mel = tf.repeat(mel, 3, axis=2)
-    if augment:
-        logging.info("Augmenting")
-        # tf.random.uniform()
-        # mel = tfio.audio.freq_mask(mel, param=10)
-        # mel = tfio.audio.time_mask(mel, param=10)
-    if mean_sub:
-        print("Subbing mean")
-        mel_m = tf.reduce_mean(mel, axis=1)
-        # gp not sure to mean over axis 0 or 1
-        mel_m = tf.expand_dims(mel_m, axis=1)
-        # mean over each mel bank
-        mel = mel - mel_m
-    #
-    if Z_NORM:
-        print("Subbing znorm")
-        mel = (mel - zvals["mean"]) / zvals["std"]
-    image = mel
+
+    embeddings = tf.cast(example[EMBEDDING], tf.float32)
+    embeddings = tf.reshape(embeddings, [*DIMENSIONS])
+    print(embeddings.shape)
+    # embeddings = tf.expand_dims(mel, axis=2)
+
     if preprocess_fn is not None:
         logging.info("Preprocessing with %s", preprocess_fn)
         raise Exception("Done preprocess for audio")
-        # image = preprocess_fn(image)
 
     if labeled:
         # label = tf.cast(example["audio/class/label"], tf.int32)
@@ -669,9 +508,9 @@ def read_tfrecord(
             label = tf.cast(label, tf.int32)
         label = tf.cast(label, tf.float32)
 
-        return image, label
+        return embeddings, label
 
-    return image
+    return embeddings
 
 
 def class_func(features, label):

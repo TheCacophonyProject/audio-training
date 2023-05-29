@@ -23,13 +23,14 @@ from audiodataset import AudioDataset
 from audiowriter import create_tf_records
 import tensorflow as tf
 from tfdataset import (
-    get_dataset,
-    DIMENSIONS,
+    # get_dataset,
+    # DIMENSIONS,
     get_weighting,
     NOISE_LABELS,
     SPECIFIC_BIRD_LABELS,
     get_excluded_labels,
 )
+from tfdatasetembeddings import get_dataset, DIMENSIONS
 import time
 from pathlib import Path
 from sklearn.metrics import confusion_matrix, multilabel_confusion_matrix
@@ -61,7 +62,8 @@ class AudioModel:
     def __init__(self, model_name="badwinner"):
         self.checkpoint_folder = Path("./train/checkpoints")
         self.log_dir = Path("./train/logs")
-        self.data_dir = "/data/audio-data"
+        # self.data_dir = "/data/audio-data"
+        self.data_dir = "."
         self.model_name = model_name
         self.batch_size = 32
         self.validation = None
@@ -436,6 +438,8 @@ class AudioModel:
             self.model = badwinner.build_model(
                 self.input_shape, None, num_labels, multi_label=multi_label
             )
+        elif self.model_name == "embeddings":
+            self.model = get_linear_model(self.input_shape, len(self.labels))
         else:
             norm_layer = tf.keras.layers.Normalization()
             norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
@@ -898,6 +902,7 @@ def confusion(model, labels, dataset, filename="confusion.png"):
 
     mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
     true_categories = [y for x, y in dataset]
+    print(true_categories)
     true_categories = tf.concat(true_categories, axis=0)
     y_true = []
     for y in true_categories:
@@ -1304,6 +1309,17 @@ def log_hist_weights(model, writer):
                 tf.summary.histogram(tf_var.name, tf_var.numpy(), step=epoch)
 
     return log_hist
+
+
+def get_linear_model(embedding_dim, num_classes):
+    """Create a simple linear Keras model."""
+    model = tf.keras.Sequential(
+        [
+            tf.keras.Input(shape=embedding_dim),
+            tf.keras.layers.Dense(num_classes, activation="sigmoid"),
+        ]
+    )
+    return model
 
 
 if __name__ == "__main__":
