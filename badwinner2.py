@@ -120,7 +120,7 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
     # x = logmeanexp(x, sharpness=1, axis=2)
-    x = tf.keras.layers.GlobalAveragePooling2D(keepdims=True)(x)
+    x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
     x = tf.keras.activations.sigmoid(x)
 
