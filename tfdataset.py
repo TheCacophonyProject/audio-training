@@ -329,11 +329,11 @@ def get_dataset(filenames, labels, **args):
     bird_mask[bird_i] = 1
     bird_mask = tf.constant(bird_mask)
     bird_filter = lambda x, y: tf.math.reduce_all(
-        tf.math.equal(tf.cast(y, tf.bool), bird_mask)
+        tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
     )
     bird_dataset = dataset.filter(bird_filter)
     others_filter = lambda x, y: not tf.math.reduce_all(
-        tf.math.equal(tf.cast(y, tf.bool), bird_mask)
+        tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
     )
     dataset = dataset.filter(others_filter)
 
