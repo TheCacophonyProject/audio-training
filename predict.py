@@ -303,6 +303,42 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
     return mels, length
 
 
+def get_chirp_samples(rec_data, sr=32000, stride=1):
+    start = 0
+    length = 5
+
+    samples = []
+    while True:
+        sr_s = start * sr
+        sr_e = (start + length) * sr
+        sr_s = int(sr_s)
+        sr_e = int(sr_e)
+        s = rec_data[sr_s:sr_e]
+        start += stride
+        if len(s) < length * sr:
+            s = np.pad(s, (0, int(length * sr - len(s))))
+        samples.append(s)
+
+        if sr_e >= len(rec_data):
+            break
+    return np.float32(samples)
+
+
+def chirp_embeddings(file, stride=5):
+    import tensorflow_hub as hub
+
+    rec_data, sr = load_recording(file, resample=32000)
+    samples = get_chirp_samples(rec_data, sr=sr, stride=stride)
+    # Load the model.
+    model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
+
+    embeddings = []
+    for s in samples:
+        logits, embedding = model.infer_tf(s[np.newaxis, :])
+        embeddings.append(embedding[0])
+    return np.array(embeddings), len(rec_data) / sr
+
+
 def main():
     init_logging()
     args = parse_args()
@@ -342,9 +378,10 @@ def main():
     use_mfcc = meta.get("use_mfcc", False)
     hop_length = meta.get("hop_length", 640)
     prob_thresh = meta.get("threshold", 0.7)
+    model_name = meta.get("name", False)
+
     hop_length = 281
-    segment_stride = 0.2
-    print("thresh is", prob_thresh)
+
     # segment_stride = 0.25
     # print("stride is", segment_stride)
     # segment_length = 2
@@ -403,9 +440,12 @@ def main():
         return
     if args.file:
         file = Path(args.file)
-        data, length = preprocess_file(
-            file, segment_length, segment_stride, hop_length, mean_sub, use_mfcc
-        )
+        if model_name == "embeddings":
+            data, length = chirp_embeddings(file, segment_stride)
+        else:
+            data, length = preprocess_file(
+                file, segment_length, segment_stride, hop_length, mean_sub, use_mfcc
+            )
         data = np.array(data)
 
     print("data is", data.shape, data.dtype, np.amax(data))

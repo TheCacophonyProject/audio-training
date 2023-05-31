@@ -52,8 +52,8 @@ SAMPLE_GROUP_ID = 0
 
 class Config:
     def __init__(self, **args):
-        self.segment_length = args.get("seg_length", 5)
-        self.segment_stride = args.get("stride", 4.5)
+        self.segment_length = args.get("seg_length", 3)
+        self.segment_stride = args.get("stride", 1)
         self.hop_length = args.get("hop_length", 281)
         self.break_freq = args.get("break_freq", 1750)
         self.htk = not args.get("slaney", False)
@@ -82,7 +82,6 @@ class AudioDataset:
                 audio_f = f.with_suffix(".wav")
             if not audio_f.exists():
                 audio_f = f.with_suffix(".mp3")
-                print("found aud", audio_f)
                 # hack to find files, probably should look
                 # at all files in dir or store file in metadata
             r = Recording(meta, audio_f, self.config)
@@ -278,6 +277,7 @@ class AudioSample:
         self.logits = None
         self.embeddings = None
         self.group = group_id
+        self.predicted_labels = None
         if bin_id is None:
             self.bin_id = f"{self.rec_id}"
         else:
@@ -449,7 +449,7 @@ class Recording:
         for track in self.tracks:
             if "morepork" in track.human_tags:
                 # sometimes long tracks with multiple calls, think this should seperate them
-                segment_stride = 3.5
+                segment_stride = min(segment_stride, 3.5)
             else:
                 segment_stride = actual_s
             start = track.start
@@ -470,9 +470,12 @@ class Recording:
                         + (other_track.length)
                         - (max(end, other_track.end) - min(start, other_track.start))
                     )
+                    min_overlap = min(0.9 * segment_length, other_track.length * 0.9)
 
                     # enough overlap or we engulf the track
-                    if overlap > 0.5 or (overlap > 0 and end > other_track.end):
+                    if overlap >= min_overlap or (
+                        overlap > 0 and end > other_track.end
+                    ):
                         # if t.start<= start and t.end <= end:
                         other_tracks.append(other_track)
                         labels = labels | other_track.human_tags
