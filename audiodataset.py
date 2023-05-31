@@ -52,8 +52,8 @@ SAMPLE_GROUP_ID = 0
 
 class Config:
     def __init__(self, **args):
-        self.segment_length = args.get("seg_length", 2.5)
-        self.segment_stride = args.get("stride", 1)
+        self.segment_length = args.get("seg_length", 5)
+        self.segment_stride = args.get("stride", 4.5)
         self.hop_length = args.get("hop_length", 281)
         self.break_freq = args.get("break_freq", 1750)
         self.htk = not args.get("slaney", False)
@@ -275,7 +275,8 @@ class AudioSample:
         self.track_ids = track_ids
         self.spectogram_data = None
         self.sr = None
-
+        self.logits = None
+        self.embeddings = None
         self.group = group_id
         if bin_id is None:
             self.bin_id = f"{self.rec_id}"
@@ -330,37 +331,16 @@ class Recording:
                 self.human_tags.add(tag)
 
     def space_signals(self, spacing=0.1):
-        # print("prev have", len(self.signals))
-        # for s in self.signals:
-        #     print(s)
-        new_signals = []
-        prev_s = None
-        for s in self.signals:
-            if prev_s is None:
-                prev_s = s
-            else:
-                if s[0] < prev_s[1] + spacing:
-                    # combine them
-                    prev_s[1] = s[1]
-                else:
-                    new_signals.append(prev_s)
-                    prev_s = s
-        if prev_s is not None:
-            new_signals.append(prev_s)
-        #
-        # print("spaced have", len(new_signals))
-        # for s in new_signals:
-        #     print(s)
-        self.signals = new_signals
+        self.signals = space_signals(signals, spacing)
 
-    def load_samples(self, segment_length, segment_stride):
+    def load_samples_old(self, segment_length, segment_stride):
         global SAMPLE_GROUP_ID
         SAMPLE_GROUP_ID += 1
         sorted_tracks = sorted(
             self.tracks,
             key=lambda track: track.start,
         )
-
+        actual_s = segment_stride
         self.samples = []
         if len(sorted_tracks) == 0:
             return
@@ -399,7 +379,7 @@ class Recording:
                 else:
                     e = t.end
                 intersect = e - s
-                if intersect > segment_stride:
+                if intersect > 0.5:
                     # if t.start<= start and t.end <= end:
                     other_tracks.append(t)
                     labels = labels | t.human_tags
@@ -415,12 +395,18 @@ class Recording:
                     bin_id,
                 )
             )
+            if "morepork" in labels:
+                segment_stride = 3.5
+            else:
+                segment_stride = actual_s
             # print("sample length is", self.samples[-1].length)
             start += segment_stride
             # print("track end is ", track.end, " and start is", start)
             if (track.end - start) < segment_length / 2:
                 old_end = track.end
                 track = None
+                start = start - segment_length
+                # find the next track after start
                 # get new track
                 for z, t in enumerate(sorted_tracks[i:]):
                     # print("checking track ", t.human_tags, t.start)
@@ -443,6 +429,74 @@ class Recording:
             end = start + segment_length
         # other_tracks = [t for t in sorted_tracks[i:] if t.start<= start and t.end >= end]
         # for t in sorted_tracks:
+        # for t in self.tracks:
+        # print(self.id, "have track from ", t.start, t.end)
+        # for s in self.samples:
+        # print(self.id, "Have sample", s.start, s.end, s.tags, self.filename)
+
+    def load_samples(self, segment_length, segment_stride):
+        self.samples = []
+        global SAMPLE_GROUP_ID
+        SAMPLE_GROUP_ID += 1
+        sorted_tracks = sorted(
+            self.tracks,
+            key=lambda track: track.start,
+        )
+        # can be used to seperate among train/val/test
+        bin_id = f"{self.id}-0"
+
+        actual_s = segment_stride
+        for track in self.tracks:
+            if "morepork" in track.human_tags:
+                # sometimes long tracks with multiple calls, think this should seperate them
+                segment_stride = 3.5
+            else:
+                segment_stride = actual_s
+            start = track.start
+            end = start + segment_length
+            end = min(end, track.end)
+            while True:
+                labels = set(track.human_tags)
+                other_tracks = []
+                for other_track in sorted_tracks:
+                    if track == other_track:
+                        continue
+
+                    # starts in this sample
+                    if other_track.start > end:
+                        break
+                    overlap = (
+                        (end - start)
+                        + (other_track.length)
+                        - (max(end, other_track.end) - min(start, other_track.start))
+                    )
+
+                    # enough overlap or we engulf the track
+                    if overlap > 0.5 or (overlap > 0 and end > other_track.end):
+                        # if t.start<= start and t.end <= end:
+                        other_tracks.append(other_track)
+                        labels = labels | other_track.human_tags
+
+                self.samples.append(
+                    AudioSample(
+                        self,
+                        labels,
+                        start,
+                        min(track.end, end),
+                        [track.id for t in other_tracks],
+                        SAMPLE_GROUP_ID,
+                        bin_id,
+                    )
+                )
+                start += segment_stride
+                end = start + segment_length
+                end = min(end, track.end)
+                if start > track.end:
+                    break
+
+        # other_tracks = [t for t in sorted_tracks[i:] if t.start<= start and t.end >= end]
+        # for t in sorted_tracks:
+        # print("FOR ", self.id)
         # for t in self.tracks:
         #     print(self.id, "have track from ", t.start, t.end)
         # for s in self.samples:
@@ -715,10 +769,7 @@ def load_data(
             offset = 0
             s_data[offset : offset + len(sub)] = sub
         assert len(s_data) == int(segment_l * sr)
-        if htk:
-            spectogram = np.abs(
-                librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length)
-            )
+        spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
         #     mel = mel_spec(
         #         spectogram,
         #         sr,
@@ -784,3 +835,28 @@ def load_data(
             exc_info=True,
         )
     return spec
+
+
+def space_signals(signals, spacing=0.1):
+    # print("prev have", len(self.signals))
+    # for s in self.signals:
+    #     print(s)
+    new_signals = []
+    prev_s = None
+    for s in signals:
+        if prev_s is None:
+            prev_s = s
+        else:
+            if s[0] < prev_s[1] + spacing:
+                # combine them
+                prev_s = (prev_s[0], s[1])
+            else:
+                new_signals.append(prev_s)
+                prev_s = s
+    if prev_s is not None:
+        new_signals.append(prev_s)
+    #
+    # print("spaced have", len(new_signals))
+    # for s in new_signals:
+    #     print(s)
+    return new_signals

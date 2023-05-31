@@ -29,8 +29,8 @@ import soundfile as sf
 
 MAX_TEST_BINS = None
 MAX_TEST_SAMPLES = None
-MIN_SAMPLES = 100
-MIN_BINS = 100
+MIN_SAMPLES = 10
+MIN_BINS = 10
 LOW_SAMPLES_LABELS = []
 VAL_PERCENT = 0.15
 TEST_PERCENT = 0.05
@@ -89,13 +89,15 @@ def split_label(
         num_test_samples = min(MAX_TEST_SAMPLES, num_test_samples)
     num_test_samples -= existing_test_count
     # should have test covered by test set
-
+    #  VALIDATION LIMITS
     min_t = MIN_BINS
     total_bins = len(sample_bins)
     if label in LOW_SAMPLES_LABELS or total_bins < 20:
         min_t = 1
 
     num_validate_bins = max(total_bins * VAL_PERCENT, min_t)
+
+    # TEST LIMITS
     num_test_bins = max(total_bins * TEST_PERCENT, min_t)
     if MAX_TEST_BINS is not None:
         num_test_bins = min(MAX_TEST_BINS, num_test_bins)
@@ -106,6 +108,7 @@ def split_label(
         num_validate_samples = 2
         num_test_bins = 1
         num_test_samples = 1
+
     bin_limit = num_validate_bins
     sample_limit = num_validate_samples
     bins = set()
@@ -357,13 +360,17 @@ def main():
     # config = load_config(args.config_file)
     dataset = AudioDataset("all", config)
     dataset.load_meta(args.dir)
-    trim_noise(dataset)
+    # for r in dataset.recs:
+    #     if "whistler" not in r.human_tags:
+    #         print(r.id, " missing", r.human_tags)
+    # trim_noise(dataset)
     # return
     # dataset.load_meta()
     # return
     dataset.print_counts()
     datasets = split_randomly(dataset, no_test=args.no_test)
     dataset.print_counts()
+
     all_labels = set()
     for d in datasets:
         logging.info("%s Dataset", d.name)
@@ -539,8 +546,8 @@ def parse_args():
     parser.add_argument("--hop-length", default=281, help="Number of hops to use")
     parser.add_argument("--fmin", default=50, help="Min freq")
     parser.add_argument("--fmax", default=11000, help="Max Freq")
-    parser.add_argument("--seg-length", default=2.5, help="Segment length in seconds")
-    parser.add_argument("--stride", default=1, help="Segment stride")
+    parser.add_argument("--seg-length", default=5, help="Segment length in seconds")
+    parser.add_argument("--stride", default=4.5, help="Segment stride")
 
     args = parser.parse_args()
     return args

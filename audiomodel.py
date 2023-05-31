@@ -23,18 +23,21 @@ from audiodataset import AudioDataset
 from audiowriter import create_tf_records
 import tensorflow as tf
 from tfdataset import (
-    get_dataset,
-    DIMENSIONS,
+    # get_dataset,
+    # DIMENSIONS,
     get_weighting,
     NOISE_LABELS,
     SPECIFIC_BIRD_LABELS,
+    get_excluded_labels,
 )
+from tfdatasetembeddings import get_dataset, DIMENSIONS
 import time
 from pathlib import Path
 from sklearn.metrics import confusion_matrix, multilabel_confusion_matrix
 import matplotlib.pyplot as plt
 
 import badwinner
+import badwinner2
 from sklearn.model_selection import KFold
 import tensorflow_addons as tfa
 import math
@@ -56,11 +59,12 @@ other_training_dir = "training-data"
 class AudioModel:
     VERSION = 1.0
 
-    def __init__(self):
+    def __init__(self, model_name="badwinner"):
         self.checkpoint_folder = Path("./train/checkpoints")
         self.log_dir = Path("./train/logs")
+        # self.data_dir = "/data/audio-data"
         self.data_dir = "."
-        self.model_name = "wr-resnet"
+        self.model_name = model_name
         self.batch_size = 32
         self.validation = None
         self.test = None
@@ -422,11 +426,20 @@ class AudioModel:
             cls=MetaJSONEncoder,
         )
 
-    def build_model(self, num_labels, bad=True, multi_label=False):
-        if bad:
+    def build_model(self, num_labels, multi_label=False):
+        if self.model_name == "badwinner2":
+            logging.info("Building bad winner2")
+            self.model = badwinner2.build_model(
+                self.input_shape, None, num_labels, multi_label=multi_label
+            )
+        elif self.model_name == "badwinner":
+            logging.info("Building bad winner")
+
             self.model = badwinner.build_model(
                 self.input_shape, None, num_labels, multi_label=multi_label
             )
+        elif self.model_name == "embeddings":
+            self.model = get_linear_model(self.input_shape, len(self.labels))
         else:
             norm_layer = tf.keras.layers.Normalization()
             norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
@@ -515,7 +528,7 @@ class AudioModel:
 
     def load_datasets(self, base_dir, labels, shape, test=False):
         datasets = ["other-training-data", "training-data", "chime-training-data"]
-        datasets = ["./training-data"]
+        datasets = ["training-data"]
         flickr = "/data/audio-data/flickr-training-data"
         labels = set()
         filenames = []
@@ -767,6 +780,17 @@ def get_preprocess_fn(pretrained_model):
     return None
 
 
+def CustomBinaryCrossEntropy(y_true, y_pred):
+    y_pred = tf.keras.backend.clip(
+        y_pred, tf.keras.backend.epsilon(), 1 - tf.keras.backend.epsilon()
+    )
+
+    term_0 = (1 - y_true) * tf.math.log(1 - y_pred + tf.keras.backend.epsilon())
+    term_1 = y_true * tf.math.log(y_pred + tf.keras.backend.epsilon())
+    loss = tf.keras.backend.mean(term_0 + term_1, axis=1)
+    return -loss
+
+
 def loss(multi_label=False, smoothing=0):
     if multi_label:
         # logging.info("Using focal binary cross")
@@ -882,7 +906,6 @@ def confusion(model, labels, dataset, filename="confusion.png"):
     y_true = []
     other_info = []
     for batch in true_categories:
-
         for y, r, t, s in zip(batch[0], batch[1], batch[2], batch[3]):
             non_zero = tf.where(y).numpy()
             y_true.append(list(non_zero.flatten()))
@@ -1023,14 +1046,6 @@ def plot_confusion_matrix(cm, class_names):
     return figure
 
 
-def get_excluded_labels(labels):
-    excluded_labels = []
-    for l in labels:
-        if l not in SPECIFIC_BIRD_LABELS and l not in ["noise", "human"]:
-            excluded_labels.append(l)
-    return excluded_labels
-
-
 def main():
     init_logging()
     args = parse_args()
@@ -1107,7 +1122,7 @@ def main():
             confusion(model, labels, dataset, args.confusion)
 
     else:
-        am = AudioModel()
+        am = AudioModel(args.model_name)
         if args.cross:
             am.cross_fold_train(run_name=args.name)
         else:
@@ -1123,14 +1138,17 @@ def parse_args():
     parser.add_argument("-w", "--weights", help="Weights to use")
     parser.add_argument("--cross", action="count", help="Cross fold val")
     parser.add_argument("--multi", default=True, action="count", help="Multi label")
+    parser.add_argument(
+        "--model-name",
+        default="badwinner",
+        help="Model to use badwinner, badwinner2, inc3",
+    )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("name", help="Run name")
 
     args = parser.parse_args()
-    print(args)
     args.multi = args.multi > 0
-    print(args.multi)
     return args
 
 
@@ -1294,6 +1312,17 @@ def log_hist_weights(model, writer):
                 tf.summary.histogram(tf_var.name, tf_var.numpy(), step=epoch)
 
     return log_hist
+
+
+def get_linear_model(embedding_dim, num_classes):
+    """Create a simple linear Keras model."""
+    model = tf.keras.Sequential(
+        [
+            tf.keras.Input(shape=embedding_dim),
+            tf.keras.layers.Dense(num_classes, activation="sigmoid"),
+        ]
+    )
+    return model
 
 
 if __name__ == "__main__":

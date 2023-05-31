@@ -94,7 +94,8 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
 def main():
     init_logging()
     args = parse_args()
-    model = build_model((80, 480), None, 2)
+    model = build_model((120, 480), None, 2)
+    model.summary()
 
 
 def parse_args():
