@@ -318,6 +318,7 @@ def save_embeddings(rec):
                 t.end = len(frames) / sr
         # rec.tracks[0].end = len0(frames) / sr
         rec.load_samples(config.segment_length, config.segment_stride)
+        return
         samples = rec.samples
         rec.sample_rate = resample
         for i, sample in enumerate(samples):

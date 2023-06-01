@@ -494,16 +494,16 @@ class Recording:
                 start += segment_stride
                 end = start + segment_length
                 end = min(end, track.end)
-                if start > track.end:
+                if start > track.end or (end - start) < 2:
                     break
 
         # other_tracks = [t for t in sorted_tracks[i:] if t.start<= start and t.end >= end]
         # for t in sorted_tracks:
         # print("FOR ", self.id)
-        # for t in self.tracks:
-        #     print(self.id, "have track from ", t.start, t.end)
-        # for s in self.samples:
-        #     print(self.id, "Have sample", s.start, s.end, s.tags, self.filename)
+        for t in self.tracks:
+            print(self.id, "have track from ", t.start, t.end)
+        for s in self.samples:
+            print(self.id, "Have sample", s.start, s.end, s.tags, self.filename)
 
     def load_recording(self, resample=None):
         try:
@@ -763,14 +763,9 @@ def load_data(
         # else:
         #     s_data = frames[start:end]
         if len(s_data) < int(segment_l * sr):
-            sub = s_data
             data_length = len(sub) / sr
-            s_data = np.zeros(int(segment_l * sr))
-            # randomize zero padding location
-            # extra_frames = len(s_data) - len(sub)
-            # offset = np.random.randint(0, extra_frames)
-            offset = 0
-            s_data[offset : offset + len(sub)] = sub
+            s_data = np.pad(s_data, (0, int(segment_l * sr) - len(s_data)))
+
         assert len(s_data) == int(segment_l * sr)
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
         #     mel = mel_spec(
