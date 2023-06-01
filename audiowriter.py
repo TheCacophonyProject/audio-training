@@ -290,7 +290,7 @@ def get_data(rec):
     saved += 1
 
     logging.info("Total Saved %s", saved)
-    if saved > 50:
+    if saved > 15:
         assign_writer()
     # return tf_examples
 
