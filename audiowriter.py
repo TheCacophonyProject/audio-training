@@ -226,6 +226,7 @@ def get_data(rec):
             sr = resample
         else:
             frames = orig_frames
+        orig_frames = None
         for t in rec.tracks:
             if t.end is None:
                 logging.info(
@@ -275,7 +276,12 @@ def get_data(rec):
                 logging.error("Error %s ", rec.id, exc_info=True)
             tf_example, num_annotations_skipped = create_tf_example(sample, labels)
             writer.write(tf_example.SerializeToString())
-            sample = None
+            del sample
+        del samples
+        del rec
+        del frames
+        del frames32
+        del orig_frames
     except:
         logging.error("Got error %s", rec.filename, exc_info=True)
         print("ERRR return None")
@@ -347,7 +353,10 @@ def save_embeddings(rec):
             )
             tf_example, num_annotations_skipped = create_tf_embed(sample, labels)
             writer.write(tf_example.SerializeToString())
-        sample = None
+        del rec
+        del samples
+        # samples = None
+        # rec = None
     except:
         logging.error("Got error %s", rec.filename, exc_info=True)
         print("ERRR return None")
@@ -403,7 +412,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     #     writers.append(tf.io.TFRecordWriter(str(output_path / name), options=options))
 
     processes = 8
-    load_first = processes * 800
+    load_first = processes * 100
     total_recs = len(samples)
     total_saved_recs = 0
     resc_per_file = 1000
