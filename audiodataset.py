@@ -765,9 +765,7 @@ def load_data(
         # else:
         #     s_data = frames[start:end]
         if len(s_data) < int(segment_l * sr):
-            data_length = len(sub) / sr
             s_data = np.pad(s_data, (0, int(segment_l * sr) - len(s_data)))
-
         assert len(s_data) == int(segment_l * sr)
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
         #     mel = mel_spec(
