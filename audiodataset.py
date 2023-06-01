@@ -442,6 +442,8 @@ class Recording:
             self.tracks,
             key=lambda track: track.start,
         )
+        # always take 1 one sample, but dont bother with more if they are short
+        min_sample_length = segment_length * 0.7
         # can be used to seperate among train/val/test
         bin_id = f"{self.id}-0"
 
@@ -494,16 +496,16 @@ class Recording:
                 start += segment_stride
                 end = start + segment_length
                 end = min(end, track.end)
-                if start > track.end or (end - start) < 2:
+                if start > track.end or (end - start) < min_sample_length:
                     break
 
         # other_tracks = [t for t in sorted_tracks[i:] if t.start<= start and t.end >= end]
         # for t in sorted_tracks:
         # print("FOR ", self.id)
-        for t in self.tracks:
-            print(self.id, "have track from ", t.start, t.end)
-        for s in self.samples:
-            print(self.id, "Have sample", s.start, s.end, s.tags, self.filename)
+        # for t in self.tracks:
+        #     print(self.id, "have track from ", t.start, t.end)
+        # for s in self.samples:
+        #     print(self.id, "Have sample", s.start, s.end, s.tags, self.filename)
 
     def load_recording(self, resample=None):
         try:

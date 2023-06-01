@@ -1085,7 +1085,7 @@ def main():
         print(labels)
         # self.labels = meta.get("labels", [])
         dataset, _, _ = get_dataset(
-            tf.io.gfile.glob(f"./training-data/test/*.tfrecord"),
+            tf.io.gfile.glob(base_dir / "training-data/test/*.tfrecord"),
             labels,
             image_size=DIMENSIONS,
             shuffle=False,
