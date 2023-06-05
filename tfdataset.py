@@ -92,7 +92,7 @@ MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, 4800, BREAK_FREQ)
 MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 DIMENSIONS = (160, 188)
 
-mel_s = (120, 428)
+mel_s = (120, 513)
 sftf_s = (2401, 188)
 mfcc_s = (20, 188)
 DIMENSIONS = mel_s
@@ -587,7 +587,7 @@ def read_tfrecord(
         # "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
         "audio/class/text": tf.io.FixedLenFeature((), tf.string),
         # "audio/length": tf.io.FixedLenFeature((), tf.int64),
-        "audio/raw": tf.io.FixedLenFeature((2401, 428), tf.float32),
+        "audio/raw": tf.io.FixedLenFeature((2401, mel_s[1]), tf.float32),
         # "audio/sftf_w": tf.io.FixedLenFeature((), tf.int64),
         # "audio/sftf_h": tf.io.FixedLenFeature((), tf.int64),
         # "audio/mel_w": tf.io.FixedLenFeature((), tf.int64),
@@ -610,7 +610,7 @@ def read_tfrecord(
     labels = remapped_y.lookup(labels)
     labels = tf.concat([labels, extra], axis=0)
     stft = example["audio/raw"]
-    stft = tf.reshape(stft, [2401, 428])
+    stft = tf.reshape(stft, [2401, mel_s[1]])
     mel = tf.tensordot(MEL_WEIGHTS, stft, 1)
     # mel =
     # mel = example["audio/mel"]

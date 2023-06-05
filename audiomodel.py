@@ -23,14 +23,15 @@ from audiodataset import AudioDataset
 from audiowriter import create_tf_records
 import tensorflow as tf
 from tfdataset import (
-    # get_dataset,
-    # DIMENSIONS,
+    get_dataset,
+    DIMENSIONS,
     get_weighting,
     NOISE_LABELS,
     SPECIFIC_BIRD_LABELS,
     get_excluded_labels,
 )
-from tfdatasetembeddings import get_dataset, DIMENSIONS
+
+# from tfdatasetembeddings import get_dataset, DIMENSIONS
 import time
 from pathlib import Path
 from sklearn.metrics import confusion_matrix, multilabel_confusion_matrix
@@ -1137,7 +1138,7 @@ def parse_args():
     parser.add_argument("--multi", default=True, action="count", help="Multi label")
     parser.add_argument(
         "--model-name",
-        default="badwinner",
+        default="badwinner2",
         help="Model to use badwinner, badwinner2, inc3",
     )
 
