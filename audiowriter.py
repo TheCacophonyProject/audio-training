@@ -32,6 +32,7 @@ import io
 import json
 import multiprocessing
 import os
+from multiprocessing import Process, Queue
 
 from absl import app
 from absl import flags
@@ -85,7 +86,7 @@ def create_tf_example(sample, labels):
     data = sample.spectogram_data
     # audio_data = librosa.amplitude_to_db(data.spect)
     # mel = librosa.power_to_db(data.mel, ref=np.max)
-    mel = data.mel
+    # mel = data.mel
     tags = sample.tags_s
     track_ids = " ".join(map(str, sample.track_ids))
     predicted_labels = ",".join(sample.predicted_labels)
@@ -183,6 +184,57 @@ def worker_init(c, l, d):
     embedding_labels = meta_data.get("labels")
 
 
+def process_job(queue, labels, config, base_dir):
+    import gc
+
+    # Load the model.
+    model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
+    embedding_model = tf.keras.models.load_model("./embedding_model")
+    meta_file = "./embedding_model/metadata.txt"
+    with open(str(meta_file), "r") as f:
+        meta_data = json.load(f)
+    pid = os.getpid()
+
+    writer_i = 1
+    name = f"{writer_i}-{pid}.tfrecord"
+    embedding_labels = meta_data.get("labels")
+    options = tf.io.TFRecordOptions(compression_type="GZIP")
+    writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
+    i = 0
+    saved = 0
+    while True:
+        i += 1
+        rec = queue.get()
+        try:
+            if rec == "DONE":
+                writer.close()
+                break
+            else:
+                saved += save_data(
+                    rec,
+                    writer,
+                    model,
+                    embedding_model,
+                    base_dir,
+                    config,
+                    embedding_labels,
+                )
+                del rec
+                if saved > 500:
+                    logging.info("Closing old writer")
+                    writer.close()
+                    writer_i += 1
+                    name = f"{writer_i}-{pid}.tfrecord"
+                    logging.info("Opening %s", name)
+
+                    writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
+                if i % 10 == 0:
+                    logging.info("Clear gc")
+                    gc.collect()
+        except Exception as e:
+            logging.error("Process_job error %s %s", rec.filename, e)
+
+
 def close_writer(empty=None):
     global writer
     if writer is not None:
@@ -200,6 +252,95 @@ def assign_writer():
     options = tf.io.TFRecordOptions(compression_type="GZIP")
     global writer
     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
+
+
+def save_data(rec, writer, model, embedding_model, base_dir, config, embedding_labels):
+    resample = 48000
+    try:
+        aro = audioread.ffdec.FFmpegAudioFile(rec.filename)
+        orig_frames, sr = librosa.load(aro, sr=None)
+        aro.close()
+    except:
+        logging.error("Error loading rec %s ", rec.filename, exc_info=True)
+        try:
+            aro.close()
+        except:
+            pass
+        return 0
+    try:
+        frames32 = librosa.resample(orig_frames, orig_sr=sr, target_sr=32000)
+
+        # hack to handle getting new samples without knowing length until load
+        if resample is not None and resample != sr:
+            frames = librosa.resample(orig_frames, orig_sr=sr, target_sr=resample)
+            sr = resample
+        else:
+            frames = orig_frames
+        orig_frames = None
+        for t in rec.tracks:
+            if t.end is None:
+                logging.info(
+                    "Track end is none so setting to rec length %s", len(frames) / sr
+                )
+                t.end = len(frames) / sr
+        # rec.tracks[0].end = len0(frames) / sr
+        rec.load_samples(config.segment_length, config.segment_stride)
+        samples = rec.samples
+        rec.sample_rate = resample
+        for i, sample in enumerate(samples):
+            try:
+                spec = load_data(config, sample.start, frames, sr, end=sample.end)
+                start = sample.start * 32000
+                start = round(start)
+                end = round(sample.end * 32000)
+                if (end - start) > 32000 * config.segment_length:
+                    end = start + 32000 * config.segment_length
+                data = frames32[start:end]
+                data = np.pad(data, (0, 32000 * 5 - len(data)))
+                logits, embeddings = model.infer_tf(data[np.newaxis, :])
+                sample.logits = logits.numpy()[0]
+                sample.embeddings = embeddings.numpy()[0]
+                predicted = embedding_model.predict(embeddings.numpy())[0]
+                embed_labels = []
+                for p_i, p in enumerate(predicted):
+                    if p > 0.7:
+                        embed_labels.append(embedding_labels[p_i])
+                sample.predicted_labels = embed_labels
+                logging.info(
+                    "Predicted %s vs actual %s start %s-%s fiel %s",
+                    sample.predicted_labels,
+                    sample.tags,
+                    sample.start,
+                    sample.end,
+                    rec.filename,
+                )
+                logging.info("Mem %s", psutil.virtual_memory()[2])
+                # print("mel is", mel.shape)
+                # print("adjusted start is", sample.start, " becomes", sample.start - start)
+                if spec is None:
+                    logging.warn("error loading spec for %s", rec.id)
+                    continue
+                # data[i] = spec
+                sample.spectogram_data = spec
+                sample.sr = resample
+            except:
+                logging.error("Error %s ", rec.id, exc_info=True)
+            tf_example, num_annotations_skipped = create_tf_example(sample, labels)
+            writer.write(tf_example.SerializeToString())
+            del sample
+        saved = len(samples)
+        del samples
+        del rec
+        del frames
+        del frames32
+        del orig_frames
+    except:
+        logging.error("Got error %s", rec.filename, exc_info=True)
+        print("ERRR return None")
+        return 0
+
+    logging.info("Total Saved %s", saved)
+    return saved
 
 
 def get_data(rec):
@@ -250,6 +391,7 @@ def get_data(rec):
                 logits, embeddings = model.infer_tf(data[np.newaxis, :])
                 sample.logits = logits.numpy()[0]
                 sample.embeddings = embeddings.numpy()[0]
+                print(embeddings.numpy().shape)
                 predicted = embedding_model.predict(embeddings.numpy())[0]
                 embed_labels = []
                 for p_i, p in enumerate(predicted):
@@ -264,6 +406,7 @@ def get_data(rec):
                     sample.end,
                     rec.filename,
                 )
+                logging.info("Mem %s", psutil.virtual_memory()[2])
                 # print("mel is", mel.shape)
                 # print("adjusted start is", sample.start, " becomes", sample.start - start)
                 if spec is None:
@@ -277,6 +420,8 @@ def get_data(rec):
             tf_example, num_annotations_skipped = create_tf_example(sample, labels)
             writer.write(tf_example.SerializeToString())
             del sample
+        global saved
+        saved += len(samples)
         del samples
         del rec
         del frames
@@ -286,12 +431,17 @@ def get_data(rec):
         logging.error("Got error %s", rec.filename, exc_info=True)
         print("ERRR return None")
         return None
-    global saved
-    saved += 1
 
     logging.info("Total Saved %s", saved)
-    if saved > 15:
+    if saved > 200:
         assign_writer()
+    import gc
+
+    logging.info("P Mem %s", psutil.virtual_memory()[2])
+
+    gc.collect()
+    logging.info("Colelct Mem %s", psutil.virtual_memory()[2])
+
     # return tf_examples
 
 
@@ -353,6 +503,8 @@ def save_embeddings(rec):
             )
             tf_example, num_annotations_skipped = create_tf_embed(sample, labels)
             writer.write(tf_example.SerializeToString())
+        global saved
+        saved += len(samples)
         del rec
         del samples
         # samples = None
@@ -361,8 +513,6 @@ def save_embeddings(rec):
         logging.error("Got error %s", rec.filename, exc_info=True)
         print("ERRR return None")
         return None
-    global saved
-    saved += 1
 
     logging.info("Total Saved %s", saved)
     if saved > 200:
@@ -411,58 +561,81 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     #     name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
     #     writers.append(tf.io.TFRecordWriter(str(output_path / name), options=options))
 
-    processes = 8
-    load_first = processes * 100
+    num_processes = 1
+    load_first = num_processes * 100
     total_recs = len(samples)
     total_saved_recs = 0
     resc_per_file = 1000
     writer_i = 0
     process_saved = 0
     try:
-        with Pool(
-            initializer=worker_init,
-            initargs=(
-                dataset.config,
-                labels,
-                output_path,
-            ),
-            processes=processes,
-        ) as pool:
-            count = 0
-            while len(samples) > 0:
-                local_set = samples[:load_first]
-                samples = samples[load_first:]
-                loaded = []
-                pool_data = []
-                samples_by_rec = {}
-                #
-                # for sample in local_set:
-                #     if sample.rec_id not in samples_by_rec:
-                #         samples_by_rec[sample.rec_id] = [sample]
-                #     else:
-                #         samples_by_rec[sample.rec_id].append(sample)
-                for rec in local_set:
-                    # sample.rec.rec_data = None
-                    pool_data.append(rec)
-                loaded = []
-                res = [
-                    0 for data in pool.imap_unordered(get_data, pool_data, chunksize=2)
-                ]
-                saved_s = len(loaded)
-                total_saved_recs += len(local_set)
+        job_queue = Queue()
+        processes = []
+        for i in range(num_processes):
+            p = Process(
+                target=process_job,
+                args=(job_queue, labels, dataset.config, output_path),
+            )
+            processes.append(p)
+            p.start()
+        for s in samples:
+            job_queue.put(s)
 
-                del loaded
-                loaded = None
-                logging.info(
-                    "Saved %s recs, total saved %s/ %s,  %s samples memory %s",
-                    len(local_set),
-                    total_saved_recs,
-                    total_recs,
-                    saved_s,
-                    psutil.virtual_memory()[2],
-                )
-            empty = [None] * processes
-            [0 for data in pool.imap_unordered(close_writer, empty, chunksize=1)]
+        logging.info("Processing %d", job_queue.qsize())
+        for i in range(len(processes)):
+            job_queue.put(("DONE"))
+        for process in processes:
+            try:
+                process.join()
+            except KeyboardInterrupt:
+                logging.info("KeyboardInterrupt, terminating.")
+                for process in processes:
+                    process.terminate()
+                exit()
+        logging.info("Saved %s", len(samples))
+        #
+        # with Pool(
+        #     initializer=worker_init,
+        #     initargs=(
+        #         dataset.config,
+        #         labels,
+        #         output_path,
+        #     ),
+        #     processes=processes,
+        # ) as pool:
+        # count = 0
+        # while len(samples) > 0:
+        #     local_set = samples[:load_first]
+        #     samples = samples[load_first:]
+        #     loaded = []
+        #     pool_data = []
+        #     samples_by_rec = {}
+        #     #
+        #     # for sample in local_set:
+        #     #     if sample.rec_id not in samples_by_rec:
+        #     #         samples_by_rec[sample.rec_id] = [sample]
+        #     #     else:
+        #     #         samples_by_rec[sample.rec_id].append(sample)
+        #     for rec in local_set:
+        #         # sample.rec.rec_data = None
+        #         job_queue.append(rec)
+        #     loaded = []
+        #     res = [0 for data in pool.imap_unordered(get_data, pool_data, chunksize=2)]
+        #     saved_s = len(loaded)
+        #     total_saved_recs += len(local_set)
+        #
+        #     del loaded
+        #     loaded = None
+        #     logging.info(
+        #         "Saved %s recs, total saved %s/ %s,  %s samples memory %s",
+        #         len(local_set),
+        #         total_saved_recs,
+        #         total_recs,
+        #         saved_s,
+        #         psutil.virtual_memory()[2],
+        #     )
+        # empty = [None] * processes
+        # [0 for data in pool.imap_unordered(close_writer, empty, chunksize=1)]
     except:
         logging.error("Error saving track info", exc_info=True)
     for writer in writers:
