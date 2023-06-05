@@ -172,6 +172,7 @@ def load_dataset(filenames, num_labels, args):
             mean_sub=args.get("mean_sub", False),
             add_noise=args.get("add_noise", False),
             no_bird=args.get("no_bird", False),
+            all_human=args.get("all_human", False),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -306,8 +307,10 @@ def get_dataset(filenames, labels, **args):
     )
     global bird_i
     global noise_i
+    global human_i
     bird_i = labels.index("bird")
     noise_i = labels.index("noise")
+    human_i = labels.index("human")
 
     # extra tags, since we have multi label problem, morepork is a bird and morepork
     # cat is a cat but also "noise"
@@ -352,6 +355,7 @@ def get_dataset(filenames, labels, **args):
         # bird_c = dist[labels.index("bird")]
 
         args["no_bird"] = True
+        args["all_human"] = True
         # added bird noise to human recs but it messes model, so dont use for now
         dataset_2 = load_dataset(second, len(labels), args)
         dataset = tf.data.Dataset.sample_from_datasets(
@@ -576,6 +580,7 @@ def read_tfrecord(
     mean_sub=False,
     add_noise=False,
     no_bird=False,
+    all_human=False,
 ):
     bird_l = tf.constant(["bird"])
     tf_more_mask = tf.constant(morepork_mask)
@@ -665,6 +670,15 @@ def read_tfrecord(
             no_noise_mask[noise_i] = 0
             no_noise_mask = tf.constant(no_noise_mask)
             label = tf.math.logical_and(label, no_noise_mask)
+
+            label = tf.cast(label, tf.int32)
+        if all_human:
+            logging.info("ADDING ALL HUMNAN")
+            # mixed noise didnt add human label so add here
+            human_mask = np.zeros(num_labels, dtype=bool)
+            human_mask[human_i] = 1
+            human_mask = tf.constant(human_mask)
+            label = tf.math.logical_or(label, human_mask)
 
             label = tf.cast(label, tf.int32)
         label = tf.cast(label, tf.float32)
