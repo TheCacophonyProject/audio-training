@@ -383,7 +383,7 @@ def main():
         d.labels = all_labels
         print("setting all labels", all_labels)
     validate_datasets(datasets)
-    base_dir = "."
+    base_dir = "./yamnet-data"
     if args.create_signal_wavs:
         record_dir = os.path.join(base_dir, "signal-data/")
         for dataset in datasets:

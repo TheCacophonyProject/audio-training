@@ -150,6 +150,24 @@ def create_tf_embed(sample, labels):
     return example, 0
 
 
+def create_tf_yamn(sample, labels):
+    tags = sample.tags_s
+    track_ids = " ".join(map(str, sample.track_ids))
+    feature_dict = {
+        "audio/rec_id": tfrecord_util.bytes_feature(str(sample.rec_id).encode("utf8")),
+        "audio/track_id": tfrecord_util.bytes_feature(track_ids.encode("utf8")),
+        "audio/sample_rate": tfrecord_util.int64_feature(sample.sr),
+        "audio/length": tfrecord_util.float_feature(sample.length),
+        "audio/start_s": tfrecord_util.float_feature(sample.start),
+        "audio/class/text": tfrecord_util.bytes_feature(tags.encode("utf8")),
+        EMBEDDING: tfrecord_util.float_list_feature(sample.embeddings.ravel()),
+        LOGITS: tfrecord_util.float_list_feature(sample.logits.ravel()),
+        EMBEDDING_SHAPE: (tfrecord_util.int64_list_feature(sample.embeddings.shape),),
+    }
+    example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
+    return example, 0
+
+
 config = None
 labels = None
 writer = None
@@ -188,16 +206,16 @@ def process_job(queue, labels, config, base_dir):
     import gc
 
     # Load the model.
-    model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
-    embedding_model = tf.keras.models.load_model("./embedding_model")
-    meta_file = "./embedding_model/metadata.txt"
-    with open(str(meta_file), "r") as f:
-        meta_data = json.load(f)
+    model = hub.load("https://tfhub.dev/google/yamnet/1")
+    # embedding_model = tf.keras.models.load_model("./embedding_model")
+    # meta_file = "./embedding_model/metadata.txt"
+    # with open(str(meta_file), "r") as f:
+    # meta_data = json.load(f)
     pid = os.getpid()
 
     writer_i = 1
     name = f"{writer_i}-{pid}.tfrecord"
-    embedding_labels = meta_data.get("labels")
+    # embedding_labels = meta_data.get("labels")
     options = tf.io.TFRecordOptions(compression_type="GZIP")
     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
     i = 0
@@ -210,14 +228,12 @@ def process_job(queue, labels, config, base_dir):
                 writer.close()
                 break
             else:
-                saved += save_data(
+                saved += save_yamnet(
                     rec,
                     writer,
                     model,
-                    embedding_model,
                     base_dir,
                     config,
-                    embedding_labels,
                 )
                 del rec
                 if saved > 500:
@@ -252,6 +268,78 @@ def assign_writer():
     options = tf.io.TFRecordOptions(compression_type="GZIP")
     global writer
     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
+
+
+def save_yamnet(rec, writer, model, base_dir, config):
+    resample = 16000
+    try:
+        aro = audioread.ffdec.FFmpegAudioFile(rec.filename)
+        orig_frames, sr = librosa.load(aro, sr=None)
+        aro.close()
+    except:
+        logging.error("Error loading rec %s ", rec.filename, exc_info=True)
+        try:
+            aro.close()
+        except:
+            pass
+        return 0
+    try:
+        if resample is not None and resample != sr:
+            frames = librosa.resample(orig_frames, orig_sr=sr, target_sr=resample)
+            sr = resample
+        else:
+            frames = orig_frames
+        orig_frames = None
+        for t in rec.tracks:
+            if t.end is None:
+                logging.info(
+                    "Track end is none so setting to rec length %s", len(frames) / sr
+                )
+                t.end = len(frames) / sr
+        # rec.tracks[0].end = len0(frames) / sr
+        rec.load_samples(config.segment_length, config.segment_stride)
+        samples = rec.samples
+        rec.sample_rate = resample
+        for i, sample in enumerate(samples):
+            try:
+                start = sample.start * 16000
+                start = round(start)
+                end = round(sample.end * 16000)
+                if (end - start) > 16000 * config.segment_length:
+                    end = start + 16000 * config.segment_length
+                data = frames[start:end]
+                if len(data) < (16000 * config.segment_length):
+                    print("apadding")
+                    data = np.pad(data, (0, 16000 * 3 - len(data)))
+                print(sample.start, sample.end, "Loaded frames", data.shape)
+                logits, embeddings, _ = model(data)
+                print("out embeddings", embeddings.shape, logits.shape)
+                sample.logits = logits.numpy()
+                sample.embeddings = embeddings.numpy()
+
+                logging.info("Mem %s", psutil.virtual_memory()[2])
+                print("logits ", sample.logits.shape, sample.embeddings.shape)
+
+                # data[i] = spec
+                # sample.spectogram_data = spec
+                sample.sr = resample
+            except:
+                logging.error("Error %s ", rec.id, exc_info=True)
+            tf_example, num_annotations_skipped = create_tf_yamn(sample, labels)
+            writer.write(tf_example.SerializeToString())
+            del sample
+        saved = len(samples)
+        del samples
+        del rec
+        del frames
+        del orig_frames
+    except:
+        logging.error("Got error %s", rec.filename, exc_info=True)
+        print("ERRR return None")
+        return 0
+
+    logging.info("Total Saved %s", saved)
+    return saved
 
 
 def save_data(rec, writer, model, embedding_model, base_dir, config, embedding_labels):
