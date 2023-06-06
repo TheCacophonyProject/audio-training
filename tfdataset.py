@@ -96,33 +96,35 @@ mel_s = (120, 513)
 sftf_s = (2401, 188)
 mfcc_s = (20, 188)
 DIMENSIONS = mel_s
-mel_bins = librosa.mel_frequencies(128, fmax=48000 / 2)
-human_lowest = np.where(mel_bins < 60)[-1][-1]
-human_max = np.where(mel_bins > 180)[0][0]
 
+# TEST STUFF to blockout frequencies
+# mel_bins = librosa.mel_frequencies(128, fmax=48000 / 2)
+# human_lowest = np.where(mel_bins < 60)[-1][-1]
+# human_max = np.where(mel_bins > 180)[0][0]
 
-# 60-180hz
-human_mel = (human_lowest, human_max)
-human_mask = np.zeros((mel_s), dtype=bool)
-human_mask[human_mel[0] : human_mel[0] + human_mel[1]] = 1
+#
+# # 60-180hz
+# human_mel = (human_lowest, human_max)
+# human_mask = np.zeros((mel_s), dtype=bool)
+# human_mask[human_mel[0] : human_mel[0] + human_mel[1]] = 1
 
 # 600-1200
 # frequency_min = 600
 # frequency_max = 1200
-more_lower = np.where(mel_bins < 600)[-1][-1]
-more_max = np.where(mel_bins > 1200)[0][0]
-
-
-morepork_mel = (more_lower, more_max)
-
-morepork_mask = np.zeros((mel_s), dtype=bool)
-morepork_mask[morepork_mel[0] : morepork_mel[0] + morepork_mel[1]] = 1
-
-with open(str("zvalues.txt"), "r") as f:
-    zvals = json.load(f)
-
-zvals["mean"] = np.array(zvals["mean"])
-zvals["std"] = np.array(zvals["std"])
+# more_lower = np.where(mel_bins < 600)[-1][-1]
+# more_max = np.where(mel_bins > 1200)[0][0]
+#
+#
+# morepork_mel = (more_lower, more_max)
+#
+# morepork_mask = np.zeros((mel_s), dtype=bool)
+# morepork_mask[morepork_mel[0] : morepork_mel[0] + morepork_mel[1]] = 1
+#
+# with open(str("zvalues.txt"), "r") as f:
+#     zvals = json.load(f)
+#
+# zvals["mean"] = np.array(zvals["mean"])
+# zvals["std"] = np.array(zvals["std"])
 Z_NORM = False
 # Z_NORM = True
 
@@ -583,8 +585,8 @@ def read_tfrecord(
     all_human=False,
 ):
     bird_l = tf.constant(["bird"])
-    tf_more_mask = tf.constant(morepork_mask)
-    tf_human_mask = tf.constant(human_mask)
+    # tf_more_mask = tf.constant(morepork_mask)
+    # tf_human_mask = tf.constant(human_mask)
     tfrecord_format = {
         # "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
         # "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
@@ -678,6 +680,7 @@ def read_tfrecord(
             human_mask = np.zeros(num_labels, dtype=bool)
             human_mask[human_i] = 1
             human_mask = tf.constant(human_mask)
+            label = tf.cast(label, tf.bool)
             label = tf.math.logical_or(label, human_mask)
 
             label = tf.cast(label, tf.int32)

@@ -477,6 +477,7 @@ class AudioModel:
                 tf.keras.metrics.AUC(),
                 tf.keras.metrics.Recall(),
                 tf.keras.metrics.Precision(),
+                tf.keras.losses.Huber(),
             ],
         )
 
@@ -487,6 +488,7 @@ class AudioModel:
             "val_precision",
             "val_auc",
             "val_recall",
+            "huber_loss",
         ]
         checks = []
         for m in metrics:
@@ -781,15 +783,45 @@ def get_preprocess_fn(pretrained_model):
     return None
 
 
-def CustomBinaryCrossEntropy(y_true, y_pred):
-    y_pred = tf.keras.backend.clip(
-        y_pred, tf.keras.backend.epsilon(), 1 - tf.keras.backend.epsilon()
-    )
+@tf.function
+def weighted_binary_cross(y_true, y_pred):
+    # possibly help train for specific birds over generic
+    # weights should already be in y_true i.e. [0.8,1]
+    weight = y_true
 
+    y_true = tf.math.greater(y_true, 0)
+    y_true = tf.cast(y_true, tf.float64)
+    # keep logits as 1 and 0s
     term_0 = (1 - y_true) * tf.math.log(1 - y_pred + tf.keras.backend.epsilon())
+    term_0 = term_0 * weight
     term_1 = y_true * tf.math.log(y_pred + tf.keras.backend.epsilon())
+    term_1 = term_1 * weight
     loss = tf.keras.backend.mean(term_0 + term_1, axis=1)
     return -loss
+
+
+@tf.function
+def sigmoid_binary_cross(y_true, y_pred):
+    # equiv of optax.igmoid_binary_cross_entropy(logits, labels)
+    log_p = -tf.math.log(tf.math.exp(-y_pred))
+    log_not_p = -tf.math.log(tf.math.exp(y_pred))
+
+    return -y_true * log_p - (1.0 - y_true) * log_not_p
+
+    #
+    # tf.math.log_sigmoid(
+    #     logits
+    # )
+    # return optax.sigmoid_binary_cross_entropy(y_pred.numpy(), y_true.numpy())
+    #
+    # y_pred = tf.keras.backend.clip(
+    #     y_pred, tf.keras.backend.epsilon(), 1 - tf.keras.backend.epsilon()
+    # )
+    #
+    # term_0 = (1 - y_true) * tf.math.log(1 - y_pred + tf.keras.backend.epsilon())
+    # term_1 = y_true * tf.math.log(y_pred + tf.keras.backend.epsilon())
+    # loss = tf.keras.backend.mean(term_0 + term_1, axis=1)
+    # return -loss
 
 
 def loss(multi_label=False, smoothing=0):
@@ -799,16 +831,17 @@ def loss(multi_label=False, smoothing=0):
         #     gamma=2.0, from_logits=False, apply_class_balancing=True
         # )
         logging.info("Using binary")
-        softmax = tf.keras.losses.BinaryCrossentropy(
+        loss_fn = tf.keras.losses.BinaryCrossentropy(
             label_smoothing=smoothing,
         )
+        loss_fn = sigmoid_binary_cross
     else:
         logging.info("Using cross")
-        softmax = tf.keras.losses.CategoricalCrossentropy(
+        loss_fn = tf.keras.losses.CategoricalCrossentropy(
             label_smoothing=smoothing,
         )
 
-    return softmax
+    return loss_fn
 
 
 def optimizer(lr=None, decay=None):

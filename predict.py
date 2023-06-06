@@ -498,12 +498,15 @@ def main():
                 # pass
                 # track.end = start
                 # track.end = start + CALL_LENGTH
-                track.end = track.end - segment_stride
+                track.end = min(start + segment_length - segment_stride, track.end)
                 if track.end > length:
                     track.end = length
 
+                print("Ending track", track.start, track.end, track.label)
                 # else:
                 # track.end = track.end - segment_length / 2
+                # dont do this straight away as if we have a small stride.
+                # we could have more bird calls at later times but within track
                 if start >= track.end:
                     del active_tracks[track.label]
                 # print("removed", track.label)
@@ -525,14 +528,17 @@ def main():
                 t_e = max(t_s, t_e)
                 # track = Track(label, t_s, t_e, r[0])
                 track = Track(label, start, start + segment_length, r[0])
-                print("Creating track", label, start)
+                track.end = min(track.end, length)
+                print("Creating track", label, start, track.end)
                 tracks.append(track)
                 active_tracks[label] = track
             else:
                 # track.end = start + segment_stride + CALL_LENGTH
-                track.end = start + segment_length
+                track.end = start + segment_length - segment_stride
+
                 if track.end > length:
                     track.end = length
+                print("Ending track", track.start, track.end, track.label)
                 track.confidences.append(r[0])
             # else:
 
