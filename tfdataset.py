@@ -347,16 +347,15 @@ def get_dataset(filenames, labels, **args):
         tf.math.equal(tf.cast(y, tf.bool), bird_mask)
     )
     dataset = dataset.filter(others_filter)
-    other_dist = get_distribution(dataset, num_labels, batched=False)
-    for i, d in enumerate(other_dist):
-        logging.info("Non Bird Have %s for %s", d, labels[i])
-    bird_dist = get_distribution(bird_dataset, num_labels, batched=False)
-    for i, d in enumerate(bird_dist):
-        logging.info("Bird D Have %s for %s", d, labels[i])
+    # other_dist = get_distribution(dataset, num_labels, batched=False)
+    # for i, d in enumerate(other_dist):
+    #     logging.info("Non Bird Have %s for %s", d, labels[i])
+    # bird_dist = get_distribution(bird_dataset, num_labels, batched=False)
+    # for i, d in enumerate(bird_dist):
+    #     logging.info("Bird D Have %s for %s", d, labels[i])
     # dist = get_distribution(dataset, batched=False)
 
     resample_data = args.get("resample", True)
-    non_bird_c = np.sum(other_dist)
     if args.get("filenames_2") is not None:
         second = args.get("filenames_2")
         # bird_c = dist[labels.index("bird")]
@@ -368,7 +367,7 @@ def get_dataset(filenames, labels, **args):
         dataset = tf.data.Dataset.sample_from_datasets(
             [bird_dataset, dataset, dataset_2],
             stop_on_empty_dataset=args.get("stop_on_empty", True),
-            rerandomize_each_iteration=True,
+            rerandomize_each_iteration=False,
         )
         # for i, d in enumerate(dist):
         # dist[i] += dist_2[i]
@@ -376,31 +375,25 @@ def get_dataset(filenames, labels, **args):
         dataset = tf.data.Dataset.sample_from_datasets(
             [bird_dataset, dataset],
             stop_on_empty_dataset=args.get("stop_on_empty", True),
-            rerandomize_each_iteration=True,
+            rerandomize_each_iteration=False,
         )
     resample_data = args.get("resample", True)
     if resample_data:
         logging.info("Resampling data")
         dataset = resample(dataset, labels, dist)
-    # if args.get("shuffle", True):
-    #     dataset = dataset.shuffle(
-    #         4096, reshuffle_each_iteration=args.get("reshuffle", True)
-    #     )
-    # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
-    # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
-    # epoch_size = len([0 for x, y in dataset])
 
-    dist = get_distribution(dataset, num_labels, batched=False)
-    for i, d in enumerate(dist):
-        logging.info("Have %s for %s", d, labels[i])
-
-    epoch_size = np.sum(dist)
-    logging.info("Setting dataset size to %s", epoch_size)
-    # if not args.get("only_features", False):
-    # dataset = dataset.repeat(2)
-    scale_epoch = args.get("scale_epoch", None)
-    if scale_epoch:
-        epoch_size = epoch_size // scale_epoch
+        # SHOULDNT NEED THIS
+    # dist = get_distribution(dataset, num_labels, batched=False)
+    # for i, d in enumerate(dist):
+    #     logging.info("Have %s for %s", d, labels[i])
+    #
+    # epoch_size = np.sum(dist)
+    # logging.info("Setting dataset size to %s", epoch_size)
+    # # if not args.get("only_features", False):
+    # # dataset = dataset.repeat(2)
+    # scale_epoch = args.get("scale_epoch", None)
+    # if scale_epoch:
+    #     epoch_size = epoch_size // scale_epoch
     # dataset = dataset.take(epoch_size)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     batch_size = args.get("batch_size", None)
@@ -432,7 +425,7 @@ def get_dataset(filenames, labels, **args):
             4096, reshuffle_each_iteration=args.get("reshuffle", True)
         )
 
-    return dataset, remapped, epoch_size
+    return dataset, remapped, 0
 
 
 def filter_fn(x, y):

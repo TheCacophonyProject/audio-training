@@ -834,7 +834,7 @@ def loss(multi_label=False, smoothing=0):
         loss_fn = tf.keras.losses.BinaryCrossentropy(
             label_smoothing=smoothing,
         )
-        loss_fn = sigmoid_binary_cross
+        # loss_fn = sigmoid_binary_cross
     else:
         logging.info("Using cross")
         loss_fn = tf.keras.losses.CategoricalCrossentropy(
