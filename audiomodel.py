@@ -803,25 +803,13 @@ def weighted_binary_cross(y_true, y_pred):
 @tf.function
 def sigmoid_binary_cross(y_true, y_pred):
     # equiv of optax.igmoid_binary_cross_entropy(logits, labels)
-    log_p = -tf.math.log(tf.math.exp(-y_pred))
-    log_not_p = -tf.math.log(tf.math.exp(y_pred))
 
-    return -y_true * log_p - (1.0 - y_true) * log_not_p
+    log_p = -tf.math.log(1 + tf.math.exp(-y_pred))
+    log_not_p = -tf.math.log(1 + tf.math.exp(y_pred))
 
-    #
-    # tf.math.log_sigmoid(
-    #     logits
-    # )
-    # return optax.sigmoid_binary_cross_entropy(y_pred.numpy(), y_true.numpy())
-    #
-    # y_pred = tf.keras.backend.clip(
-    #     y_pred, tf.keras.backend.epsilon(), 1 - tf.keras.backend.epsilon()
-    # )
-    #
-    # term_0 = (1 - y_true) * tf.math.log(1 - y_pred + tf.keras.backend.epsilon())
-    # term_1 = y_true * tf.math.log(y_pred + tf.keras.backend.epsilon())
-    # loss = tf.keras.backend.mean(term_0 + term_1, axis=1)
-    # return -loss
+    loss = -y_true * log_p - (1.0 - y_true) * log_not_p
+    loss_m = tf.keras.backend.mean(loss, axis=1)
+    return loss_m
 
 
 def loss(multi_label=False, smoothing=0):
@@ -834,7 +822,7 @@ def loss(multi_label=False, smoothing=0):
         loss_fn = tf.keras.losses.BinaryCrossentropy(
             label_smoothing=smoothing,
         )
-        # loss_fn = sigmoid_binary_cross
+        loss_fn = sigmoid_binary_cross
     else:
         logging.info("Using cross")
         loss_fn = tf.keras.losses.CategoricalCrossentropy(
@@ -1159,12 +1147,17 @@ def main():
         else:
             # args.multi = args.multi == 1
             am.train_model(
-                run_name=args.name, weights=args.weights, multi_label=args.multi
+                run_name=args.name,
+                epochs=args.epochs,
+                weights=args.weights,
+                multi_label=args.multi,
             )
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--epochs", type=int, default=100, help="Epochs to use")
+
     parser.add_argument("--confusion", help="Save confusion matrix for model")
     parser.add_argument("-w", "--weights", help="Weights to use")
     parser.add_argument("--cross", action="count", help="Cross fold val")
