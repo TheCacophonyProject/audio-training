@@ -76,6 +76,7 @@ class AudioModel:
         self.learning_rate = 0.01
         self.mean_sub = False
         self.training_data_meta = None
+        self.loss_fn = None
         self.load_meta()
 
     def load_meta(self):
@@ -396,6 +397,7 @@ class AudioModel:
         model_stats["labels"] = self.labels
         model_stats["multi_label"] = multi_label
         model_stats["mean_sub"] = self.mean_sub
+        model_stats["loss_fn"] = self.loss_fn
 
         # model_stats["hyperparams"] = self.params
         model_stats["training_date"] = str(time.time())
@@ -468,10 +470,11 @@ class AudioModel:
             acc = tf.metrics.binary_accuracy
         else:
             acc = tf.metrics.categorical_accuracy
-
+        loss_fn = loss(multi_label)
+        self.loss_fn = loss_fn.__name__
         self.model.compile(
             optimizer=optimizer(lr=self.learning_rate),
-            loss=loss(multi_label),
+            loss=loss_fn,
             metrics=[
                 acc,  #
                 tf.keras.metrics.AUC(),

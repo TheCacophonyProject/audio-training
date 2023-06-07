@@ -367,7 +367,7 @@ def get_dataset(filenames, labels, **args):
         dataset = tf.data.Dataset.sample_from_datasets(
             [bird_dataset, dataset, dataset_2],
             stop_on_empty_dataset=args.get("stop_on_empty", True),
-            rerandomize_each_iteration=False,
+            rerandomize_each_iteration=args.get("rerandomize_each_iteration", False),
         )
         # for i, d in enumerate(dist):
         # dist[i] += dist_2[i]
@@ -375,7 +375,7 @@ def get_dataset(filenames, labels, **args):
         dataset = tf.data.Dataset.sample_from_datasets(
             [bird_dataset, dataset],
             stop_on_empty_dataset=args.get("stop_on_empty", True),
-            rerandomize_each_iteration=False,
+            rerandomize_each_iteration=args.get("rerandomize_each_iteration", False),
         )
     resample_data = args.get("resample", True)
     if resample_data:
@@ -395,8 +395,13 @@ def get_dataset(filenames, labels, **args):
     # if scale_epoch:
     #     epoch_size = epoch_size // scale_epoch
     # dataset = dataset.take(epoch_size)
-    dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     batch_size = args.get("batch_size", None)
+
+    dataset = dataset.cache()
+    if args.get("shuffle", True):
+        dataset = dataset.shuffle(
+            4096, reshuffle_each_iteration=args.get("reshuffle", True)
+        )
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
 
@@ -419,11 +424,7 @@ def get_dataset(filenames, labels, **args):
                 x, y, num_labels, weighting, specific_mask, rest_weighting
             )
         )
-    dataset = dataset.cache()
-    if args.get("shuffle", True):
-        dataset = dataset.shuffle(
-            4096, reshuffle_each_iteration=args.get("reshuffle", True)
-        )
+    dataset = dataset.prefetch(buffer_size=AUTOTUNE)
 
     return dataset, remapped, 0
 
@@ -483,6 +484,7 @@ def filter_bad_tracks(x, y, labels):
 
 # WEIGHT getting bird wrong less than getting specific specis wrong
 # idea is  to insentivise learning specific birds
+@tf.function
 def weight_specific(x, y, num_labels, weighting, specific_mask, rest_weighting):
     # mask for all specifics
     specifics = tf.tensordot(y, specific_mask, 1)
