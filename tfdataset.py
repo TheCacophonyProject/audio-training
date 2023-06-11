@@ -68,6 +68,27 @@ GENERIC_BIRD_LABELS = [
 ]
 
 OTHER_LABELS = ["chicken", "rooster", "frog", "insect"]
+
+
+# JUST FOR HUMAN OR NOT MODEL
+NOISE_LABELS.extend(SPECIFIC_BIRD_LABELS)
+NOISE_LABELS.extend(GENERIC_BIRD_LABELS)
+NOISE_LABELS.extend(OTHER_LABELS)
+keep_excluded_in_extra = False
+
+
+def get_excluded_labels(labels):
+    excluded_labels = []
+    for l in labels:
+        if l not in ["human", "noise"]:
+            excluded_labels.append(l)
+        continue
+
+        if l not in SPECIFIC_BIRD_LABELS and l not in ["noise", "human"]:
+            excluded_labels.append(l)
+    return excluded_labels
+
+
 # signals = Path("./signal-data/train")
 # wavs = list(signals.glob("*.wav"))
 # for w in wavs:
@@ -97,7 +118,7 @@ mel_s = (120, 513)
 sftf_s = (2401, 188)
 mfcc_s = (20, 188)
 DIMENSIONS = mel_s
-
+YAMNET_EMBEDDING_SHAPE = (6, 1024)
 # TEST STUFF to blockout frequencies
 # mel_bins = librosa.mel_frequencies(128, fmax=48000 / 2)
 # human_lowest = np.where(mel_bins < 60)[-1][-1]
@@ -176,6 +197,7 @@ def load_dataset(filenames, num_labels, labels, args):
             add_noise=args.get("add_noise", False),
             no_bird=args.get("no_bird", False),
             all_human=args.get("all_human", False),
+            embeddings=args.get("embeddings", False),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -230,7 +252,8 @@ def get_distribution(dataset, num_labels, batched=True):
     return dist
 
 
-def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
+def get_remappings(labels, excluded_labels):
+    global keep_excluded_in_extra
     extra_label_map = {}
     remapped = {}
     re_dic = {}
@@ -315,9 +338,12 @@ def get_dataset(filenames, labels, **args):
     global bird_i
     global noise_i
     global human_i
-    bird_i = labels.index("bird")
-    noise_i = labels.index("noise")
-    human_i = labels.index("human")
+    if "bird" in labels:
+        bird_i = labels.index("bird")
+    if "noise" in labels:
+        noise_i = labels.index("noise")
+    if "human" in labels:
+        human_i = labels.index("human")
 
     # extra tags, since we have multi label problem, morepork is a bird and morepork
     # cat is a cat but also "noise"
@@ -347,16 +373,17 @@ def get_dataset(filenames, labels, **args):
         tf.math.equal(tf.cast(y, tf.bool), bird_mask)
     )
     dataset = dataset.filter(others_filter)
-    # other_dist = get_distribution(dataset, num_labels, batched=False)
-    # for i, d in enumerate(other_dist):
-    #     logging.info("Non Bird Have %s for %s", d, labels[i])
-    # bird_dist = get_distribution(bird_dataset, num_labels, batched=False)
-    # for i, d in enumerate(bird_dist):
-    #     logging.info("Bird D Have %s for %s", d, labels[i])
+    other_dist = get_distribution(dataset, num_labels, batched=False)
+    for i, d in enumerate(other_dist):
+        logging.info("Non Bird Have %s for %s", d, labels[i])
+    bird_dist = get_distribution(bird_dataset, num_labels, batched=False)
+    for i, d in enumerate(bird_dist):
+        logging.info("Bird D Have %s for %s", d, labels[i])
     # dist = get_distribution(dataset, batched=False)
 
-    resample_data = args.get("resample", True)
+    resample_data = args.get("resample", False)
     if args.get("filenames_2") is not None:
+        logging.info("Loading second files %s", args.get("filenames_2")[:1])
         second = args.get("filenames_2")
         # bird_c = dist[labels.index("bird")]
 
@@ -372,6 +399,7 @@ def get_dataset(filenames, labels, **args):
         # for i, d in enumerate(dist):
         # dist[i] += dist_2[i]
     else:
+        logging.info("Not using second")
         dataset = tf.data.Dataset.sample_from_datasets(
             [bird_dataset, dataset],
             stop_on_empty_dataset=args.get("stop_on_empty", True),
@@ -383,10 +411,10 @@ def get_dataset(filenames, labels, **args):
         dataset = resample(dataset, labels, dist)
 
         # SHOULDNT NEED THIS
-    # dist = get_distribution(dataset, num_labels, batched=False)
-    # for i, d in enumerate(dist):
-    #     logging.info("Have %s for %s", d, labels[i])
-    #
+    dist = get_distribution(dataset, num_labels, batched=False)
+    for i, d in enumerate(dist):
+        logging.info("Have %s for %s", d, labels[i])
+
     # epoch_size = np.sum(dist)
     # logging.info("Setting dataset size to %s", epoch_size)
     # # if not args.get("only_features", False):
@@ -636,36 +664,46 @@ def read_tfrecord(
     add_noise=False,
     no_bird=False,
     all_human=False,
+    embeddings=False,
 ):
     bird_l = tf.constant(["bird"])
     # tf_more_mask = tf.constant(morepork_mask)
     # tf_human_mask = tf.constant(human_mask)
-    tfrecord_format = {
-        # "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
-        # "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
-        # "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
-        # "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
-        "audio/class/text": tf.io.FixedLenFeature((), tf.string),
-        # "audio/length": tf.io.FixedLenFeature((), tf.int64),
-        "audio/raw": tf.io.FixedLenFeature((2401, mel_s[1]), tf.float32),
-        # "audio/sftf_w": tf.io.FixedLenFeature((), tf.int64),
-        # "audio/sftf_h": tf.io.FixedLenFeature((), tf.int64),
-        # "audio/mel_w": tf.io.FixedLenFeature((), tf.int64),
-        # "audio/mel_h": tf.io.FixedLenFeature((), tf.int64),
-        # "audio/mfcc_w": tf.io.FixedLenFeature((), tf.int64),
-        # "audio/raw": tf.io.FixedLenFeature(
-        #     [
-        #         120000,
-        #     ],
-        #     dtype=tf.float32,
-        # ),
-        "audio/embed_predictions": tf.io.FixedLenFeature((), tf.string),
-    }
+    tfrecord_format = {"audio/class/text": tf.io.FixedLenFeature((), tf.string)}
+    # "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
+    # "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
+    # "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
+    # "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
+    # "audio/length": tf.io.FixedLenFeature((), tf.int64),
+    # "audio/sftf_w": tf.io.FixedLenFeature((), tf.int64),
+    # "audio/sftf_h": tf.io.FixedLenFeature((), tf.int64),
+    # "audio/mel_w": tf.io.FixedLenFeature((), tf.int64),
+    # "audio/mel_h": tf.io.FixedLenFeature((), tf.int64),
+    # "audio/mfcc_w": tf.io.FixedLenFeature((), tf.int64),
+    # "audio/raw": tf.io.FixedLenFeature(
+    #     [
+    #         120000,
+    #     ],
+    #     dtype=tf.float32,
+    # ),
+    if embeddings:
+        logging.info("Loading embeddings")
+        tfrecord_format["embedding"] = tf.io.FixedLenFeature(
+            YAMNET_EMBEDDING_SHAPE, tf.float32
+        )
+
+    else:
+        logging.info("Loading sft audio")
+
+        tfrecord_format["audio/raw"] = tf.io.FixedLenFeature(
+            (2401, mel_s[1]), tf.float32
+        )
+        tfrecord_format["audio/embed_predictions"] = tf.io.FixedLenFeature(
+            (), tf.string
+        )
 
     example = tf.io.parse_single_example(example, tfrecord_format)
     # raw = example["audio/raw"]
-    embed_preds = tf.cast(example["audio/embed_predictions"], tf.string)
-    embed_preds = tf.strings.split(embed_preds, sep=",")
 
     label = tf.cast(example["audio/class/text"], tf.string)
     labels = tf.strings.split(label, sep="\n")
@@ -673,31 +711,23 @@ def read_tfrecord(
     extra = extra_label_map.lookup(labels)
     labels = remapped_y.lookup(labels)
     labels = tf.concat([labels, extra], axis=0)
+    embed_preds = None
+    if embeddings:
+        image = example["embedding"]
+    else:
+        embed_preds = tf.cast(example["audio/embed_predictions"], tf.string)
+        embed_preds = tf.strings.split(embed_preds, sep=",")
+        extra_e = extra_label_map.lookup(embed_preds)
+        embed_preds = remapped_y.lookup(embed_preds)
+        embed_preds = tf.concat([embed_preds, extra_e], axis=0)
 
-    extra_e = extra_label_map.lookup(embed_preds)
-    embed_preds = remapped_y.lookup(embed_preds)
-    embed_preds = tf.concat([embed_preds, extra_e], axis=0)
+        stft = example["audio/raw"]
+        stft = tf.reshape(stft, [2401, mel_s[1]])
+        image = tf.tensordot(MEL_WEIGHTS, stft, 1)
+        image = tf.expand_dims(image, axis=2)
 
-    stft = example["audio/raw"]
-    stft = tf.reshape(stft, [2401, mel_s[1]])
-    mel = tf.tensordot(MEL_WEIGHTS, stft, 1)
-    # mel =
-    # mel = example["audio/mel"]
-    # mel = tf.reshape(mel, [*mel_s])
-    # # put mel into ref db
-    # a_max = tf.math.reduce_max(mel)
-    # a_min = tf.math.reduce_min(mel)
-    # m_range = a_max - a_min
-    # mel = 80 * (mel - a_min) / m_range
-    # # mel_no_ref = 80 * mel_no_ref
-    # mel -= 80
-    mel = tf.expand_dims(mel, axis=2)
-    # mel = tf.repeat(mel, 3, axis=2)
     if augment:
         logging.info("Augmenting")
-        # tf.random.uniform()
-        # mel = tfio.audio.freq_mask(mel, param=10)
-        # mel = tfio.audio.time_mask(mel, param=10)
     if mean_sub:
         print("Subbing mean")
         mel_m = tf.reduce_mean(mel, axis=1)
@@ -709,7 +739,6 @@ def read_tfrecord(
     if Z_NORM:
         print("Subbing znorm")
         mel = (mel - zvals["mean"]) / zvals["std"]
-    image = mel
     if preprocess_fn is not None:
         logging.info("Preprocessing with %s", preprocess_fn)
         raise Exception("Done preprocess for audio")
@@ -722,9 +751,11 @@ def read_tfrecord(
             label = tf.reduce_max(
                 tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
             )
-            embed_preds = tf.reduce_max(
-                tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
-            )
+            if embed_preds is not None:
+                embed_preds = tf.reduce_max(
+                    tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
+                )
+
         if no_bird:
             logging.info("no bird")
             # dont use bird or noise label from mixed ones
@@ -1039,14 +1070,6 @@ def init_logging():
     logging.basicConfig(
         stream=sys.stderr, level=logging.INFO, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"
     )
-
-
-def get_excluded_labels(labels):
-    excluded_labels = []
-    for l in labels:
-        if l not in SPECIFIC_BIRD_LABELS and l not in ["noise", "human"]:
-            excluded_labels.append(l)
-    return excluded_labels
 
 
 if __name__ == "__main__":

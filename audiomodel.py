@@ -29,6 +29,7 @@ from tfdataset import (
     NOISE_LABELS,
     SPECIFIC_BIRD_LABELS,
     get_excluded_labels,
+    YAMNET_EMBEDDING_SHAPE,
 )
 
 # from tfdatasetembeddings import get_dataset, DIMENSIONS
@@ -45,9 +46,6 @@ import math
 
 from resnet import wr_resnet
 
-training_dir = "training-data"
-other_training_dir = "training-data"
-
 #
 # num_residual_units = 2
 # momentum = 0.9
@@ -60,11 +58,19 @@ other_training_dir = "training-data"
 class AudioModel:
     VERSION = 1.0
 
-    def __init__(self, model_name="badwinner"):
-        self.checkpoint_folder = Path("./train/checkpoints")
-        self.log_dir = Path("./train/logs")
-        # self.data_dir = "/data/audio-data"
-        self.data_dir = "."
+    def __init__(
+        self,
+        model_name="badwinner2",
+        data_dir="/data/audio-data",
+        second_data_dir=None,
+        training_dir="./train",
+    ):
+        print(data_dir, second_data_dir is None)
+        self.training_dir = Path(training_dir)
+        self.checkpoint_folder = self.training_dir / "checkpoints"
+        self.log_dir = self.training_dir / "logs"
+        self.data_dir = data_dir
+        self.second_data_dir = second_data_dir
         self.model_name = model_name
         self.batch_size = 32
         self.validation = None
@@ -72,6 +78,8 @@ class AudioModel:
         self.train = None
         self.remapped = None
         self.input_shape = DIMENSIONS
+        if model_name == "embeddings":
+            self.input_shape = YAMNET_EMBEDDING_SHAPE
         self.preprocess_fn = None
         self.learning_rate = 0.01
         self.mean_sub = False
@@ -80,7 +88,7 @@ class AudioModel:
         self.load_meta()
 
     def load_meta(self):
-        file = f"{self.data_dir}/{training_dir}/training-meta.json"
+        file = self.data_dir / "training-meta.json"
         with open(file, "r") as f:
             meta = json.load(f)
         self.labels = meta.get("labels", [])
@@ -305,7 +313,7 @@ class AudioModel:
     def train_model(self, run_name="test", epochs=100, weights=None, multi_label=False):
         self.log_dir = self.log_dir / run_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.load_datasets(self.data_dir, self.labels, self.input_shape, test=True)
+        self.load_datasets(self.labels, self.input_shape, test=True)
         self.num_classes = len(self.labels)
         self.build_model(len(self.labels), multi_label=multi_label)
 
@@ -437,7 +445,7 @@ class AudioModel:
             )
         elif self.model_name == "badwinner":
             logging.info("Building bad winner")
-
+            raise Exception("Dont use bad winner use badwinner 2")
             self.model = badwinner.build_model(
                 self.input_shape, None, num_labels, multi_label=multi_label
             )
@@ -532,18 +540,26 @@ class AudioModel:
         checks.append(hist_callback)
         return checks
 
-    def load_datasets(self, base_dir, labels, shape, test=False):
-        datasets = ["other-training-data", "training-data", "chime-training-data"]
-        datasets = ["training-data"]
-        flickr = "/data/audio-data/flickr-training-data"
+    def load_datasets(self, labels, shape, test=False):
+        logging.info(
+            "Loading datasets with %s and secondary dir %s ",
+            self.data_dir,
+            self.second_data_dir,
+        )
         labels = set()
         filenames = []
-        second_filenames = tf.io.gfile.glob(f"{flickr}/train/*.tfrecord")
-
+        second_filenames = None
+        if self.second_data_dir is not None:
+            second_filenames = tf.io.gfile.glob(
+                f"{str(self.second_data_dir)}/train/*.tfrecord"
+            )
+        datasets = ["."]
         for d in datasets:
             # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
-            filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/train/*.tfrecord"))
-            file = f"{base_dir}/{d}/training-meta.json"
+            filenames.extend(
+                tf.io.gfile.glob(f"{str(self.data_dir)}/{d}/train/*.tfrecord")
+            )
+            file = f"{self.data_dir}/{d}/training-meta.json"
             with open(file, "r") as f:
                 meta = json.load(f)
             labels.update(meta.get("labels", []))
@@ -574,14 +590,20 @@ class AudioModel:
             deterministic=True,
             shuffle=False,
             filenames_2=second_filenames,
+            embeddings=self.model_name == "embeddings"
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
         self.num_train_instance = epoch_size
         filenames = []
         for d in datasets:
             # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
-            filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/validation/*.tfrecord"))
-        second_filenames = tf.io.gfile.glob(f"{flickr}/validation/*.tfrecord")
+            filenames.extend(
+                tf.io.gfile.glob(f"{str(self.data_dir)}/{d}/validation/*.tfrecord")
+            )
+        if self.second_data_dir is not None:
+            second_filenames = tf.io.gfile.glob(
+                f"{str(self.second_data_dir)}/validation/*.tfrecord"
+            )
         logging.info("Loading Val")
         self.validation, _, _ = get_dataset(
             # dir,
@@ -592,7 +614,8 @@ class AudioModel:
             resample=False,
             excluded_labels=excluded_labels,
             mean_sub=self.mean_sub,
-            filenames_2=second_filenames
+            filenames_2=second_filenames,
+            embeddings=self.model_name == "embeddings"
             # preprocess_fn=self.preprocess_fn,
         )
 
@@ -601,8 +624,13 @@ class AudioModel:
             filenames = []
             for d in datasets:
                 # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
-                filenames.extend(tf.io.gfile.glob(f"{base_dir}/{d}/test/*.tfrecord"))
-            second_filenames = tf.io.gfile.glob(f"{flickr}/test/*.tfrecord")
+                filenames.extend(
+                    tf.io.gfile.glob(f"{str(self.data_dir)}/{d}/test/*.tfrecord")
+                )
+            if self.second_data_dir is not None:
+                second_filenames = tf.io.gfile.glob(
+                    f"{str(self.second_data_dir)}/test/*.tfrecord"
+                )
 
             self.test, _, _ = get_dataset(
                 # dir,
@@ -614,7 +642,8 @@ class AudioModel:
                 excluded_labels=excluded_labels,
                 mean_sub=self.mean_sub,
                 shuffle=False,
-                filenames_2=second_filenames
+                filenames_2=second_filenames,
+                embeddings=self.model_name == "embeddings"
                 # preprocess_fn=self.preprocess_fn,
             )
         self.remapped = remapped
@@ -1072,7 +1101,7 @@ def main():
     init_logging()
     args = parse_args()
     if args.confusion is not None:
-        load_model = Path(".") / args.name
+        load_model = Path(args.name)
         logging.info("Loading %s with weights %s", load_model, "val_acc")
         model = tf.keras.models.load_model(
             str(load_model),
@@ -1093,7 +1122,7 @@ def main():
         mean_sub = meta_data.get("mean_sub")
 
         preprocess = get_preprocess_fn(model_name)
-        base_dir = Path("./training-data/")
+        base_dir = Path(args.data_dir)
         meta_f = base_dir / "training-meta.json"
         dataset_meta = None
         with open(meta_f, "r") as f:
@@ -1107,10 +1136,9 @@ def main():
             labels.append("other")
         labels.sort()
         excluded_labels = get_excluded_labels(labels)
-        print(labels)
         # self.labels = meta.get("labels", [])
         dataset, _, _ = get_dataset(
-            tf.io.gfile.glob(base_dir / "training-data/test/*.tfrecord"),
+            tf.io.gfile.glob(str(base_dir) / "training-data/test/*.tfrecord"),
             labels,
             image_size=DIMENSIONS,
             shuffle=False,
@@ -1139,12 +1167,12 @@ def main():
         # model.evaluate(dataset)
 
         if dataset is not None:
-            best_threshold(model, labels, dataset, args.confusion)
+            # best_threshold(model, labels, dataset, args.confusion)
             # return
             confusion(model, labels, dataset, args.confusion)
 
     else:
-        am = AudioModel(args.model_name)
+        am = AudioModel(args.model_name, args.dataset_dir, args.second_dataset_dir)
         if args.cross:
             am.cross_fold_train(run_name=args.name)
         else:
@@ -1157,10 +1185,27 @@ def main():
             )
 
 
+def none_or_str(value):
+    if value in ["null", "none", "None"]:
+        return None
+    return value
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=100, help="Epochs to use")
-
+    parser.add_argument(
+        "--dataset-dir",
+        type=str,
+        default="/data/audio-data",
+        help="Dataset directory to use",
+    )
+    parser.add_argument(
+        "--second-dataset-dir",
+        type=none_or_str,
+        default="/data/audio-data/flickr-training-data",
+        help="Secondary dataset directory to use",
+    )
     parser.add_argument("--confusion", help="Save confusion matrix for model")
     parser.add_argument("-w", "--weights", help="Weights to use")
     parser.add_argument("--cross", action="count", help="Cross fold val")
@@ -1176,6 +1221,10 @@ def parse_args():
 
     args = parser.parse_args()
     args.multi = args.multi > 0
+    if args.dataset_dir is not None:
+        args.dataset_dir = Path(args.dataset_dir)
+    if args.second_dataset_dir is not None:
+        args.second_dataset_dir = Path(args.second_dataset_dir)
     return args
 
 
@@ -1346,6 +1395,7 @@ def get_linear_model(embedding_dim, num_classes):
     model = tf.keras.Sequential(
         [
             tf.keras.Input(shape=embedding_dim),
+            tf.keras.layers.GlobalAveragePooling1D(),
             tf.keras.layers.Dense(num_classes, activation="sigmoid"),
         ]
     )
