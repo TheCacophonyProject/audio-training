@@ -71,18 +71,19 @@ OTHER_LABELS = ["chicken", "rooster", "frog", "insect"]
 
 
 # JUST FOR HUMAN OR NOT MODEL
-NOISE_LABELS.extend(SPECIFIC_BIRD_LABELS)
-NOISE_LABELS.extend(GENERIC_BIRD_LABELS)
-NOISE_LABELS.extend(OTHER_LABELS)
-keep_excluded_in_extra = False
+# NOISE_LABELS.extend(SPECIFIC_BIRD_LABELS)
+# NOISE_LABELS.extend(GENERIC_BIRD_LABELS)
+# NOISE_LABELS.extend(OTHER_LABELS)
+# keep_excluded_in_extra = False
 
 
 def get_excluded_labels(labels):
     excluded_labels = []
     for l in labels:
-        if l not in ["human", "noise"]:
-            excluded_labels.append(l)
-        continue
+        # FOR HUMAN MODEL
+        # if l not in ["human", "noise"]:
+        #     excluded_labels.append(l)
+        # continue
 
         if l not in SPECIFIC_BIRD_LABELS and l not in ["noise", "human"]:
             excluded_labels.append(l)
@@ -252,8 +253,7 @@ def get_distribution(dataset, num_labels, batched=True):
     return dist
 
 
-def get_remappings(labels, excluded_labels):
-    global keep_excluded_in_extra
+def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
     extra_label_map = {}
     remapped = {}
     re_dic = {}
