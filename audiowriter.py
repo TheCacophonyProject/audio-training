@@ -89,14 +89,10 @@ def create_tf_example(sample, labels):
     # mel = data.mel
     tags = sample.tags_s
     track_ids = " ".join(map(str, sample.track_ids))
-    predicted_labels = ",".join(sample.predicted_labels)
 
     feature_dict = {
         "audio/rec_id": tfrecord_util.bytes_feature(str(sample.rec_id).encode("utf8")),
         "audio/track_id": tfrecord_util.bytes_feature(track_ids.encode("utf8")),
-        "audio/embed_predictions": tfrecord_util.bytes_feature(
-            predicted_labels.encode("utf8")
-        ),
         "audio/sample_rate": tfrecord_util.int64_feature(sample.sr),
         "audio/length": tfrecord_util.float_feature(sample.length),
         "audio/raw_length": tfrecord_util.float_feature(data.raw_length),
@@ -116,11 +112,20 @@ def create_tf_example(sample, labels):
         "audio/raw": tfrecord_util.float_list_feature(np.float32(data.stft.ravel())),
         # "audio/raw_l": tfrecord_util.int64_feature(len(data.stft)),
         # "audio/mel_s    ": tfrecord_util.float_list_feature(data.mel_s.ravel()),
-        EMBEDDING: tfrecord_util.float_list_feature(sample.embeddings.ravel()),
-        LOGITS: tfrecord_util.float_list_feature(sample.logits.ravel()),
-        EMBEDDING_SHAPE: (tfrecord_util.int64_list_feature(sample.embeddings.shape),),
     }
-
+    if sample.predicted_labels is not None:
+        predicted_labels = ",".join(sample.predicted_labels)
+        pred_dic = {
+            "audio/embed_predictions": tfrecord_util.bytes_feature(
+                predicted_labels.encode("utf8"),
+            ),
+            EMBEDDING: tfrecord_util.float_list_feature(sample.embeddings.ravel()),
+            LOGITS: tfrecord_util.float_list_feature(sample.logits.ravel()),
+            EMBEDDING_SHAPE: (
+                tfrecord_util.int64_list_feature(sample.embeddings.shape),
+            ),
+        }
+        feature_dict.update(pred_dic)
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
     return example, 0
 
@@ -188,16 +193,20 @@ def process_job(queue, labels, config, base_dir):
     import gc
 
     # Load the model.
-    model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
-    embedding_model = tf.keras.models.load_model("./embedding_model")
-    meta_file = "./embedding_model/metadata.txt"
-    with open(str(meta_file), "r") as f:
-        meta_data = json.load(f)
+    model = None
+    embedding_model = None
+    embedding_labels = None
+    # model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
+    # embedding_model = tf.keras.models.load_model("./embedding_model")
+    # meta_file = "./embedding_model/metadata.txt"
+    # with open(str(meta_file), "r") as f:
+    #     meta_data = json.load(f)
+    # embedding_labels = meta_data.get("labels")
     pid = os.getpid()
 
     writer_i = 1
     name = f"{writer_i}-{pid}.tfrecord"
-    embedding_labels = meta_data.get("labels")
+
     options = tf.io.TFRecordOptions(compression_type="GZIP")
     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
     i = 0
@@ -290,30 +299,30 @@ def save_data(rec, writer, model, embedding_model, base_dir, config, embedding_l
         for i, sample in enumerate(samples):
             try:
                 spec = load_data(config, sample.start, frames, sr, end=sample.end)
-                start = sample.start * 32000
-                start = round(start)
-                end = round(sample.end * 32000)
-                if (end - start) > 32000 * config.segment_length:
-                    end = start + 32000 * config.segment_length
-                data = frames32[start:end]
-                data = np.pad(data, (0, 32000 * 5 - len(data)))
-                logits, embeddings = model.infer_tf(data[np.newaxis, :])
-                sample.logits = logits.numpy()[0]
-                sample.embeddings = embeddings.numpy()[0]
-                predicted = embedding_model.predict(embeddings.numpy())[0]
-                embed_labels = []
-                for p_i, p in enumerate(predicted):
-                    if p > 0.7:
-                        embed_labels.append(embedding_labels[p_i])
-                sample.predicted_labels = embed_labels
-                logging.info(
-                    "Predicted %s vs actual %s start %s-%s fiel %s",
-                    sample.predicted_labels,
-                    sample.tags,
-                    sample.start,
-                    sample.end,
-                    rec.filename,
-                )
+                # start = sample.start * 32000
+                # start = round(start)
+                # end = round(sample.end * 32000)
+                # if (end - start) > 32000 * config.segment_length:
+                #     end = start + 32000 * config.segment_length
+                # data = frames32[start:end]
+                # data = np.pad(data, (0, 32000 * 5 - len(data)))
+                # logits, embeddings = model.infer_tf(data[np.newaxis, :])
+                # sample.logits = logits.numpy()[0]
+                # sample.embeddings = embeddings.numpy()[0]
+                # predicted = embedding_model.predict(embeddings.numpy())[0]
+                # embed_labels = []
+                # for p_i, p in enumerate(predicted):
+                #     if p > 0.7:
+                #         embed_labels.append(embedding_labels[p_i])
+                # sample.predicted_labels = embed_labels
+                # logging.info(
+                #     "Predicted %s vs actual %s start %s-%s fiel %s",
+                #     sample.predicted_labels,
+                #     sample.tags,
+                #     sample.start,
+                #     sample.end,
+                #     rec.filename,
+                # )
                 logging.info("Mem %s", psutil.virtual_memory()[2])
                 # print("mel is", mel.shape)
                 # print("adjusted start is", sample.start, " becomes", sample.start - start)

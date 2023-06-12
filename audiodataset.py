@@ -481,7 +481,8 @@ class Recording:
                         # if t.start<= start and t.end <= end:
                         other_tracks.append(other_track)
                         labels = labels | other_track.human_tags
-
+                # print("new samples with tracks", other_tracks)
+                other_tracks.append(track)
                 self.samples.append(
                     AudioSample(
                         self,

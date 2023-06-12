@@ -186,8 +186,34 @@ def show_signals(file):
     plot_mel_signals(mel, signals, signals2)
 
 
+# MIGHT BE WORTH TRYING
+#
+# import random
+# def split_sound(clip):
+#     """Returns the sound array, sample rate and
+#     x_split = intervals where sound is louder than top db
+#     """
+#     db = librosa.core.amplitude_to_db(clip)
+#     mean_db = np.abs(db).mean()
+#     std_db = db.std()
+#     x_split = librosa.effects.split(y=clip, top_db = mean_db - std_db)
+#     return x_split
+# def split_sound(clip):
+#     """Returns the sound array, sample rate and
+#     x_split = intervals where sound is louder than top db
+#     """
+#     db = librosa.core.amplitude_to_db(clip)
+#     mean_db = np.abs(db).mean()
+#     std_db = db.std()
+#     x_split = librosa.effects.split(y=clip, top_db=mean_db + 2 * std_db)
+#     return x_split
+
+
 def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
     frames, sr = load_recording(file)
+    # spits = split_sound(frames[: sr * 3])
+    # for s in spits:
+    #     print("Split", s / sr)
     length = len(frames) / sr
     end = 0
     sample_size = int(seg_length * sr)
@@ -221,6 +247,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             print("data is now", len(s_data) / sr)
 
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
+
         # print(spectogram.shape)
         # spectogram[:100, :] = 0
         # spectogram = np.clip(spectogram, 0, np.mean(spectogram))
@@ -233,6 +260,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
 
         # spectogram[:100, :]
         mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000, power=1)
+
         half = mel[:, 75:]
         if np.amax(half) == np.amin(half):
             print("mel max is same")
@@ -297,7 +325,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         # print("mean of mel is", round(1000 * np.mean(mel), 4))
         # mel = tf.repeat(mel, 3, axis=2)
         mels.append(mel)
-        break
+        # break
         i += 1
         # if i == 3:
         #     break
@@ -356,25 +384,6 @@ def chirp_embeddings(file, stride=5):
     return np.array(embeddings), len(rec_data) / sr
 
 
-def model_pop(model):
-    print("Loaded model")
-    layers = model.layers
-    for l in layers:
-        print(l)
-    before_glob = layers[-3]
-    other_out = before_glob.output
-    print("Before is", before_glob.output)
-    last_layer = layers[-1]
-    print("Last layer", last_layer)
-    print(last_layer.weights)
-    ones = np.ones((1, 120, 513, 1))
-    pred = model.predict(ones)
-    mid_model = tf.keras.Model(inputs=model.input, outputs=other_out, training=False)
-    other_pred = mid_model.predict(ones)
-    print("P", pred, pred.shape)
-    print("Other", other_pred, other_pred.shape)
-
-
 def main():
     init_logging()
     args = parse_args()
@@ -398,13 +407,15 @@ def main():
         compile=False,
     )
     model.summary()
-    model.trainable = False
+    # an idea to get more details predictions
+    # model.trainable = False
+    #
+    # x = model.layers[-1](model.layers[-3].output, training=False)
+    # mid_model = tf.keras.Model(inputs=model.input, outputs=x)
+    # # for l in mid_model.layers:
+    # #     l.trainable = False
+    # mid_model.summary()
 
-    x = model.layers[-1](model.layers[-3].output, training=False)
-    mid_model = tf.keras.Model(inputs=model.input, outputs=x)
-    # for l in mid_model.layers:
-    #     l.trainable = False
-    mid_model.summary()
     # model_pop(model)
     # return
     # model = tf.keras.models.load_model(str(load_model))
@@ -427,7 +438,7 @@ def main():
 
     hop_length = 281
 
-    # segment_stride = 0.25
+    segment_stride = 3
     # print("stride is", segment_stride)
     # segment_length = 2
     # segment_stride = 0.5
@@ -497,13 +508,13 @@ def main():
 
     print("data is", data.shape, data.dtype, np.amax(data))
     predictions = model.predict(np.array(data))
-    other_pred = mid_model(np.array(data), training=False)
-    print(other_pred.shape)
+    # other_pred = mid_model(np.array(data), training=False)
+    # print(other_pred.shape)
     tracks = []
     start = 0
     active_tracks = {}
     for i, prediction in enumerate(predictions):
-        other = other_pred[i]
+        # other = other_pred[i]
         print(
             np.sum(prediction),
             "at",
@@ -512,44 +523,52 @@ def main():
             start + segment_length,
             np.round(prediction * 100),
         )
-        gap = 3 / 45.0
-        other_s = start
-        sub_labels = []
-        for other_i, other in enumerate(other[0]):
-            new_labels = []
-            for l_i, p in enumerate(other):
-                if p >= prob_thresh:
-                    label = labels[l_i]
-                    new_labels.append(label)
-            for sub in sub_labels:
-                if sub not in new_labels:
-                    print(
-                        sub,
-                        " end ",
-                        round(start, 1),
-                    )
-            if len(new_labels) > 0:
-                for l in new_labels:
-                    print(
-                        l,
-                        " start at ",
-                        round(start, 1),
-                    )
-                # print(
-                #     np.sum(other),
-                #     "at",
-                #     round(start, 1),
-                #     "-",
-                #     round(start + gap, 1),
-                #     np.round(other * 100),
-                #     new_labels,
-                # )
-            sub_labels = new_labels
-            start += gap
-        # break
+        # other_s = start
+        # sub_labels = []
+        # # think of the times interms of stft
+        # # win length / sr
+        #
+        # downscale = 513 / 45.0
+        # win_s = downscale * 4800 / 48000
+        # hop_s = downscale * 281 / 48000
+        # print("over lap is ", win_s - hop_s)
+        # for other_i, other in enumerate(other[0]):
+        #     new_labels = []
+        #     for l_i, p in enumerate(other):
+        #         if p >= prob_thresh:
+        #             label = labels[l_i]
+        #             new_labels.append(label)
+        #     for sub in sub_labels:
+        #         if sub not in new_labels:
+        #             print(
+        #                 sub,
+        #                 " end ",
+        #                 round(other_s, 1),
+        #             )
+        #     if len(new_labels) > 0:
+        #         for l in new_labels:
+        #             if l not in sub_labels:
+        #                 print(
+        #                     l,
+        #                     " start at ",
+        #                     round(other_s, 1),
+        #                 )
+        #     print(
+        #         other_i,
+        #         "at",
+        #         round(other_s, 1),
+        #         "-",
+        #         round(other_s + win_s, 1),
+        #         np.round(other * 100),
+        #         new_labels,
+        #     )
+        #     sub_labels = new_labels
+        #     other_s += hop_s
+
         if start + segment_length > length:
             print("final one")
             start = length - segment_length
+
         results = []
         track_labels = []
         if multi_label:
