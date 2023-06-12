@@ -303,9 +303,8 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
     return mels, length
 
 
-def get_chirp_samples(rec_data, sr=32000, stride=1):
+def get_chirp_samples(rec_data, sr=32000, stride=1, length=5):
     start = 0
-    length = 5
 
     samples = []
     while True:
@@ -324,6 +323,22 @@ def get_chirp_samples(rec_data, sr=32000, stride=1):
     return np.float32(samples)
 
 
+def yamn_embeddings(file, stride=1):
+    import tensorflow_hub as hub
+
+    rec_data, sr = load_recording(file, resample=16000)
+    samples = get_chirp_samples(rec_data, sr=sr, stride=stride, length=3)
+    # Load the model.
+    model = hub.load("https://tfhub.dev/google/yamnet/1")
+    # model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
+
+    embeddings = []
+    for s in samples:
+        logits, embedding, _ = model(s)
+        embeddings.append(embedding)
+    return np.array(embeddings), len(rec_data) / sr
+
+
 def chirp_embeddings(file, stride=5):
     import tensorflow_hub as hub
 
@@ -335,6 +350,7 @@ def chirp_embeddings(file, stride=5):
     embeddings = []
     for s in samples:
         logits, embedding = model.infer_tf(s[np.newaxis, :])
+        print(embedding.shape)
         embeddings.append(embedding[0])
     return np.array(embeddings), len(rec_data) / sr
 
@@ -442,6 +458,8 @@ def main():
         file = Path(args.file)
         if model_name == "embeddings":
             data, length = chirp_embeddings(file, segment_stride)
+        elif model_name == "yamn-embeddings":
+            data, length = yamn_embeddings(file, segment_stride)
         else:
             data, length = preprocess_file(
                 file, segment_length, segment_stride, hop_length, mean_sub, use_mfcc
@@ -502,7 +520,6 @@ def main():
                 if track.end > length:
                     track.end = length
 
-                print("Ending track", track.start, track.end, track.label)
                 # else:
                 # track.end = track.end - segment_length / 2
                 # dont do this straight away as if we have a small stride.
