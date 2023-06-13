@@ -222,4 +222,4 @@ def basic_block_tweaked(X, f, filters, stage, block, stride=1):
     return X
 
 
-WRResNet()
+# WRResNet()

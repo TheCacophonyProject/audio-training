@@ -118,7 +118,7 @@ DIMENSIONS = (160, 188)
 mel_s = (120, 513)
 sftf_s = (2401, 188)
 mfcc_s = (20, 188)
-DIMENSIONS = mel_s
+DIMENSIONS = (*mel_s, 1)
 YAMNET_EMBEDDING_SHAPE = (6, 1024)
 # TEST STUFF to blockout frequencies
 # mel_bins = librosa.mel_frequencies(128, fmax=48000 / 2)

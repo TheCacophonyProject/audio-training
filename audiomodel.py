@@ -80,6 +80,7 @@ class AudioModel:
         self.input_shape = DIMENSIONS
         if model_name == "embeddings":
             self.input_shape = YAMNET_EMBEDDING_SHAPE
+
         self.preprocess_fn = None
         self.learning_rate = 0.01
         self.mean_sub = False
