@@ -22,13 +22,14 @@ def WRResNet(input_shape=(120, 512, 1), classes=6, depth=22, k=4):
             X = wr_block(
                 X, 3, (f, f), stage=stage + 1, block="b", stride=stage, depth=n
             )
-
     X = tf.keras.layers.BatchNormalization(axis=3, name="final_bn")(X)
     X = tf.keras.layers.Activation("relu")(X)
+    #
+    # X = tf.keras.layers.AveragePooling2D(pool_size=8)(X)
+    X = tf.keras.layers.GlobalAveragePooling2D()(X)
 
-    X = tf.keras.layers.AveragePooling2D(pool_size=8)(X)
-
-    X = tf.keras.layers.Flatten()(X)
+    # X = tf.keras.layers.Flatten()(X)
+    X = tf.keras.layers.Dense(classes, activation="sigmoid", name="prediction")(X)
     model = tf.keras.Model(inputs=X_input, outputs=X, name="WRResNet")
     model.summary()
     return model

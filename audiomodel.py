@@ -451,6 +451,11 @@ class AudioModel:
             )
         elif self.model_name == "embeddings":
             self.model = get_linear_model(self.input_shape, len(self.labels))
+        elif self.model_name == "wr-resnet":
+            self.model = wr_resnet.WRResNet(
+                self.input_shape,
+                len(self.labels),
+            )
         else:
             norm_layer = tf.keras.layers.Normalization()
             norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
