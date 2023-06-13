@@ -270,7 +270,6 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             return mels, length
             # 1 / 0
         # mel = librosa.power_to_db(mel, ref=np.max)
-        # plot_mel(mel, i)
         # break
         # if i == 10:
         #     break
@@ -279,6 +278,20 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         # pcen_S = librosa.pcen(mel * (2**31))
         # plot_mel(mel, 0)
         # plot_mel(pcen_S, 0)
+        # print("Preprocess mel")
+        # plot_mel(mel, i)
+        # lib_mel = librosa.feature.melspectrogram(
+        #     y=s_data,
+        #     sr=sr,
+        #     n_fft=n_fft,
+        #     hop_length=hop_length,
+        #     n_mels=120,
+        #     fmin=50,
+        #     fmax=11000,
+        #     power=1,
+        # )
+        # plot_mel(lib_mel, i)
+
         mel = tf.expand_dims(mel, axis=2)
 
         if use_mfcc:

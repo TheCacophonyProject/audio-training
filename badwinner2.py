@@ -59,6 +59,126 @@ class MagTransform(tf.keras.layers.Layer):
 # Conv:Fullx1x1'
 
 
+def res_block(X, filters, stage, block, stride=1):
+    # defining name basis
+    conv_name_base = "res" + str(stage) + block + "_branch"
+    bn_name_base = "bn" + str(stage) + block + "_branch"
+
+    # Retrieve Filters
+
+    # Save the input value. You'll need this later to add back to the main path.
+
+    X_shortcut = X
+    # First component of main path
+    X = tf.keras.layers.BatchNormalization(axis=3, name=bn_name_base + "2a")(X)
+    X = tf.keras.layers.Activation("relu")(X)
+    X = tf.keras.layers.Conv2D(
+        filters=filters,
+        kernel_size=(3, 3),
+        strides=stride,
+        padding="same",
+        name=conv_name_base + "2a",
+        kernel_initializer=tf.keras.initializers.GlorotUniform(seed=0),
+    )(X)
+    X = tf.keras.layers.BatchNormalization(axis=3, name=bn_name_base + "2b")(X)
+    X = tf.keras.layers.Activation("relu")(X)
+    X = tf.keras.layers.Conv2D(
+        filters=filters,
+        kernel_size=(3, 3),
+        strides=stride,
+        padding="same",
+        name=conv_name_base + "2b",
+        kernel_initializer=tf.keras.initializers.GlorotUniform(seed=0),
+    )(X)
+    X = tf.keras.layers.BatchNormalization(axis=3, name=bn_name_base + "2c")(X)
+    X = tf.keras.layers.Activation("relu")(X)
+    X = tf.keras.layers.Conv2D(
+        filters=filters,
+        kernel_size=(3, 3),
+        strides=stride,
+        padding="same",
+        name=conv_name_base + "2c",
+        kernel_initializer=tf.keras.initializers.GlorotUniform(seed=0),
+    )(X)
+    X = tf.keras.layers.BatchNormalization(axis=3, name=bn_name_base + "2d")(X)
+    X = tf.keras.layers.Activation("relu")(X)
+    X = tf.keras.layers.Conv2D(
+        filters=filters,
+        kernel_size=(3, 3),
+        strides=stride,
+        padding="same",
+        name=conv_name_base + "2d",
+        kernel_initializer=tf.keras.initializers.GlorotUniform(seed=0),
+    )(X)
+
+    X_shortcut = tf.keras.layers.Conv2D(X.shape[-1], strides=stride, kernel_size=1)(
+        X_shortcut
+    )
+    # Final step: Add shortcut value to main path, and pass it through a RELU activation
+    X = tf.keras.layers.Add()([X, X_shortcut])
+    X = tf.keras.layers.Activation("relu")(X)
+    return X
+
+
+def build_model_res(input_shape, norm_layer, num_labels, multi_label=False):
+    input = tf.keras.Input(shape=(*input_shape, 1), name="input")
+    # x = norm_layer(input)
+    # if multi_label:
+    filters = 256
+    # y = x σ(a) , where σ(a) = 1/ (1 + exp(−a))
+
+    x = MagTransform()(input)
+    # x = tf.keras.layers.BatchNormalization()(x)
+
+    x = tf.keras.layers.Conv2D(64, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+
+    # RESNET
+    x = res_block(x, 64, 1, "b")
+    x = tf.keras.layers.MaxPool2D((3, 3))(x)
+    x = res_block(x, 128, 2, "b")
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Activation("relu")(x)
+    x = tf.keras.layers.Conv2D(128, (14, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Conv2D(128, (22, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.Dropout(0.5)(x)
+
+    # probably dont need to be as big
+    x = tf.keras.layers.Conv2D(
+        1024,
+        (1, 9),
+        activation=tf.keras.layers.LeakyReLU(),
+        kernel_initializer=tf.keras.initializers.Orthogonal(),
+    )(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Dropout(0.5)(x)
+
+    x = tf.keras.layers.Conv2D(
+        1024,
+        1,
+        activation=tf.keras.layers.LeakyReLU(),
+        kernel_initializer=tf.keras.initializers.Orthogonal(),
+    )(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+
+    x = tf.keras.layers.Dropout(0.5)(x)
+
+    x = tf.keras.layers.Conv2D(
+        num_labels,
+        1,
+        activation=tf.keras.layers.LeakyReLU(),
+        kernel_initializer=tf.keras.initializers.Orthogonal(),
+    )(x)
+    # x = logmeanexp(x, sharpness=1, axis=2)
+    x = tf.keras.layers.GlobalAveragePooling2D()(x)
+
+    x = tf.keras.activations.sigmoid(x)
+
+    model = tf.keras.models.Model(input, outputs=x)
+    return model
+
+
 def build_model(input_shape, norm_layer, num_labels, multi_label=False):
     input = tf.keras.Input(shape=(*input_shape, 1), name="input")
     # x = norm_layer(input)

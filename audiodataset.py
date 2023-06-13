@@ -443,7 +443,7 @@ class Recording:
             key=lambda track: track.start,
         )
         # always take 1 one sample, but dont bother with more if they are short
-        min_sample_length = segment_length * 0.7
+        min_sample_length = segment_length
         # can be used to seperate among train/val/test
         bin_id = f"{self.id}-0"
 
@@ -457,6 +457,7 @@ class Recording:
             start = track.start
             end = start + segment_length
             end = min(end, track.end)
+            # print("checking", track.start, "-", track.end, track.human_tags)
             while True:
                 labels = set(track.human_tags)
                 other_tracks = []
@@ -473,16 +474,33 @@ class Recording:
                         - (max(end, other_track.end) - min(start, other_track.start))
                     )
                     min_overlap = min(0.9 * segment_length, other_track.length * 0.9)
-
+                    # print(
+                    #     "checking overlap",
+                    #     track.start,
+                    #     "-",
+                    #     track.end,
+                    #     " with other_",
+                    #     start,
+                    #     other_track.start,
+                    #     overlap,
+                    # )
                     # enough overlap or we engulf the track
-                    if overlap >= min_overlap or (
-                        overlap > 0 and end > other_track.end
-                    ):
+                    if overlap >= min_overlap or (overlap >= other_track.length):
                         # if t.start<= start and t.end <= end:
+                        # print(
+                        #     "adding overlapped track",
+                        #     other_track.start,
+                        #     overlap,
+                        #     other_track.length,
+                        #     min_overlap,
+                        # )
                         other_tracks.append(other_track)
                         labels = labels | other_track.human_tags
                 # print("new samples with tracks", other_tracks)
                 other_tracks.append(track)
+                print(
+                    start, min(track.end, end), "addfing sample for", track.id, labels
+                )
                 self.samples.append(
                     AudioSample(
                         self,
@@ -506,7 +524,15 @@ class Recording:
         # for t in self.tracks:
         #     print(self.id, "have track from ", t.start, t.end)
         # for s in self.samples:
-        #     print(self.id, "Have sample", s.start, s.end, s.tags, self.filename)
+        #     print(
+        #         self.id,
+        #         "Have sample",
+        #         s.start,
+        #         s.end,
+        #         s.tags,
+        #         self.filename,
+        #         s.track_ids,
+        #     )
 
     def load_recording(self, resample=None):
         try:
