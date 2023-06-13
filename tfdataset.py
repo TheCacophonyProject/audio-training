@@ -373,13 +373,6 @@ def get_dataset(filenames, labels, **args):
         tf.math.equal(tf.cast(y, tf.bool), bird_mask)
     )
     dataset = dataset.filter(others_filter)
-    other_dist = get_distribution(dataset, num_labels, batched=False)
-    for i, d in enumerate(other_dist):
-        logging.info("Non Bird Have %s for %s", d, labels[i])
-    bird_dist = get_distribution(bird_dataset, num_labels, batched=False)
-    for i, d in enumerate(bird_dist):
-        logging.info("Bird D Have %s for %s", d, labels[i])
-    # dist = get_distribution(dataset, batched=False)
 
     resample_data = args.get("resample", False)
     if args.get("filenames_2") is not None:
@@ -409,11 +402,6 @@ def get_dataset(filenames, labels, **args):
     if resample_data:
         logging.info("Resampling data")
         dataset = resample(dataset, labels, dist)
-
-        # SHOULDNT NEED THIS
-    dist = get_distribution(dataset, num_labels, batched=False)
-    for i, d in enumerate(dist):
-        logging.info("Have %s for %s", d, labels[i])
 
     # epoch_size = np.sum(dist)
     # logging.info("Setting dataset size to %s", epoch_size)
