@@ -484,7 +484,8 @@ class AudioModel:
         else:
             acc = tf.metrics.categorical_accuracy
         loss_fn = loss(multi_label)
-        self.loss_fn = loss_fn.__name__
+        self.loss_fn = "BCE"
+        # loss_fn.__name__
         self.model.compile(
             optimizer=optimizer(lr=self.learning_rate),
             loss=loss_fn,
@@ -860,7 +861,7 @@ def loss(multi_label=False, smoothing=0):
         loss_fn = tf.keras.losses.BinaryCrossentropy(
             label_smoothing=smoothing,
         )
-        loss_fn = sigmoid_binary_cross
+        # loss_fn = sigmoid_binary_cross
     else:
         logging.info("Using cross")
         loss_fn = tf.keras.losses.CategoricalCrossentropy(
