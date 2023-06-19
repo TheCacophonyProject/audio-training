@@ -24,8 +24,7 @@ def WRResNet(input_shape=(128, 512, 1), classes=6, depth=22, k=4):
     #
     X = tf.keras.layers.BatchNormalization(axis=3, name="final_bn")(X)
     X = tf.keras.layers.Activation("relu")(X)
-    #
-    # X = tf.keras.layers.AveragePooling2D(pool_size=8)(X)
+    # LME?
     X = tf.keras.layers.GlobalAveragePooling2D()(X)
 
     # X = tf.keras.layers.Flatten()(X)
@@ -222,4 +221,9 @@ def basic_block_tweaked(X, f, filters, stage, block, stride=1):
     return X
 
 
-# WRResNet()
+def main():
+    WRResNet()
+
+
+if __name__ == "__main__":
+    main()

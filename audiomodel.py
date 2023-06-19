@@ -964,7 +964,6 @@ def confusion(model, labels, dataset, filename="confusion.png"):
 
     mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
     true_categories = [y for x, y in dataset]
-    print(true_categories)
     true_categories = tf.concat(true_categories, axis=0)
     y_true = []
     for y in true_categories:
@@ -1116,7 +1115,7 @@ def main():
             compile=False,
         )
 
-        # model.load_weights(load_model / "val_loss").expect_partial()
+        model.load_weights(load_model / "val_binary_accuracy").expect_partial()
 
         meta_file = load_model / "metadata.txt"
         print("Meta", meta_file)
