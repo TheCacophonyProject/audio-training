@@ -239,13 +239,29 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
         activation=tf.keras.layers.LeakyReLU(),
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
-    # x = logmeanexp(x, sharpness=1, axis=2)
+    x = logmeanexp(x, axis=2, sharpness=10)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
     x = tf.keras.activations.sigmoid(x)
 
     model = tf.keras.models.Model(input, outputs=x)
     return model
+
+
+#
+# def logmeanexp_2(x, axis=None, keepdims=False, sharpness=5):
+#     return (
+#         tf.math.log(tf.math.reduce_mean(tf.math.exp(x * sharpness), axis=axis))
+#         / sharpness
+#     )
+#     # return (
+#     #     tfp.math.reduce_logmeanexp(x * sharpness, axis=axis, keepdims=True) / sharpness
+#     # )
+
+
+# higher ther sharpness closer to max it becomes
+# in 45 samples if we have 7 stronge predictions of 0.9 this will equate to 0.8 in this label
+# 7 being roughly 1/2 second of audio
 
 
 def logmeanexp(x, axis=None, keepdims=False, sharpness=5):
