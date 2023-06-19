@@ -233,7 +233,6 @@ def get_distribution(dataset, num_labels, batched=True):
     dist = np.zeros((num_labels), dtype=np.float32)
     if len(true_categories) == 0:
         return dist
-    num_labels = len(true_categories[0])
 
     if len(true_categories) == 0:
         return dist
@@ -248,6 +247,8 @@ def get_distribution(dataset, num_labels, batched=True):
     classes = np.array(classes)
 
     c = Counter(list(classes))
+    print(c)
+    print("Have labels",num_labels, len(dist), len(c),num_labels)
     for i in range(num_labels):
         dist[i] = c[i]
     return dist
@@ -686,9 +687,7 @@ def read_tfrecord(
         tfrecord_format["audio/raw"] = tf.io.FixedLenFeature(
             (2401, mel_s[1]), tf.float32
         )
-        tfrecord_format["audio/embed_predictions"] = tf.io.FixedLenFeature(
-            (), tf.string
-        )
+
 
     example = tf.io.parse_single_example(example, tfrecord_format)
     # raw = example["audio/raw"]
@@ -703,11 +702,6 @@ def read_tfrecord(
     if embeddings:
         image = example["embedding"]
     else:
-        embed_preds = tf.cast(example["audio/embed_predictions"], tf.string)
-        embed_preds = tf.strings.split(embed_preds, sep=",")
-        extra_e = extra_label_map.lookup(embed_preds)
-        embed_preds = remapped_y.lookup(embed_preds)
-        embed_preds = tf.concat([embed_preds, extra_e], axis=0)
 
         stft = example["audio/raw"]
         stft = tf.reshape(stft, [2401, mel_s[1]])
@@ -843,7 +837,7 @@ def main():
     labels = set()
     for d in datasets:
         # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
-        file = f"./{d}/training-meta.json"
+        file = f"/{d}/training-meta.json"
         with open(file, "r") as f:
             meta = json.load(f)
         labels.update(meta.get("labels", []))
@@ -851,7 +845,7 @@ def main():
         # species_list = ["bird", "human", "rain", "other"]
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-        filenames.extend(tf.io.gfile.glob(f"./{d}/train/*.tfrecord"))
+        filenames.extend(tf.io.gfile.glob(f"/{d}/train/*.tfrecord"))
     labels.add("bird")
     labels.add("noise")
     labels = list(labels)
@@ -871,7 +865,6 @@ def main():
         resample=False,
         excluded_labels=excluded_labels,
         stop_on_empty=False,
-        filter_bad=True,
         # filenames_2=filenames_2
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
@@ -902,7 +895,10 @@ def main():
     # y = (bird, bird_noise)
     # filter_bad_tracks(None, y, labels)
     # calc_mean()
-    # print(get_distribution(resampled_ds))
+    print("labels are", len(labels),labels)
+    dist = get_distribution(resampled_ds,len(labels))
+    for l,d in zip(labels,dist):
+        print(l, "  : " , d)
     # ing2D()(x)
     # for e in range(2):
     #     print("epoch", e)

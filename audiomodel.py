@@ -1205,7 +1205,7 @@ def parse_args():
     parser.add_argument(
         "--dataset-dir",
         type=str,
-        default="/data/audio-data",
+        default="/data/audio-data/training-data",
         help="Dataset directory to use",
     )
     parser.add_argument(

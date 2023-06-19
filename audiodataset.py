@@ -229,7 +229,6 @@ def load_metadata(filename):
     :param filename: full path and filename to meta file
     :return: returns the stats file
     """
-    print("loading", filename)
     with open(str(filename), "r") as t:
         # add in some metadata stats
         meta = json.load(t)
