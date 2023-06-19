@@ -1130,7 +1130,7 @@ def main():
         mean_sub = meta_data.get("mean_sub")
 
         preprocess = get_preprocess_fn(model_name)
-        base_dir = Path(args.data_dir)
+        base_dir = Path(args.dataset_dir)
         meta_f = base_dir / "training-meta.json"
         dataset_meta = None
         with open(meta_f, "r") as f:
@@ -1146,7 +1146,7 @@ def main():
         excluded_labels = get_excluded_labels(labels)
         # self.labels = meta.get("labels", [])
         dataset, _, _ = get_dataset(
-            tf.io.gfile.glob(str(base_dir) / "training-data/test/*.tfrecord"),
+            tf.io.gfile.glob(f"{str(base_dir)}/test/*.tfrecord"),
             labels,
             image_size=DIMENSIONS,
             shuffle=False,

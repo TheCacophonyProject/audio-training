@@ -229,6 +229,7 @@ def load_metadata(filename):
     :param filename: full path and filename to meta file
     :return: returns the stats file
     """
+    print("loading", filename)
     with open(str(filename), "r") as t:
         # add in some metadata stats
         meta = json.load(t)
@@ -447,13 +448,7 @@ class Recording:
         # can be used to seperate among train/val/test
         bin_id = f"{self.id}-0"
 
-        actual_s = segment_stride
         for track in self.tracks:
-            if "morepork" in track.human_tags:
-                # sometimes long tracks with multiple calls, think this should seperate them
-                segment_stride = min(segment_stride, 3.5)
-            else:
-                segment_stride = actual_s
             start = track.start
             end = start + segment_length
             end = min(end, track.end)
@@ -498,9 +493,7 @@ class Recording:
                         labels = labels | other_track.human_tags
                 # print("new samples with tracks", other_tracks)
                 other_tracks.append(track)
-                print(
-                    start, min(track.end, end), "addfing sample for", track.id, labels
-                )
+
                 self.samples.append(
                     AudioSample(
                         self,
@@ -792,7 +785,9 @@ def load_data(
         # else:
         #     s_data = frames[start:end]
         if len(s_data) < int(segment_l * sr):
-            s_data = np.pad(s_data, (0, int(segment_l * sr) - len(s_data)))
+            extra_frames = int(segment_l * sr) - len(s_data)
+            offset = np.random.randint(0, extra_frames)
+            s_data = np.pad(s_data, (offset, extra_frames - offset))
         assert len(s_data) == int(segment_l * sr)
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
         #     mel = mel_spec(

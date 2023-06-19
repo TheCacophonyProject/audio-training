@@ -214,6 +214,8 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
     # spits = split_sound(frames[: sr * 3])
     # for s in spits:
     #     print("Split", s / sr)
+    stride = 1
+
     length = len(frames) / sr
     end = 0
     sample_size = int(seg_length * sr)
@@ -232,6 +234,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
     i = 0
     n_fft = sr // 10
     sr_stride = int(stride * sr)
+    start = 0
     while end < (length + stride):
         start_offset = i * sr_stride
 
@@ -290,7 +293,8 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         #     fmax=11000,
         #     power=1,
         # )
-        # plot_mel(lib_mel, i)
+        print("saveing", start)
+        plot_mel(mel, f"more-{start}")
 
         mel = tf.expand_dims(mel, axis=2)
 
@@ -340,6 +344,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         mels.append(mel)
         # break
         i += 1
+        start += stride
         # if i == 3:
         #     break
     return mels, length
