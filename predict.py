@@ -455,8 +455,6 @@ def main():
     model_name = meta.get("name", False)
 
     hop_length = 281
-
-    segment_stride = 1
     # print("stride is", segment_stride)
     # segment_length = 2
     # segment_stride = 0.5
