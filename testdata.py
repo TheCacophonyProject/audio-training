@@ -15,7 +15,8 @@ from pathlib import Path
 import tensorflow_io as tfio
 from audiomentations import AddBackgroundNoise, PolarityInversion, Compose
 import soundfile as sf
-
+from plot_utils import plot_mel
+from collections import Counter
 
 BIRD_PATH = []
 NOISE_PATH = []
@@ -118,7 +119,7 @@ DIMENSIONS = (160, 188)
 mel_s = (120, 513)
 sftf_s = (2401, 188)
 mfcc_s = (20, 188)
-DIMENSIONS = (*mel_s, 1)
+DIMENSIONS = mel_s
 YAMNET_EMBEDDING_SHAPE = (6, 1024)
 # TEST STUFF to blockout frequencies
 # mel_bins = librosa.mel_frequencies(128, fmax=48000 / 2)
@@ -203,9 +204,7 @@ def load_dataset(filenames, num_labels, labels, args):
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
-    if args.get("filter_bad", False):
-        dataset = dataset.filter(lambda x, y: not filter_bad_tracks(x, y, labels))
-    dataset = dataset.map(lambda x, y: (x, y[0]))
+
 
     filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
     dataset = dataset.filter(filter_nan)
@@ -215,13 +214,6 @@ def load_dataset(filenames, num_labels, labels, args):
     return dataset
 
 
-def filter_short(example):
-    tfrecord_format = {"audio/raw_length": tf.io.FixedLenFeature((), tf.float32)}
-    example = tf.io.parse_single_example(example, tfrecord_format)
-    raw_length = tf.cast(example["audio/raw_length"], tf.float32)
-    return raw_length != 2.0
-
-
 def preprocess(data):
     x = tf.stack(fields[:-1])
     y = tf.stack(fields[-1:])
@@ -229,10 +221,11 @@ def preprocess(data):
 
 
 def get_distribution(dataset, num_labels, batched=True):
-    true_categories = [y for x, y in dataset]
+    true_categories = [y[0] for x, y in dataset]
     dist = np.zeros((num_labels), dtype=np.float32)
     if len(true_categories) == 0:
         return dist
+    num_labels = len(true_categories[0])
 
     if len(true_categories) == 0:
         return dist
@@ -242,13 +235,11 @@ def get_distribution(dataset, num_labels, batched=True):
         return dist
     classes = []
     for y in true_categories:
-        non_zero = tf.where(y[0]).numpy()
+        non_zero = tf.where(y).numpy()
         classes.extend(non_zero.flatten())
     classes = np.array(classes)
 
     c = Counter(list(classes))
-    print(c)
-    print("Have labels", num_labels, len(dist), len(c), num_labels)
     for i in range(num_labels):
         dist[i] = c[i]
     return dist
@@ -318,6 +309,16 @@ noise_i = None
 bird_mask = None
 
 
+def get_only(dataset,labels,label):
+    label_i = labels.index(label)
+    mask = np.zeros(len(labels), dtype=bool)
+    mask[label_i] = 1
+    mask = tf.constant(mask)
+    filter = lambda x, y: tf.math.reduce_any(
+        tf.math.logical_and(tf.cast(y[0], tf.bool), mask)
+    )
+    return dataset.filter(filter)
+
 def get_dataset(filenames, labels, **args):
     excluded_labels = args.get("excluded_labels", [])
 
@@ -336,15 +337,7 @@ def get_dataset(filenames, labels, **args):
     logging.info(
         "Remapped %s extra mapping %s new labels %s", remapped, extra_label_map, labels
     )
-    global bird_i
-    global noise_i
-    global human_i
-    if "bird" in labels:
-        bird_i = labels.index("bird")
-    if "noise" in labels:
-        noise_i = labels.index("noise")
-    if "human" in labels:
-        human_i = labels.index("human")
+
 
     # extra tags, since we have multi label problem, morepork is a bird and morepork
     # cat is a cat but also "noise"
@@ -362,260 +355,32 @@ def get_dataset(filenames, labels, **args):
     # 1 / 0
     num_labels = len(labels)
     dataset = load_dataset(filenames, num_labels, labels, args)
-
-    bird_mask = np.zeros(num_labels, dtype=bool)
-    bird_mask[bird_i] = 1
-    bird_mask = tf.constant(bird_mask)
-    bird_filter = lambda x, y: tf.math.reduce_all(
-        tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
-    )
-    bird_dataset = dataset.filter(bird_filter)
-    others_filter = lambda x, y: not tf.math.reduce_all(
-        tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
-    )
-    dataset = dataset.filter(others_filter)
-
-    resample_data = args.get("resample", False)
-    if args.get("filenames_2") is not None:
-        logging.info("Loading second files %s", args.get("filenames_2")[:1])
-        second = args.get("filenames_2")
-        # bird_c = dist[labels.index("bird")]
-
-        args["no_bird"] = True
-        args["all_human"] = True
-        # added bird noise to human recs but it messes model, so dont use for now
-        dataset_2 = load_dataset(second, len(labels), labels, args)
-        dataset = tf.data.Dataset.sample_from_datasets(
-            [bird_dataset, dataset, dataset_2],
-            stop_on_empty_dataset=args.get("stop_on_empty", True),
-            rerandomize_each_iteration=args.get("rerandomize_each_iteration", False),
-        )
-        # for i, d in enumerate(dist):
-        # dist[i] += dist_2[i]
-    else:
-        logging.info("Not using second")
-        dataset = tf.data.Dataset.sample_from_datasets(
-            [bird_dataset, dataset],
-            stop_on_empty_dataset=args.get("stop_on_empty", True),
-            rerandomize_each_iteration=args.get("rerandomize_each_iteration", False),
-        )
-    resample_data = args.get("resample", True)
-    if resample_data:
-        logging.info("Resampling data")
-        dataset = resample(dataset, labels, dist)
-
-    # epoch_size = np.sum(dist)
-    # logging.info("Setting dataset size to %s", epoch_size)
-    # # if not args.get("only_features", False):
-    # # dataset = dataset.repeat(2)
-    # scale_epoch = args.get("scale_epoch", None)
-    # if scale_epoch:
-    #     epoch_size = epoch_size // scale_epoch
-    # dataset = dataset.take(epoch_size)
-    batch_size = args.get("batch_size", None)
+    if args.get("only",None) is not None:
+        logging.info("Filtering only %s",args.get("only") )
+        dataset = get_only(dataset,labels,args.get("only"))
+    dist = get_distribution(dataset, num_labels, batched=False)
+    for i, d in enumerate(dist):
+        logging.info("Have %s for %s", d, labels[i])
+    #
+    # dataset = tf.data.Dataset.sample_from_datasets(
+    #     [bird_dataset, dataset],
+    #     stop_on_empty_dataset=args.get("stop_on_empty", True),
+    #     rerandomize_each_iteration=args.get("rerandomize_each_iteration", False),
+    # )
 
     dataset = dataset.cache()
     if args.get("shuffle", True):
         dataset = dataset.shuffle(
             4096, reshuffle_each_iteration=args.get("reshuffle", True)
         )
+    batch_size = args.get("batch_size", None)
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
 
-    if args.get("weight_specific", False):
-        weighting = np.ones((num_labels), dtype=np.float32)
-        weighting[bird_i] = 0.8
-        weighting = tf.constant(weighting)
-        specific_mask = np.zeros((num_labels), dtype=np.float32)
-        for i, l in enumerate(labels):
-            if l in SPECIFIC_BIRD_LABELS and l != "bird":
-                specific_mask[i] = 1
-        print(
-            "for labels", labels, " have ", specific_mask, " weighting bird", weighting
-        )
-        specific_mask = tf.constant(specific_mask)
-
-        rest_weighting = tf.constant(tf.ones(num_labels))
-        dataset = dataset.map(
-            lambda x, y: weight_specific(
-                x, y, num_labels, weighting, specific_mask, rest_weighting
-            )
-        )
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
 
     return dataset, remapped, 0
 
-
-def filter_fn(x, y):
-    return tf.math.equal(tf.argmax(y[0]), 1)
-
-
-# an attempt to filter out bad tracks by filtering out bird tracks
-# that are predicted as noise or human
-def filter_bad_tracks(x, y, labels):
-    # filtering before batching
-    actual = y[0]
-    # actual = tf.expand_dims(actual, 0)
-
-    bad_preds = y[1]
-    # bad_preds = tf.expand_dims(bad_preds, 0)
-    # is bird
-    num_labels = len(labels)
-    bird_mask_2 = np.zeros(num_labels, dtype=bool)
-    bird_mask_2[labels.index("bird")] = 1
-    bird_mask_2 = tf.constant(bird_mask_2)
-    label = tf.cast(actual, tf.bool)
-    bird_l = tf.math.reduce_any(tf.math.logical_and(label, bird_mask_2))
-    # , axis=1)
-
-    noise_mask = np.zeros(num_labels, dtype=bool)
-    bad_preds = tf.cast(bad_preds, tf.bool)
-    # empty_l = tf.math.reduce_any(
-    #     tf.math.logical_or(bad_preds, tf.constant(noise_mask)), axis=1
-    # )
-    # empty_l = tf.math.logical_not(empty_l)
-    # dont filter on emtpy could be legit
-    noise_mask[labels.index("noise")] = 1
-    noise_mask[labels.index("human")] = 1
-
-    # noise_mask[labels.index("human")] = 1
-
-    noise_mask = tf.constant(noise_mask)
-    # any that were predicted as noise or human
-    pred_l = tf.math.reduce_any(tf.math.logical_and(bad_preds, noise_mask))  # , axis=1)
-
-    # pred_l = tf.math.logical_or(pred_l, empty_l)
-    pred_bird = tf.math.reduce_any(
-        tf.math.logical_and(bad_preds, bird_mask_2)
-    )  # , axis=1)
-
-    # must be not bird and noise or human
-    pred_bird = tf.logical_not(pred_bird)
-    pred_l = tf.logical_and(pred_bird, pred_l)
-    print(actual, " vs", bad_preds)
-    print("leaves with following", tf.math.logical_and(bird_l, pred_l))
-    # if a bird must have been predicted as a bird
-
-    return tf.math.logical_and(bird_l, pred_l)
-
-
-# WEIGHT getting bird wrong less than getting specific specis wrong
-# idea is  to insentivise learning specific birds
-@tf.function
-def weight_specific(x, y, num_labels, weighting, specific_mask, rest_weighting):
-    # mask for all specifics
-    specifics = tf.tensordot(y, specific_mask, 1)
-    if specifics.shape == 0:
-        return x, y
-    specifics = tf.expand_dims(specifics, 1)
-    bird_weighted = specifics * weighting
-    rest = specifics - 1
-    rest = tf.math.abs(rest)
-    rest_weighting = tf.ones(num_labels)
-    rest_weight = rest * rest_weighting
-    mask = rest_weight + bird_weighted
-    return x, y * mask
-
-
-def get_weighting(dataset, labels):
-    weighting = {}
-    for i in range(len(labels)):
-        weighting[i] = 1
-    return weighting
-    excluded_labels = []
-    dont_weigh = []
-    for l in labels:
-        if l in ["human", "bird", "noise", "whistler", "morepork", "kiwi"]:
-            continue
-        dont_weigh.append(l)
-    num_labels = len(labels)
-    dist = get_distribution(dataset, num_labels)
-    zeros = dist[dist == 0]
-    non_zero_labels = num_labels - len(zeros)
-    total = 0
-    for d, l in zip(dist, labels):
-        if l not in dont_weigh:
-            total += d
-    # total = np.sum(dist)
-    weights = {}
-    for i in range(num_labels):
-        weights[i] = 1
-        continue
-
-        if labels[i] in dont_weigh:
-            weights[i] = 1
-        elif dist[i] == 0:
-            weights[i] = 0
-        else:
-            weights[i] = (1 / dist[i]) * (total / non_zero_labels)
-            # cap the weights
-            weights[i] = min(weights[i], 4)
-            weights[i] = max(weights[i], 0.25)
-            # min(weight)
-        print("WEights for ", labels[i], weights[i])
-    return weights
-
-
-def resample(dataset, labels, og):
-    target_dist = np.empty((len(labels)), dtype=np.float32)
-    target_dist[:] = 1 / len(labels)
-
-    rej = dataset.rejection_resample(
-        class_func=class_func,
-        target_dist=target_dist,
-    )
-    dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
-    return dataset
-
-
-def resample_old(dataset, labels):
-    excluded_labels = []
-    # excluded_labels = ["human", "bird", "morepork", "kiwi"]
-    num_labels = len(labels)
-    true_categories = [y for x, y in dataset]
-    if len(true_categories) == 0:
-        return None
-    true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    c = Counter(list(true_categories))
-    print("COUNTER", c)
-    dist = np.empty((num_labels), dtype=np.float32)
-    target_dist = np.empty((num_labels), dtype=np.float32)
-    for i in range(num_labels):
-        if labels[i] in excluded_labels:
-            dist[i] = 0
-            logging.info("Excluding %s for %s", c[i], labels[i])
-
-        else:
-            dist[i] = c[i]
-
-            logging.info("Have %s for %s", dist[i], labels[i])
-    # GP TESTING Just to remove some labels
-    dist = dist / np.sum(dist)
-
-    zeros = dist[dist == 0]
-    non_zero_labels = num_labels - len(zeros)
-    target_dist[:] = 1 / non_zero_labels
-
-    dist = dist / np.sum(dist)
-    dist_max = np.max(dist)
-    # really this is what we want but when the values become too small they never get sampled
-    # so need to try reduce the large gaps in distribution
-    # can use class weights to adjust more, or just throw out some samples
-    max_range = target_dist[0] / 2
-    for i in range(num_labels):
-        if dist[i] == 0:
-            target_dist[i] = 0
-        # elif dist_max - dist[i] > (max_range * 2):
-        # target_dist[i] = dist[i]
-        # print("adjusting for ", labels[i])
-        target_dist[i] = max(0, target_dist[i])
-    target_dist = target_dist / np.sum(target_dist)
-    rej = dataset.rejection_resample(
-        class_func=class_func,
-        target_dist=target_dist,
-    )
-    dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
-    return dataset
 
 
 @tf.function
@@ -657,17 +422,12 @@ def read_tfrecord(
 ):
     bird_l = tf.constant(["bird"])
     tfrecord_format = {
-        "audio/rec_id": tf.io.FixedLenFeature((), tf.string),
-        "audio/track_id": tf.io.FixedLenFeature((), tf.string),
-        "audio/start_s": tf.io.FixedLenFeature(1, tf.float32),
-        # "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
-        # "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
-        # "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
-        # "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
         "audio/class/text": tf.io.FixedLenFeature((), tf.string),
-        # "audio/length": tf.io.FixedLenFeature((), tf.int64),
-        "audio/raw": tf.io.FixedLenFeature((2401, 428), tf.float32),
+        "audio/track_id": tf.io.FixedLenFeature((), tf.string),
+        "audio/rec_id": tf.io.FixedLenFeature((), tf.string),
+        "audio/start_s": tf.io.FixedLenFeature((), tf.float32),
     }
+
     if embeddings:
         logging.info("Loading embeddings")
         tfrecord_format["embedding"] = tf.io.FixedLenFeature(
@@ -675,14 +435,20 @@ def read_tfrecord(
         )
 
     else:
-        logging.info("Loading sft audio")
 
         tfrecord_format["audio/raw"] = tf.io.FixedLenFeature(
             (2401, mel_s[1]), tf.float32
         )
+        # tfrecord_format["audio/embed_predictions"] = tf.io.FixedLenFeature(
+        #     (), tf.string
+        # )
 
     example = tf.io.parse_single_example(example, tfrecord_format)
     # raw = example["audio/raw"]
+    track_id = tf.cast(example["audio/track_id"], tf.string)
+    rec_id = tf.cast(example["audio/rec_id"], tf.string)
+    start_s = tf.cast(example["audio/start_s"], tf.float32)
+
 
     label = tf.cast(example["audio/class/text"], tf.string)
     labels = tf.strings.split(label, sep="\n")
@@ -694,6 +460,12 @@ def read_tfrecord(
     if embeddings:
         image = example["embedding"]
     else:
+        # embed_preds = tf.cast(example["audio/embed_predictions"], tf.string)
+        # embed_preds = tf.strings.split(embed_preds, sep=",")
+        # extra_e = extra_label_map.lookup(embed_preds)
+        # embed_preds = remapped_y.lookup(embed_preds)
+        # embed_preds = tf.concat([embed_preds, extra_e], axis=0)
+
         stft = example["audio/raw"]
         stft = tf.reshape(stft, [2401, mel_s[1]])
         image = tf.tensordot(MEL_WEIGHTS, stft, 1)
@@ -729,27 +501,10 @@ def read_tfrecord(
                     tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
                 )
 
-        if no_bird:
-            logging.info("no bird")
-            # dont use bird or noise label from mixed ones
-            no_bird_mask = np.ones(num_labels, dtype=bool)
-            no_bird_mask[bird_i] = 0
-            no_bird_mask = tf.constant(no_bird_mask)
-            label = tf.cast(label, tf.bool)
-            label = tf.math.logical_and(label, no_bird_mask)
-            no_noise_mask = np.ones(num_labels, dtype=bool)
-            no_noise_mask[noise_i] = 0
-            no_noise_mask = tf.constant(no_noise_mask)
-            label = tf.math.logical_and(label, no_noise_mask)
 
-            label = tf.cast(label, tf.int32)
-        # DEBUG STUFF
-        r = example["audio/rec_id"]
-        t = example["audio/track_id"]
-        s = example["audio/start_s"]
         label = tf.cast(label, tf.float32)
 
-        return image, (label, r, t, s)
+        return image, (label, embed_preds,rec_id,track_id,start_s)
 
     return image
 
@@ -759,10 +514,9 @@ def class_func(features, label):
     return label
 
 
-from collections import Counter
-
-
-def calc_mean():
+# test stuff
+def main():
+    init_logging()
     datasets = ["training-data"]
     filenames = []
     labels = set()
@@ -777,69 +531,12 @@ def calc_mean():
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
         filenames.extend(tf.io.gfile.glob(f"./{d}/test/*.tfrecord"))
-        filenames.extend(tf.io.gfile.glob(f"./{d}/train/*.tfrecord"))
-
-        filenames.extend(tf.io.gfile.glob(f"./{d}/validation/*.tfrecord"))
-    labels.add("bird")
-    labels.add("noise")
-    labels = list(labels)
-
-    labels.sort()
-    resampled_ds, remapped = get_dataset(
-        # dir,
-        filenames,
-        labels,
-        batch_size=32,
-        image_size=DIMENSIONS,
-        augment=False,
-        resample=False,
-        # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
-    )
-    resampled_ds = resampled_ds.unbatch()
-    data = [x for x, y in resampled_ds]
-    data = np.array(data)
-
-    # print(np.mean(data, axis=0).shape)
-    # print(np.std(data, axis=0).shape)
-    # mel_m = tf.reduce_mean(data, axis=0)
-    zvals = {"mean": np.mean(data, axis=0), "std": np.std(data, axis=0)}
-    zvals["mean"] = zvals["mean"].tolist()
-    zvals["std"] = zvals["std"].tolist()
-
-    with open("zvalues.txt", "w") as f:
-        json.dump(zvals, f, indent=4)
-
-
-# test stuff
-def main():
-    init_logging()
-
-    # return
-    datasets = ["other-training-data", "training-data", "chime-training-data"]
-    datasets = ["training-data"]
-    datasets = ["training-data"]
-    filenames = []
-    labels = set()
-    for d in datasets:
-        # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
-        file = f"/{d}/training-meta.json"
-        with open(file, "r") as f:
-            meta = json.load(f)
-        labels.update(meta.get("labels", []))
-        # print("loaded labels", labels)
-        # species_list = ["bird", "human", "rain", "other"]
-
-        # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-        filenames.extend(tf.io.gfile.glob(f"/{d}/train/*.tfrecord"))
     labels.add("bird")
     labels.add("noise")
     labels = list(labels)
     excluded_labels = get_excluded_labels(labels)
     labels.sort()
 
-    filenames_2 = tf.io.gfile.glob(f"./flickr-training-data/validation/*.tfrecord")
-    # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
-    # weights = [0.5] * len(labels)
     resampled_ds, remapped, _ = get_dataset(
         # dir,
         filenames,
@@ -850,76 +547,32 @@ def main():
         resample=False,
         excluded_labels=excluded_labels,
         stop_on_empty=False,
+        filter_bad=True,
+        only="human",
         # filenames_2=filenames_2
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
     for l in excluded_labels:
         labels.remove(l)
-    # filter track test
-    # bird = []
-    # bird.append([1, 0, 0, 0, 0])
-    # bird.append([1, 0, 1, 0, 0])
-    # bird.append([1, 0, 1, 0, 0])
-    # bird.append([1, 0, 1, 0, 0])
-    # bird.append([1, 0, 1, 0, 0])
-    # bird.append([1, 0, 1, 0, 0])
-    # bird.append([1, 0, 1, 0, 0])
-    #
-    # bird_noise = []
-    # bird_noise.append([1, 0, 0, 1, 0])
-    # bird_noise.append([1, 0, 0, 0, 1])  # specific bird
-    # bird_noise.append([1, 1, 0, 0, 0])
-    # bird_noise.append([0, 1, 0, 1, 0])  # human and noise
-    # bird_noise.append([0, 0, 0, 1, 0])  # just noise
-    # bird_noise.append([0, 1, 0, 0, 0])  # just human
-    # bird_noise.append([0, 0, 0, 0, 0])  # just human
-    #
-    # bird = np.int64(bird)
-    # bird_noise = np.int64(bird_noise)
-    #
-    # y = (bird, bird_noise)
-    # filter_bad_tracks(None, y, labels)
-    # calc_mean()
-    print("labels are", len(labels), labels)
-    dist = get_distribution(resampled_ds, len(labels))
-    for l, d in zip(labels, dist):
-        print(l, "  : ", d)
-    # ing2D()(x)
-    # for e in range(2):
-    #     print("epoch", e)
-    #     true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
-    #     # true_categories = np.int64(true_categories)
-    #     true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    #     c = Counter(list(true_categories))
-    #     print("epoch is size", len(true_categories))
-    #     for i in range(len(labels)):
-    #         print("after have", labels[i], c[i])
-
-    # return
     print("looping")
     for e in range(1):
         for x, y in resampled_ds:
-            # print("filter with ", y)
-            trues = y[0]
-            predicted = y[1]
-            for true, pred in zip(trues, predicted):
-                print(true.shape)
-                filter_bad_tracks(None, (true, pred), labels)
-            return
-            lbl = []
-            for l, p in zip(trues, predicted):
+            y_true = y[0]
+            rec_ids = y[2]
+            track_ids=y[3]
+            starts= y[4]
+            for mel,y_t,rec,track,start in zip(x,y_true,rec_ids,track_ids,starts):
+                rec = rec.numpy().decode("utf-8")
+                track = track.numpy().decode("utf-8")
                 lbl = []
-                for l_i, logit in enumerate(l):
-                    if logit == 1:
+                for l_i, l in enumerate(y_t):
+                    if l == 1:
                         lbl.append(labels[l_i])
-                p_l = []
-                for l_i, logit in enumerate(p):
-                    if logit == 1:
-                        p_l.append(labels[l_i])
-                print("Labels are", lbl, "vs", p_l)
-            # show_batch(x, y, None, labels, None)
+                samples_lbls = "-".join(lbl)
+                file = f"./mels/{samples_lbls}-{rec}-{track}-{start}"
+                print(f"Have", samples_lbls,"R:" ,rec, " T: ",track, "START: ",start.numpy())
+                plot_mel(mel.numpy()[:,:,0],file)
 
-            # show_batch(x, y[0], y[1], labels, species_list)
 
 
 def show_batch(image_batch, label_batch, species_batch, labels, species):
@@ -989,20 +642,20 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
 
 def plot_mfcc(mfccs, ax):
     img = librosa.display.specshow(mfccs.numpy(), x_axis="time", ax=ax)
-
-
-def plot_mel(mel, ax):
-    # power = librosa.db_to_power(mel.numpy())
-    img = librosa.display.specshow(
-        mel.numpy(),
-        x_axis="time",
-        y_axis="mel",
-        sr=48000,
-        fmax=11000,
-        fmin=50,
-        ax=ax,
-        hop_length=201,
-    )
+#
+#
+# def plot_mel(mel, ax):
+#     # power = librosa.db_to_power(mel.numpy())
+#     img = librosa.display.specshow(
+#         mel.numpy(),
+#         x_axis="time",
+#         y_axis="mel",
+#         sr=48000,
+#         fmax=11000,
+#         fmin=50,
+#         ax=ax,
+#         hop_length=201,
+#     )
 
 
 def plot_spec(spec, ax):

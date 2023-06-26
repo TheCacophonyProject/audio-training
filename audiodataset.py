@@ -52,8 +52,8 @@ SAMPLE_GROUP_ID = 0
 
 class Config:
     def __init__(self, **args):
-        self.segment_length = args.get("seg_length", 5)
-        self.segment_stride = args.get("stride", 4.5)
+        self.segment_length = args.get("seg_length", 3)
+        self.segment_stride = args.get("stride", 1)
         self.hop_length = args.get("hop_length", 281)
         self.break_freq = args.get("break_freq", 1750)
         self.htk = not args.get("slaney", False)
@@ -82,7 +82,6 @@ class AudioDataset:
                 audio_f = f.with_suffix(".wav")
             if not audio_f.exists():
                 audio_f = f.with_suffix(".mp3")
-                print("found aud", audio_f)
                 # hack to find files, probably should look
                 # at all files in dir or store file in metadata
             r = Recording(meta, audio_f, self.config)
@@ -278,6 +277,7 @@ class AudioSample:
         self.logits = None
         self.embeddings = None
         self.group = group_id
+        self.predicted_labels = None
         if bin_id is None:
             self.bin_id = f"{self.rec_id}"
         else:
@@ -442,19 +442,16 @@ class Recording:
             self.tracks,
             key=lambda track: track.start,
         )
+        # always take 1 one sample, but dont bother with more if they are short
+        min_sample_length = segment_length
         # can be used to seperate among train/val/test
         bin_id = f"{self.id}-0"
 
-        actual_s = segment_stride
         for track in self.tracks:
-            if "morepork" in track.human_tags:
-                # sometimes long tracks with multiple calls, think this should seperate them
-                segment_stride = 3.5
-            else:
-                segment_stride = actual_s
             start = track.start
             end = start + segment_length
             end = min(end, track.end)
+            # print("checking", track.start, "-", track.end, track.human_tags)
             while True:
                 labels = set(track.human_tags)
                 other_tracks = []
@@ -470,12 +467,31 @@ class Recording:
                         + (other_track.length)
                         - (max(end, other_track.end) - min(start, other_track.start))
                     )
-
+                    min_overlap = min(0.9 * segment_length, other_track.length * 0.9)
+                    # print(
+                    #     "checking overlap",
+                    #     track.start,
+                    #     "-",
+                    #     track.end,
+                    #     " with other_",
+                    #     start,
+                    #     other_track.start,
+                    #     overlap,
+                    # )
                     # enough overlap or we engulf the track
-                    if overlap > 0.5 or (overlap > 0 and end > other_track.end):
+                    if overlap >= min_overlap or (overlap >= other_track.length):
                         # if t.start<= start and t.end <= end:
+                        # print(
+                        #     "adding overlapped track",
+                        #     other_track.start,
+                        #     overlap,
+                        #     other_track.length,
+                        #     min_overlap,
+                        # )
                         other_tracks.append(other_track)
                         labels = labels | other_track.human_tags
+                # print("new samples with tracks", other_tracks)
+                other_tracks.append(track)
 
                 self.samples.append(
                     AudioSample(
@@ -491,7 +507,7 @@ class Recording:
                 start += segment_stride
                 end = start + segment_length
                 end = min(end, track.end)
-                if start > track.end:
+                if start > track.end or (end - start) < min_sample_length:
                     break
 
         # other_tracks = [t for t in sorted_tracks[i:] if t.start<= start and t.end >= end]
@@ -500,7 +516,15 @@ class Recording:
         # for t in self.tracks:
         #     print(self.id, "have track from ", t.start, t.end)
         # for s in self.samples:
-        #     print(self.id, "Have sample", s.start, s.end, s.tags, self.filename)
+        #     print(
+        #         self.id,
+        #         "Have sample",
+        #         s.start,
+        #         s.end,
+        #         s.tags,
+        #         self.filename,
+        #         s.track_ids,
+        #     )
 
     def load_recording(self, resample=None):
         try:
@@ -760,14 +784,9 @@ def load_data(
         # else:
         #     s_data = frames[start:end]
         if len(s_data) < int(segment_l * sr):
-            sub = s_data
-            data_length = len(sub) / sr
-            s_data = np.zeros(int(segment_l * sr))
-            # randomize zero padding location
-            # extra_frames = len(s_data) - len(sub)
-            # offset = np.random.randint(0, extra_frames)
-            offset = 0
-            s_data[offset : offset + len(sub)] = sub
+            extra_frames = int(segment_l * sr) - len(s_data)
+            offset = np.random.randint(0, extra_frames)
+            s_data = np.pad(s_data, (offset, extra_frames - offset))
         assert len(s_data) == int(segment_l * sr)
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
         #     mel = mel_spec(

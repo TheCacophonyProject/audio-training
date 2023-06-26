@@ -271,8 +271,10 @@ def add_rec(dataset, rec_name, labels, config):
     id, id_2, speaker = rec_name.stem.split("_")
     id = f"{id}-{id_2}-{speaker}"
     r = Recording({"id": id, "tracks": []}, rec_name, config)
+    tags = []
     for l in labels:
-        tags = [{"automatic": False, "what": l}]
+        tag = {"automatic": False, "what": l}
+        tags.append(tag)
         r.human_tags.add(l)
 
     # try:

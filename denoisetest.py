@@ -87,7 +87,7 @@ def signal_noise_data(spectogram, sr, hop_length=281):
     noise[signal == noise] = 0
     noise = noise.astype(np.uint8)
     signal = signal.astype(np.uint8)
-    kernel = np.ones((4, 4), np.uint8)
+    kernel = np.ones((3, 3), np.uint8)
     signal = cv2.morphologyEx(signal, cv2.MORPH_OPEN, kernel)
     noise = cv2.morphologyEx(noise, cv2.MORPH_OPEN, kernel)
     # plot_spec(spectogram)

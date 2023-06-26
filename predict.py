@@ -186,8 +186,36 @@ def show_signals(file):
     plot_mel_signals(mel, signals, signals2)
 
 
+# MIGHT BE WORTH TRYING
+#
+# import random
+# def split_sound(clip):
+#     """Returns the sound array, sample rate and
+#     x_split = intervals where sound is louder than top db
+#     """
+#     db = librosa.core.amplitude_to_db(clip)
+#     mean_db = np.abs(db).mean()
+#     std_db = db.std()
+#     x_split = librosa.effects.split(y=clip, top_db = mean_db - std_db)
+#     return x_split
+# def split_sound(clip):
+#     """Returns the sound array, sample rate and
+#     x_split = intervals where sound is louder than top db
+#     """
+#     db = librosa.core.amplitude_to_db(clip)
+#     mean_db = np.abs(db).mean()
+#     std_db = db.std()
+#     x_split = librosa.effects.split(y=clip, top_db=mean_db + 2 * std_db)
+#     return x_split
+
+
 def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
     frames, sr = load_recording(file)
+    # spits = split_sound(frames[: sr * 3])
+    # for s in spits:
+    #     print("Split", s / sr)
+    stride = 1
+
     length = len(frames) / sr
     end = 0
     sample_size = int(seg_length * sr)
@@ -206,6 +234,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
     i = 0
     n_fft = sr // 10
     sr_stride = int(stride * sr)
+    start = 0
     while end < (length + stride):
         start_offset = i * sr_stride
 
@@ -221,6 +250,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             print("data is now", len(s_data) / sr)
 
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
+
         # print(spectogram.shape)
         # spectogram[:100, :] = 0
         # spectogram = np.clip(spectogram, 0, np.mean(spectogram))
@@ -233,6 +263,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
 
         # spectogram[:100, :]
         mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000, power=1)
+
         half = mel[:, 75:]
         if np.amax(half) == np.amin(half):
             print("mel max is same")
@@ -242,7 +273,6 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
             return mels, length
             # 1 / 0
         # mel = librosa.power_to_db(mel, ref=np.max)
-        # plot_mel(mel, i)
         # break
         # if i == 10:
         #     break
@@ -251,6 +281,21 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         # pcen_S = librosa.pcen(mel * (2**31))
         # plot_mel(mel, 0)
         # plot_mel(pcen_S, 0)
+        # print("Preprocess mel")
+        # plot_mel(mel, i)
+        # lib_mel = librosa.feature.melspectrogram(
+        #     y=s_data,
+        #     sr=sr,
+        #     n_fft=n_fft,
+        #     hop_length=hop_length,
+        #     n_mels=120,
+        #     fmin=50,
+        #     fmax=11000,
+        #     power=1,
+        # )
+        # print("saveing", start)
+        # plot_mel(mel, f"more-{start}")
+
         mel = tf.expand_dims(mel, axis=2)
 
         if use_mfcc:
@@ -297,10 +342,64 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         # print("mean of mel is", round(1000 * np.mean(mel), 4))
         # mel = tf.repeat(mel, 3, axis=2)
         mels.append(mel)
+        # break
         i += 1
+        start += stride
         # if i == 3:
         #     break
     return mels, length
+
+
+def get_chirp_samples(rec_data, sr=32000, stride=1, length=5):
+    start = 0
+
+    samples = []
+    while True:
+        sr_s = start * sr
+        sr_e = (start + length) * sr
+        sr_s = int(sr_s)
+        sr_e = int(sr_e)
+        s = rec_data[sr_s:sr_e]
+        start += stride
+        if len(s) < length * sr:
+            s = np.pad(s, (0, int(length * sr - len(s))))
+        samples.append(s)
+
+        if sr_e >= len(rec_data):
+            break
+    return np.float32(samples)
+
+
+def yamn_embeddings(file, stride=1):
+    import tensorflow_hub as hub
+
+    rec_data, sr = load_recording(file, resample=16000)
+    samples = get_chirp_samples(rec_data, sr=sr, stride=stride, length=3)
+    # Load the model.
+    model = hub.load("https://tfhub.dev/google/yamnet/1")
+    # model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
+
+    embeddings = []
+    for s in samples:
+        logits, embedding, _ = model(s)
+        embeddings.append(embedding)
+    return np.array(embeddings), len(rec_data) / sr
+
+
+def chirp_embeddings(file, stride=5):
+    import tensorflow_hub as hub
+
+    rec_data, sr = load_recording(file, resample=32000)
+    samples = get_chirp_samples(rec_data, sr=sr, stride=stride)
+    # Load the model.
+    model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
+
+    embeddings = []
+    for s in samples:
+        logits, embedding = model.infer_tf(s[np.newaxis, :])
+        print(embedding.shape)
+        embeddings.append(embedding[0])
+    return np.array(embeddings), len(rec_data) / sr
 
 
 def main():
@@ -326,9 +425,20 @@ def main():
         compile=False,
     )
     model.summary()
+    # an idea to get more details predictions
+    # model.trainable = False
+    #
+    # x = model.layers[-1](model.layers[-3].output, training=False)
+    # mid_model = tf.keras.Model(inputs=model.input, outputs=x)
+    # # for l in mid_model.layers:
+    # #     l.trainable = False
+    # mid_model.summary()
+
+    # model_pop(model)
+    # return
     # model = tf.keras.models.load_model(str(load_model))
 
-    # model.load_weights(load_model / "val_binary_accuracy").expect_partial()
+    model.load_weights(load_model / "val_binary_accuracy").expect_partial()
     # model.save(load_model / "frozen_model")
     # 1 / 0
     with open(load_model / "metadata.txt", "r") as f:
@@ -342,10 +452,9 @@ def main():
     use_mfcc = meta.get("use_mfcc", False)
     hop_length = meta.get("hop_length", 640)
     prob_thresh = meta.get("threshold", 0.7)
+    model_name = meta.get("name", False)
+
     hop_length = 281
-    segment_stride = 0.2
-    print("thresh is", prob_thresh)
-    # segment_stride = 0.25
     # print("stride is", segment_stride)
     # segment_length = 2
     # segment_stride = 0.5
@@ -403,17 +512,25 @@ def main():
         return
     if args.file:
         file = Path(args.file)
-        data, length = preprocess_file(
-            file, segment_length, segment_stride, hop_length, mean_sub, use_mfcc
-        )
+        if model_name == "embeddings":
+            data, length = chirp_embeddings(file, segment_stride)
+        elif model_name == "yamn-embeddings":
+            data, length = yamn_embeddings(file, segment_stride)
+        else:
+            data, length = preprocess_file(
+                file, segment_length, segment_stride, hop_length, mean_sub, use_mfcc
+            )
         data = np.array(data)
 
     print("data is", data.shape, data.dtype, np.amax(data))
     predictions = model.predict(np.array(data))
+    # other_pred = mid_model(np.array(data), training=False)
+    # print(other_pred.shape)
     tracks = []
     start = 0
     active_tracks = {}
     for i, prediction in enumerate(predictions):
+        # other = other_pred[i]
         print(
             np.sum(prediction),
             "at",
@@ -422,17 +539,59 @@ def main():
             start + segment_length,
             np.round(prediction * 100),
         )
-        # break
+        # other_s = start
+        # sub_labels = []
+        # # think of the times interms of stft
+        # # win length / sr
+        #
+        # downscale = 513 / 45.0
+        # win_s = downscale * 4800 / 48000
+        # hop_s = downscale * 281 / 48000
+        # print("over lap is ", win_s - hop_s)
+        # for other_i, other in enumerate(other[0]):
+        #     new_labels = []
+        #     for l_i, p in enumerate(other):
+        #         if p >= prob_thresh:
+        #             label = labels[l_i]
+        #             new_labels.append(label)
+        #     for sub in sub_labels:
+        #         if sub not in new_labels:
+        #             print(
+        #                 sub,
+        #                 " end ",
+        #                 round(other_s, 1),
+        #             )
+        #     if len(new_labels) > 0:
+        #         for l in new_labels:
+        #             if l not in sub_labels:
+        #                 print(
+        #                     l,
+        #                     " start at ",
+        #                     round(other_s, 1),
+        #                 )
+        #     print(
+        #         other_i,
+        #         "at",
+        #         round(other_s, 1),
+        #         "-",
+        #         round(other_s + win_s, 1),
+        #         np.round(other * 100),
+        #         new_labels,
+        #     )
+        #     sub_labels = new_labels
+        #     other_s += hop_s
+
         if start + segment_length > length:
             print("final one")
             start = length - segment_length
+
         results = []
         track_labels = []
         if multi_label:
             # print("doing multi", prediction * 100)
-            for i, p in enumerate(prediction):
+            for l_i, p in enumerate(prediction):
                 if p >= prob_thresh:
-                    label = labels[i]
+                    label = labels[l_i]
                     results.append((p, label))
                     track_labels.append(label)
         else:
@@ -458,12 +617,14 @@ def main():
                 # pass
                 # track.end = start
                 # track.end = start + CALL_LENGTH
-                track.end = track.end - segment_stride
+                track.end = min(start + segment_length - segment_stride, track.end)
                 if track.end > length:
                     track.end = length
 
                 # else:
                 # track.end = track.end - segment_length / 2
+                # dont do this straight away as if we have a small stride.
+                # we could have more bird calls at later times but within track
                 if start >= track.end:
                     del active_tracks[track.label]
                 # print("removed", track.label)
@@ -485,14 +646,17 @@ def main():
                 t_e = max(t_s, t_e)
                 # track = Track(label, t_s, t_e, r[0])
                 track = Track(label, start, start + segment_length, r[0])
-                print("Creating track", label, start)
+                track.end = min(track.end, length)
+                print("Creating track", label, start, track.end)
                 tracks.append(track)
                 active_tracks[label] = track
             else:
                 # track.end = start + segment_stride + CALL_LENGTH
-                track.end = start + segment_length
+                track.end = start + segment_length - segment_stride
+
                 if track.end > length:
                     track.end = length
+                print("Ending track", track.start, track.end, track.label)
                 track.confidences.append(r[0])
             # else:
 
