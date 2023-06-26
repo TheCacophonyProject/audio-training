@@ -12,6 +12,7 @@ import pickle
 import json
 import audioread.ffdec  # Use ffmpeg decoder
 import math
+from plot_utils import plot_spec
 
 # from dateutil.parser import parse as parse_date
 import sys
@@ -67,12 +68,12 @@ def signal_noise(file, hop_length=281):
     n_fft = sr // 10
     # frames = frames[: sr * 3]
     spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
-    return signal_noise_data(spectogram, sr, hop_length)
+    return signal_noise_data(spectogram, sr, hop_length=hop_length, n_fft=n_fft)
 
 
-def signal_noise_data(spectogram, sr, hop_length=281):
+def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     a_max = np.amax(spectogram)
-    spectogram = spectogram / a_max
+    # spectogram = spectogram / a_max
     row_medians = np.median(spectogram, axis=1)
     column_medians = np.median(spectogram, axis=0)
     rows, columns = spectogram.shape
@@ -81,67 +82,95 @@ def signal_noise_data(spectogram, sr, hop_length=281):
     row_medians = row_medians[:, np.newaxis]
     row_medians = np.repeat(row_medians, columns, axis=1)
     column_medians = np.repeat(column_medians, rows, axis=0)
-
     signal = (spectogram > 3 * column_medians) & (spectogram > 3 * row_medians)
     noise = (spectogram > 2.5 * column_medians) & (spectogram > 2.5 * row_medians)
     noise[signal == noise] = 0
     noise = noise.astype(np.uint8)
     signal = signal.astype(np.uint8)
-    kernel = np.ones((3, 3), np.uint8)
+    kernel = np.ones((4, 4), np.uint8)
     signal = cv2.morphologyEx(signal, cv2.MORPH_OPEN, kernel)
     noise = cv2.morphologyEx(noise, cv2.MORPH_OPEN, kernel)
     # plot_spec(spectogram)
-
-    signal_indicator_vector = np.amax(signal, axis=0)
-    noise_indicator_vector = np.amax(noise, axis=0)
-
-    signal_indicator_vector = signal_indicator_vector[np.newaxis, :]
-    signal_indicator_vector = cv2.dilate(
-        signal_indicator_vector, np.ones((4, 1), np.uint8)
-    )
-    signal_indicator_vector = np.where(signal_indicator_vector > 0, 1, 0)
-    signal_indicator_vector = signal_indicator_vector * 255
-
-    noise_indicator_vector = noise_indicator_vector[np.newaxis, :]
-    noise_indicator_vector = cv2.dilate(
-        noise_indicator_vector, np.ones((4, 1), np.uint8)
-    )
-    noise_indicator_vector = np.where(noise_indicator_vector > 0, 1, 0)
-
-    noise_indicator_vector = noise_indicator_vector * 128
-
-    indicator_vector = np.concatenate(
-        (signal_indicator_vector, noise_indicator_vector), axis=0
-    )
+    if min_bin is not None:
+        print("using min bin", min_bin)
+        signal[:min_bin] = 0
+    components, small_mask, stats, _ = cv2.connectedComponentsWithStats(signal)
+    stats = stats[1:]
+    stats = [s for s in stats if s[2] > 4]
+    # stats = np.uint8(stats)
+    # small_mask = np.uint8(small_mask)
+    # small_mask[small_mask > 0] = 255
+    # plot_spec(small_mask)
+    # #
+    # signal_indicator_vector = np.amax(signal, axis=0)
+    #
+    # noise_indicator_vector = np.amax(noise, axis=0)
+    #
+    # signal_indicator_vector = signal_indicator_vector[np.newaxis, :]
+    # signal_indicator_vector = cv2.dilate(
+    #     signal_indicator_vector, np.ones((4, 1), np.uint8)
+    # )
+    # print(signal_indicator_vector.shape)
+    # signal_indicator_vector = np.where(signal_indicator_vector > 0, 1, 0)
+    # signal_indicator_vector = signal_indicator_vector * 255
+    #
+    # noise_indicator_vector = noise_indicator_vector[np.newaxis, :]
+    # noise_indicator_vector = cv2.dilate(
+    #     noise_indicator_vector, np.ones((4, 1), np.uint8)
+    # )
+    # noise_indicator_vector = np.where(noise_indicator_vector > 0, 1, 0)
+    #
+    # noise_indicator_vector = noise_indicator_vector * 128
+    #
+    # indicator_vector = np.concatenate(
+    #     (signal_indicator_vector, noise_indicator_vector), axis=0
+    # )
     i = 0
-    indicator_vector = np.uint8(indicator_vector)
+    # indicator_vector = np.uint8(indicator_vector)
     s_start = -1
     noise_start = -1
     signals = []
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
+    bins = len(freqs)
+    stats = sorted(stats, key=lambda stat: stat[0])
+    for s in stats:
+        freq_range = (freqs[s[1]], freqs[s[1] + s[3]])
+        start = s[0] * 281 / sr
+        end = (s[0] + s[2]) * 281 / sr
+        signals.append((start, end, freq_range[0], freq_range[1]))
+        # break
+    components, small_mask, stats, _ = cv2.connectedComponentsWithStats(noise)
+    stats = stats[1:]
+    stats = [s for s in stats if s[2] > 4]
     noise = []
 
-    for c in indicator_vector.T:
-        # print("indicator", c)
-        if c[0] == 255:
-            if s_start == -1:
-                s_start = i
-        elif s_start != -1:
-            signals.append((s_start * 281 / sr, (i - 1) * 281 / sr))
-            s_start = -1
-        if c[1] == 128:
-            if noise_start == -1:
-                noise_start = i
-        elif noise_start != -1:
-            noise.append((noise_start * 281 / sr, (i - 1) * 281 / sr))
-            noise_start = -1
+    for s in stats:
+        freq_range = (freqs[s[1]], freqs[s[1] + s[3]])
+        start = s[0] * 281 / sr
+        end = (s[0] + s[2]) * 281 / sr
+        noise.append((start, end, freq_range[0], freq_range[1]))
 
-        i += 1
-    if s_start != -1:
-        signals.append((s_start * 281 / sr, (i - 1) * 281 / sr))
-    if noise_start != -1:
-        noise.append((noise_start * 281 / sr, (i - 1) * 281 / sr))
-    # cv2.imshow("b", indicator_vector)
-    # cv2.waitKey()
+    # for c in indicator_vector.T:
+    #     # print("indicator", c)
+    #     if c[0] == 255:
+    #         if s_start == -1:
+    #             s_start = i
+    #     elif s_start != -1:
+    #         signals.append((s_start * 281 / sr, (i - 1) * 281 / sr))
+    #         s_start = -1
+    #     if c[1] == 128:
+    #         if noise_start == -1:
+    #             noise_start = i
+    #     elif noise_start != -1:
+    #         noise.append((noise_start * 281 / sr, (i - 1) * 281 / sr))
+    #         noise_start = -1
+    #
+    #     i += 1
+    # if s_start != -1:
+    #     signals.append((s_start * 281 / sr, (i - 1) * 281 / sr))
+    # if noise_start != -1:
+    #     noise.append((noise_start * 281 / sr, (i - 1) * 281 / sr))
+
     # signal_frames = []
     # for s in signals:
     #     s_f = int((s[0]) * sr)
@@ -210,8 +239,10 @@ def process_signal(f):
     try:
         meta = load_metadata(f)
         if meta.get("signal", None) is not None:
-            print("Already have signal data")
-            return
+            print("Zeroing existing signal")
+            meta["signal"] = None
+            # print("Already have signal data")
+            # return
         file = f.with_suffix(".m4a")
         if not file.exists():
             file = f.with_suffix(".wav")
@@ -319,35 +350,37 @@ class Track:
         return meta
 
 
-def plot_spec(spec, signals, length):
-    plt.figure(figsize=(10, 10))
-
-    ax = plt.subplot(1, 1, 1)
-
-    img = librosa.display.specshow(
-        spec, sr=48000, y_axis="log", x_axis="time", ax=ax, hop_length=281
-    )
-    plt.savefig("temp.png")
-    import cv2
-
-    img = cv2.imread("temp.png")
-
-    height, width, _ = img.shape
-    width = 900 - 130
-    t_p = width / length
-
-    for s in signals:
-        start = int(s[0] * t_p) + 130
-        end = int(s[1] * t_p) + 130
-        print("Drawing signal", s, " at ", start, "-", end, " for shape", img.shape)
-        cv2.rectangle(img, (start, 10), (end, height - 10), (0, 255, 0), 3)
-    # ax.set_title("Power spectrogram")
-    # plt.show()
-    # plt.clf()
-    # plt.close()
-    cv2.imshow("a", img)
-    cv2.moveWindow("a", 0, 0)
-    cv2.waitKey()
+#
+#
+# def plot_spec(spec, signals, length):
+#     plt.figure(figsize=(10, 10))
+#
+#     ax = plt.subplot(1, 1, 1)
+#
+#     img = librosa.display.specshow(
+#         spec, sr=48000, y_axis="log", x_axis="time", ax=ax, hop_length=281
+#     )
+#     plt.savefig("temp.png")
+#     import cv2
+#
+#     img = cv2.imread("temp.png")
+#
+#     height, width, _ = img.shape
+#     width = 900 - 130
+#     t_p = width / length
+#
+#     for s in signals:
+#         start = int(s[0] * t_p) + 130
+#         end = int(s[1] * t_p) + 130
+#         print("Drawing signal", s, " at ", start, "-", end, " for shape", img.shape)
+#         cv2.rectangle(img, (start, 10), (end, height - 10), (0, 255, 0), 3)
+#     # ax.set_title("Power spectrogram")
+#     # plt.show()
+#     # plt.clf()
+#     # plt.close()
+#     cv2.imshow("a", img)
+#     cv2.moveWindow("a", 0, 0)
+#     cv2.waitKey()
 
 
 def plot_mfcc(mfcc):
