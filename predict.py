@@ -293,8 +293,8 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         #     fmax=11000,
         #     power=1,
         # )
-        print("saveing", start)
-        plot_mel(mel, f"more-{start}")
+        # print("saveing", start)
+        # plot_mel(mel, f"more-{start}")
 
         mel = tf.expand_dims(mel, axis=2)
 
@@ -438,7 +438,7 @@ def main():
     # return
     # model = tf.keras.models.load_model(str(load_model))
 
-    # model.load_weights(load_model / "val_binary_accuracy").expect_partial()
+    model.load_weights(load_model / "val_binary_accuracy").expect_partial()
     # model.save(load_model / "frozen_model")
     # 1 / 0
     with open(load_model / "metadata.txt", "r") as f:
@@ -456,7 +456,7 @@ def main():
 
     hop_length = 281
 
-    segment_stride = 3
+    segment_stride = 1
     # print("stride is", segment_stride)
     # segment_length = 2
     # segment_stride = 0.5

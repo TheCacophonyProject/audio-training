@@ -1,0 +1,10 @@
+librosa
+tensorflow
+tensorflow_addons
+tensorflow_probability
+tensorflow_hub
+numpy
+python-dateutil
+matplotlib
+psutil
+audiomentations
