@@ -205,7 +205,7 @@ def load_dataset(filenames, num_labels, labels, args):
     )
     if args.get("filter_bad", False):
         dataset = dataset.filter(lambda x, y: not filter_bad_tracks(x, y, labels))
-    dataset = dataset.map(lambda x, y: (x, y[0]))
+    # dataset = dataset.map(lambda x, y: (x, y[0]))
 
     filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
     dataset = dataset.filter(filter_nan)

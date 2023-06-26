@@ -964,7 +964,6 @@ def confusion(model, labels, dataset, filename="confusion.png"):
 
     mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
     true_categories = [y for x, y in dataset]
-    true_categories = tf.concat(true_categories, axis=0)
     y_true = []
     other_info = []
     for batch in true_categories:
