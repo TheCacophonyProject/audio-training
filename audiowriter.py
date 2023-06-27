@@ -235,7 +235,7 @@ def process_job(queue, labels, config, base_dir):
                     writer_i += 1
                     name = f"{writer_i}-{pid}.tfrecord"
                     logging.info("Opening %s", name)
-
+                    saved = 0
                     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
                 if i % 10 == 0:
                     logging.info("Clear gc")
