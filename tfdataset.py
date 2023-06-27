@@ -205,12 +205,11 @@ def load_dataset(filenames, num_labels, labels, args):
     )
     if args.get("filter_bad", False):
         dataset = dataset.filter(lambda x, y: not filter_bad_tracks(x, y, labels))
-    dataset = dataset.map(lambda x, y: (x, y[0]))
 
     filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
     dataset = dataset.filter(filter_nan)
 
-    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
+    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y[0]), 0)
     dataset = dataset.filter(filter_excluded)
     return dataset
 
@@ -247,8 +246,6 @@ def get_distribution(dataset, num_labels, batched=True):
     classes = np.array(classes)
 
     c = Counter(list(classes))
-    print(c)
-    print("Have labels",num_labels, len(dist), len(c),num_labels)
     for i in range(num_labels):
         dist[i] = c[i]
     return dist
@@ -367,11 +364,13 @@ def get_dataset(filenames, labels, **args):
     bird_mask[bird_i] = 1
     bird_mask = tf.constant(bird_mask)
     bird_filter = lambda x, y: tf.math.reduce_all(
-        tf.math.equal(tf.cast(y, tf.bool), bird_mask)
+        tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
     )
     bird_dataset = dataset.filter(bird_filter)
+    if args.get("filter_signal", 0.1) is not None:
+        bird_dataset = bird_dataset.filter(filter_signal)
     others_filter = lambda x, y: not tf.math.reduce_all(
-        tf.math.equal(tf.cast(y, tf.bool), bird_mask)
+        tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
     )
     dataset = dataset.filter(others_filter)
 
@@ -399,6 +398,7 @@ def get_dataset(filenames, labels, **args):
             stop_on_empty_dataset=args.get("stop_on_empty", True),
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", False),
         )
+    # dataset = dataset.map(lambda x, y: (x, y[0]))
     resample_data = args.get("resample", True)
     if resample_data:
         logging.info("Resampling data")
@@ -446,8 +446,9 @@ def get_dataset(filenames, labels, **args):
     return dataset, remapped, 0
 
 
-def filter_fn(x, y):
-    return tf.math.equal(tf.argmax(y[0]), 1)
+def filter_signal(x, y):
+    return tf.math.greater(y[2], 0.1)
+    # return tf.math.equal(tf.argmax(y[0]), 1)
 
 
 # an attempt to filter out bad tracks by filtering out bird tracks
@@ -687,7 +688,8 @@ def read_tfrecord(
         tfrecord_format["audio/raw"] = tf.io.FixedLenFeature(
             (2401, mel_s[1]), tf.float32
         )
-
+    if not all_human:
+        tfrecord_format["audio/signal_percent"] = tf.io.FixedLenFeature((), tf.float32)
 
     example = tf.io.parse_single_example(example, tfrecord_format)
     # raw = example["audio/raw"]
@@ -702,7 +704,6 @@ def read_tfrecord(
     if embeddings:
         image = example["embedding"]
     else:
-
         stft = example["audio/raw"]
         stft = tf.reshape(stft, [2401, mel_s[1]])
         image = tf.tensordot(MEL_WEIGHTS, stft, 1)
@@ -737,7 +738,7 @@ def read_tfrecord(
                 embed_preds = tf.reduce_max(
                     tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
                 )
-
+        signal_percent = 0.0
         if no_bird:
             logging.info("no bird")
             # dont use bird or noise label from mixed ones
@@ -762,9 +763,12 @@ def read_tfrecord(
             label = tf.math.logical_or(label, human_mask)
 
             label = tf.cast(label, tf.int32)
+        else:
+            signal_percent = example["audio/signal_percent"]
+
         label = tf.cast(label, tf.float32)
 
-        return image, (label, embed_preds)
+        return image, (label, embed_preds, signal_percent)
 
     return image
 
@@ -832,12 +836,12 @@ def main():
     # return
     datasets = ["other-training-data", "training-data", "chime-training-data"]
     datasets = ["training-data"]
-    datasets = ["training-data"]
+    datasets = ["./audio-data/training-data"]
     filenames = []
     labels = set()
     for d in datasets:
         # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
-        file = f"/{d}/training-meta.json"
+        file = f"{d}/training-meta.json"
         with open(file, "r") as f:
             meta = json.load(f)
         labels.update(meta.get("labels", []))
@@ -845,7 +849,7 @@ def main():
         # species_list = ["bird", "human", "rain", "other"]
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-        filenames.extend(tf.io.gfile.glob(f"/{d}/train/*.tfrecord"))
+        filenames.extend(tf.io.gfile.glob(f"{d}/train/*.tfrecord"))
     labels.add("bird")
     labels.add("noise")
     labels = list(labels)
@@ -895,10 +899,10 @@ def main():
     # y = (bird, bird_noise)
     # filter_bad_tracks(None, y, labels)
     # calc_mean()
-    print("labels are", len(labels),labels)
-    dist = get_distribution(resampled_ds,len(labels))
-    for l,d in zip(labels,dist):
-        print(l, "  : " , d)
+    print("labels are", len(labels), labels)
+    # dist = get_distribution(resampled_ds, len(labels))
+    # for l, d in zip(labels, dist):
+    # print(l, "  : ", d)
     # ing2D()(x)
     # for e in range(2):
     #     print("epoch", e)
@@ -914,24 +918,11 @@ def main():
     print("looping")
     for e in range(1):
         for x, y in resampled_ds:
-            # print("filter with ", y)
-            trues = y[0]
-            predicted = y[1]
-            for true, pred in zip(trues, predicted):
-                print(true.shape)
-                filter_bad_tracks(None, (true, pred), labels)
-            return
-            lbl = []
-            for l, p in zip(trues, predicted):
-                lbl = []
-                for l_i, logit in enumerate(l):
-                    if logit == 1:
-                        lbl.append(labels[l_i])
-                p_l = []
-                for l_i, logit in enumerate(p):
-                    if logit == 1:
-                        p_l.append(labels[l_i])
-                print("Labels are", lbl, "vs", p_l)
+            labels = y[0]
+            signal_percent = y[2]
+            for l, s in zip(labels, signal_percent):
+                if l[0] == 1 and np.sum(l) == 1:
+                    print("have ", l, s)
             # show_batch(x, y, None, labels, None)
 
             # show_batch(x, y[0], y[1], labels, species_list)
