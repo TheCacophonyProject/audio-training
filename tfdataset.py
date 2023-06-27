@@ -398,7 +398,7 @@ def get_dataset(filenames, labels, **args):
             stop_on_empty_dataset=args.get("stop_on_empty", True),
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", False),
         )
-    # dataset = dataset.map(lambda x, y: (x, y[0]))
+    dataset = dataset.map(lambda x, y: (x, y[0]))
     resample_data = args.get("resample", True)
     if resample_data:
         logging.info("Resampling data")
@@ -521,7 +521,10 @@ def weight_specific(x, y, num_labels, weighting, specific_mask, rest_weighting):
 def get_weighting(dataset, labels):
     weighting = {}
     for i in range(len(labels)):
-        weighting[i] = 1
+        if labels[i] in ["bird", "human"]:
+            weighting[i] = 0.6
+        else:
+            weighting[i] = 1
     return weighting
     excluded_labels = []
     dont_weigh = []

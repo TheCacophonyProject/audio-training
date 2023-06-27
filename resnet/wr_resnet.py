@@ -30,7 +30,6 @@ def WRResNet(input_shape=(128, 512, 1), classes=6, depth=22, k=4):
     # X = tf.keras.layers.Flatten()(X)
     X = tf.keras.layers.Dense(classes, activation="sigmoid", name="prediction")(X)
     model = tf.keras.Model(inputs=X_input, outputs=X, name="WRResNet")
-    model.summary()
     return model
 
 
