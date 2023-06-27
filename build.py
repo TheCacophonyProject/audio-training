@@ -301,6 +301,77 @@ def dataset_from_signal(args):
         json.dump(meta_data, f, indent=4)
 
 
+def filter_birds(dataset):
+    dataset.samples = []
+    freq_filter = 1000
+    logging.info("Filtering unclear birds")
+    # set tracks to start at first signal within the track start end and end with last signal
+    for r in dataset.recs:
+        # r.space_signals()
+        tracks_del = []
+        for t in r.tracks:
+            offset = 0
+            if "bird" not in t.human_tags:
+                continue
+            signal_time = 0
+            signals = 0
+            prev_e = None
+            for s in r.signals:
+                if s[2] < freq_filter:
+                    continue
+                if ((t.end - t.start) + (s[1] - s[0])) > max(t.end, s[1]) - min(
+                    t.start, s[0]
+                ):
+                    start = max(s[0], t.start)
+                    if prev_e is not None:
+                        start = max(prev_e, start)
+                    end = min(s[1], t.end)
+                    if start > end:
+                        continue
+                    signal_time += end - start
+                    signals += 1
+                    # logging.info(
+                    #     "Adding singal %s for track %s-%s overlap signal time is %s",
+                    #     s,
+                    #     t.start,
+                    #     t.end,
+                    #     signal_time,
+                    # )
+                    prev_e = end
+                    if t.end < s[1]:
+                        break
+                if t.end < s[0]:
+                    break
+            # logging.info(
+            #     "Total signals %s total signal time is %s for a track starting at  %s - %s percent signal %s",
+            #     signals,
+            #     signal_time,
+            #     t.start,
+            #     t.end,
+            #     round(100 * signal_time / t.length),
+            # )
+            signal_percent = signal_time / t.length
+            if signal_percent < 0.1:
+                logging.warn(
+                    "Filtering rec %s track %s ( At %s) because has signal time %s from %s signals",
+                    r.id,
+                    t.id,
+                    t.start,
+                    signal_percent,
+                    signals,
+                )
+            # if t_s is None:
+            #     logging.warn("Rec %s track %s has no signal data", r.id, t.id)
+            #     tracks_del.append(t)
+
+        for t in tracks_del:
+            r.tracks.remove(t)
+        r.recalc_tags()
+        r.samples = []
+        r.load_samples(dataset.config.segment_length, dataset.config.segment_stride)
+        dataset.samples.extend(r.samples)
+
+
 def trim_noise(dataset):
     dataset.samples = []
     # set tracks to start at first signal within the track start end and end with last signal
@@ -360,6 +431,8 @@ def main():
     # config = load_config(args.config_file)
     dataset = AudioDataset("all", config)
     dataset.load_meta(args.dir)
+    filter_birds(dataset)
+    return
     # for r in dataset.recs:
     #     if "whistler" not in r.human_tags:
     #         print(r.id, " missing", r.human_tags)

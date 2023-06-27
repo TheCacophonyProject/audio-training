@@ -98,9 +98,9 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     stats = stats[1:]
     stats = [s for s in stats if s[2] > 4]
     # stats = np.uint8(stats)
-    # small_mask = np.uint8(small_mask)
-    # small_mask[small_mask > 0] = 255
-    # plot_spec(small_mask)
+    small_mask = np.uint8(small_mask)
+    small_mask[small_mask > 0] = 255
+    plot_spec(small_mask)
     # #
     # signal_indicator_vector = np.amax(signal, axis=0)
     #
@@ -134,7 +134,8 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     bins = len(freqs)
     stats = sorted(stats, key=lambda stat: stat[0])
     for s in stats:
-        freq_range = (freqs[s[1]], freqs[s[1] + s[3]])
+        max_freq = min(len(freqs) - 1, s[1] + s[3])
+        freq_range = (freqs[s[1]], freqs[max_freq])
         start = s[0] * 281 / sr
         end = (s[0] + s[2]) * 281 / sr
         signals.append((start, end, freq_range[0], freq_range[1]))
@@ -145,7 +146,8 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     noise = []
 
     for s in stats:
-        freq_range = (freqs[s[1]], freqs[s[1] + s[3]])
+        max_freq = min(len(freqs) - 1, s[1] + s[3])
+        freq_range = (freqs[s[1]], freqs[max_freq])
         start = s[0] * 281 / sr
         end = (s[0] + s[2]) * 281 / sr
         noise.append((start, end, freq_range[0], freq_range[1]))
@@ -186,6 +188,7 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     # print("spaced", signals)
     # spectogram = librosa.amplitude_to_db(spectogram, ref=np.max)
     # plot_spec(spectogram, signals, len(frames) / sr)
+    # print(signals, noise)
     return signals, noise
 
 
