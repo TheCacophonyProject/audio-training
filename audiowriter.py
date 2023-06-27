@@ -89,12 +89,12 @@ def create_tf_example(sample, labels):
     # mel = data.mel
     tags = sample.tags_s
     track_ids = " ".join(map(str, sample.track_ids))
-
     feature_dict = {
         "audio/rec_id": tfrecord_util.bytes_feature(str(sample.rec_id).encode("utf8")),
         "audio/track_id": tfrecord_util.bytes_feature(track_ids.encode("utf8")),
         "audio/sample_rate": tfrecord_util.int64_feature(sample.sr),
         "audio/length": tfrecord_util.float_feature(sample.length),
+        "audio/signal_percent": tfrecord_util.float_feature(sample.signal_percent),
         "audio/raw_length": tfrecord_util.float_feature(data.raw_length),
         "audio/start_s": tfrecord_util.float_feature(sample.start),
         "audio/class/text": tfrecord_util.bytes_feature(tags.encode("utf8")),
@@ -240,8 +240,8 @@ def process_job(queue, labels, config, base_dir):
                 if i % 10 == 0:
                     logging.info("Clear gc")
                     gc.collect()
-        except Exception as e:
-            logging.error("Process_job error %s %s", rec.filename, e)
+        except:
+            logging.error("Process_job error %s", rec.filename, exc_info=True)
 
 
 def close_writer(empty=None):
@@ -277,7 +277,7 @@ def save_data(rec, writer, model, embedding_model, base_dir, config, embedding_l
             pass
         return 0
     try:
-        frames32 = librosa.resample(orig_frames, orig_sr=sr, target_sr=32000)
+        # frames32 = librosa.resample(orig_frames, orig_sr=sr, target_sr=32000)
 
         # hack to handle getting new samples without knowing length until load
         if resample is not None and resample != sr:
@@ -339,14 +339,13 @@ def save_data(rec, writer, model, embedding_model, base_dir, config, embedding_l
             del sample
         saved = len(samples)
         del samples
-        del rec
         del frames
-        del frames32
         del orig_frames
     except:
         logging.error("Got error %s", rec.filename, exc_info=True)
         print("ERRR return None")
         return 0
+    del rec
 
     logging.info("Total Saved %s", saved)
     return saved
@@ -570,7 +569,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     #     name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
     #     writers.append(tf.io.TFRecordWriter(str(output_path / name), options=options))
 
-    num_processes = 1
+    num_processes = 8
     load_first = num_processes * 100
     total_recs = len(samples)
     total_saved_recs = 0

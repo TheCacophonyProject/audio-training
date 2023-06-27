@@ -265,7 +265,9 @@ def get_samples(rec_frames, sample):
 
 
 class AudioSample:
-    def __init__(self, rec, tags, start, end, track_ids, group_id, bin_id=None):
+    def __init__(
+        self, rec, tags, start, end, track_ids, group_id, signal_percent, bin_id=None
+    ):
         self.rec_id = rec.id
         self.tags = list(tags)
         self.tags.sort()
@@ -276,6 +278,7 @@ class AudioSample:
         self.sr = None
         self.logits = None
         self.embeddings = None
+        self.signal_percent = signal_percent
         self.group = group_id
         self.predicted_labels = None
         if bin_id is None:
@@ -322,8 +325,36 @@ class Recording:
         self.rec_data = None
         self.resampled = False
         self.samples = []
-
+        self.signal_percent()
         self.load_samples(config.segment_length, config.segment_stride)
+
+    def signal_percent(self):
+        freq_filter = 1000
+
+        for t in self.tracks:
+            signal_time = 0
+            signals = 0
+            prev_e = None
+            for s in self.signals:
+                if s[2] < freq_filter:
+                    continue
+                if ((t.end - t.start) + (s[1] - s[0])) > max(t.end, s[1]) - min(
+                    t.start, s[0]
+                ):
+                    start = max(s[0], t.start)
+                    if prev_e is not None:
+                        start = max(prev_e, start)
+                    end = min(s[1], t.end)
+                    if start > end:
+                        continue
+                    signal_time += end - start
+                    signals += 1
+                    prev_e = end
+                    if t.end < s[1]:
+                        break
+                if t.end < s[0]:
+                    break
+            t.signal_percent = signal_time / t.length
 
     def recalc_tags(self):
         for track in self.tracks:
@@ -501,7 +532,8 @@ class Recording:
                         min(track.end, end),
                         [track.id for t in other_tracks],
                         SAMPLE_GROUP_ID,
-                        bin_id,
+                        track.signal_percent,
+                        bin_id=bin_id,
                     )
                 )
                 start += segment_stride
@@ -614,6 +646,7 @@ class Track:
         self.human_tags = set()
         self.automatic = metadata.get("automatic")
         self.original_tags = set()
+        self.signal_percent = None
         tags = metadata.get("tags", [])
         for tag in tags:
             self.add_tag(tag)

@@ -98,9 +98,9 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     stats = stats[1:]
     stats = [s for s in stats if s[2] > 4]
     # stats = np.uint8(stats)
-    small_mask = np.uint8(small_mask)
-    small_mask[small_mask > 0] = 255
-    plot_spec(small_mask)
+    # small_mask = np.uint8(small_mask)
+    # small_mask[small_mask > 0] = 255
+    # plot_spec(small_mask)
     # #
     # signal_indicator_vector = np.amax(signal, axis=0)
     #

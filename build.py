@@ -305,14 +305,29 @@ def filter_birds(dataset):
     dataset.samples = []
     freq_filter = 1000
     logging.info("Filtering unclear birds")
-    # set tracks to start at first signal within the track start end and end with last signal
+    total_count = 0
+    deleted_count = 0
+    from tfdataset import GENERIC_BIRD_LABELS
+
     for r in dataset.recs:
         # r.space_signals()
         tracks_del = []
         for t in r.tracks:
+            total_count += 1
             offset = 0
-            if "bird" not in t.human_tags:
-                continue
+            found = False
+            # if (
+            #     "kiwi" in t.human_tags
+            #     or "morepork" in t.human_tags
+            #     or "rifleman" in t.human_tags
+            # ):
+            #     continue
+            # for b in GENERIC_BIRD_LABELS:
+            #     if b in t.human_tags:
+            #         found = True
+            #         break
+            # if not found:
+            #     continue
             signal_time = 0
             signals = 0
             prev_e = None
@@ -351,6 +366,7 @@ def filter_birds(dataset):
             #     round(100 * signal_time / t.length),
             # )
             signal_percent = signal_time / t.length
+            t.signal_percent = signal_percent
             if signal_percent < 0.1:
                 logging.warn(
                     "Filtering rec %s track %s ( At %s) because has signal time %s from %s signals",
@@ -360,6 +376,8 @@ def filter_birds(dataset):
                     signal_percent,
                     signals,
                 )
+                # tracks_del.append(t)
+                del_count += 1
             # if t_s is None:
             #     logging.warn("Rec %s track %s has no signal data", r.id, t.id)
             #     tracks_del.append(t)
@@ -431,8 +449,8 @@ def main():
     # config = load_config(args.config_file)
     dataset = AudioDataset("all", config)
     dataset.load_meta(args.dir)
-    filter_birds(dataset)
-    return
+    # filter_birds(dataset)
+    # return
     # for r in dataset.recs:
     #     if "whistler" not in r.human_tags:
     #         print(r.id, " missing", r.human_tags)
@@ -456,7 +474,7 @@ def main():
         d.labels = all_labels
         print("setting all labels", all_labels)
     validate_datasets(datasets)
-    base_dir = "./yamnet-data"
+    base_dir = "audio-data"
     if args.create_signal_wavs:
         record_dir = os.path.join(base_dir, "signal-data/")
         for dataset in datasets:
