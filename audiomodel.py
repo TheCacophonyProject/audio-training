@@ -831,7 +831,7 @@ def weighted_binary_cross(y_true, y_pred):
         y_pred, tf.keras.backend.epsilon(), 1.0 - tf.keras.backend.epsilon()
     )
     y_true = tf.math.greater(y_true, 0)
-    y_true = tf.cast(y_true, tf.float64)
+    y_true = tf.cast(y_true, tf.float32)
     # keep logits as 1 and 0s
     term_0 = (1 - y_true) * tf.math.log(1 - y_pred + tf.keras.backend.epsilon())
     term_1 = y_true * tf.math.log(y_pred + tf.keras.backend.epsilon())
