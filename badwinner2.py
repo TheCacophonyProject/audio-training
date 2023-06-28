@@ -180,7 +180,7 @@ def build_model_res(input_shape, norm_layer, num_labels, multi_label=False):
 
 
 def build_model(input_shape, norm_layer, num_labels, multi_label=False):
-    input = tf.keras.Input(shape=(*input_shape, 1), name="input")
+    input = tf.keras.Input(shape=input_shape, name="input")
     # x = norm_layer(input)
     # if multi_label:
     filters = 256
