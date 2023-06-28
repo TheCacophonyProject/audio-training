@@ -374,7 +374,6 @@ def get_dataset(filenames, labels, **args):
     )
     dataset = dataset.filter(others_filter)
 
-    resample_data = args.get("resample", False)
     if args.get("filenames_2") is not None:
         logging.info("Loading second files %s", args.get("filenames_2")[:1])
         second = args.get("filenames_2")
@@ -387,7 +386,7 @@ def get_dataset(filenames, labels, **args):
         dataset = tf.data.Dataset.sample_from_datasets(
             [bird_dataset, dataset, dataset_2],
             stop_on_empty_dataset=args.get("stop_on_empty", True),
-            rerandomize_each_iteration=args.get("rerandomize_each_iteration", False),
+            rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
         # for i, d in enumerate(dist):
         # dist[i] += dist_2[i]
@@ -396,10 +395,10 @@ def get_dataset(filenames, labels, **args):
         dataset = tf.data.Dataset.sample_from_datasets(
             [bird_dataset, dataset],
             stop_on_empty_dataset=args.get("stop_on_empty", True),
-            rerandomize_each_iteration=args.get("rerandomize_each_iteration", False),
+            rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
     dataset = dataset.map(lambda x, y: (x, y[0]))
-    resample_data = args.get("resample", True)
+    resample_data = args.get("resample", False)
     if resample_data:
         logging.info("Resampling data")
         dataset = resample(dataset, labels, dist)
