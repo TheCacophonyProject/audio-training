@@ -521,9 +521,11 @@ def get_weighting(dataset, labels):
     weighting = {}
     for i in range(len(labels)):
         if labels[i] in ["bird", "human"]:
-            weighting[i] = 0.6
+            weighting[i] = 0.5
+        elif labels[i] == "noise":
+            weighting[i] = 0.9
         else:
-            weighting[i] = 1
+            weighting[i] = 2
     return weighting
     excluded_labels = []
     dont_weigh = []
