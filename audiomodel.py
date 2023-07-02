@@ -508,7 +508,7 @@ class AudioModel:
             "val_precision",
             "val_auc",
             "val_recall",
-            "huber_loss",
+            "val_huber_loss",
         ]
         checks = []
         for m in metrics:
