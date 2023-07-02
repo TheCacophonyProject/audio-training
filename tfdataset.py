@@ -77,6 +77,31 @@ OTHER_LABELS = ["chicken", "rooster", "frog", "insect"]
 # keep_excluded_in_extra = False
 
 
+def set_specific_by_count(meta):
+    counts = meta["counts"]
+    training = counts["train"]["sample_counts"]
+    training_rec = counts["train"]["rec_counts"]
+
+    validation = counts["validation"]["sample_counts"]
+    labels_with_data = []
+    for label, count in training.items():
+        rec_count = training_rec[label]
+        if label not in validation:
+            continue
+        val_count = validation[label]
+        if count > 100 and rec_count > 10 and val_count > 2:
+            labels_with_data.append(label)
+            if label in GENERIC_BIRD_LABELS and label not in SPECIFIC_BIRD_LABELS:
+                SPECIFIC_BIRD_LABELS.append(label)
+                logging.info(
+                    "Using %s because have data samples: %s and recs %s val samples:",
+                    label,
+                    count,
+                    rec_count,
+                    val_count,
+                )
+
+
 def get_excluded_labels(labels):
     excluded_labels = []
     for l in labels:
@@ -256,6 +281,14 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
     remapped = {}
     re_dic = {}
     new_labels = labels.copy()
+    fantail = False
+    if (
+        "fantail" in labels
+        and "new zealand fantail" in labels
+        and "fantail" not in excluded_labels
+        and "new zealand fantail" not in excluded_labels
+    ):
+        fantail = True
     for excluded in excluded_labels:
         if excluded in labels:
             new_labels.remove(excluded)
@@ -265,7 +298,11 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
             remapped[l] = []
             logging.info("Excluding %s", l)
         else:
-            re_dic[l] = new_labels.index(l)
+            if fantail and l == "new zealand fantail":
+                re_dic[l] = new_labels.index("fantail")
+                logging.info("Remapping new zealand fantail to fantail")
+            else:
+                re_dic[l] = new_labels.index(l)
             remapped[l] = [l]
             # values.append(new_labels.index(l))
 

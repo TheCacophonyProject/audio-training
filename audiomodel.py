@@ -30,6 +30,8 @@ from tfdataset import (
     SPECIFIC_BIRD_LABELS,
     get_excluded_labels,
     YAMNET_EMBEDDING_SHAPE,
+    GENERIC_BIRD_LABELS,
+    set_specific_by_count,
 )
 
 # from tfdatasetembeddings import get_dataset, DIMENSIONS
@@ -570,6 +572,7 @@ class AudioModel:
             with open(file, "r") as f:
                 meta = json.load(f)
             labels.update(meta.get("labels", []))
+        set_specific_by_count(meta)
         labels = list(labels)
         labels.sort()
         self.labels = labels

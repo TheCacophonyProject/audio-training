@@ -41,6 +41,8 @@ ACCEPT_TAGS = None
 # ]
 
 RELABEL = {}
+RELABEL["new zealand fantail"] = "fantail"
+
 RELABEL["north island brown kiwi"] = "kiwi"
 RELABEL["great spotted kiwi"] = "kiwi"
 RELABEL["norfolk morepork"] = "morepork"

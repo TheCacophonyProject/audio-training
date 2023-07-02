@@ -87,20 +87,47 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     noise[signal == noise] = 0
     noise = noise.astype(np.uint8)
     signal = signal.astype(np.uint8)
+    min_width = 0.1
+    min_width = min_width * sr / 281
+    min_width = int(min_width)
+
+    width = 0.25  # seconds
+    width = width * sr / 281
+    width = int(width)
+    freq_range = 1000
+    height = 0
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
+    for i, f in enumerate(freqs):
+        if f > freq_range:
+            height = i + 1
+            break
+
     kernel = np.ones((4, 4), np.uint8)
     signal = cv2.morphologyEx(signal, cv2.MORPH_OPEN, kernel)
     noise = cv2.morphologyEx(noise, cv2.MORPH_OPEN, kernel)
-    # plot_spec(spectogram)
-    if min_bin is not None:
-        print("using min bin", min_bin)
-        signal[:min_bin] = 0
+
+    signal = cv2.dilate(signal, np.ones((height, width), np.uint8))
+    signal = cv2.erode(signal, np.ones((height // 10, width), np.uint8))
+
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(signal)
+    for i, s in enumerate(stats):
+        print(i, s)
+        if i == 0:
+            continue
+        if s[2] <= min_width:
+            small_mask[small_mask == i] = 200
+    stats = sorted(stats, key=lambda stat: stat[0])
     stats = stats[1:]
-    stats = [s for s in stats if s[2] > 4]
-    # stats = np.uint8(stats)
-    # small_mask = np.uint8(small_mask)
-    # small_mask[small_mask > 0] = 255
-    # plot_spec(small_mask)
+    # # for x in small_mask:
+    # # print(x[-10:])
+    stats = [s for s in stats if s[2] > min_width]
+    # for s in stats:
+    #     print(s)
+    # # stats = np.uint8(stats)
+    # # small_mask = np.uint8(small_mask)
+    # # small_mask[small_mask > 0] = 255
+    print("Signals", len(stats))
+    plot_spec(small_mask)
     # #
     # signal_indicator_vector = np.amax(signal, axis=0)
     #
@@ -130,9 +157,8 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     s_start = -1
     noise_start = -1
     signals = []
-    freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
+
     bins = len(freqs)
-    stats = sorted(stats, key=lambda stat: stat[0])
     for s in stats:
         max_freq = min(len(freqs) - 1, s[1] + s[3])
         freq_range = (freqs[s[1]], freqs[max_freq])
@@ -189,6 +215,8 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     # spectogram = librosa.amplitude_to_db(spectogram, ref=np.max)
     # plot_spec(spectogram, signals, len(frames) / sr)
     # print(signals, noise)
+    for s in signals:
+        print("Signal", s)
     return signals, noise
 
 
