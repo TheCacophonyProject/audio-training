@@ -28,11 +28,11 @@ AUTOTUNE = tf.data.AUTOTUNE
 # IMAGE_SIZE = [256, 256]
 # BATCH_SIZE = 64
 NOISE_LABELS = ["wind", "vehicle", "dog", "rain", "static", "noise", "cat"]
-SPECIFIC_BIRD_LABELS = ["whistler", "kiwi", "morepork", "bird", "rifleman"]
+SPECIFIC_BIRD_LABELS = ["whistler", "kiwi", "morepork", "rifleman"]
 GENERIC_BIRD_LABELS = [
     "australian magpie",
     "bellbird",
-    "bird",
+    # "bird",
     "blackbird",
     "california quail",
     "canada goose",
@@ -322,8 +322,9 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
                 extra_label_map[l] = new_labels.index("other")
             continue
         elif l in SPECIFIC_BIRD_LABELS:
-            if l != "bird":
-                extra_label_map[l] = new_labels.index("bird")
+            if "bird" in new_labels:
+                if l != "bird":
+                    extra_label_map[l] = new_labels.index("bird")
             # or l == "human":
             continue
         elif l == "human":
