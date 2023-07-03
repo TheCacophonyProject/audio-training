@@ -30,7 +30,7 @@ AUTOTUNE = tf.data.AUTOTUNE
 NOISE_LABELS = ["wind", "vehicle", "dog", "rain", "static", "noise", "cat"]
 SPECIFIC_BIRD_LABELS = ["whistler", "kiwi", "morepork", "rifleman"]
 GENERIC_BIRD_LABELS = [
-    "australian magpie",
+    "new zealand fantail" "australian magpie",
     "bellbird",
     # "bird",
     "blackbird",
@@ -94,7 +94,7 @@ def set_specific_by_count(meta):
             if label in GENERIC_BIRD_LABELS and label not in SPECIFIC_BIRD_LABELS:
                 SPECIFIC_BIRD_LABELS.append(label)
                 logging.info(
-                    "Using %s because have data samples: %s and recs %s val samples:",
+                    "Using %s because have data samples: %s and recs %s val samples %s:",
                     label,
                     count,
                     rec_count,
