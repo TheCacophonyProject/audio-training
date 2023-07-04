@@ -29,8 +29,8 @@ import soundfile as sf
 
 MAX_TEST_BINS = None
 MAX_TEST_SAMPLES = None
-MIN_SAMPLES = 10
-MIN_BINS = 10
+MIN_SAMPLES = 1
+MIN_BINS = 1
 LOW_SAMPLES_LABELS = []
 VAL_PERCENT = 0.15
 TEST_PERCENT = 0.05
@@ -79,26 +79,28 @@ def split_label(
     add_to = validate_c
     last_index = 0
     label_count = 0
-    min_t = MIN_SAMPLES
+    min_samples = MIN_SAMPLES
+    min_bins = MIN_BINS
+    total_bins = len(sample_bins)
+    if label in LOW_SAMPLES_LABELS or total_bins < 20:
+        min_bins = 1
+        min_samples = 1
 
     if label in LOW_SAMPLES_LABELS:
-        min_t = 10
-    num_validate_samples = max(num_samples * VAL_PERCENT, min_t)
-    num_test_samples = max(num_samples * TEST_PERCENT, min_t)
+        min_samples = 10
+    num_validate_samples = max(num_samples * VAL_PERCENT, min_samples)
+
+    num_test_samples = max(num_samples * TEST_PERCENT, min_samples)
     if MAX_TEST_SAMPLES is not None:
         num_test_samples = min(MAX_TEST_SAMPLES, num_test_samples)
     num_test_samples -= existing_test_count
     # should have test covered by test set
     #  VALIDATION LIMITS
-    min_t = MIN_BINS
-    total_bins = len(sample_bins)
-    if label in LOW_SAMPLES_LABELS or total_bins < 20:
-        min_t = 1
 
-    num_validate_bins = max(total_bins * VAL_PERCENT, min_t)
+    num_validate_bins = max(total_bins * VAL_PERCENT, min_bins)
 
     # TEST LIMITS
-    num_test_bins = max(total_bins * TEST_PERCENT, min_t)
+    num_test_bins = max(total_bins * TEST_PERCENT, min_bins)
     if MAX_TEST_BINS is not None:
         num_test_bins = min(MAX_TEST_BINS, num_test_bins)
 
@@ -127,8 +129,9 @@ def split_label(
         "# num test samples",
         num_test_samples,
     )
+    logging.info("Loading Val data %s with samples %s", label, len(samples_bins))
     recs = set()
-    if total_bins > 5:
+    if total_bins > 0:
         for i, sample_bin in enumerate(sample_bins):
             samples = samples_by_bin[sample_bin]
             for sample in samples:
@@ -155,11 +158,17 @@ def split_label(
                     bin_limit = num_test_bins
                     label_count = 0
                     bins = set()
+                    logging.info(
+                        "Loading Test data %s with leftovers %s",
+                        label,
+                        len(samples_bins),
+                    )
 
                 else:
                     break
 
         sample_bins = sample_bins[last_index + 1 :]
+    logging.info("Loading Train data with leftovers %s", len(sample_bins))
 
     camera_type = "train"
     added = 0
@@ -198,8 +207,9 @@ def split_randomly(dataset, test_clips=[], no_test=False):
     train.enable_augmentation = True
     validation = AudioDataset("validation", dataset.config)
     test = AudioDataset("test", dataset.config)
-
-    for label in dataset.labels:
+    labels = list(dataset.labels)
+    labels.sort()
+    for label in labels:
         split_label(
             dataset,
             (train, validation, test),
@@ -461,9 +471,9 @@ def main():
     dataset.print_counts()
     datasets = split_randomly(dataset, no_test=args.no_test)
     dataset.print_counts()
-
     all_labels = set()
     for d in datasets:
+        logging.info("")
         logging.info("%s Dataset", d.name)
         d.print_sample_counts()
 
@@ -536,9 +546,9 @@ def validate_datasets(datasets):
         assert t not in test_tracks
 
     #  make sure all tags from a recording are only in one dataset
-    train_tracks = [f"{s.bin_id}" for s in train.samples]
-    val_tracks = [f"{s.bin_id}" for s in validation.samples]
-    test_tracks = [f"{s.bin_id}" for s in test.samples]
+    train_tracks = [f"{s.rec_id}" for s in train.samples]
+    val_tracks = [f"{s.rec_id}" for s in validation.samples]
+    test_tracks = [f"{s.rec_id}" for s in test.samples]
     for t in train_tracks:
         assert t not in val_tracks and t not in test_tracks
 

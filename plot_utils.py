@@ -26,7 +26,7 @@ def plot_mel_signals(mel, signals, signals2=[], i=0):
     img = librosa.display.specshow(
         mel,
         x_axis="time",
-        y_axis="mel",
+        y_axis="log",
         sr=48000,
         fmax=11000,
         fmin=50,
@@ -40,9 +40,9 @@ def plot_mel_signals(mel, signals, signals2=[], i=0):
         # start_x = int(start_x)
         # end_x = int(end_x)
         rect = patches.Rectangle(
-            (start_x, 0),
+            (start_x, s[2]),
             end_x - start_x,
-            1000,
+            s[3] - s[2],
             linewidth=1,
             edgecolor="r",
             facecolor="none",
@@ -55,10 +55,11 @@ def plot_mel_signals(mel, signals, signals2=[], i=0):
         end_x = s[1]
         # start_x = int(start_x)
         # end_x = int(end_x)
+        print("Using range", s[2], s[3])
         rect = patches.Rectangle(
-            (start_x, 1000),
+            (start_x, s[2]),
             end_x - start_x,
-            2000,
+            s[3] - s[2],
             linewidth=1,
             edgecolor="g",
             facecolor="none",

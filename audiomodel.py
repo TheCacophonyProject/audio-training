@@ -652,7 +652,8 @@ class AudioModel:
             )
         self.remapped = remapped
         for l in excluded_labels:
-            self.labels.remove(l)
+            if l != "bird":
+                self.labels.remove(l)
         self.training_data_meta = meta
 
     def get_base_model(self, input_shape, weights="imagenet"):
@@ -1139,6 +1140,8 @@ def main():
         if "other" not in labels:
             labels.append("other")
         labels.sort()
+        set_specific_by_count(dataset_meta)
+
         excluded_labels = get_excluded_labels(labels)
         # self.labels = meta.get("labels", [])
         dataset, _, _ = get_dataset(

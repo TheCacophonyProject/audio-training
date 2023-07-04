@@ -12,7 +12,7 @@ import pickle
 import json
 import audioread.ffdec  # Use ffmpeg decoder
 import math
-from plot_utils import plot_spec
+from plot_utils import plot_spec, plot_mel_signals
 
 # from dateutil.parser import parse as parse_date
 import sys
@@ -64,7 +64,7 @@ def load_recording(file, resample=48000):
 
 def signal_noise(file, hop_length=281):
     frames, sr = load_recording(file)
-    # frames = frames[:sr]
+    frames = frames[: int(sr * 37.2)]
     n_fft = sr // 10
     # frames = frames[: sr * 3]
     spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
@@ -105,13 +105,16 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     kernel = np.ones((4, 4), np.uint8)
     signal = cv2.morphologyEx(signal, cv2.MORPH_OPEN, kernel)
     noise = cv2.morphologyEx(noise, cv2.MORPH_OPEN, kernel)
-
+    #
     signal = cv2.dilate(signal, np.ones((height, width), np.uint8))
     signal = cv2.erode(signal, np.ones((height // 10, width), np.uint8))
 
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(signal)
     for i, s in enumerate(stats):
         print(i, s)
+        if i == 1:
+            small_mask[small_mask == i] = 200
+
         if i == 0:
             continue
         if s[2] <= min_width:
@@ -127,7 +130,7 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     # # small_mask = np.uint8(small_mask)
     # # small_mask[small_mask > 0] = 255
     print("Signals", len(stats))
-    plot_spec(small_mask)
+    # plot_spec(small_mask)
     # #
     # signal_indicator_vector = np.amax(signal, axis=0)
     #
@@ -217,7 +220,7 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     # print(signals, noise)
     for s in signals:
         print("Signal", s)
-    return signals, noise
+    return signals, noise, spectogram
 
 
 def space_signals(signals, spacing=0.1):
@@ -333,11 +336,82 @@ def main():
     init_logging()
     args = parse_args()
     # mix_file(args.file, args.mix)
-    # signal_noise(args.file)
-    # return
+    signal, noise, spectogram = signal_noise(args.file)
+    unique_signals = []
+    signal = signal[1:]
+    for s in signal:
+        merged = False
+        for u_i, u in enumerate(unique_signals):
+            overlap = signal_overlap(s, u)
+
+            range = s[3] - s[2]
+            other_range = u[3] - u[2]
+            if s[3] < 1000 or u[3] < 1000:
+                f_overlap = 500
+            else:
+                f_overlap = 1500
+            freq_overlap = abs(s[2] - u[2]) < f_overlap and abs(s[3] - u[3]) < f_overlap
+            # range_diff = abs(other_range - range) < f_overlap
+            if not freq_overlap:
+                continue
+            # if not range_diff:
+            # continue
+            # print("checking", s[0], " with ", u[1])
+            if overlap > 0 or (s[0] - u[1]) < 3:
+                print("Merging", u, " and ", s)
+                f_min = min(s[2], u[2])
+                f_max = max(s[3], u[3])
+                start = min(s[0], u[0])
+                end = max(s[1], u[1])
+                unique_signals[u_i] = (start, end, f_min, f_max)
+                merged = True
+                break
+        if not merged:
+            unique_signals.append(s)
+    to_delete = []
+    for s in unique_signals:
+        if s in to_delete:
+            continue
+        if s[1] - s[0] < 0.4:
+            to_delete.append(s)
+            print("dfelete ", s)
+            continue
+        for s2 in unique_signals:
+            if s2 in to_delete:
+                continue
+            if s == s2:
+                continue
+            overlap = signal_overlap(s, s2)
+            engulfed = overlap >= 0.9 * s2[1] - s2[0]
+            f_overlap = freq_overlap_amount(s, s2)
+            range = s2[3] - s2[2]
+            range *= 0.9
+            if f_overlap > range and engulfed:
+                print("Del", s2)
+                to_delete.append(s2)
+    for s in to_delete:
+        unique_signals.remove(s)
+
+    for s_i, s in enumerate(unique_signals):
+        if s[1] - s[0] < 3:
+            diff = 3 - s[1] + s[0]
+            diff // 2
+            # unique_signals[s_i] = (max(0, s[0] - diff), s[1] + diff, s[2], s[3])
+    # plot_spec(small_mask)
+    print(unique_signals)
+    plot_mel_signals(spectogram, unique_signals)
+    return
     process(args.file)
     # process_signal(args.file)
     # data = np.array(data)
+
+
+def freq_overlap_amount(s, s2):
+    return ((s[3] - s[2]) + (s2[3] - s2[2])) - (max(s[3], s2[3]) - min(s[2], s2[2]))
+
+
+def signal_overlap(s, s2):
+    return (s[1] - s[0]) + (s2[1] - s2[0]) - (max(s[1], s2[1]) - min(s[0], s2[0]))
 
 
 def parse_args():
@@ -381,37 +455,35 @@ class Track:
         return meta
 
 
-#
-#
-# def plot_spec(spec, signals, length):
-#     plt.figure(figsize=(10, 10))
-#
-#     ax = plt.subplot(1, 1, 1)
-#
-#     img = librosa.display.specshow(
-#         spec, sr=48000, y_axis="log", x_axis="time", ax=ax, hop_length=281
-#     )
-#     plt.savefig("temp.png")
-#     import cv2
-#
-#     img = cv2.imread("temp.png")
-#
-#     height, width, _ = img.shape
-#     width = 900 - 130
-#     t_p = width / length
-#
-#     for s in signals:
-#         start = int(s[0] * t_p) + 130
-#         end = int(s[1] * t_p) + 130
-#         print("Drawing signal", s, " at ", start, "-", end, " for shape", img.shape)
-#         cv2.rectangle(img, (start, 10), (end, height - 10), (0, 255, 0), 3)
-#     # ax.set_title("Power spectrogram")
-#     # plt.show()
-#     # plt.clf()
-#     # plt.close()
-#     cv2.imshow("a", img)
-#     cv2.moveWindow("a", 0, 0)
-#     cv2.waitKey()
+def plot_signals(spec, signals, length):
+    plt.figure(figsize=(10, 10))
+
+    ax = plt.subplot(1, 1, 1)
+
+    img = librosa.display.specshow(
+        spec, sr=48000, y_axis="log", x_axis="time", ax=ax, hop_length=281
+    )
+    plt.savefig("temp.png")
+    import cv2
+
+    img = cv2.imread("temp.png")
+
+    height, width, _ = img.shape
+    width = 900 - 130
+    t_p = width / length
+
+    for s in signals:
+        start = int(s[0] * t_p) + 130
+        end = int(s[1] * t_p) + 130
+        print("Drawing signal", s, " at ", start, "-", end, " for shape", img.shape)
+        cv2.rectangle(img, (start, 10), (end, height - 10), (0, 255, 0), 3)
+    # ax.set_title("Power spectrogram")
+    # plt.show()
+    # plt.clf()
+    # plt.close()
+    cv2.imshow("a", img)
+    cv2.moveWindow("a", 0, 0)
+    cv2.waitKey()
 
 
 def plot_mfcc(mfcc):

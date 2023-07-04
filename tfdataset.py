@@ -28,11 +28,11 @@ AUTOTUNE = tf.data.AUTOTUNE
 # IMAGE_SIZE = [256, 256]
 # BATCH_SIZE = 64
 NOISE_LABELS = ["wind", "vehicle", "dog", "rain", "static", "noise", "cat"]
-SPECIFIC_BIRD_LABELS = ["whistler", "kiwi", "morepork", "rifleman"]
+SPECIFIC_BIRD_LABELS = ["bird", "whistler", "kiwi", "morepork", "rifleman"]
 GENERIC_BIRD_LABELS = [
     "new zealand fantail" "australian magpie",
     "bellbird",
-    # "bird",
+    "bird",
     "blackbird",
     "california quail",
     "canada goose",
@@ -305,7 +305,7 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
                 re_dic[l] = new_labels.index(l)
             remapped[l] = [l]
             # values.append(new_labels.index(l))
-
+    re_dic["bird"] = -1
     master_keys = []
     master_values = []
     if not keep_excluded_in_extra:
@@ -322,9 +322,10 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
                 extra_label_map[l] = new_labels.index("other")
             continue
         elif l in SPECIFIC_BIRD_LABELS:
-            if "bird" in new_labels:
-                if l != "bird":
-                    extra_label_map[l] = new_labels.index("bird")
+            continue
+            # if "bird" in new_labels:
+            #     if l != "bird":
+            #         extra_label_map[l] = new_labels.index("bird")
             # or l == "human":
             continue
         elif l == "human":
@@ -333,9 +334,10 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
 
             continue
         elif l in GENERIC_BIRD_LABELS:
-            remap_label = "bird"
-            if l != "bird":
-                extra_label_map[l] = new_labels.index("bird")
+            continue
+            # remap_label = "bird"
+            # if l != "bird":
+            #     extra_label_map[l] = new_labels.index("bird")
         else:
             continue
         if l == remap_label:
@@ -422,7 +424,7 @@ def get_dataset(filenames, labels, **args):
         # added bird noise to human recs but it messes model, so dont use for now
         dataset_2 = load_dataset(second, len(labels), labels, args)
         dataset = tf.data.Dataset.sample_from_datasets(
-            [bird_dataset, dataset, dataset_2],
+            [dataset, dataset_2],
             stop_on_empty_dataset=args.get("stop_on_empty", True),
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
@@ -431,7 +433,7 @@ def get_dataset(filenames, labels, **args):
     else:
         logging.info("Not using second")
         dataset = tf.data.Dataset.sample_from_datasets(
-            [bird_dataset, dataset],
+            [dataset],
             stop_on_empty_dataset=args.get("stop_on_empty", True),
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
@@ -556,23 +558,25 @@ def weight_specific(x, y, num_labels, weighting, specific_mask, rest_weighting):
 
 
 def get_weighting(dataset, labels):
-    weighting = {}
-    for i in range(len(labels)):
-        if labels[i] in ["bird", "human"]:
-            weighting[i] = 0.5
-        elif labels[i] == "noise":
-            weighting[i] = 0.9
-        else:
-            weighting[i] = 2
-    return weighting
-    excluded_labels = []
+    # weighting = {}
+    # for i in range(len(labels)):
+    #     if labels[i] in ["bird", "human"]:
+    #         weighting[i] = 0.5
+    #     elif labels[i] == "noise":
+    #         weighting[i] = 0.9
+    #     else:
+    #         weighting[i] = 2
+    # return weighting
+    # excluded_labels = []
     dont_weigh = []
-    for l in labels:
-        if l in ["human", "bird", "noise", "whistler", "morepork", "kiwi"]:
-            continue
-        dont_weigh.append(l)
+    # for l in labels:
+    #     if l in ["human", "bird", "noise", "whistler", "morepork", "kiwi"]:
+    #         continue
+    #     dont_weigh.append(l)
     num_labels = len(labels)
     dist = get_distribution(dataset, num_labels)
+    for l, d in zip(labels, dist):
+        print(l, "  : ", d)
     zeros = dist[dist == 0]
     non_zero_labels = num_labels - len(zeros)
     total = 0
@@ -582,9 +586,6 @@ def get_weighting(dataset, labels):
     # total = np.sum(dist)
     weights = {}
     for i in range(num_labels):
-        weights[i] = 1
-        continue
-
         if labels[i] in dont_weigh:
             weights[i] = 1
         elif dist[i] == 0:
@@ -896,6 +897,7 @@ def main():
     labels.add("noise")
     labels = list(labels)
     excluded_labels = get_excluded_labels(labels)
+    set_specific_by_count(meta)
     labels.sort()
 
     filenames_2 = tf.io.gfile.glob(f"./flickr-training-data/validation/*.tfrecord")
@@ -914,49 +916,13 @@ def main():
         # filenames_2=filenames_2
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
-    for l in excluded_labels:
-        labels.remove(l)
-    # filter track test
-    # bird = []
-    # bird.append([1, 0, 0, 0, 0])
-    # bird.append([1, 0, 1, 0, 0])
-    # bird.append([1, 0, 1, 0, 0])
-    # bird.append([1, 0, 1, 0, 0])
-    # bird.append([1, 0, 1, 0, 0])
-    # bird.append([1, 0, 1, 0, 0])
-    # bird.append([1, 0, 1, 0, 0])
-    #
-    # bird_noise = []
-    # bird_noise.append([1, 0, 0, 1, 0])
-    # bird_noise.append([1, 0, 0, 0, 1])  # specific bird
-    # bird_noise.append([1, 1, 0, 0, 0])
-    # bird_noise.append([0, 1, 0, 1, 0])  # human and noise
-    # bird_noise.append([0, 0, 0, 1, 0])  # just noise
-    # bird_noise.append([0, 1, 0, 0, 0])  # just human
-    # bird_noise.append([0, 0, 0, 0, 0])  # just human
-    #
-    # bird = np.int64(bird)
-    # bird_noise = np.int64(bird_noise)
-    #
-    # y = (bird, bird_noise)
-    # filter_bad_tracks(None, y, labels)
-    # calc_mean()
     print("labels are", len(labels), labels)
-    # dist = get_distribution(resampled_ds, len(labels))
-    # for l, d in zip(labels, dist):
-    # print(l, "  : ", d)
-    # ing2D()(x)
-    # for e in range(2):
-    #     print("epoch", e)
-    #     true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
-    #     # true_categories = np.int64(true_categories)
-    #     true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    #     c = Counter(list(true_categories))
-    #     print("epoch is size", len(true_categories))
-    #     for i in range(len(labels)):
-    #         print("after have", labels[i], c[i])
-
-    # return
+    dist = get_distribution(resampled_ds, len(labels))
+    for l, d in zip(labels, dist):
+        print(l, "  : ", d)
+    weighting = get_weighting(resampled_ds, labels)
+    print("weight is", weighting)
+    return
     print("looping")
     for e in range(1):
         for x, y in resampled_ds:

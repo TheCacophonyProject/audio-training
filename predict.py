@@ -91,7 +91,7 @@ def preprocess_file_signals(file, seg_length, stride, hop_length, mean_sub, use_
                 print("mel max is same")
                 strides_per = math.ceil(seg_length / 2.0 / stride) + 1
                 mels = mels[:-strides_per]
-                print("remove last ", strides_per, len(mels))
+                print("remove last ", strides_per, len(mels), " end is")
                 return mels, len(frames) / sr
                 # 1 / 0
 
@@ -263,13 +263,13 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
 
         # spectogram[:100, :]
         mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000, power=1)
-
-        half = mel[:, 75:]
+        third = int(mel.shape[1] * 1 / 3)
+        half = mel[:, third:]
         if np.amax(half) == np.amin(half):
             print("mel max is same")
-            strides_per = math.ceil(seg_length / 2.0 / stride) + 1
+            strides_per = math.ceil(seg_length / 3.0 / stride) + 1
             mels = mels[:-strides_per]
-            print("remove last ", strides_per, len(mels))
+
             return mels, length
             # 1 / 0
         # mel = librosa.power_to_db(mel, ref=np.max)
@@ -438,7 +438,7 @@ def main():
     # return
     # model = tf.keras.models.load_model(str(load_model))
 
-    model.load_weights(load_model / "val_binary_accuracy").expect_partial()
+    # model.load_weights(load_model / "val_binary_accuracy").expect_partial()
     # model.save(load_model / "frozen_model")
     # 1 / 0
     with open(load_model / "metadata.txt", "r") as f:
@@ -686,9 +686,8 @@ def main():
         #     new_end = t.end - segment_length + segment_stride + 1
 
         print(f"{t.start}-{t.end} have {t.label}")
-
+    print("cap data at ", len(data) * segment_stride + segment_length)
     signals, noise = signal_noise(file)
-    signals = space_signals(signals, 0.2)
     print("Have ", len(signals), " possible signals")
     chirps = 0
     sorted_tracks = [
@@ -700,28 +699,19 @@ def main():
     )
     last_end = 0
     track_index = 0
-    for s in signals:
-        if track_index >= len(sorted_tracks):
-            break
-        while track_index < len(sorted_tracks):
-            t = sorted_tracks[track_index]
-            start = t.start
-            end = t.end
-            if start < last_end:
-                start = last_end
-                end = max(start, end)
-            # overlap
+    for t in sorted_tracks:
+        start = t.start
+        end = t.end
+        if start < last_end:
+            start = last_end
+            end = max(start, end)
+        for s in signals:
             if ((end - start) + (s[1] - s[0])) > max(end, s[1]) - min(start, s[0]):
-                # print("Have track", t, " for ", s, t.start, t.end, t.label)
-                if t.label in ["bird", "kiwi", "whistler", "morepork"]:
-                    chirps += 1
-                if end > s[1]:
-                    # check next signal
-                    break
-            elif start > s[1]:
+                print("Have track", t, " for ", s, t.start, t.end, t.label)
+                chirps += 1
+            elif s[0] > start:
                 break
-            last_end = end
-            track_index += 1
+        last_end = t.end
     gap = 0.20000001
     max_chirps = length / gap
     max_chirps = math.ceil(max_chirps)
