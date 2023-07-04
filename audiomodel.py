@@ -313,10 +313,22 @@ class AudioModel:
                 # else:
                 #     json_history[key] = item
 
-    def train_model(self, run_name="test", epochs=100, weights=None, multi_label=False):
+    def train_model(
+        self,
+        run_name="test",
+        epochs=100,
+        weights=None,
+        multi_label=False,
+        use_generic_bird=True,
+    ):
         self.log_dir = self.log_dir / run_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.load_datasets(self.labels, self.input_shape, test=True)
+        self.load_datasets(
+            self.labels,
+            self.input_shape,
+            test=True,
+            use_generic_bird=use_generic_bird,
+        )
         self.num_classes = len(self.labels)
         self.build_model(len(self.labels), multi_label=multi_label)
 
@@ -549,11 +561,12 @@ class AudioModel:
         checks.append(hist_callback)
         return checks
 
-    def load_datasets(self, labels, shape, test=False):
+    def load_datasets(self, labels, shape, test=False, use_generic_bird=True):
         logging.info(
-            "Loading datasets with %s and secondary dir %s ",
+            "Loading datasets with %s and secondary dir %s generic bird %s",
             self.data_dir,
             self.second_data_dir,
+            use_generic_bird,
         )
         labels = set()
         filenames = []
@@ -596,7 +609,8 @@ class AudioModel:
             augment=False,
             excluded_labels=excluded_labels,
             filenames_2=second_filenames,
-            embeddings=self.model_name == "embeddings"
+            embeddings=self.model_name == "embeddings",
+            use_generic_bird=use_generic_bird,
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
         self.num_train_instance = epoch_size
@@ -619,7 +633,8 @@ class AudioModel:
             image_size=self.input_shape,
             excluded_labels=excluded_labels,
             filenames_2=second_filenames,
-            embeddings=self.model_name == "embeddings"
+            embeddings=self.model_name == "embeddings",
+            use_generic_bird=use_generic_bird,
             # preprocess_fn=self.preprocess_fn,
         )
 
@@ -647,7 +662,8 @@ class AudioModel:
                 mean_sub=self.mean_sub,
                 shuffle=False,
                 filenames_2=second_filenames,
-                embeddings=self.model_name == "embeddings"
+                embeddings=self.model_name == "embeddings",
+                use_generic_bird=use_generic_bird,
                 # preprocess_fn=self.preprocess_fn,
             )
         self.remapped = remapped
@@ -1189,6 +1205,7 @@ def main():
                 epochs=args.epochs,
                 weights=args.weights,
                 multi_label=args.multi,
+                use_generic_bird=args.use_bird,
             )
 
 
@@ -1196,6 +1213,17 @@ def none_or_str(value):
     if value in ["null", "none", "None"]:
         return None
     return value
+
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")
 
 
 def parse_args():
@@ -1218,6 +1246,15 @@ def parse_args():
     parser.add_argument("--cross", action="count", help="Cross fold val")
     parser.add_argument("--multi", default=True, action="count", help="Multi label")
     parser.add_argument(
+        "--use-bird",
+        type=str2bool,
+        nargs="?",
+        const=True,
+        default=None,
+        help="Use bird as well as specific label",
+    )
+
+    parser.add_argument(
         "--model-name",
         default="badwinner2",
         help="Model to use badwinner, badwinner2, inc3",
@@ -1227,6 +1264,9 @@ def parse_args():
     parser.add_argument("name", help="Run name")
 
     args = parser.parse_args()
+    print(args)
+    args.multi = args.multi > 0
+
     args.multi = args.multi > 0
     if args.dataset_dir is not None:
         args.dataset_dir = Path(args.dataset_dir)

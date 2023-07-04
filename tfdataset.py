@@ -276,7 +276,9 @@ def get_distribution(dataset, num_labels, batched=True):
     return dist
 
 
-def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
+def get_remappings(
+    labels, excluded_labels, keep_excluded_in_extra=True, use_generic_bird=True
+):
     extra_label_map = {}
     remapped = {}
     re_dic = {}
@@ -305,7 +307,8 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
                 re_dic[l] = new_labels.index(l)
             remapped[l] = [l]
             # values.append(new_labels.index(l))
-    re_dic["bird"] = -1
+    if not use_generic_bird:
+        re_dic["bird"] = -1
     master_keys = []
     master_values = []
     if not keep_excluded_in_extra:
@@ -322,10 +325,11 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
                 extra_label_map[l] = new_labels.index("other")
             continue
         elif l in SPECIFIC_BIRD_LABELS:
-            continue
-            # if "bird" in new_labels:
-            #     if l != "bird":
-            #         extra_label_map[l] = new_labels.index("bird")
+            if not use_generic_bird:
+                continue
+            if "bird" in new_labels:
+                if l != "bird":
+                    extra_label_map[l] = new_labels.index("bird")
             # or l == "human":
             continue
         elif l == "human":
@@ -334,10 +338,11 @@ def get_remappings(labels, excluded_labels, keep_excluded_in_extra=True):
 
             continue
         elif l in GENERIC_BIRD_LABELS:
-            continue
-            # remap_label = "bird"
-            # if l != "bird":
-            #     extra_label_map[l] = new_labels.index("bird")
+            if not use_generic_bird:
+                continue
+            remap_label = "bird"
+            if l != "bird":
+                extra_label_map[l] = new_labels.index("bird")
         else:
             continue
         if l == remap_label:
@@ -357,11 +362,14 @@ bird_mask = None
 
 def get_dataset(filenames, labels, **args):
     excluded_labels = args.get("excluded_labels", [])
+    use_generic_bird = args.get("use_generic_bird", True)
 
     global extra_label_map
     global remapped_y
 
-    extra_label_map, remapped, labels = get_remappings(labels, excluded_labels)
+    extra_label_map, remapped, labels = get_remappings(
+        labels, excluded_labels, use_generic_bird=use_generic_bird
+    )
     remapped_y = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(list(remapped.keys())),
@@ -371,7 +379,11 @@ def get_dataset(filenames, labels, **args):
         name="remapped_y",
     )
     logging.info(
-        "Remapped %s extra mapping %s new labels %s", remapped, extra_label_map, labels
+        "Remapped %s extra mapping %s new labels %s Use gen bird %s",
+        remapped,
+        extra_label_map,
+        labels,
+        use_generic_bird,
     )
     global bird_i
     global noise_i
@@ -413,7 +425,9 @@ def get_dataset(filenames, labels, **args):
         tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
     )
     dataset = dataset.filter(others_filter)
-
+    datasets = [dataset]
+    if use_generic_bird:
+        datasets.append(bird_dataset)
     if args.get("filenames_2") is not None:
         logging.info("Loading second files %s", args.get("filenames_2")[:1])
         second = args.get("filenames_2")
@@ -423,8 +437,10 @@ def get_dataset(filenames, labels, **args):
         args["all_human"] = True
         # added bird noise to human recs but it messes model, so dont use for now
         dataset_2 = load_dataset(second, len(labels), labels, args)
+
+        datasets.append(dataset_2)
         dataset = tf.data.Dataset.sample_from_datasets(
-            [dataset, dataset_2],
+            datasets,
             stop_on_empty_dataset=args.get("stop_on_empty", True),
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
@@ -433,7 +449,7 @@ def get_dataset(filenames, labels, **args):
     else:
         logging.info("Not using second")
         dataset = tf.data.Dataset.sample_from_datasets(
-            [dataset],
+            datasets,
             stop_on_empty_dataset=args.get("stop_on_empty", True),
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
@@ -896,8 +912,8 @@ def main():
     labels.add("bird")
     labels.add("noise")
     labels = list(labels)
-    excluded_labels = get_excluded_labels(labels)
     set_specific_by_count(meta)
+    excluded_labels = get_excluded_labels(labels)
     labels.sort()
 
     filenames_2 = tf.io.gfile.glob(f"./flickr-training-data/validation/*.tfrecord")
