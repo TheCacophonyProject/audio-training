@@ -1210,7 +1210,7 @@ def main():
     else:
         am = AudioModel(args.model_name, args.dataset_dir, args.second_dataset_dir)
         if args.cross:
-            am.cross_fold_train(run_name=args.name)
+            am.cross_fold_train(run_name=args.name, use_generic_bird=args.use_bird)
         else:
             # args.multi = args.multi == 1
             am.train_model(
