@@ -106,7 +106,9 @@ class AudioModel:
         logging.info("Loading %s", weights_file)
         self.model.load_weights(weights_file).expect_partial()
 
-    def cross_fold_train(self, run_name="test", epochs=15, multi=True):
+    def cross_fold_train(
+        self, run_name="test", epochs=15, multi=True, use_generic_bird=True
+    ):
         datasets = ["./training-data"]
         labels = set()
         filenames = []
@@ -146,7 +148,8 @@ class AudioModel:
             shuffle=False,
             deterministic=True,
             excluded_labels=excluded_labels,
-            mean_sub=self.mean_sub
+            mean_sub=self.mean_sub,
+            use_generic_bird=use_generic_bird,
             # preprocess_fn=self.preprocess_fn,
         )
         filenames = filenames[test_i:]
@@ -167,7 +170,8 @@ class AudioModel:
                 augment=False,
                 resample=False,
                 excluded_labels=excluded_labels,
-                mean_sub=self.mean_sub
+                mean_sub=self.mean_sub,
+                use_generic_bird=use_generic_bird,
                 # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
             )
             self.validation, remapped, _ = get_dataset(
@@ -179,7 +183,8 @@ class AudioModel:
                 augment=False,
                 resample=False,
                 excluded_labels=excluded_labels,
-                mean_sub=self.mean_sub
+                mean_sub=self.mean_sub,
+                use_generic_bird=use_generic_bird,
                 # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
             )
             # self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
