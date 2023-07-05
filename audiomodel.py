@@ -107,21 +107,19 @@ class AudioModel:
         self.model.load_weights(weights_file).expect_partial()
 
     def cross_fold_train(self, run_name="test", epochs=15, multi=True):
-        datasets = ["other-training-data", "training-data", "chime-training-data"]
         datasets = ["./training-data"]
         labels = set()
         filenames = []
-        for d in datasets:
-            # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
-            filenames.extend(tf.io.gfile.glob(f"{self.data_dir}/{d}/train/*.tfrecord"))
-            filenames.extend(
-                tf.io.gfile.glob(f"{self.data_dir}/{d}/validation/*.tfrecord")
-            )
 
-            file = f"{self.data_dir}/{d}/training-meta.json"
-            with open(file, "r") as f:
-                meta = json.load(f)
-            labels.update(meta.get("labels", []))
+        # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
+        filenames.extend(tf.io.gfile.glob(f"{self.data_dir}/train/*.tfrecord"))
+        filenames.extend(tf.io.gfile.glob(f"{self.data_dir}/validation/*.tfrecord"))
+        filenames.extend(tf.io.gfile.glob(f"{self.data_dir}/test/*.tfrecord"))
+
+        file = f"{self.data_dir}/training-meta.json"
+        with open(file, "r") as f:
+            meta = json.load(f)
+        labels.update(meta.get("labels", []))
         labels = list(labels)
         labels.sort()
         self.labels = labels
@@ -129,12 +127,15 @@ class AudioModel:
             self.labels.append("bird")
         if "noise" not in self.labels:
             self.labels.append("noise")
+        set_specific_by_count(meta)
+
         excluded_labels = get_excluded_labels(self.labels)
         filenames = np.array(filenames)
+        np.random.shuffle(filenames)
         test_percent = 0.2
         test_i = int(test_percent * len(filenames))
         print("Using this many test files ", test_i)
-        self.test, _ = get_dataset(
+        self.test, _, _ = get_dataset(
             # dir,
             filenames[:test_i],
             labels,
@@ -157,7 +158,7 @@ class AudioModel:
             labels.remove(l)
         for train_index, test_index in skf.split(filenames):
             fold += 1
-            self.train, remapped = get_dataset(
+            self.train, remapped, _ = get_dataset(
                 # dir,
                 filenames[train_index],
                 og_labels,
@@ -169,7 +170,7 @@ class AudioModel:
                 mean_sub=self.mean_sub
                 # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
             )
-            self.validation, remapped = get_dataset(
+            self.validation, remapped, _ = get_dataset(
                 # dir,
                 filenames[test_index],
                 og_labels,
@@ -183,6 +184,8 @@ class AudioModel:
             )
             # self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
             self.build_model(len(labels), multi_label=multi)
+            if fold == 1:
+                self.model.summary()
             class_weights = get_weighting(self.train, self.labels)
             logging.info("Weights are %s", class_weights)
             cm_dir = self.checkpoint_folder / run_name
@@ -261,14 +264,19 @@ class AudioModel:
                 print("Have", lbl_count)
                 if lbl_count == 0:
                     continue
+                tp_percent = -0 if tp + fp == 0 else tp / (tp + fp)
+                fp_percent = -0 if tp + fp == 0 else fp / (tp + fp)
+                fn_percent = -0 if tn + fn == 0 else fn / (tn + fn)
+                tn_percent = -0 if tn + fn == 0 else tn / (tn + fn)
+
                 print(
                     "{}( {}%)\t{}( {}% )".format(
-                        tp, round(100 * tp / (tp + fp)), fp, round(100 * fp / (tp + fp))
+                        tp, round(100 * tp_percent), fp, round(100 * fp_percent)
                     )
                 )
                 print(
                     "{}( {}%)\t{}( {}% )".format(
-                        fn, round(100 * fn / (tn + fn)), tn, round(100 * tn / (tn + fn))
+                        fn, round(100 * fn_percent), tn, round(100 * tn_percent)
                     )
                 )
                 accuracy = round(100 * tp / (tp + fp))
