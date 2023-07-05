@@ -129,7 +129,7 @@ def split_label(
         "# num test samples",
         num_test_samples,
     )
-    logging.info("Loading Val data %s with samples %s", label, len(samples_bins))
+    logging.info("Loading Val data %s with samples %s", label, len(sample_bins))
     recs = set()
     if total_bins > 0:
         for i, sample_bin in enumerate(sample_bins):
@@ -161,7 +161,7 @@ def split_label(
                     logging.info(
                         "Loading Test data %s with leftovers %s",
                         label,
-                        len(samples_bins),
+                        len(sample_bins),
                     )
 
                 else:

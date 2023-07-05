@@ -560,24 +560,26 @@ class Recording:
         #         s.track_ids,
         #     )
 
-    def load_recording(self, resample=None):
-        try:
-            # with open(str(self.filename), "rb") as f:
-            # frames, sr = librosa.load(self.filename)
-            #  librosa wont close the file properly..... go figure
-            aro = audioread.ffdec.FFmpegAudioFile(self.filename)
-            frames, sr = librosa.load(aro)
-            aro.close()
-            if resample is not None and resample != sr:
-                frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
-                sr = resample
-                self.resampled = True
-            self.sample_rate = sr
-            self.rec_data = frames
-        except:
-            logging.error("Coult not load %s", str(self.filename), exc_info=True)
-            return False
-        return True
+    # def load_recording(self, resample=None):
+    #     try:
+    #         print("Loading", self.filename)
+    #         # with open(str(self.filename), "rb") as f:
+    #         # frames, sr = librosa.load(self.filename)
+    #         #  librosa wont close the file properly..... go figure
+    #         aro = audioread.ffdec.FFmpegAudioFile(self.filename)
+    #         frames, sr = librosa.load(aro, sr=None)
+    #         assert sr == 48000
+    #         aro.close()
+    #         if resample is not None and resample != sr:
+    #             frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
+    #             sr = resample
+    #             self.resampled = True
+    #         self.sample_rate = sr
+    #         self.rec_data = frames
+    #     except:
+    #         logging.error("Coult not load %s", str(self.filename), exc_info=True)
+    #         return False
+    #     return True
 
     def get_data(self, resample=None):
         global SAMPLE_GROUP_ID

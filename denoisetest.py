@@ -13,6 +13,7 @@ import json
 import audioread.ffdec  # Use ffmpeg decoder
 import math
 from plot_utils import plot_spec, plot_mel_signals
+from custommels import mel_spec
 
 # from dateutil.parser import parse as parse_date
 import sys
@@ -54,7 +55,7 @@ from audiodataset import Recording
 #
 def load_recording(file, resample=48000):
     aro = audioread.ffdec.FFmpegAudioFile(file)
-    frames, sr = librosa.load(aro)
+    frames, sr = librosa.load(aro, sr=None)
     aro.close()
     if resample is not None and resample != sr:
         frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
@@ -64,6 +65,9 @@ def load_recording(file, resample=48000):
 
 def signal_noise(file, hop_length=281):
     frames, sr = load_recording(file)
+    end = get_end(frames, sr)
+    print("got end of ", end, " for file of ", len(frames) / sr)
+    1 / 0
     frames = frames[: int(sr * 37.2)]
     n_fft = sr // 10
     # frames = frames[: sr * 3]
@@ -167,7 +171,7 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
         freq_range = (freqs[s[1]], freqs[max_freq])
         start = s[0] * 281 / sr
         end = (s[0] + s[2]) * 281 / sr
-        signals.append((start, end, freq_range[0], freq_range[1]))
+        signals.append(Signal(start, end, freq_range[0], freq_range[1]))
         # break
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(noise)
     stats = stats[1:]
@@ -332,73 +336,87 @@ def mix_file(file, mix):
     sf.write(str(name), augmented_sound, 48000)
 
 
+def get_end(frames, sr):
+    hop_length = 281
+    spectogram = np.abs(librosa.stft(frames, n_fft=sr // 10, hop_length=hop_length))
+    mel = mel_spec(
+        spectogram,
+        sr,
+        sr // 10,
+        hop_length,
+        120,
+        50,
+        11000,
+        1750,
+        power=1,
+    )
+    start = 0
+    chunk_length = sr // hop_length
+    # this is roughtly a third of our spectogram used for classification
+    end = start + chunk_length
+    file_length = len(frames) / sr
+    print(mel.shape)
+    while end < mel.shape[1]:
+        data = mel[:, start:end]
+        if np.amax(data) == np.amin(data):
+            # end of data
+            return start * hop_length // sr
+        start = end
+        end = start + chunk_length
+    return file_length
+
+
 def main():
     init_logging()
     args = parse_args()
     # mix_file(args.file, args.mix)
     signal, noise, spectogram = signal_noise(args.file)
     unique_signals = []
-    signal = signal[1:]
+    f_overlap = 500
     for s in signal:
         merged = False
         for u_i, u in enumerate(unique_signals):
-            overlap = signal_overlap(s, u)
-
-            range = s[3] - s[2]
-            other_range = u[3] - u[2]
-            if s[3] < 1000 or u[3] < 1000:
-                f_overlap = 500
-            else:
-                f_overlap = 1500
-            freq_overlap = abs(s[2] - u[2]) < f_overlap and abs(s[3] - u[3]) < f_overlap
-            # range_diff = abs(other_range - range) < f_overlap
+            overlap = s.time_overlap(u)
+            freq_overlap = (
+                abs(s.mel_freq_start - u.mel_freq_start) < f_overlap
+                and abs(s.mel_freq_end - u.mel_freq_end) < f_overlap
+            )
             if not freq_overlap:
                 continue
-            # if not range_diff:
-            # continue
-            # print("checking", s[0], " with ", u[1])
-            if overlap > 0 or (s[0] - u[1]) < 3:
+            print("start", s.start, "u end", u.end)
+            if overlap > 0 or (s.start - u.end) < 3:
                 print("Merging", u, " and ", s)
-                f_min = min(s[2], u[2])
-                f_max = max(s[3], u[3])
-                start = min(s[0], u[0])
-                end = max(s[1], u[1])
-                unique_signals[u_i] = (start, end, f_min, f_max)
+                u.merge(s)
                 merged = True
                 break
         if not merged:
             unique_signals.append(s)
     to_delete = []
+    min_length = 0.5
     for s in unique_signals:
         if s in to_delete:
             continue
-        if s[1] - s[0] < 0.4:
+        if s.length < min_length:
             to_delete.append(s)
-            print("dfelete ", s)
             continue
         for s2 in unique_signals:
             if s2 in to_delete:
                 continue
             if s == s2:
                 continue
-            overlap = signal_overlap(s, s2)
-            engulfed = overlap >= 0.9 * s2[1] - s2[0]
-            f_overlap = freq_overlap_amount(s, s2)
-            range = s2[3] - s2[2]
+            overlap = s.time_overlap(s2)
+            engulfed = overlap >= 0.9 * s2.length
+            f_overlap = s.mel_freq_overlap(s2)
+            range = s2.mel_freq_range
             range *= 0.9
             if f_overlap > range and engulfed:
-                print("Del", s2)
                 to_delete.append(s2)
     for s in to_delete:
         unique_signals.remove(s)
 
-    for s_i, s in enumerate(unique_signals):
-        if s[1] - s[0] < 3:
-            diff = 3 - s[1] + s[0]
-            diff // 2
-            # unique_signals[s_i] = (max(0, s[0] - diff), s[1] + diff, s[2], s[3])
-    # plot_spec(small_mask)
-    print(unique_signals)
+    for s in unique_signals:
+        s.enlarge(1.2)
+        print("Final s", s)
     plot_mel_signals(spectogram, unique_signals)
     return
     process(args.file)
@@ -406,12 +424,17 @@ def main():
     # data = np.array(data)
 
 
-def freq_overlap_amount(s, s2):
-    return ((s[3] - s[2]) + (s2[3] - s2[2])) - (max(s[3], s2[3]) - min(s[2], s2[2]))
+def mel_freq(f):
+    return 2595.0 * np.log10(1.0 + f / 700.0)
 
 
-def signal_overlap(s, s2):
-    return (s[1] - s[0]) + (s2[1] - s2[0]) - (max(s[1], s2[1]) - min(s[0], s2[0]))
+#
+# def freq_overlap_amount(s, s2):
+#     return ((s[3] - s[2]) + (s2[3] - s2[2])) - (max(s[3], s2[3]) - min(s[2], s2[2]))
+#
+#
+# def signal_overlap(s, s2):
+#     return (s[1] - s[0]) + (s2[1] - s2[0]) - (max(s[1], s2[1]) - min(s[0], s2[0]))
 
 
 def parse_args():
@@ -508,6 +531,73 @@ def plot_mel(mel, i=0):
     # plt.savefig(f"mel-power-{i}.png", format="png")
     plt.clf()
     plt.close()
+
+
+def segment_overlap(first, second):
+    return (
+        (first[1] - first[0])
+        + (second[1] - second[0])
+        - (max(first[1], second[1]) - min(first[0], second[0]))
+    )
+
+
+class Signal:
+    def __init__(self, start, end, freq_start, freq_end):
+        self.start = start
+        self.end = end
+        self.freq_start = freq_start
+        self.freq_end = freq_end
+
+        self.mel_freq_start = mel_freq(freq_start)
+        self.mel_freq_end = mel_freq(freq_end)
+
+    def time_overlap(self, other):
+        return segment_overlap(
+            (self.start, self.end),
+            (other.start, other.end),
+        )
+
+    def mel_freq_overlap(self, other):
+        return segment_overlap(
+            (self.mel_freq_start, self.mel_freq_end),
+            (other.mel_freq_start, other.mel_freq_end),
+        )
+
+    def freq_overlap(s, s2):
+        return segment_overlap(
+            (self.mel_freq_start, self.mel_freq_end),
+            (other.mel_freq_start, other.mel_freq_end),
+        )
+
+    @property
+    def mel_freq_range(self):
+        return self.mel_freq_end - self.mel_freq_start
+
+    @property
+    def freq_range(self):
+        return self.freq_end - self.freq_start
+
+    @property
+    def length(self):
+        return self.end - self.start
+
+    def enlarge(self, scale):
+        new_length = self.length * scale
+        extension = new_length / 2
+        self.start = self.start - extension
+        self.end = self.end + extension
+        self.start = max(self.start, 0)
+
+    def merge(self, other):
+        self.start = min(self.start, other.start)
+        self.end = max(self.end, other.end)
+        self.freq_start = min(self.freq_start, other.freq_start)
+        self.freq_end = max(self.freq_end, other.freq_end)
+        self.mel_freq_start = mel_freq(self.freq_start)
+        self.mel_freq_end = mel_freq(self.freq_end)
+
+    def __str__(self):
+        return f"Signal: {self.start}-{self.end} f: {self.freq_start}-{self.freq_end}"
 
 
 if __name__ == "__main__":

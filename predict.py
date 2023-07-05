@@ -51,7 +51,7 @@ CALL_LENGTH = 1
 #
 def load_recording(file, resample=48000):
     aro = audioread.ffdec.FFmpegAudioFile(file)
-    frames, sr = librosa.load(aro)
+    frames, sr = librosa.load(aro, sr=None)
     aro.close()
     if resample is not None and resample != sr:
         frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)

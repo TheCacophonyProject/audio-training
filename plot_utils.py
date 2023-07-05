@@ -35,14 +35,14 @@ def plot_mel_signals(mel, signals, signals2=[], i=0):
     )
     fig.colorbar(img, ax=ax, format="%+2.f dB")
     for s in signals:
-        start_x = s[0]
-        end_x = s[1]
+        start_x = s.start
+        end_x = s.end
         # start_x = int(start_x)
         # end_x = int(end_x)
         rect = patches.Rectangle(
-            (start_x, s[2]),
+            (start_x, s.freq_start),
             end_x - start_x,
-            s[3] - s[2],
+            s.freq_range,
             linewidth=1,
             edgecolor="r",
             facecolor="none",
@@ -55,7 +55,6 @@ def plot_mel_signals(mel, signals, signals2=[], i=0):
         end_x = s[1]
         # start_x = int(start_x)
         # end_x = int(end_x)
-        print("Using range", s[2], s[3])
         rect = patches.Rectangle(
             (start_x, s[2]),
             end_x - start_x,
