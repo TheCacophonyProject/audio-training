@@ -29,7 +29,7 @@ from tfdataset import (
     NOISE_LABELS,
     SPECIFIC_BIRD_LABELS,
     get_excluded_labels,
-    YAMNET_EMBEDDING_SHAPE,
+    EMBEDDING_SHAPE,
     GENERIC_BIRD_LABELS,
     set_specific_by_count,
 )
@@ -81,7 +81,7 @@ class AudioModel:
         self.remapped = None
         self.input_shape = DIMENSIONS
         if model_name == "embeddings":
-            self.input_shape = YAMNET_EMBEDDING_SHAPE
+            self.input_shape = EMBEDDING_SHAPE
 
         self.preprocess_fn = None
         self.learning_rate = 0.01
@@ -1455,7 +1455,6 @@ def get_linear_model(embedding_dim, num_classes):
     model = tf.keras.Sequential(
         [
             tf.keras.Input(shape=embedding_dim),
-            tf.keras.layers.GlobalAveragePooling1D(),
             tf.keras.layers.Dense(num_classes, activation="sigmoid"),
         ]
     )

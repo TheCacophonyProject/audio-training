@@ -145,6 +145,7 @@ sftf_s = (2401, 188)
 mfcc_s = (20, 188)
 DIMENSIONS = (*mel_s, 1)
 YAMNET_EMBEDDING_SHAPE = (6, 1024)
+EMBEDDING_SHAPE = 1280
 # TEST STUFF to blockout frequencies
 # mel_bins = librosa.mel_frequencies(128, fmax=48000 / 2)
 # human_lowest = np.where(mel_bins < 60)[-1][-1]
@@ -737,8 +738,9 @@ def read_tfrecord(
     # ),
     if embeddings:
         logging.info("Loading embeddings")
+
         tfrecord_format["embedding"] = tf.io.FixedLenFeature(
-            YAMNET_EMBEDDING_SHAPE, tf.float32
+            EMBEDDING_SHAPE, tf.float32
         )
 
     else:
