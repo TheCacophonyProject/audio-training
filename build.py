@@ -484,7 +484,7 @@ def main():
         d.labels = all_labels
         print("setting all labels", all_labels)
     validate_datasets(datasets)
-    base_dir = "audio-data"
+    base_dir = args.out_dir
     if args.create_signal_wavs:
         record_dir = os.path.join(base_dir, "signal-data/")
         for dataset in datasets:
@@ -650,7 +650,9 @@ def parse_args():
     parser.add_argument("--fmax", default=11000, help="Max Freq")
     parser.add_argument("--seg-length", default=3, help="Segment length in seconds")
     parser.add_argument("--stride", default=1, help="Segment stride")
-
+    parser.add_argument(
+        "out_dir", default="/data/audio-data", help="Directory to place files in"
+    )
     args = parser.parse_args()
     return args
 

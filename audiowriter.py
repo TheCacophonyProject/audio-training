@@ -119,6 +119,11 @@ def create_tf_example(sample, labels):
             "audio/embed_predictions": tfrecord_util.bytes_feature(
                 predicted_labels.encode("utf8"),
             ),
+        }
+        feature_dict.update(pred_dic)
+
+    if sample.embeddings is not None:
+        pred_dic = {
             EMBEDDING: tfrecord_util.float_list_feature(sample.embeddings.ravel()),
             LOGITS: tfrecord_util.float_list_feature(sample.logits.ravel()),
             EMBEDDING_SHAPE: (
@@ -126,6 +131,7 @@ def create_tf_example(sample, labels):
             ),
         }
         feature_dict.update(pred_dic)
+        print("Adding embeddings", sample.embeddings.shape)
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
     return example, 0
 
@@ -196,7 +202,7 @@ def process_job(queue, labels, config, base_dir):
     model = None
     embedding_model = None
     embedding_labels = None
-    # model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
+    model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
     # embedding_model = tf.keras.models.load_model("./embedding_model")
     # meta_file = "./embedding_model/metadata.txt"
     # with open(str(meta_file), "r") as f:
@@ -277,7 +283,7 @@ def save_data(rec, writer, model, embedding_model, base_dir, config, embedding_l
             pass
         return 0
     try:
-        # frames32 = librosa.resample(orig_frames, orig_sr=sr, target_sr=32000)
+        frames32 = librosa.resample(orig_frames, orig_sr=sr, target_sr=32000)
 
         # hack to handle getting new samples without knowing length until load
         if resample is not None and resample != sr:
@@ -299,16 +305,16 @@ def save_data(rec, writer, model, embedding_model, base_dir, config, embedding_l
         for i, sample in enumerate(samples):
             try:
                 spec = load_data(config, sample.start, frames, sr, end=sample.end)
-                # start = sample.start * 32000
-                # start = round(start)
-                # end = round(sample.end * 32000)
-                # if (end - start) > 32000 * config.segment_length:
-                #     end = start + 32000 * config.segment_length
-                # data = frames32[start:end]
-                # data = np.pad(data, (0, 32000 * 5 - len(data)))
-                # logits, embeddings = model.infer_tf(data[np.newaxis, :])
-                # sample.logits = logits.numpy()[0]
-                # sample.embeddings = embeddings.numpy()[0]
+                start = sample.start * 32000
+                start = round(start)
+                end = round(sample.end * 32000)
+                if (end - start) > 32000 * config.segment_length:
+                    end = start + 32000 * config.segment_length
+                data = frames32[start:end]
+                data = np.pad(data, (0, 32000 * 5 - len(data)))
+                logits, embeddings = model.infer_tf(data[np.newaxis, :])
+                sample.logits = logits.numpy()[0]
+                sample.embeddings = embeddings.numpy()[0]
                 # predicted = embedding_model.predict(embeddings.numpy())[0]
                 # embed_labels = []
                 # for p_i, p in enumerate(predicted):

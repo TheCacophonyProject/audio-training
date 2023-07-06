@@ -67,11 +67,13 @@ def signal_noise(file, hop_length=281):
     frames, sr = load_recording(file)
     end = get_end(frames, sr)
     print("got end of ", end, " for file of ", len(frames) / sr)
-    1 / 0
-    frames = frames[: int(sr * 37.2)]
+    # 1 / 0
+    frames = frames[: int(sr * end)]
     n_fft = sr // 10
     # frames = frames[: sr * 3]
     spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
+    print(spectogram.shape)
+    plot_spec(spectogram)
     return signal_noise_data(spectogram, sr, hop_length=hop_length, n_fft=n_fft)
 
 
@@ -98,7 +100,7 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     width = 0.25  # seconds
     width = width * sr / 281
     width = int(width)
-    freq_range = 1000
+    freq_range = 100
     height = 0
     freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
     for i, f in enumerate(freqs):
@@ -128,50 +130,20 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     # # for x in small_mask:
     # # print(x[-10:])
     stats = [s for s in stats if s[2] > min_width]
-    # for s in stats:
-    #     print(s)
-    # # stats = np.uint8(stats)
-    # # small_mask = np.uint8(small_mask)
-    # # small_mask[small_mask > 0] = 255
-    print("Signals", len(stats))
-    # plot_spec(small_mask)
-    # #
-    # signal_indicator_vector = np.amax(signal, axis=0)
-    #
-    # noise_indicator_vector = np.amax(noise, axis=0)
-    #
-    # signal_indicator_vector = signal_indicator_vector[np.newaxis, :]
-    # signal_indicator_vector = cv2.dilate(
-    #     signal_indicator_vector, np.ones((4, 1), np.uint8)
-    # )
-    # print(signal_indicator_vector.shape)
-    # signal_indicator_vector = np.where(signal_indicator_vector > 0, 1, 0)
-    # signal_indicator_vector = signal_indicator_vector * 255
-    #
-    # noise_indicator_vector = noise_indicator_vector[np.newaxis, :]
-    # noise_indicator_vector = cv2.dilate(
-    #     noise_indicator_vector, np.ones((4, 1), np.uint8)
-    # )
-    # noise_indicator_vector = np.where(noise_indicator_vector > 0, 1, 0)
-    #
-    # noise_indicator_vector = noise_indicator_vector * 128
-    #
-    # indicator_vector = np.concatenate(
-    #     (signal_indicator_vector, noise_indicator_vector), axis=0
-    # )
-    i = 0
-    # indicator_vector = np.uint8(indicator_vector)
     s_start = -1
     noise_start = -1
     signals = []
 
     bins = len(freqs)
+    print("Freqs are", freqs)
     for s in stats:
         max_freq = min(len(freqs) - 1, s[1] + s[3])
         freq_range = (freqs[s[1]], freqs[max_freq])
         start = s[0] * 281 / sr
         end = (s[0] + s[2]) * 281 / sr
         signals.append(Signal(start, end, freq_range[0], freq_range[1]))
+        print(signals[0])
+        1 / 0
         # break
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(noise)
     stats = stats[1:]
