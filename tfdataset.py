@@ -33,13 +33,16 @@ GENERIC_BIRD_LABELS = [
     "new zealand fantail" "australian magpie",
     "bellbird",
     "bird",
+    "black noddy",
     "blackbird",
     "california quail",
     "canada goose",
     "common starling",
     "crimson rosella",
+    "dunnock",
     "fantail",
     "grey warbler",
+    "goldfinch",
     "house sparrow",
     "kiwi",
     "little owl",
@@ -91,6 +94,8 @@ def set_specific_by_count(meta):
         val_count = validation[label]
         if count > 100 and rec_count > 10 and val_count > 2:
             labels_with_data.append(label)
+            if label not in GENERIC_BIRD_LABELS:
+                logging.info("Have data for %s but not included ", label)
             if label in GENERIC_BIRD_LABELS and label not in SPECIFIC_BIRD_LABELS:
                 SPECIFIC_BIRD_LABELS.append(label)
                 logging.info(

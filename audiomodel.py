@@ -188,7 +188,7 @@ class AudioModel:
                 # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
             )
             # self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
-            self.build_model(len(labels), multi_label=multi)
+            self.build_model(multi_label=multi)
             if fold == 1:
                 self.model.summary()
             class_weights = get_weighting(self.train, self.labels)
@@ -343,7 +343,7 @@ class AudioModel:
             use_generic_bird=use_generic_bird,
         )
         self.num_classes = len(self.labels)
-        self.build_model(len(self.labels), multi_label=multi_label)
+        self.build_model(multi_label=multi_label)
 
         if weights is not None:
             self.load_weights(weights)
@@ -465,7 +465,8 @@ class AudioModel:
             cls=MetaJSONEncoder,
         )
 
-    def build_model(self, num_labels, multi_label=False):
+    def build_model(self, multi_label=False):
+        num_labels = len(self.labels)
         if self.model_name == "badwinner2":
             logging.info("Building bad winner2")
             self.model = badwinner2.build_model(
@@ -512,8 +513,8 @@ class AudioModel:
         else:
             acc = tf.metrics.categorical_accuracy
         loss_fn = loss(multi_label)
-        self.loss_fn = "BCE"
-        # loss_fn.__name__
+        loss_fn = WeightedCrossEntropy(self.labels)
+        self.loss_fn = loss_fn.name
         self.model.compile(
             optimizer=optimizer(lr=self.learning_rate),
             loss=loss_fn,
@@ -1459,6 +1460,51 @@ def get_linear_model(embedding_dim, num_classes):
         ]
     )
     return model
+
+
+class WeightedCrossEntropy(tf.keras.losses.Loss):
+    def __init__(self, labels, name="bird_cross_entropy", **kwargs):
+        super().__init__(name=name, **kwargs)
+        bird_mask = np.zeros((len(labels)))
+        if "bird" in labels:
+            bird_mask[labels.index("bird")] = 1
+        self.bird_mask = tf.constant(bird_mask, dtype=tf.float32)
+
+        self.bird_loss = self.bird_mask
+        self.normal_loss = tf.constant(tf.ones(len(labels), dtype=tf.float32))
+        # print(
+        #     "Bird weight cross entropy  labels",
+        #     labels,
+        #     " bird mask",
+        #     self.bird_mask,
+        #     " bird loss",
+        #     self.bird_loss,
+        #     " normal ",
+        #     self.normal_loss,
+        # )
+
+    def call(self, y_true, y_pred):
+        y_pred = tf.clip_by_value(
+            y_pred, tf.keras.backend.epsilon(), 1.0 - tf.keras.backend.epsilon()
+        )
+
+        birds = tf.math.reduce_all(tf.math.equal(y_true, self.bird_mask), axis=1)
+        birds = tf.expand_dims(birds, 1)
+
+        loss_matrix = tf.where(birds, self.bird_loss, self.normal_loss)
+
+        term_0 = (1 - y_true) * tf.math.log(1 - y_pred + tf.keras.backend.epsilon())
+        term_0 = term_0 * loss_matrix
+        # since a lot of our bird tags may have specific birds lets not penalize the model for
+        # choosing a specific bird in this scenario
+        term_1 = y_true * tf.math.log(y_pred + tf.keras.backend.epsilon())
+        loss = tf.keras.backend.mean(term_0 + term_1, axis=1)
+        return -loss
+
+    def get_config(self):
+        config = {"weight": self.weight, "epsilon": self.epsilon}
+        base_config = super().get_config()
+        return {**base_config, **config}
 
 
 if __name__ == "__main__":
