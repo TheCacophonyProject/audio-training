@@ -74,7 +74,7 @@ class AudioModel:
         self.data_dir = data_dir
         self.second_data_dir = second_data_dir
         self.model_name = model_name
-        self.batch_size = 32
+        self.batch_size = 8
         self.validation = None
         self.test = None
         self.train = None
@@ -1186,6 +1186,7 @@ def main():
             mean_sub=mean_sub,
             excluded_labels=excluded_labels,
             stop_on_empty=False,
+            use_generic_bird=args.use_bird,
         )
         for l in excluded_labels:
             labels.remove(l)

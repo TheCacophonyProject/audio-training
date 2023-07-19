@@ -138,14 +138,14 @@ def get_excluded_labels(labels):
 insect = None
 fp = None
 HOP_LENGTH = 281
-N_MELS = 120
+N_MELS = 160
 SR = 48000
-BREAK_FREQ = 1750
+BREAK_FREQ = 1000
 MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, 4800, BREAK_FREQ)
 MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 DIMENSIONS = (160, 188)
 
-mel_s = (120, 513)
+mel_s = (N_MELS, 513)
 sftf_s = (2401, 188)
 mfcc_s = (20, 188)
 DIMENSIONS = (*mel_s, 1)
