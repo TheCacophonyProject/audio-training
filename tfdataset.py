@@ -33,9 +33,18 @@ AUTOTUNE = tf.data.AUTOTUNE
 # IMAGE_SIZE = [256, 256]
 # BATCH_SIZE = 64
 NOISE_LABELS = ["insect", "wind", "vehicle", "dog", "rain", "static", "noise", "cat"]
-SPECIFIC_BIRD_LABELS = ["bird", "whistler", "kiwi", "morepork", "rifleman"]
+SPECIFIC_BIRD_LABELS = [
+    "bird",
+    "whistler",
+    "kiwi",
+    "morepork",
+    "rifleman",
+    "sparrow",
+    "fantail",
+]
 GENERIC_BIRD_LABELS = [
-    "new zealand fantail" "australian magpie",
+    "new zealand fantail",
+    "australian magpie",
     "bellbird",
     "bird",
     "black noddy",
