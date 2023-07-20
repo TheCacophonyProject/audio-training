@@ -1503,7 +1503,7 @@ class WeightedCrossEntropy(tf.keras.losses.Loss):
         return -loss
 
     def get_config(self):
-        config = {"weight": self.weight, "epsilon": self.epsilon}
+        config = {}
         base_config = super().get_config()
         return {**base_config, **config}
 

@@ -462,8 +462,6 @@ def main():
     # model = tf.keras.models.load_model(str(load_model))
 
     model.load_weights(load_model / "val_binary_accuracy").expect_partial()
-    # model.save(load_model / "frozen_model")
-    # 1 / 0
     with open(load_model / "metadata.txt", "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
@@ -718,7 +716,7 @@ def main():
 
         print(f"{t.start}-{t.end} have {t.label}")
     return
-    print("cap data at ", len(data) * segment_stride + segment_length)
+    # print("cap data at ", len(data) * segment_stride + segment_length)
     signals, noise = signal_noise(file)
     print("Have ", len(signals), " possible signals")
     chirps = 0
@@ -739,7 +737,7 @@ def main():
             end = max(start, end)
         for s in signals:
             if ((end - start) + (s[1] - s[0])) > max(end, s[1]) - min(start, s[0]):
-                print("Have track", t, " for ", s, t.start, t.end, t.label)
+                # print("Have track", t, " for ", s, t.start, t.end, t.label)
                 chirps += 1
             elif s[0] > start:
                 break
