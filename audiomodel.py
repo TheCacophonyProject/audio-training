@@ -1167,8 +1167,8 @@ def main():
             labels.append("bird")
         if "noise" not in labels:
             labels.append("noise")
-        if "other" not in labels:
-            labels.append("other")
+        # if "other" not in labels:
+        # labels.append("other")
         labels.sort()
         set_specific_by_count(dataset_meta)
 

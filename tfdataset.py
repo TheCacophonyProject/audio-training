@@ -21,13 +21,18 @@ BIRD_PATH = []
 NOISE_PATH = []
 
 
+MERGE_LABELS = {
+    "hosue sparrow": ["sparrow"],
+    "new zealand fantail": ["fantail"],
+}
+
 # seed = 1341
 # tf.random.set_seed(seed)
 # np.random.seed(seed)
 AUTOTUNE = tf.data.AUTOTUNE
 # IMAGE_SIZE = [256, 256]
 # BATCH_SIZE = 64
-NOISE_LABELS = ["wind", "vehicle", "dog", "rain", "static", "noise", "cat"]
+NOISE_LABELS = ["insect", "wind", "vehicle", "dog", "rain", "static", "noise", "cat"]
 SPECIFIC_BIRD_LABELS = ["bird", "whistler", "kiwi", "morepork", "rifleman"]
 GENERIC_BIRD_LABELS = [
     "new zealand fantail" "australian magpie",
@@ -69,8 +74,8 @@ GENERIC_BIRD_LABELS = [
     "whistler",
     "white tern",
 ]
-
-OTHER_LABELS = ["chicken", "rooster", "frog", "insect"]
+EXTRA_LABELS = ["rooster", "frog", "insect", "human", "noise"]
+OTHER_LABELS = []
 
 
 # JUST FOR HUMAN OR NOT MODEL
@@ -115,7 +120,7 @@ def get_excluded_labels(labels):
         #     excluded_labels.append(l)
         # continue
 
-        if l not in SPECIFIC_BIRD_LABELS and l not in ["noise", "human"]:
+        if l not in SPECIFIC_BIRD_LABELS and l not in EXTRA_LABELS:
             excluded_labels.append(l)
     return excluded_labels
 
@@ -289,14 +294,6 @@ def get_remappings(
     remapped = {}
     re_dic = {}
     new_labels = labels.copy()
-    fantail = False
-    if (
-        "fantail" in labels
-        and "new zealand fantail" in labels
-        and "fantail" not in excluded_labels
-        and "new zealand fantail" not in excluded_labels
-    ):
-        fantail = True
     for excluded in excluded_labels:
         if excluded in labels:
             new_labels.remove(excluded)
@@ -306,9 +303,9 @@ def get_remappings(
             remapped[l] = []
             logging.info("Excluding %s", l)
         else:
-            if fantail and l == "new zealand fantail":
-                re_dic[l] = new_labels.index("fantail")
-                logging.info("Remapping new zealand fantail to fantail")
+            if l in MERGE_LABELS and MERGE_LABELS[l] in labels:
+                print("Re labeiling ", l, " as ", MERGE_LABELS[l])
+                re_dic[l] = new_labels.index(MERGE_LABELS[l])
             else:
                 re_dic[l] = new_labels.index(l)
             remapped[l] = [l]
@@ -337,11 +334,6 @@ def get_remappings(
                 if l != "bird":
                     extra_label_map[l] = new_labels.index("bird")
             # or l == "human":
-            continue
-        elif l == "human":
-            # if "noise" in new_labels:
-            #     extra_label_map[l] = new_labels.index("noise")
-
             continue
         elif l in GENERIC_BIRD_LABELS:
             if not use_generic_bird:

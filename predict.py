@@ -84,7 +84,16 @@ def preprocess_file_signals(file, seg_length, stride, hop_length, mean_sub, use_
             #     data = data_2
 
             spectogram = np.abs(librosa.stft(data, n_fft=n_fft, hop_length=hop_length))
-            mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000)
+            mel = mel_spec(
+                spectogram,
+                sr,
+                n_fft,
+                hop_length,
+                n_mels,
+                50,
+                11000,
+                break_freq=break_freq,
+            )
 
             half = mel[:, 75:]
             if np.amax(half) == np.amin(half):
@@ -209,7 +218,9 @@ def show_signals(file):
 #     return x_split
 
 
-def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
+def preprocess_file(
+    file, seg_length, stride, hop_length, mean_sub, use_mfcc, break_freq, n_mels
+):
     frames, sr = load_recording(file)
     # spits = split_sound(frames[: sr * 3])
     # for s in spits:
@@ -220,7 +231,7 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
     end = 0
     sample_size = int(seg_length * sr)
     logging.info(
-        "sr %s seg %s sample size %s stride %s hop%s mean sub %s mfcc %s",
+        "sr %s seg %s sample size %s stride %s hop%s mean sub %s mfcc %s  break %s mels %s",
         sr,
         seg_length,
         sample_size,
@@ -228,6 +239,8 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         hop_length,
         mean_sub,
         use_mfcc,
+        break_freq,
+        n_mels,
     )
     logging.info("sample is %s", length)
     mels = []
@@ -262,7 +275,17 @@ def preprocess_file(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
         # spectogram[:100, :] *= 0.5
 
         # spectogram[:100, :]
-        mel = mel_spec(spectogram, sr, n_fft, hop_length, 120, 50, 11000, power=1)
+        mel = mel_spec(
+            spectogram,
+            sr,
+            n_fft,
+            hop_length,
+            n_mels,
+            50,
+            11000,
+            power=1,
+            break_freq=break_freq,
+        )
         third = int(mel.shape[1] * 1 / 3)
         half = mel[:, third:]
         if np.amax(half) == np.amin(half):
@@ -438,7 +461,7 @@ def main():
     # return
     # model = tf.keras.models.load_model(str(load_model))
 
-    # model.load_weights(load_model / "val_binary_accuracy").expect_partial()
+    model.load_weights(load_model / "val_binary_accuracy").expect_partial()
     # model.save(load_model / "frozen_model")
     # 1 / 0
     with open(load_model / "metadata.txt", "r") as f:
@@ -453,7 +476,8 @@ def main():
     hop_length = meta.get("hop_length", 640)
     prob_thresh = meta.get("threshold", 0.7)
     model_name = meta.get("name", False)
-
+    break_freq = meta.get("break_freq", 700)
+    n_mels = meta.get("n_mels", 120)
     hop_length = 281
     # print("stride is", segment_stride)
     # segment_length = 2
@@ -518,7 +542,14 @@ def main():
             data, length = yamn_embeddings(file, segment_stride)
         else:
             data, length = preprocess_file(
-                file, segment_length, segment_stride, hop_length, mean_sub, use_mfcc
+                file,
+                segment_length,
+                segment_stride,
+                hop_length,
+                mean_sub,
+                use_mfcc,
+                break_freq=break_freq,
+                n_mels=n_mels,
             )
         data = np.array(data)
 
@@ -686,6 +717,7 @@ def main():
         #     new_end = t.end - segment_length + segment_stride + 1
 
         print(f"{t.start}-{t.end} have {t.label}")
+    return
     print("cap data at ", len(data) * segment_stride + segment_length)
     signals, noise = signal_noise(file)
     print("Have ", len(signals), " possible signals")
