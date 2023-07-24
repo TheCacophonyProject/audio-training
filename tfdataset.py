@@ -22,8 +22,8 @@ NOISE_PATH = []
 
 
 MERGE_LABELS = {
-    "hosue sparrow": ["sparrow"],
-    "new zealand fantail": ["fantail"],
+    "hosue sparrow": "sparrow",
+    "new zealand fantail": "fantail",
 }
 
 # seed = 1341
@@ -313,7 +313,7 @@ def get_remappings(
             logging.info("Excluding %s", l)
         else:
             if l in MERGE_LABELS and MERGE_LABELS[l] in labels:
-                print("Re labeiling ", l, " as ", MERGE_LABELS[l])
+                logging.info("Re labeiling %s as %s", l, MERGE_LABELS[l])
                 re_dic[l] = new_labels.index(MERGE_LABELS[l])
             else:
                 re_dic[l] = new_labels.index(l)
@@ -321,6 +321,8 @@ def get_remappings(
             # values.append(new_labels.index(l))
     if not use_generic_bird:
         re_dic["bird"] = -1
+    re_dic["slender-billed white-eye"] = -1
+
     master_keys = []
     master_values = []
     if not keep_excluded_in_extra:
