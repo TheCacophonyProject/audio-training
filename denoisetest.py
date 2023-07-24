@@ -66,14 +66,12 @@ def load_recording(file, resample=48000):
 def signal_noise(file, hop_length=281):
     frames, sr = load_recording(file)
     end = get_end(frames, sr)
-    print("got end of ", end, " for file of ", len(frames) / sr)
-    # 1 / 0
     frames = frames[: int(sr * end)]
     n_fft = sr // 10
     # frames = frames[: sr * 3]
     spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
-    print(spectogram.shape)
-    plot_spec(spectogram)
+    # print(spectogram.shape)
+    # plot_spec(spectogram)
     return signal_noise_data(spectogram, sr, hop_length=hop_length, n_fft=n_fft)
 
 
@@ -117,7 +115,7 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
 
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(signal)
     for i, s in enumerate(stats):
-        print(i, s)
+        # print(i, s)
         if i == 1:
             small_mask[small_mask == i] = 200
 
@@ -135,15 +133,15 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     signals = []
 
     bins = len(freqs)
-    print("Freqs are", freqs)
+    # print("Freqs are", freqs)
     for s in stats:
         max_freq = min(len(freqs) - 1, s[1] + s[3])
         freq_range = (freqs[s[1]], freqs[max_freq])
         start = s[0] * 281 / sr
         end = (s[0] + s[2]) * 281 / sr
         signals.append(Signal(start, end, freq_range[0], freq_range[1]))
-        print(signals[0])
-        1 / 0
+        # print(signals[0])
+        # 1 / 0
         # break
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(noise)
     stats = stats[1:]
@@ -157,45 +155,6 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
         end = (s[0] + s[2]) * 281 / sr
         noise.append((start, end, freq_range[0], freq_range[1]))
 
-    # for c in indicator_vector.T:
-    #     # print("indicator", c)
-    #     if c[0] == 255:
-    #         if s_start == -1:
-    #             s_start = i
-    #     elif s_start != -1:
-    #         signals.append((s_start * 281 / sr, (i - 1) * 281 / sr))
-    #         s_start = -1
-    #     if c[1] == 128:
-    #         if noise_start == -1:
-    #             noise_start = i
-    #     elif noise_start != -1:
-    #         noise.append((noise_start * 281 / sr, (i - 1) * 281 / sr))
-    #         noise_start = -1
-    #
-    #     i += 1
-    # if s_start != -1:
-    #     signals.append((s_start * 281 / sr, (i - 1) * 281 / sr))
-    # if noise_start != -1:
-    #     noise.append((noise_start * 281 / sr, (i - 1) * 281 / sr))
-
-    # signal_frames = []
-    # for s in signals:
-    #     s_f = int((s[0]) * sr)
-    #     s_e = int((s[1]) * sr)
-    #     s_f = max(0, s_f)
-    #     signal_frames.extend(frames[s_f:s_e])
-    #
-    # signal_frames = np.array(signal_frames)
-    # name = file.parent / f"{file.stem}-signal.wav"
-    # sf.write(str(name), signal_frames, sr)
-    # print("signals are", signals)
-    # signals = space_signals(signals, spacing=0.1)
-    # print("spaced", signals)
-    # spectogram = librosa.amplitude_to_db(spectogram, ref=np.max)
-    # plot_spec(spectogram, signals, len(frames) / sr)
-    # print(signals, noise)
-    for s in signals:
-        print("Signal", s)
     return signals, noise, spectogram
 
 
@@ -338,57 +297,139 @@ def get_end(frames, sr):
     return file_length
 
 
+def merge_signals(signals):
+    unique_signals = []
+    to_delete = []
+    something_merged = False
+    i = 0
+
+    signals = sorted(signals, key=lambda s: s.mel_freq_end, reverse=True)
+    signals = sorted(signals, key=lambda s: s.start)
+
+    for s in signals:
+        if s in to_delete:
+            continue
+        merged = False
+        for u_i, u in enumerate(signals):
+            if u in to_delete:
+                continue
+            if u == s:
+                continue
+            in_freq = u.mel_freq_end < 1500 and s.mel_freq_end < 1500
+            in_freq = in_freq or u.mel_freq_start > 1500 and s.mel_freq_start > 1500
+            if not in_freq:
+                # print("Skipping", s, " with ", u, " as freqs differ")
+                continue
+            overlap = s.time_overlap(u)
+            if s.mel_freq_start > 1000 and u.mel_freq_start > 1000:
+                freq_overlap = 0.1
+                freq_overlap_time = 0.5
+            else:
+                freq_overlap = 0.5
+                freq_overlap_time = 0.75
+            if s.start > u.end:
+                time_diff = s.start - u.end
+            else:
+                time_diff = u.start - s.end
+            mel_overlap = s.mel_freq_overlap(u)
+            # print("Checking over lap for", s, " with ", u, overlap, mel_overlap)
+            # ensure both are either below 1500 or abov
+            if overlap > u.length * 0.75 and mel_overlap > -20:
+                #  (
+                #     mel_overlap > u.mel_freq_range * freq_overlap
+                # ):
+                # times overlap a lot be more leninant on freq
+                # s.merge(u)
+                s.merge(u)
+
+                merged = True
+
+                break
+            elif overlap > 0 and mel_overlap > u.mel_freq_range * freq_overlap_time:
+                # time overlaps at all with more freq overlap
+                s.merge(u)
+
+                merged = True
+
+                break
+
+            elif mel_overlap > u.mel_freq_range * freq_overlap_time and time_diff <= 2:
+                if u.mel_freq_end > s.mel_freq_range:
+                    range_overlap = s.mel_freq_range / u.mel_freq_range
+                else:
+                    range_overlap = u.mel_freq_range / s.mel_freq_range
+                if range_overlap < 0.75:
+                    continue
+                # freq range similar
+
+                s.merge(u)
+                merged = True
+
+                break
+
+        if merged:
+            something_merged = True
+            to_delete.append(u)
+
+    for s in to_delete:
+        signals.remove(s)
+
+    return signals, something_merged
+
+
 def main():
     init_logging()
     args = parse_args()
     # mix_file(args.file, args.mix)
     signal, noise, spectogram = signal_noise(args.file)
-    unique_signals = []
-    f_overlap = 500
-    for s in signal:
-        merged = False
-        for u_i, u in enumerate(unique_signals):
-            overlap = s.time_overlap(u)
-            freq_overlap = (
-                abs(s.mel_freq_start - u.mel_freq_start) < f_overlap
-                and abs(s.mel_freq_end - u.mel_freq_end) < f_overlap
-            )
-            if not freq_overlap:
-                continue
-            print("start", s.start, "u end", u.end)
-            if overlap > 0 or (s.start - u.end) < 3:
-                print("Merging", u, " and ", s)
-                u.merge(s)
-                merged = True
-                break
-        if not merged:
-            unique_signals.append(s)
-    to_delete = []
-    min_length = 0.5
+    # unique_signals = []
+    # signal = [s for s in signal if s.start > 25 and s.end < 48]
+    # plot_mel_signals(spectogram, signal)
+    # unique_signals, merged = merge_signals(signal)
+    unique_signals = signal
+    count = 0
+
+    # return
+    merged = True
+    while merged:
+        count += 1
+        unique_signals, merged = merge_signals(unique_signals)
     for s in unique_signals:
+        print("Have", s)
+    min_length = 0.5
+    to_delete = []
+    # for s in unique_signals:
+    # print("Enlarged are", s)
+    for s in unique_signals:
+        # print(s)
+        # continue
         if s in to_delete:
             continue
         if s.length < min_length:
             to_delete.append(s)
             continue
+        s.enlarge(1.4)
         for s2 in unique_signals:
             if s2 in to_delete:
                 continue
             if s == s2:
                 continue
             overlap = s.time_overlap(s2)
+            # print("time over lap for", s, s2, overlap, s2.length)
             engulfed = overlap >= 0.9 * s2.length
             f_overlap = s.mel_freq_overlap(s2)
             range = s2.mel_freq_range
-            range *= 0.9
+            range *= 0.7
             if f_overlap > range and engulfed:
                 to_delete.append(s2)
+            # elif engulfed and s2.freq_start > s.freq_start and s2.freq_end < s.freq_end:
+            # print("s2", s2, " is inside ", s)
+            # to_delete.append(s2)
     for s in to_delete:
         unique_signals.remove(s)
-
     for s in unique_signals:
-        s.enlarge(1.2)
-        print("Final s", s)
+        print("Finsl s is", s)
+
     plot_mel_signals(spectogram, unique_signals)
     return
     process(args.file)
@@ -555,7 +596,7 @@ class Signal:
 
     def enlarge(self, scale):
         new_length = self.length * scale
-        extension = new_length / 2
+        extension = (new_length - self.length) / 2
         self.start = self.start - extension
         self.end = self.end + extension
         self.start = max(self.start, 0)
@@ -569,7 +610,7 @@ class Signal:
         self.mel_freq_end = mel_freq(self.freq_end)
 
     def __str__(self):
-        return f"Signal: {self.start}-{self.end} f: {self.freq_start}-{self.freq_end}"
+        return f"Signal: {self.start}-{self.end}  mel: {self.mel_freq_start} {self.mel_freq_end}"
 
 
 if __name__ == "__main__":
