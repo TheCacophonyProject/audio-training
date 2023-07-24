@@ -22,7 +22,7 @@ NOISE_PATH = []
 
 
 MERGE_LABELS = {
-    "hosue sparrow": "sparrow",
+    "house sparrow": "sparrow",
     "new zealand fantail": "fantail",
 }
 
@@ -195,9 +195,11 @@ EMBEDDING_SHAPE = 1280
 # zvals["std"] = np.array(zvals["std"])
 Z_NORM = False
 # Z_NORM = True
+import random
 
 
 def load_dataset(filenames, num_labels, labels, args):
+    random.filenames.shuffle()
     #
     #     image_size,
     deterministic = args.get("deterministic", False)
