@@ -940,24 +940,41 @@ def main():
         # filenames_2=filenames_2
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
-    print("labels are", len(labels), labels)
-    dist = get_distribution(resampled_ds, len(labels))
-    for l, d in zip(labels, dist):
-        print(l, "  : ", d)
-    weighting = get_weighting(resampled_ds, labels)
-    print("weight is", weighting)
-    return
-    print("looping")
+
     for e in range(1):
         for x, y in resampled_ds:
-            labels = y[0]
-            signal_percent = y[2]
-            for l, s in zip(labels, signal_percent):
-                if l[0] == 1 and np.sum(l) == 1:
-                    print("have ", l, s)
-            # show_batch(x, y, None, labels, None)
+            print("X batch of ", x.shape, " Has memory of ", getsize(np.array(x)), "MB")
 
-            # show_batch(x, y[0], y[1], labels, species_list)
+
+import sys
+from types import ModuleType, FunctionType
+from gc import get_referents
+
+# Custom objects know their class.
+# Function objects seem to know way too much, including modules.
+# Exclude modules as well.
+BLACKLIST = type, ModuleType, FunctionType
+
+
+def getsize(obj):
+    """sum size of object & members."""
+    if isinstance(obj, BLACKLIST):
+        raise TypeError("getsize() does not take argument of type: " + str(type(obj)))
+    seen_ids = set()
+    size = 0
+    objects = [obj]
+    while objects:
+        need_referents = []
+        for obj in objects:
+            if not isinstance(obj, BLACKLIST) and id(obj) not in seen_ids:
+                seen_ids.add(id(obj))
+                if isinstance(obj, np.ndarray):
+                    size += obj.nbytes
+                else:
+                    size += sys.getsizeof(obj)
+                need_referents.append(obj)
+        objects = get_referents(*need_referents)
+    return size * 0.000001
 
 
 def show_batch(image_batch, label_batch, species_batch, labels, species):
