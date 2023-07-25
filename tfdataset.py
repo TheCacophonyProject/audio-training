@@ -199,7 +199,7 @@ import random
 
 
 def load_dataset(filenames, num_labels, labels, args):
-    random.filenames.shuffle()
+    random.shuffle(filenames)
     #
     #     image_size,
     deterministic = args.get("deterministic", False)
@@ -422,7 +422,6 @@ def get_dataset(filenames, labels, **args):
     # 1 / 0
     num_labels = len(labels)
     dataset = load_dataset(filenames, num_labels, labels, args)
-
     bird_mask = np.zeros(num_labels, dtype=bool)
     bird_mask[bird_i] = 1
     bird_mask = tf.constant(bird_mask)

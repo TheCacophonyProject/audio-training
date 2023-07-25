@@ -239,7 +239,7 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
         activation=tf.keras.layers.LeakyReLU(),
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
-    x = logmeanexp(x, axis=2, sharpness=10)
+    # x = logmeanexp(x, axis=2, sharpness=10)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
     x = tf.keras.activations.sigmoid(x)

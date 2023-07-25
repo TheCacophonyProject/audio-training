@@ -25,8 +25,9 @@ import tensorflow as tf
 
 # hopefully the good gpu
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
+#
 import tensorflow as tf
+
 
 physical_devices = tf.config.list_physical_devices("GPU")
 tf.config.experimental.set_memory_growth(physical_devices[0], True)
@@ -40,7 +41,11 @@ from tfdataset import (
     get_excluded_labels,
     EMBEDDING_SHAPE,
     GENERIC_BIRD_LABELS,
+    EXTRA_LABELS,
+    OTHER_LABELS,
     set_specific_by_count,
+    N_MELS,
+    BREAK_FREQ,
 )
 
 # from tfdatasetembeddings import get_dataset, DIMENSIONS
@@ -443,7 +448,14 @@ class AudioModel:
         model_stats["multi_label"] = multi_label
         model_stats["mean_sub"] = self.mean_sub
         model_stats["loss_fn"] = self.loss_fn
-
+        model_stats["bird_labels"] = SPECIFIC_BIRD_LABELS
+        model_stats["noise_labels"] = NOISE_LABELS
+        model_stats["extra_labels"] = EXTRA_LABELS
+        model_stats["other_labels"] = OTHER_LABELS
+        model_stats["n_mels"] = N_MELS
+        model_stats["break_freq"] = BREAK_FREQ
+        model_stats["power"] = 1
+        model_stats["db_scale"] = False
         # model_stats["hyperparams"] = self.params
         model_stats["training_date"] = str(time.time())
         model_stats["version"] = self.VERSION
