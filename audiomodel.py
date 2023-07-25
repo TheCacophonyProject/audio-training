@@ -88,7 +88,7 @@ class AudioModel:
         self.data_dir = data_dir
         self.second_data_dir = second_data_dir
         self.model_name = model_name
-        self.batch_size = 8
+        self.batch_size = 32
         self.validation = None
         self.test = None
         self.train = None
