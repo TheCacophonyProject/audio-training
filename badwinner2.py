@@ -207,10 +207,12 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
     # see how they perform
     x = tf.keras.layers.Conv2D(128, (12, 3), activation=tf.keras.layers.LeakyReLU())(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Conv2D(128, (29, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.Conv2D(128, (17, 3), activation=tf.keras.layers.LeakyReLU())(x)
     x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Conv2D(128, (17, 3), activation=tf.keras.layers.LeakyReLU())(x)
 
-    x = tf.keras.layers.MaxPool2D((5, 3))(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.MaxPool2D((10, 3))(x)
     x = tf.keras.layers.Dropout(0.5)(x)
 
     # probably dont need to be as big

@@ -24,13 +24,14 @@ from audiowriter import create_tf_records
 import tensorflow as tf
 
 # hopefully the good gpu
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-#
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# #
 import tensorflow as tf
 
-
-physical_devices = tf.config.list_physical_devices("GPU")
-tf.config.experimental.set_memory_growth(physical_devices[0], True)
+#
+#
+# physical_devices = tf.config.list_physical_devices("GPU")
+# tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
 from tfdataset import (
     get_dataset,

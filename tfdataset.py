@@ -710,6 +710,17 @@ def mel_from_raw(raw):
     return mel
 
 
+def apply_pcen(x):
+    return librosa.pcen(X * (2**31))
+
+
+@tf.function(input_signature=[tf.TensorSpec(None, tf.float32)])
+def tf_function(x, y):
+    x = tf.numpy_function(apply_pcen, [input], tf.float32)
+
+    return x, y
+
+
 @tf.function
 def read_tfrecord(
     example,
