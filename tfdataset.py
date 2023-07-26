@@ -469,6 +469,7 @@ def get_dataset(filenames, labels, **args):
         logging.info("Resampling data")
         dataset = resample(dataset, labels, dist)
 
+    dataset = dataset.map(lambda x, y: pcen_function(x, y))
     # epoch_size = np.sum(dist)
     # logging.info("Setting dataset size to %s", epoch_size)
     # # if not args.get("only_features", False):
@@ -711,12 +712,15 @@ def mel_from_raw(raw):
 
 
 def apply_pcen(x):
-    return librosa.pcen(X * (2**31))
+    x = librosa.pcen(x * (2**31))
+    return np.float32(x)
 
 
-@tf.function(input_signature=[tf.TensorSpec(None, tf.float32)])
-def tf_function(x, y):
-    x = tf.numpy_function(apply_pcen, [input], tf.float32)
+@tf.function
+# (input_signature=[tf.TensorSpec(None, tf.float32)])
+def pcen_function(x, y):
+    x = tf.squeeze(x, 2)
+    x = tf.numpy_function(apply_pcen, [x], tf.float32)
 
     return x, y
 
