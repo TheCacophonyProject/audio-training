@@ -244,10 +244,9 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False, lme=Fals
     # x = logmeanexp(x, axis=2, sharpness=10)
     if lme:
         # is this the same as global pooling????
-        x = logmeanexp(x, axis=1, sharpness=5, keepdims=false)
-        x = logmeanexp(x, axis=2, sharpness=5, keepdims=false)
-    else:
-        x = tf.keras.layers.GlobalAveragePooling2D()(x)
+        x = logmeanexp(x, axis=1, sharpness=5, keepdims=False)
+        x = logmeanexp(x, axis=2, sharpness=5, keepdims=False)
+    x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
     x = tf.keras.activations.sigmoid(x)
 

@@ -462,6 +462,7 @@ class AudioModel:
         model_stats["n_mels"] = N_MELS
         model_stats["break_freq"] = BREAK_FREQ
         model_stats["power"] = 1
+        model_stats["lme"] = self.lme
         model_stats["db_scale"] = False
         # model_stats["hyperparams"] = self.params
         model_stats["training_date"] = str(time.time())
@@ -498,7 +499,11 @@ class AudioModel:
         if self.model_name == "badwinner2":
             logging.info("Building bad winner2")
             self.model = badwinner2.build_model(
-                self.input_shape, None, num_labels, multi_label=multi_label
+                self.input_shape,
+                None,
+                num_labels,
+                multi_label=multi_label,
+                lme=self.lme,
             )
         elif self.model_name == "badwinner2-res":
             logging.info("Building bad winner2 res")
@@ -1244,6 +1249,8 @@ def main():
 
     else:
         am = AudioModel(args.model_name, args.dataset_dir, args.second_dataset_dir)
+        am.lme = args.lme
+
         if args.cross:
             am.cross_fold_train(run_name=args.name, use_generic_bird=args.use_bird)
         else:
@@ -1292,6 +1299,10 @@ def parse_args():
     parser.add_argument("--confusion", help="Save confusion matrix for model")
     parser.add_argument("-w", "--weights", help="Weights to use")
     parser.add_argument("--cross", action="count", help="Cross fold val")
+    parser.add_argument(
+        "--lme", action="count", help="Use log mean expo instead of global avg"
+    )
+
     parser.add_argument("--multi", default=True, action="count", help="Multi label")
     parser.add_argument(
         "--use-bird",
