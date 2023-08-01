@@ -121,7 +121,7 @@ def res_block(X, filters, stage, block, stride=1):
 
 
 def build_model_res(input_shape, norm_layer, num_labels, multi_label=False):
-    input = tf.keras.Input(shape=(*input_shape, 1), name="input")
+    input = tf.keras.Input(shape=input_shape, name="input")
     # x = norm_layer(input)
     # if multi_label:
     filters = 256
@@ -179,7 +179,7 @@ def build_model_res(input_shape, norm_layer, num_labels, multi_label=False):
     return model
 
 
-def build_model(input_shape, norm_layer, num_labels, multi_label=False):
+def build_model(input_shape, norm_layer, num_labels, multi_label=False, lme=False):
     input = tf.keras.Input(shape=input_shape, name="input")
     # x = norm_layer(input)
     # if multi_label:
@@ -209,9 +209,9 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Conv2D(128, (17, 3), activation=tf.keras.layers.LeakyReLU())(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Conv2D(128, (17, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    # x = tf.keras.layers.Conv2D(128, (17, 3), activation=tf.keras.layers.LeakyReLU())(x)
 
-    x = tf.keras.layers.BatchNormalization()(x)
+    # x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.MaxPool2D((10, 3))(x)
     x = tf.keras.layers.Dropout(0.5)(x)
 
@@ -242,12 +242,24 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
     # x = logmeanexp(x, axis=2, sharpness=10)
-    x = tf.keras.layers.GlobalAveragePooling2D()(x)
+    if lme:
+        # is this the same as global pooling????
+        x = logmeanexp(x, axis=1, sharpness=5, keepdims=false)
+        x = logmeanexp(x, axis=2, sharpness=5, keepdims=false)
+    else:
+        x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
     x = tf.keras.activations.sigmoid(x)
 
     model = tf.keras.models.Model(input, outputs=x)
     return model
+
+
+def logmeanexp(x, axis=None, keepdims=False, sharpness=5):
+    return (
+        tfp.math.reduce_logmeanexp(x * sharpness, axis=axis, keepdims=keepdims)
+        / sharpness
+    )
 
 
 #
@@ -275,7 +287,7 @@ def logmeanexp(x, axis=None, keepdims=False, sharpness=5):
 def main():
     init_logging()
     args = parse_args()
-    model = build_model((160, 513, 1), None, 6)
+    model = build_model_res((160, 513, 1), None, 6)
     model.summary()
     model.compile(
         optimizer=tf.keras.optimizers.Adam(),

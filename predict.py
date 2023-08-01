@@ -461,7 +461,7 @@ def main():
     # return
     # model = tf.keras.models.load_model(str(load_model))
 
-    # model.load_weights(load_model / "val_binary_accuracy").expect_partial()
+    model.load_weights(load_model / "val_binary_accuracy").expect_partial()
     # model.save(load_model / "frozen_model")
     # 1 / 0
     with open(load_model / "metadata.txt", "r") as f:

@@ -89,7 +89,7 @@ class AudioModel:
         self.data_dir = data_dir
         self.second_data_dir = second_data_dir
         self.model_name = model_name
-        self.batch_size = 32
+        self.batch_size = 16
         self.validation = None
         self.test = None
         self.train = None
@@ -204,6 +204,7 @@ class AudioModel:
             )
             # self.load_datasets(self.data_dir, self.labels, self.species, self.input_shape)
             self.build_model(multi_label=multi)
+
             if fold == 1:
                 self.model.summary()
             class_weights = get_weighting(self.train, self.labels)
@@ -359,7 +360,12 @@ class AudioModel:
         )
         self.num_classes = len(self.labels)
         self.build_model(multi_label=multi_label)
-
+        bytes_needed = keras_model_memory_usage_in_bytes(self.model, self.batch_size)
+        logging.info(
+            "Need %s MB for model with batch size %s ",
+            bytes_needed * 0.000001,
+            self.batch_size,
+        )
         if weights is not None:
             self.load_weights(weights)
         # 1 / 0
@@ -492,6 +498,11 @@ class AudioModel:
         if self.model_name == "badwinner2":
             logging.info("Building bad winner2")
             self.model = badwinner2.build_model(
+                self.input_shape, None, num_labels, multi_label=multi_label
+            )
+        elif self.model_name == "badwinner2-res":
+            logging.info("Building bad winner2 res")
+            self.model = badwinner2.build_model_res(
                 self.input_shape, None, num_labels, multi_label=multi_label
             )
         elif self.model_name == "badwinner":
@@ -1085,7 +1096,7 @@ def confusion(model, labels, dataset, filename="confusion.png"):
         cm2[1] = np.flip(cm[0])
         figure = plot_confusion_matrix(cm2, class_names=[labels[i], "not"])
         logging.info("Saving confusion to %s", filename)
-        plt.savefig(f"{labels[i]}-{filename}", format="png")
+        plt.savefig(f"./confusions/{labels[i]}-{filename}", format="png")
 
 
 #
@@ -1528,6 +1539,56 @@ class WeightedCrossEntropy(tf.keras.losses.Loss):
         config = {}
         base_config = super().get_config()
         return {**base_config, **config}
+
+
+def keras_model_memory_usage_in_bytes(model, batch_size):
+    """
+    Return the estimated memory usage of a given Keras model in bytes.
+    This includes the model weights and layers, but excludes the dataset.
+
+    The model shapes are multipled by the batch size, but the weights are not.
+
+    Args:
+        model: A Keras model.
+        batch_size: The batch size you intend to run the model with. If you
+            have already specified the batch size in the model itself, then
+            pass `1` as the argument here.
+    Returns:
+        An estimate of the Keras model's memory usage in bytes.
+
+    """
+    default_dtype = tf.keras.backend.floatx()
+    shapes_mem_count = 0
+    internal_model_mem_count = 0
+    for layer in model.layers:
+        if isinstance(layer, tf.keras.Model):
+            internal_model_mem_count += keras_model_memory_usage_in_bytes(
+                layer, batch_size=batch_size
+            )
+        single_layer_mem = tf.as_dtype(layer.dtype or default_dtype).size
+        out_shape = layer.output_shape
+        if isinstance(out_shape, list):
+            out_shape = out_shape[0]
+        for s in out_shape:
+            if s is None:
+                continue
+            single_layer_mem *= s
+        shapes_mem_count += single_layer_mem
+
+    trainable_count = sum(
+        [tf.keras.backend.count_params(p) for p in model.trainable_weights]
+    )
+    non_trainable_count = sum(
+        [tf.keras.backend.count_params(p) for p in model.non_trainable_weights]
+    )
+
+    total_memory = (
+        batch_size * shapes_mem_count
+        + internal_model_mem_count
+        + trainable_count
+        + non_trainable_count
+    )
+    return total_memory
 
 
 if __name__ == "__main__":

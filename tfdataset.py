@@ -468,8 +468,10 @@ def get_dataset(filenames, labels, **args):
     if resample_data:
         logging.info("Resampling data")
         dataset = resample(dataset, labels, dist)
-
-    dataset = dataset.map(lambda x, y: pcen_function(x, y))
+    pcen = args.get("pcen", False)
+    if pcen:
+        logging.info("Taking PCEN")
+        dataset = dataset.map(lambda x, y: pcen_function(x, y))
     # epoch_size = np.sum(dist)
     # logging.info("Setting dataset size to %s", epoch_size)
     # # if not args.get("only_features", False):
