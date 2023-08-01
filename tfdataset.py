@@ -714,16 +714,15 @@ def mel_from_raw(raw):
 
 
 def apply_pcen(x):
-    x = librosa.pcen(x * (2**31))
+    x = librosa.pcen(x * (2**31), sr=48000, hop_length=281)
     return np.float32(x)
 
 
-@tf.function
-# (input_signature=[tf.TensorSpec(None, tf.float32)])
 def pcen_function(x, y):
     x = tf.squeeze(x, 2)
     x = tf.numpy_function(apply_pcen, [x], tf.float32)
 
+    x = tf.expand_dims(x, axis=2)
     return x, y
 
 
