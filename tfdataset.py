@@ -124,6 +124,9 @@ def set_specific_by_count(meta):
 def get_excluded_labels(labels):
     excluded_labels = []
     for l in labels:
+        if "kiwi" not in l and l not in excluded_labels:
+            excluded_labels.append(l)
+        continue
         # FOR HUMAN MODEL
         # if l not in ["human", "noise"]:
         #     excluded_labels.append(l)
@@ -408,7 +411,8 @@ def get_dataset(filenames, labels, **args):
 
     # extra tags, since we have multi label problem, morepork is a bird and morepork
     # cat is a cat but also "noise"
-    # extra_label_map["-10"] = -10
+    extra_label_map["-10"] = -10
+
     extra_label_map = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(list(extra_label_map.keys())),
@@ -463,7 +467,7 @@ def get_dataset(filenames, labels, **args):
             stop_on_empty_dataset=args.get("stop_on_empty", True),
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
-    dataset = dataset.map(lambda x, y: (x, y[0]))
+    # dataset = dataset.map(lambda x, y: (x, y[0]))
     resample_data = args.get("resample", False)
     if resample_data:
         logging.info("Resampling data")
@@ -774,11 +778,15 @@ def read_tfrecord(
         tfrecord_format["audio/raw"] = tf.io.FixedLenFeature(
             (2401, mel_s[1]), tf.float32
         )
+        tfrecord_format["audio/start_s"] = tf.io.FixedLenFeature((), tf.float32)
+        tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
     if not all_human:
         tfrecord_format["audio/signal_percent"] = tf.io.FixedLenFeature((), tf.float32)
 
     example = tf.io.parse_single_example(example, tfrecord_format)
     # raw = example["audio/raw"]
+    start_s = tf.cast(example["audio/start_s"], tf.float32)
+    rec_id = tf.cast(example["audio/rec_id"], tf.string)
 
     label = tf.cast(example["audio/class/text"], tf.string)
     labels = tf.strings.split(label, sep="\n")
@@ -854,7 +862,7 @@ def read_tfrecord(
 
         label = tf.cast(label, tf.float32)
 
-        return image, (label, embed_preds, signal_percent)
+        return image, (label, embed_preds, signal_percent, start_s, rec_id)
 
     return image
 
@@ -935,7 +943,13 @@ def main():
         # species_list = ["bird", "human", "rain", "other"]
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-        filenames.extend(tf.io.gfile.glob(f"{d}/train/*.tfrecord"))
+        # filenames.extend(tf.io.gfile.glob(f"{d}/train/*.tfrecord"))
+
+        # filenames.extend(tf.io.gfile.glob(f"./{d}/test/*.tfrecord"))
+        filenames.extend(tf.io.gfile.glob(f"./{d}/train/*.tfrecord"))
+        print(filenames)
+        # filenames.extend(tf.io.gfile.glob(f"./{d}/validation/*.tfrecord"))
+
     labels.add("bird")
     labels.add("noise")
     labels = list(labels)
@@ -962,6 +976,8 @@ def main():
 
     for e in range(1):
         for x, y in resampled_ds:
+            save_batch(x, y, labels)
+            return
             print("X batch of ", x.shape, " Has memory of ", getsize(np.array(x)), "MB")
 
 
@@ -994,6 +1010,25 @@ def getsize(obj):
                 need_referents.append(obj)
         objects = get_referents(*need_referents)
     return size * 0.000001
+
+
+def save_batch(x, y, labels):
+    y, embed_preds, signal_percent, start_s, rec_id = y
+    print("Y labels ", y)
+    index = 0
+    for spec, y_label in zip(x, y):
+        spec_lbls = []
+        for i, y_i in enumerate(y_label):
+            print("at ", i, " have ", y_i)
+            if y_i == 1:
+                spec_lbls.append(labels[i])
+        print(spec_lbls)
+        spec_lbls = "-".join(spec_lbls)
+        start = start_s[index]
+        rec = rec_id[index].numpy().decode()
+        plot_mel(spec[:, :, 0], f"specs/{spec_lbls}-{rec}-{start}")
+        index += 1
+    return
 
 
 def show_batch(image_batch, label_batch, species_batch, labels, species):
@@ -1065,8 +1100,10 @@ def plot_mfcc(mfccs, ax):
     img = librosa.display.specshow(mfccs.numpy(), x_axis="time", ax=ax)
 
 
-def plot_mel(mel, ax):
+def plot_mel(mel, filename):
     # power = librosa.db_to_power(mel.numpy())
+    fig = plt.figure(figsize=(10, 10))
+    ax = plt.subplot(1, 1, 1)
     img = librosa.display.specshow(
         mel.numpy(),
         x_axis="time",
@@ -1077,6 +1114,12 @@ def plot_mel(mel, ax):
         ax=ax,
         hop_length=201,
     )
+    fig.colorbar(img, ax=ax, format="%+2.f dB")
+
+    # plt.show()
+    plt.savefig(f"{filename}.png", format="png")
+    plt.clf()
+    plt.close()
 
 
 def plot_spec(spec, ax):
