@@ -36,8 +36,14 @@ from tfdataset import get_dataset
 import soundfile as sf
 import matplotlib
 from custommels import mel_spec
-from denoisetest import signal_noise, space_signals, signal_noise_data
-from plot_utils import plot_mel, plot_mel_signals
+from denoisetest import (
+    signal_noise,
+    space_signals,
+    signal_noise_data,
+    signals_to_tracks,
+    butter_bandpass_filter,
+)
+from plot_utils import plot_mel, plot_mel_signals, plot_spec
 import matplotlib.patches as patches
 import tensorflow_hub as hub
 import csv
@@ -60,7 +66,7 @@ def load_recording(file, resample=48000):
 
 
 def preprocess_file_signals(file, seg_length, stride, hop_length, mean_sub, use_mfcc):
-    signals, noise = signal_noise(file)
+    signals, noise, _, _ = signal_noise(file)
     # signals = space_signals(signals)
     frames, sr = load_recording(file)
     mels = []
@@ -218,8 +224,182 @@ def show_signals(file):
 #     return x_split
 
 
+def load_samples(
+    frames,
+    sr,
+    tracks,
+    segment_length,
+    stride,
+    hop_length=281,
+    mean_sub=False,
+    use_mfcc=False,
+    mel_break=1000,
+    htk=True,
+    n_mels=160,
+    fmin=50,
+    fmax=11000,
+    channels=1,
+    power=1,
+    db_scale=False,
+):
+    logging.info(
+        "Loading samples with length %s stride %s hop length %s and mean_sub %s mfcc %s break %s htk %s n mels %s fmin %s fmax %s",
+        segment_length,
+        stride,
+        hop_length,
+        mean_sub,
+        use_mfcc,
+        mel_break,
+        htk,
+        n_mels,
+        fmin,
+        fmax,
+    )
+    mels = []
+    i = 0
+    n_fft = sr // 10
+    # hop_length = 640  # feature frame rate of 75
+
+    sample_size = int(sr * segment_length)
+    jumps_per_stride = int(sr * stride)
+    length = len(frames) / sr
+    end = segment_length
+    mel_samples = []
+    for t in tracks:
+        show_spec = True
+        track_data = []
+        start = t.start
+        end = start + segment_length
+        end = min(end, t.end)
+        sr_start = int(start * sr)
+        sr_end = min(int(end * sr), sr_start + sample_size)
+        while True:
+            data = frames[sr_start:sr_end]
+            if len(data) != sample_size:
+                data = np.pad(data, (0, sample_size - len(data)))
+            spect = get_spect(
+                data,
+                sr,
+                hop_length,
+                mean_sub,
+                use_mfcc,
+                mel_break,
+                htk,
+                n_mels,
+                fmin,
+                fmax,
+                n_fft,
+                power,
+                db_scale,
+                channels,
+                low_pass=t.freq_start,
+                high_pass=t.freq_end,
+                show_spec=show_spec,
+            )
+            if show_spec:
+                print("Showing spec for ", t)
+            show_spec = False
+
+            track_data.append(spect)
+            start = start + stride
+            end = start + segment_length
+            sr_start = int(start * sr)
+            sr_end = min(int(end * sr), sr_start + sample_size)
+            # always take 1 sample
+            if end > t.end:
+                break
+        mel_samples.append(track_data)
+    return mel_samples
+
+
+def get_spect(
+    data,
+    sr,
+    hop_length,
+    mean_sub,
+    use_mfcc,
+    mel_break,
+    htk,
+    n_mels,
+    fmin,
+    fmax,
+    n_fft,
+    power,
+    db_scale,
+    channels=1,
+    low_pass=None,
+    high_pass=None,
+    show_spec=False,
+):
+    data = data.copy()
+    if not htk:
+        mel = librosa.feature.melspectrogram(
+            y=data,
+            sr=sr,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            fmin=50,
+            fmax=11000,
+            n_mels=n_mels,
+        )
+    else:
+        data = butter_bandpass_filter(data, low_pass, high_pass, sr, order=1)
+
+        # data = bandpassed + noise
+
+        # bandpassed = data
+        spectogram = np.abs(librosa.stft(data, n_fft=n_fft, hop_length=hop_length))
+        # if show_spec:
+        # plot_spec(spectogram)
+        # bins = 1 + n_fft / 2
+        # max_f = sr / 2
+        # gap = max_f / bins
+        # if low_pass is not None:
+        #     min_bin = low_pass // gap
+        #     spectogram[: int(min_bin)] = 0
+        #
+        # if high_pass is not None:
+        #     max_bin = high_pass // gap
+        #     spectogram[int(max_bin) :] = 0
+        mel = mel_spec(
+            spectogram,
+            sr,
+            n_fft,
+            hop_length,
+            n_mels,
+            fmin,
+            fmax,
+            mel_break,
+            power=power,
+        )
+    if db_scale:
+        mel = librosa.power_to_db(mel, ref=np.max)
+    mel = tf.expand_dims(mel, axis=2)
+
+    if use_mfcc:
+        mfcc = librosa.feature.mfcc(
+            y=data,
+            sr=sr,
+            hop_length=hop_length,
+            htk=True,
+            fmin=50,
+            fmax=11000,
+            n_mels=80,
+        )
+        mfcc = tf.image.resize_with_pad(mfcc, *mel.shape)
+        mel = tf.concat((mel, mfcc), axis=0)
+    # end = start + sample_size
+    if mean_sub:
+        mel_m = tf.reduce_mean(mel, axis=1)
+        mel_m = tf.expand_dims(mel_m, axis=1)
+        mel = mel - mel_m
+    if channels > 1:
+        mel = tf.repeat(mel, channels, axis=2)
+    return mel
+
+
 def preprocess_file(
-    file, seg_length, stride, hop_length, mean_sub, use_mfcc, break_freq, n_mels
+    tracks, file, seg_length, stride, hop_length, mean_sub, use_mfcc, break_freq, n_mels
 ):
     frames, sr = load_recording(file)
     # spits = split_sound(frames[: sr * 3])
@@ -428,6 +608,8 @@ def chirp_embeddings(file, stride=5):
 def main():
     init_logging()
     args = parse_args()
+    signal, noise, spectogram, _ = signal_noise(args.file)
+    tracks = signals_to_tracks(signal)
     # get_speech_score(args.file)
     # show_signals(args.file)
     # return
@@ -461,7 +643,7 @@ def main():
     # return
     # model = tf.keras.models.load_model(str(load_model))
 
-    model.load_weights(load_model / "val_binary_accuracy").expect_partial()
+    # model.load_weights(load_model / "val_binary_accuracy").expect_partial()
     # model.save(load_model / "frozen_model")
     # 1 / 0
     with open(load_model / "metadata.txt", "r") as f:
@@ -541,186 +723,58 @@ def main():
         elif model_name == "yamn-embeddings":
             data, length = yamn_embeddings(file, segment_stride)
         else:
-            data, length = preprocess_file(
-                file,
+            frames, sr = load_recording(file)
+
+            data = load_samples(
+                frames,
+                sr,
+                tracks,
                 segment_length,
                 segment_stride,
                 hop_length,
                 mean_sub,
-                use_mfcc,
-                break_freq=break_freq,
+                mel_break=break_freq,
                 n_mels=n_mels,
             )
         data = np.array(data)
 
-    print("data is", data.shape, data.dtype, np.amax(data))
-    predictions = model.predict(np.array(data))
-    # other_pred = mid_model(np.array(data), training=False)
-    # print(other_pred.shape)
-    tracks = []
     start = 0
-    active_tracks = {}
-    for i, prediction in enumerate(predictions):
-        # other = other_pred[i]
-        print(
-            np.sum(prediction),
-            "at",
-            start,
-            "-",
-            start + segment_length,
-            np.round(prediction * 100),
-        )
-        # other_s = start
-        # sub_labels = []
-        # # think of the times interms of stft
-        # # win length / sr
-        #
-        # downscale = 513 / 45.0
-        # win_s = downscale * 4800 / 48000
-        # hop_s = downscale * 281 / 48000
-        # print("over lap is ", win_s - hop_s)
-        # for other_i, other in enumerate(other[0]):
-        #     new_labels = []
-        #     for l_i, p in enumerate(other):
-        #         if p >= prob_thresh:
-        #             label = labels[l_i]
-        #             new_labels.append(label)
-        #     for sub in sub_labels:
-        #         if sub not in new_labels:
-        #             print(
-        #                 sub,
-        #                 " end ",
-        #                 round(other_s, 1),
-        #             )
-        #     if len(new_labels) > 0:
-        #         for l in new_labels:
-        #             if l not in sub_labels:
-        #                 print(
-        #                     l,
-        #                     " start at ",
-        #                     round(other_s, 1),
-        #                 )
-        #     print(
-        #         other_i,
-        #         "at",
-        #         round(other_s, 1),
-        #         "-",
-        #         round(other_s + win_s, 1),
-        #         np.round(other * 100),
-        #         new_labels,
-        #     )
-        #     sub_labels = new_labels
-        #     other_s += hop_s
 
-        if start + segment_length > length:
-            print("final one")
-            start = length - segment_length
+    for d, t in zip(data, tracks):
+        print("Predicting", t, " samples are ", len(data))
+        predictions = model.predict(np.array(d))
+        for p in predictions:
+            print("For track", t, " have ", np.round(100 * p))
+        prediction = np.mean(predictions, axis=0)
+        print("Prediction is", np.round(100 * prediction))
+        result = ModelResult(model_name)
+        t.predictions.append(result)
+        max_p = None
 
-        results = []
-        track_labels = []
-        if multi_label:
-            # print("doing multi", prediction * 100)
-            for l_i, p in enumerate(prediction):
-                if p >= prob_thresh:
-                    label = labels[l_i]
-                    results.append((p, label))
-                    track_labels.append(label)
-        else:
-            best_i = np.argmax(prediction)
-            best_p = prediction[best_i]
-            if best_p >= prob_thresh:
-                label = labels[best_i]
-                results.append((best_p, label))
-                track_labels.append[label]
-
-        specific_bird = any(
-            [l for l in track_labels if l not in ["human", "noise", "bird"]]
-        )
-        # remove tracks that have ended
-        existing_tracks = list(active_tracks.keys())
-        # print("Current", track_labels, "active", existing_tracks)
-        for existing in existing_tracks:
-            track = active_tracks[existing]
-            if track.label not in track_labels or (
-                track.label == "bird" and specific_bird
-            ):
-                # if specific_bird:
-                # pass
-                # track.end = start
-                # track.end = start + CALL_LENGTH
-                track.end = min(start + segment_length - segment_stride, track.end)
-                if track.end > length:
-                    track.end = length
-
-                # else:
-                # track.end = track.end - segment_length / 2
-                # dont do this straight away as if we have a small stride.
-                # we could have more bird calls at later times but within track
-                if start >= track.end:
-                    del active_tracks[track.label]
-                # print("removed", track.label)
-
-        for r in results:
-            label = r[1]
-
-            if specific_bird and label == "bird":
-                continue
-            track = active_tracks.get(label, None)
-            if track is None:
-                t_s = start
-                t_e = start + segment_length
-                if start > 0:
-                    t_s = start - segment_stride + segment_length - CALL_LENGTH
-
-                if (i + 1) < len(predictions):
-                    t_e = start + segment_stride + CALL_LENGTH
-                t_e = max(t_s, t_e)
-                # track = Track(label, t_s, t_e, r[0])
-                track = Track(label, start, start + segment_length, r[0])
-                track.end = min(track.end, length)
-                print("Creating track", label, start, track.end)
-                tracks.append(track)
-                active_tracks[label] = track
-            else:
-                # track.end = start + segment_stride + CALL_LENGTH
-                track.end = start + segment_length - segment_stride
-
-                if track.end > length:
-                    track.end = length
-                print("Ending track", track.start, track.end, track.label)
-                track.confidences.append(r[0])
-            # else:
-
-        # elif track is not None:
-        #     track.end = start + (segment_length / 2 - segment_stride)
-        #     tracks.append((track))
-        #     track = None
-
-        start += segment_stride
+        for i, p in enumerate(prediction):
+            if max_p is None or p > max_p[1]:
+                max_p = (i, p)
+            print("probably of ", labels[i], round(100 * p))
+            if p >= prob_thresh:
+                result.labels.append(labels[i])
+                result.confidences.append(round(p * 100))
+        if len(result.labels) == 0:
+            # use max prediction
+            result.raw_tag = labels[max_p[0]]
+            result.raw_confidence = round(max_p[1] * 100)
     for t in tracks:
-        # new_start = t.start
-        # new_end = t.end
-        # if t.start > 0:
-        #     # since previous prediction wasnt this
-        #     # we could say that t.start - segment_stride + segment_length doesn't contain this species
-        #     # or is mid call so for safety can add a 0.5 to it
-        #     #  i.e. start is 5 - 7.5
-        #     # 4.75 - 7.25 has no bird
-        #     # so probably start should be  #7.25 - 0.5 for safety
-        #     new_start = t.start - segment_stride + segment_length - 1
-        #     # same for end
-        #     # at t.end + 1 - segment _length no bird, which probably means
-        #     #  i.e end is 5 (predicted on 2.5 - 5) has bird
-        #     #  2.75 - 5.25 no bird
-        #     #  so probably should end at 2.5 + 0.5 for safety
-        # if t.end < length:
-        #     new_end = t.end - segment_length + segment_stride + 1
-
-        print(f"{t.start}-{t.end} have {t.label}")
+        print(
+            "Track",
+            t,
+            " has prediction",
+            t.predictions[0].labels,
+            t.predictions[0].confidences,
+            t.predictions[0].raw_tag,
+            t.predictions[0].raw_confidence,
+        )
     return
-    # print("cap data at ", len(data) * segment_stride + segment_length)
-    signals, noise = signal_noise(file)
-    print("Have ", len(signals), " possible signals")
+    print("Have ", len(signal), " possible signals")
+
     chirps = 0
     sorted_tracks = [
         t for t in tracks if t.label in ["bird", "kiwi", "whistler", "morepork"]
@@ -842,6 +896,26 @@ def class_names_from_csv(csv_file):
     ]
     class_names = class_names[1:]  # Skip CSV header
     return class_names
+
+
+class ModelResult:
+    def __init__(self, model):
+        self.model = model
+        self.labels = []
+        self.confidences = []
+        self.raw_tag = None
+        self.raw_confidence = None
+
+    def get_meta(self):
+        meta = {}
+        meta["model"] = self.model
+        meta["species"] = self.labels
+        meta["likelihood"] = self.confidences
+        # used when no actual tag
+        if self.raw_tag is not None:
+            meta["raw_tag"] = self.raw_tag
+            meta["raw_confidence"] = self.raw_confidence
+        return meta
 
 
 if __name__ == "__main__":

@@ -66,13 +66,14 @@ def load_recording(file, resample=48000):
 def signal_noise(file, hop_length=281):
     frames, sr = load_recording(file)
     end = get_end(frames, sr)
+    print("ENDS at ", end, " with sr ", sr)
     frames = frames[: int(sr * end)]
     n_fft = sr // 10
-    # frames = frames[: sr * 3]
-    spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
-    # print(spectogram.shape)
-    # plot_spec(spectogram)
-    return signal_noise_data(spectogram, sr, hop_length=hop_length, n_fft=n_fft)
+    spectogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
+    signals, noise = signal_noise_data(
+        np.abs(spectogram), sr, hop_length=hop_length, n_fft=n_fft
+    )
+    return signals, noise, spectogram, frames
 
 
 def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
@@ -155,7 +156,7 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
         end = (s[0] + s[2]) * 281 / sr
         noise.append((start, end, freq_range[0], freq_range[1]))
 
-    return signals, noise, spectogram
+    return signals, noise
 
 
 def space_signals(signals, spacing=0.1):
@@ -377,16 +378,7 @@ def merge_signals(signals):
     return signals, something_merged
 
 
-def main():
-    init_logging()
-    args = parse_args()
-    # mix_file(args.file, args.mix)
-    signal, noise, spectogram = signal_noise(args.file)
-    # unique_signals = []
-    # signal = [s for s in signal if s.start > 25 and s.end < 48]
-    # plot_mel_signals(spectogram, signal)
-    # unique_signals, merged = merge_signals(signal)
-    unique_signals = signal
+def signals_to_tracks(unique_signals):
     count = 0
 
     # return
@@ -394,8 +386,6 @@ def main():
     while merged:
         count += 1
         unique_signals, merged = merge_signals(unique_signals)
-    for s in unique_signals:
-        print("Have", s)
     min_length = 0.5
     to_delete = []
     # for s in unique_signals:
@@ -427,10 +417,60 @@ def main():
             # to_delete.append(s2)
     for s in to_delete:
         unique_signals.remove(s)
-    for s in unique_signals:
-        print("Finsl s is", s)
+    return unique_signals
 
-    plot_mel_signals(spectogram, unique_signals)
+
+def tracks_to_audio(tracks, spectogram, frames, sr=48000, hop_length=281):
+    import soundfile as sf
+
+    n_fft = sr // 10
+    for t in tracks:
+        print(
+            "writing out tracks",
+            t.start,
+            t.end,
+            t.freq_start,
+            t.freq_end,
+        )
+        start = t.start * sr
+        end = t.end * sr
+        data = frames[int(start) : int(end)]
+        start = start / hop_length
+        end = end / hop_length
+        end = min(spectogram.shape[1], end)
+        start = int(start)
+        end = int(end)
+        spect_data = spectogram[:, start:end].copy()
+        low_pass = t.freq_start
+        high_pass = t.freq_end
+        bins = 1 + n_fft / 2
+        max_f = sr / 2
+        gap = max_f / bins
+        bandpassed = butter_bandpass_filter(data, low_pass, high_pass, sr, order=2)
+
+        # if low_pass is not None:
+        #     min_bin = low_pass // gap
+        #     spect_data[: int(min_bin)] = 0
+        #
+        # if high_pass is not None:
+        #     max_bin = high_pass // gap
+        #     spect_data[int(max_bin) :] = 0
+
+        # y_data = librosa.istft(spect_data, hop_length=281, n_fft=n_fft)
+        # y_inv = librosa.griffinlim(S)
+        sf.write(f"{t.start}-{t.end}-{t.freq_start}-{t.freq_end}.wav", bandpassed, sr)
+        # 1 / 0
+
+
+def main():
+    init_logging()
+    args = parse_args()
+
+    # mix_file(args.file, args.mix)
+    signal, noise, spectogram, frames = signal_noise(args.file)
+    tracks = signals_to_tracks(signal)
+    tracks_to_audio(tracks, spectogram, frames)
+    plot_mel_signals(np.abs(spectogram), tracks)
     return
     process(args.file)
     # process_signal(args.file)
@@ -480,6 +520,7 @@ class Track:
         self.label = label
         self.end = end
         self.confidences = [confidence]
+        self.predictions = []
 
     def get_meta(self):
         meta = {}
@@ -563,6 +604,7 @@ class Signal:
 
         self.mel_freq_start = mel_freq(freq_start)
         self.mel_freq_end = mel_freq(freq_end)
+        self.predictions = []
 
     def time_overlap(self, other):
         return segment_overlap(
@@ -611,6 +653,29 @@ class Signal:
 
     def __str__(self):
         return f"Signal: {self.start}-{self.end}  mel: {self.mel_freq_start} {self.mel_freq_end}"
+
+
+from scipy.signal import butter, sosfilt, sosfreqz, freqs
+
+
+def butter_bandpass(lowcut, highcut, fs, order=5):
+    nyq = 0.5 * fs
+    btype = "lowpass"
+    freqs = []
+    if lowcut > 0:
+        btype = "bandpass"
+        low = lowcut / nyq
+        freqs.append(low)
+    high = highcut / nyq
+    freqs.append(high)
+    sos = butter(order, freqs, analog=False, btype=btype, output="sos")
+    return sos
+
+
+def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
+    sos = butter_bandpass(lowcut, highcut, fs, order=order)
+    filtered = sosfilt(sos, data)
+    return filtered
 
 
 if __name__ == "__main__":
