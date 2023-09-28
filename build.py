@@ -640,8 +640,8 @@ def parse_args():
     )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
-    parser.add_argument("-m", "--mels", default=120, help="Number of mels to use")
-    parser.add_argument("-b", "--break-freq", default=1750, help="Break freq to use")
+    parser.add_argument("-m", "--mels", default=160, help="Number of mels to use")
+    parser.add_argument("-b", "--break-freq", default=1000, help="Break freq to use")
     parser.add_argument(
         "--slaney", action="count", help="Use slaney or htk (htk for custom break freq)"
     )
@@ -652,6 +652,12 @@ def parse_args():
     parser.add_argument("--stride", default=1, help="Segment stride")
     parser.add_argument(
         "out_dir", default="/data/audio-data", help="Directory to place files in"
+    )
+    parser.add_argument(
+        "--filter-freq",
+        default=False,
+        action="count",
+        help="Filter frequency of tracks",
     )
     args = parser.parse_args()
     return args

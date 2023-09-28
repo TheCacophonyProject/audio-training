@@ -482,7 +482,7 @@ def get_dataset(filenames, labels, **args):
     # dataset = dataset.take(epoch_size)
     batch_size = args.get("batch_size", None)
 
-    dataset = dataset.cache()
+    # dataset = dataset.cache()
     if args.get("shuffle", True):
         dataset = dataset.shuffle(
             4096, reshuffle_each_iteration=args.get("reshuffle", True)

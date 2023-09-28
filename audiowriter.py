@@ -93,6 +93,12 @@ def create_tf_example(sample, labels):
         "audio/rec_id": tfrecord_util.bytes_feature(str(sample.rec_id).encode("utf8")),
         "audio/track_id": tfrecord_util.bytes_feature(track_ids.encode("utf8")),
         "audio/sample_rate": tfrecord_util.int64_feature(sample.sr),
+        "audio/min_freq": tfrecord_util.int64_feature(
+            -1 if sample.min_freq is None else sample.min_freq
+        ),
+        "audio/max_freq": tfrecord_util.int64_feature(
+            -1 if sample.max_freq is None else sample.max_freq
+        ),
         "audio/length": tfrecord_util.float_feature(sample.length),
         "audio/signal_percent": tfrecord_util.float_feature(sample.signal_percent),
         "audio/raw_length": tfrecord_util.float_feature(data.raw_length),
@@ -171,28 +177,31 @@ model = None
 embedding_model = None
 embedding_labels = None
 
+DO_EMBEDDING = False
 
-def worker_init(c, l, d):
-    global config
-    global labels
-    global base_dir
-    global embedding_model
-    global embedding_labels
-    labels = l
-    config = c
-    base_dir = d
-    assign_writer()
-
-    global model
-    global embedding_model
-    # Load the model.
-    model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
-    embedding_model = tf.keras.models.load_model("./embedding_model")
-    meta_file = "./embedding_model/metadata.txt"
-    with open(str(meta_file), "r") as f:
-        meta_data = json.load(f)
-
-    embedding_labels = meta_data.get("labels")
+#
+# def worker_init(c, l, d):
+#     global config
+#     global labels
+#     global base_dir
+#     labels = l
+#     config = c
+#     base_dir = d
+#     assign_writer()
+#
+#     if DO_EMBEDDING:
+#         global embedding_model
+#         global embedding_labels
+#         global model
+#         global embedding_model
+#         # Load the model.
+#         model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
+#         embedding_model = tf.keras.models.load_model("./embedding_model")
+#         meta_file = "./embedding_model/metadata.txt"
+#         with open(str(meta_file), "r") as f:
+#             meta_data = json.load(f)
+#
+#         embedding_labels = meta_data.get("labels")
 
 
 def process_job(queue, labels, config, base_dir):
@@ -200,14 +209,12 @@ def process_job(queue, labels, config, base_dir):
 
     # Load the model.
     model = None
+
     embedding_model = None
     embedding_labels = None
-    model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
-    # embedding_model = tf.keras.models.load_model("./embedding_model")
-    # meta_file = "./embedding_model/metadata.txt"
-    # with open(str(meta_file), "r") as f:
-    #     meta_data = json.load(f)
-    # embedding_labels = meta_data.get("labels")
+    if DO_EMBEDDING:
+        model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
+
     pid = os.getpid()
 
     writer_i = 1
@@ -233,6 +240,7 @@ def process_job(queue, labels, config, base_dir):
                     base_dir,
                     config,
                     embedding_labels,
+                    config.filter_frequency,
                 )
                 del rec
                 if saved > 500:
@@ -269,7 +277,16 @@ def assign_writer():
     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
 
 
-def save_data(rec, writer, model, embedding_model, base_dir, config, embedding_labels):
+def save_data(
+    rec,
+    writer,
+    model,
+    embedding_model,
+    base_dir,
+    config,
+    embedding_labels,
+    filter_frequency,
+):
     resample = 48000
     try:
         aro = audioread.ffdec.FFmpegAudioFile(rec.filename)
@@ -283,7 +300,8 @@ def save_data(rec, writer, model, embedding_model, base_dir, config, embedding_l
             pass
         return 0
     try:
-        frames32 = librosa.resample(orig_frames, orig_sr=sr, target_sr=32000)
+        if DO_EMBEDDING:
+            frames32 = librosa.resample(orig_frames, orig_sr=sr, target_sr=32000)
 
         # hack to handle getting new samples without knowing length until load
         if resample is not None and resample != sr:
@@ -299,36 +317,40 @@ def save_data(rec, writer, model, embedding_model, base_dir, config, embedding_l
                 )
                 t.end = len(frames) / sr
         # rec.tracks[0].end = len0(frames) / sr
-        rec.load_samples(config.segment_length, config.segment_stride)
+        rec.load_samples(
+            config.segment_length,
+            config.segment_stride,
+            do_overlap=not config.filter_frequency,
+        )
         samples = rec.samples
         rec.sample_rate = resample
         for i, sample in enumerate(samples):
             try:
-                spec = load_data(config, sample.start, frames, sr, end=sample.end)
-                start = sample.start * 32000
-                start = round(start)
-                end = round(sample.end * 32000)
-                if (end - start) > 32000 * config.segment_length:
-                    end = start + 32000 * config.segment_length
-                data = frames32[start:end]
-                data = np.pad(data, (0, 32000 * 5 - len(data)))
-                logits, embeddings = model.infer_tf(data[np.newaxis, :])
-                sample.logits = logits.numpy()[0]
-                sample.embeddings = embeddings.numpy()[0]
-                # predicted = embedding_model.predict(embeddings.numpy())[0]
-                # embed_labels = []
-                # for p_i, p in enumerate(predicted):
-                #     if p > 0.7:
-                #         embed_labels.append(embedding_labels[p_i])
-                # sample.predicted_labels = embed_labels
-                # logging.info(
-                #     "Predicted %s vs actual %s start %s-%s fiel %s",
-                #     sample.predicted_labels,
-                #     sample.tags,
-                #     sample.start,
-                #     sample.end,
-                #     rec.filename,
-                # )
+                min_freq = None
+                max_freq = None
+                if filter_frequency:
+                    min_freq = sample.min_freq
+                    max_freq = sample.max_freq
+                spec = load_data(
+                    config,
+                    sample.start,
+                    frames,
+                    sr,
+                    end=sample.end,
+                    min_freq=min_freq,
+                    max_freq=max_freq,
+                )
+                if DO_EMBEDDING:
+                    start = sample.start * 32000
+                    start = round(start)
+                    end = round(sample.end * 32000)
+                    if (end - start) > 32000 * config.segment_length:
+                        end = start + 32000 * config.segment_length
+                    data = frames32[start:end]
+                    data = np.pad(data, (0, 32000 * 5 - len(data)))
+                    logits, embeddings = model.infer_tf(data[np.newaxis, :])
+                    sample.logits = logits.numpy()[0]
+                    sample.embeddings = embeddings.numpy()[0]
                 logging.info("Mem %s", psutil.virtual_memory()[2])
                 # print("mel is", mel.shape)
                 # print("adjusted start is", sample.start, " becomes", sample.start - start)
@@ -355,108 +377,6 @@ def save_data(rec, writer, model, embedding_model, base_dir, config, embedding_l
 
     logging.info("Total Saved %s", saved)
     return saved
-
-
-def get_data(rec):
-    global writer
-    resample = 48000
-    tf_examples = []
-    try:
-        aro = audioread.ffdec.FFmpegAudioFile(rec.filename)
-        orig_frames, sr = librosa.load(aro, sr=None)
-        aro.close()
-    except:
-        logging.error("Error loading rec %s ", rec.filename, exc_info=True)
-        try:
-            aro.close()
-        except:
-            pass
-        return None
-    try:
-        frames32 = librosa.resample(orig_frames, orig_sr=sr, target_sr=32000)
-
-        # hack to handle getting new samples without knowing length until load
-        if resample is not None and resample != sr:
-            frames = librosa.resample(orig_frames, orig_sr=sr, target_sr=resample)
-            sr = resample
-        else:
-            frames = orig_frames
-        orig_frames = None
-        for t in rec.tracks:
-            if t.end is None:
-                logging.info(
-                    "Track end is none so setting to rec length %s", len(frames) / sr
-                )
-                t.end = len(frames) / sr
-        # rec.tracks[0].end = len0(frames) / sr
-        rec.load_samples(config.segment_length, config.segment_stride)
-        samples = rec.samples
-        rec.sample_rate = resample
-        for i, sample in enumerate(samples):
-            try:
-                spec = load_data(config, sample.start, frames, sr, end=sample.end)
-                start = sample.start * 32000
-                start = round(start)
-                end = round(sample.end * 32000)
-                if (end - start) > 32000 * config.segment_length:
-                    end = start + 32000 * config.segment_length
-                data = frames32[start:end]
-                data = np.pad(data, (0, 32000 * 5 - len(data)))
-                logits, embeddings = model.infer_tf(data[np.newaxis, :])
-                sample.logits = logits.numpy()[0]
-                sample.embeddings = embeddings.numpy()[0]
-                print(embeddings.numpy().shape)
-                predicted = embedding_model.predict(embeddings.numpy())[0]
-                embed_labels = []
-                for p_i, p in enumerate(predicted):
-                    if p > 0.7:
-                        embed_labels.append(embedding_labels[p_i])
-                sample.predicted_labels = embed_labels
-                logging.info(
-                    "Predicted %s vs actual %s start %s-%s fiel %s",
-                    sample.predicted_labels,
-                    sample.tags,
-                    sample.start,
-                    sample.end,
-                    rec.filename,
-                )
-                logging.info("Mem %s", psutil.virtual_memory()[2])
-                # print("mel is", mel.shape)
-                # print("adjusted start is", sample.start, " becomes", sample.start - start)
-                if spec is None:
-                    logging.warn("error loading spec for %s", rec.id)
-                    continue
-                # data[i] = spec
-                sample.spectogram_data = spec
-                sample.sr = resample
-            except:
-                logging.error("Error %s ", rec.id, exc_info=True)
-            tf_example, num_annotations_skipped = create_tf_example(sample, labels)
-            writer.write(tf_example.SerializeToString())
-            del sample
-        global saved
-        saved += len(samples)
-        del samples
-        del rec
-        del frames
-        del frames32
-        del orig_frames
-    except:
-        logging.error("Got error %s", rec.filename, exc_info=True)
-        print("ERRR return None")
-        return None
-
-    logging.info("Total Saved %s", saved)
-    if saved > 200:
-        assign_writer()
-    import gc
-
-    logging.info("P Mem %s", psutil.virtual_memory()[2])
-
-    gc.collect()
-    logging.info("Colelct Mem %s", psutil.virtual_memory()[2])
-
-    # return tf_examples
 
 
 def save_embeddings(rec):
@@ -557,31 +477,13 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
         samples,
         key=lambda sample: sample.id,
     )
-    # keys = list(samples.keys())
     np.random.shuffle(samples)
 
-    total_num_annotations_skipped = 0
     num_labels = len(labels)
-    # pool = multiprocessing.Pool(4)
     logging.info("writing to output path: %s for %s samples", output_path, len(samples))
-    writers = []
-    lbl_counts = [0] * num_labels
-    # lbl_counts[l] = 0
     logging.info("labels are %s", labels)
-    # options = tf.io.TFRecordOptions(compression_type="GZIP")
-    #
-    # writers = []
-    # for i in range(num_shards):
-    #     name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
-    #     writers.append(tf.io.TFRecordWriter(str(output_path / name), options=options))
-
     num_processes = 8
-    load_first = num_processes * 100
     total_recs = len(samples)
-    total_saved_recs = 0
-    resc_per_file = 1000
-    writer_i = 0
-    process_saved = 0
     try:
         job_queue = Queue()
         processes = []
@@ -607,60 +509,15 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     process.terminate()
                 exit()
         logging.info("Saved %s", len(samples))
-        #
-        # with Pool(
-        #     initializer=worker_init,
-        #     initargs=(
-        #         dataset.config,
-        #         labels,
-        #         output_path,
-        #     ),
-        #     processes=processes,
-        # ) as pool:
-        # count = 0
-        # while len(samples) > 0:
-        #     local_set = samples[:load_first]
-        #     samples = samples[load_first:]
-        #     loaded = []
-        #     pool_data = []
-        #     samples_by_rec = {}
-        #     #
-        #     # for sample in local_set:
-        #     #     if sample.rec_id not in samples_by_rec:
-        #     #         samples_by_rec[sample.rec_id] = [sample]
-        #     #     else:
-        #     #         samples_by_rec[sample.rec_id].append(sample)
-        #     for rec in local_set:
-        #         # sample.rec.rec_data = None
-        #         job_queue.append(rec)
-        #     loaded = []
-        #     res = [0 for data in pool.imap_unordered(get_data, pool_data, chunksize=2)]
-        #     saved_s = len(loaded)
-        #     total_saved_recs += len(local_set)
-        #
-        #     del loaded
-        #     loaded = None
-        #     logging.info(
-        #         "Saved %s recs, total saved %s/ %s,  %s samples memory %s",
-        #         len(local_set),
-        #         total_saved_recs,
-        #         total_recs,
-        #         saved_s,
-        #         psutil.virtual_memory()[2],
-        #     )
-        # empty = [None] * processes
-        # [0 for data in pool.imap_unordered(close_writer, empty, chunksize=1)]
+
     except:
         logging.error("Error saving track info", exc_info=True)
-    for writer in writers:
-        writer.close()
+
     for r in dataset.recs:
         r.rec_data = None
         for s in r.samples:
             s.spectogram_data = None
-    logging.info(
-        "Finished writing, skipped %d annotations.", total_num_annotations_skipped
-    )
+    logging.info("Finished writing")
 
 
 import sys

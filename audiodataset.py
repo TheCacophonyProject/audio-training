@@ -57,11 +57,12 @@ class Config:
         self.segment_length = args.get("seg_length", 3)
         self.segment_stride = args.get("stride", 1)
         self.hop_length = args.get("hop_length", 281)
-        self.break_freq = args.get("break_freq", 1750)
+        self.break_freq = args.get("break_freq", 1000)
         self.htk = not args.get("slaney", False)
         self.fmin = args.get("fmin", 50)
         self.fmax = args.get("fmax", 11000)
-        self.n_mels = args.get("mels", 120)
+        self.n_mels = args.get("mels", 160)
+        self.filter_frequency = args.get("filter_freq", False)
 
 
 class AudioDataset:
@@ -268,7 +269,17 @@ def get_samples(rec_frames, sample):
 
 class AudioSample:
     def __init__(
-        self, rec, tags, start, end, track_ids, group_id, signal_percent, bin_id=None
+        self,
+        rec,
+        tags,
+        start,
+        end,
+        track_ids,
+        group_id,
+        signal_percent,
+        bin_id=None,
+        min_freq=None,
+        max_freq=None,
     ):
         self.rec_id = rec.id
         self.tags = list(tags)
@@ -283,6 +294,8 @@ class AudioSample:
         self.signal_percent = signal_percent
         self.group = group_id
         self.predicted_labels = None
+        self.min_freq = min_freq
+        self.max_freq = max_freq
         if bin_id is None:
             self.bin_id = f"{self.rec_id}"
         else:
@@ -316,7 +329,7 @@ class Recording:
 
         self.tracks = []
         self.human_tags = set()
-        for track in metadata.get("tracks", []):
+        for track in metadata.get("Tracks", []):
             t = Track(track, self.filename, self.id, self)
             if filter_track(t):
                 continue
@@ -467,7 +480,7 @@ class Recording:
         # for s in self.samples:
         # print(self.id, "Have sample", s.start, s.end, s.tags, self.filename)
 
-    def load_samples(self, segment_length, segment_stride):
+    def load_samples(self, segment_length, segment_stride, do_overlap=True):
         self.samples = []
         global SAMPLE_GROUP_ID
         SAMPLE_GROUP_ID += 1
@@ -486,46 +499,46 @@ class Recording:
             end = min(end, track.end)
             # print("checking", track.start, "-", track.end, track.human_tags)
             while True:
+                min_freq = track.min_freq
+                max_freq = track.max_freq
                 labels = set(track.human_tags)
                 other_tracks = []
-                for other_track in sorted_tracks:
-                    if track == other_track:
-                        continue
+                if do_overlap:
+                    for other_track in sorted_tracks:
+                        if track == other_track:
+                            continue
 
-                    # starts in this sample
-                    if other_track.start > end:
-                        break
-                    overlap = (
-                        (end - start)
-                        + (other_track.length)
-                        - (max(end, other_track.end) - min(start, other_track.start))
-                    )
-                    min_overlap = min(0.9 * segment_length, other_track.length * 0.9)
-                    # print(
-                    #     "checking overlap",
-                    #     track.start,
-                    #     "-",
-                    #     track.end,
-                    #     " with other_",
-                    #     start,
-                    #     other_track.start,
-                    #     overlap,
-                    # )
-                    # enough overlap or we engulf the track
-                    if overlap >= min_overlap or (overlap >= other_track.length):
-                        # if t.start<= start and t.end <= end:
-                        # print(
-                        #     "adding overlapped track",
-                        #     other_track.start,
-                        #     overlap,
-                        #     other_track.length,
-                        #     min_overlap,
-                        # )
-                        other_tracks.append(other_track)
-                        labels = labels | other_track.human_tags
-                # print("new samples with tracks", other_tracks)
+                        # starts in this sample
+                        if other_track.start > end:
+                            break
+                        overlap = (
+                            (end - start)
+                            + (other_track.length)
+                            - (
+                                max(end, other_track.end)
+                                - min(start, other_track.start)
+                            )
+                        )
+                        min_overlap = min(
+                            0.9 * segment_length, other_track.length * 0.9
+                        )
+
+                        # enough overlap or we engulf the track
+                        if overlap >= min_overlap or (overlap >= other_track.length):
+                            other_tracks.append(other_track)
+                            labels = labels | other_track.human_tags
+                            if min_freq is not None:
+                                if other_track.min_freq is None:
+                                    min_freq = None
+                                else:
+                                    min_freq = min(other_track.min_freq, min_freq)
+                            if max_freq is not None:
+                                if other_track.max_freq is None:
+                                    max_freq = None
+                                else:
+                                    max_freq = max(other_track.max_freq, max_freq)
+
                 other_tracks.append(track)
-
                 self.samples.append(
                     AudioSample(
                         self,
@@ -536,6 +549,8 @@ class Recording:
                         SAMPLE_GROUP_ID,
                         track.signal_percent,
                         bin_id=bin_id,
+                        min_freq=min_freq,
+                        max_freq=max_freq,
                     )
                 )
                 start += segment_stride
@@ -581,31 +596,31 @@ class Recording:
     #         return False
     #     return True
 
-    def get_data(self, resample=None):
-        global SAMPLE_GROUP_ID
-        SAMPLE_GROUP_ID += 1
-
-        # 1 / 0
-        if self.rec_data is None:
-            loaded = self.load_recording(resample)
-            if not loaded:
-                return None
-        sr = self.sample_rate
-        frames = self.rec_data
-        for sample in self.samples:
-            spectogram, mel, mfcc, s_data = load_data(sample.start, frames, sr)
-            if spectogram is None:
-                print("error loading")
-                continue
-            sample.spectogram_data = SpectrogramData(
-                spectogram,
-                mel,
-                mfcc,
-                s_data.copy(),
-            )
-            sample.sr = sr
-
-        return self.samples
+    # def get_data(self, resample=None):
+    #     global SAMPLE_GROUP_ID
+    #     SAMPLE_GROUP_ID += 1
+    #
+    #     # 1 / 0
+    #     if self.rec_data is None:
+    #         loaded = self.load_recording(resample)
+    #         if not loaded:
+    #             return None
+    #     sr = self.sample_rate
+    #     frames = self.rec_data
+    #     for sample in self.samples:
+    #         spectogram, mel, mfcc, s_data = load_data(sample.start, frames, sr)
+    #         if spectogram is None:
+    #             print("error loading")
+    #             continue
+    #         sample.spectogram_data = SpectrogramData(
+    #             spectogram,
+    #             mel,
+    #             mfcc,
+    #             s_data.copy(),
+    #         )
+    #         sample.sr = sr
+    #
+    #     return self.samples
 
     @property
     def bin_id(self):
@@ -646,6 +661,8 @@ class Track:
         self.start = metadata["start"]
         self.end = metadata["end"]
         self.id = metadata.get("id")
+        self.min_freq = metadata.get("minFreq")
+        self.max_freq = metadata.get("maxFreq")
         self.automatic_tags = set()
         self.human_tags = set()
         self.automatic = metadata.get("automatic")
@@ -667,46 +684,47 @@ class Track:
             self.original_tags.add(t.original)
             self.human_tags.add(t.what)
 
-    def get_data(self, resample=None):
-        global SAMPLE_GROUP_ID
-        SAMPLE_GROUP_ID += 1
-
-        if self.rec.rec_data is None:
-            loaded = self.rec.load_recording(resample)
-            if not loaded:
-                return None
-
-        sr = self.rec.sample_rate
-        frames = self.rec.rec_data
-        if self.start is None:
-            self.start = 0
-        i = 0
-        start_s = self.start
-        samples = []
-        while (start_s + SEGMENT_LENGTH / 2) < self.end or i == 0:
-            spectogram, mel, mfcc, s_data = load_data(start_s, frames, sr)
-            if spectogram is None:
-                continue
-            sample = AudioSample(
-                self.rec,
-                self.human_tags,
-                start_s,
-                start_s + SEGMENT_LENGTH,
-                [self.id],
-                SAMPLE_GROUP_ID,
-            )
-            sample.spectogram_data = SpectrogramData(
-                spectogram,
-                mel,
-                mfcc,
-                s_data.copy(),
-            )
-            samples.append(sample)
-            print("Getting for ", start_s, self.end, i, self.end - start_s)
-            start_s += SEGMENT_STRIDE
-            print(mel.shape)
-            i += 1
-        return samples
+    #
+    # def get_data(self, resample=None):
+    #     global SAMPLE_GROUP_ID
+    #     SAMPLE_GROUP_ID += 1
+    #
+    #     if self.rec.rec_data is None:
+    #         loaded = self.rec.load_recording(resample)
+    #         if not loaded:
+    #             return None
+    #
+    #     sr = self.rec.sample_rate
+    #     frames = self.rec.rec_data
+    #     if self.start is None:
+    #         self.start = 0
+    #     i = 0
+    #     start_s = self.start
+    #     samples = []
+    #     while (start_s + SEGMENT_LENGTH / 2) < self.end or i == 0:
+    #         spectogram, mel, mfcc, s_data = load_data(start_s, frames, sr)
+    #         if spectogram is None:
+    #             continue
+    #         sample = AudioSample(
+    #             self.rec,
+    #             self.human_tags,
+    #             start_s,
+    #             start_s + SEGMENT_LENGTH,
+    #             [self.id],
+    #             SAMPLE_GROUP_ID,
+    #         )
+    #         sample.spectogram_data = SpectrogramData(
+    #             spectogram,
+    #             mel,
+    #             mfcc,
+    #             s_data.copy(),
+    #         )
+    #         samples.append(sample)
+    #         print("Getting for ", start_s, self.end, i, self.end - start_s)
+    #         start_s += SEGMENT_STRIDE
+    #         print(mel.shape)
+    #         i += 1
+    #     return samples
 
     #
     # def get_human_tags(self):
@@ -775,12 +793,7 @@ Tag = namedtuple("Tag", "what confidence automatic original")
 
 
 def load_data(
-    config,
-    start_s,
-    frames,
-    sr,
-    n_fft=None,
-    end=None,
+    config, start_s, frames, sr, n_fft=None, end=None, min_freq=None, max_freq=None
 ):
     segment_l = config.segment_length
     segment_stride = config.segment_stride
@@ -825,6 +838,8 @@ def load_data(
             offset = np.random.randint(0, extra_frames)
             s_data = np.pad(s_data, (offset, extra_frames - offset))
         assert len(s_data) == int(segment_l * sr)
+        if min_freq is not None or max_freq is not None:
+            butter_bandpass_filter(s_data, min_freq, max_freq, sr)
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
         #     mel = mel_spec(
         #         spectogram,
@@ -891,6 +906,42 @@ def load_data(
             exc_info=True,
         )
     return spec
+
+
+from scipy.signal import butter, sosfilt, sosfreqz, freqs
+
+
+def butter_bandpass(lowcut, highcut, fs, order=2):
+    nyq = 0.5 * fs
+    btype = "lowpass"
+    freqs = []
+    if lowcut is not None and lowcut > 0:
+        btype = "bandpass"
+        low = lowcut / nyq
+        freqs.append(low)
+    if highcut is not None:
+        high = highcut / nyq
+        if high < 1:
+            freqs.append(high)
+        else:
+            btype = "highpass"
+    else:
+        btype = "highpass"
+    if len(freqs) == 0:
+        return None
+    sos = butter(order, freqs, analog=False, btype=btype, output="sos")
+    return sos
+
+
+def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
+    if lowcut is None and highcut is None:
+        logging.warn("No freq to filter")
+        return data
+    sos = butter_bandpass(lowcut, highcut, fs, order=order)
+    if sos is None:
+        return data
+    filtered = sosfilt(sos, data)
+    return filtered
 
 
 def space_signals(signals, spacing=0.1):
