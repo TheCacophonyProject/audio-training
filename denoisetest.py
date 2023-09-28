@@ -66,7 +66,6 @@ def load_recording(file, resample=48000):
 def signal_noise(file, hop_length=281):
     frames, sr = load_recording(file)
     end = get_end(frames, sr)
-    print("ENDS at ", end, " with sr ", sr)
     frames = frames[: int(sr * end)]
     n_fft = sr // 10
     spectogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
@@ -224,7 +223,8 @@ def process_signal(f):
         # r = Recording(meta, file, None)
 
         logging.info("Calcing %s", file)
-        signals, noise = signal_noise(file)
+        signals, noise, spectogram, frames = signal_noise(file)
+        signals = [s.to_array() for s in signals]
         meta["signal"] = signals
         meta["noise"] = noise
         json.dump(
@@ -287,7 +287,6 @@ def get_end(frames, sr):
     # this is roughtly a third of our spectogram used for classification
     end = start + chunk_length
     file_length = len(frames) / sr
-    print(mel.shape)
     while end < mel.shape[1]:
         data = mel[:, start:end]
         if np.amax(data) == np.amin(data):
@@ -467,13 +466,13 @@ def main():
     args = parse_args()
 
     # mix_file(args.file, args.mix)
-    signal, noise, spectogram, frames = signal_noise(args.file)
-    tracks = signals_to_tracks(signal)
-    tracks_to_audio(tracks, spectogram, frames)
-    plot_mel_signals(np.abs(spectogram), tracks)
-    return
+    # signal, noise, spectogram, frames = signal_noise(args.file)
+    # tracks = signals_to_tracks(signal)
+    # tracks_to_audio(tracks, spectogram, frames)
+    # plot_mel_signals(np.abs(spectogram), tracks)
+    # return
+    # process(args.file)
     process(args.file)
-    # process_signal(args.file)
     # data = np.array(data)
 
 
@@ -623,6 +622,9 @@ class Signal:
             (self.mel_freq_start, self.mel_freq_end),
             (other.mel_freq_start, other.mel_freq_end),
         )
+
+    def to_array(self):
+        return [self.start, self.end, self.freq_start, self.freq_end]
 
     @property
     def mel_freq_range(self):
