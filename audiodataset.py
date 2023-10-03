@@ -372,7 +372,10 @@ class Recording:
                         break
                 if t.end < s[0]:
                     break
-            t.signal_percent = signal_time / t.length
+            if t.length > 0:
+                t.signal_percent = signal_time / t.length
+            else:
+                t.signal_percent = 0
 
     def recalc_tags(self):
         for track in self.tracks:
