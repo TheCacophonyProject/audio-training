@@ -79,17 +79,20 @@ class AudioDataset:
     def load_meta(self, base_path):
         meta_files = Path(base_path).glob("**/*.txt")
         for f in meta_files:
-            meta = load_metadata(f)
-            audio_f = f.with_suffix(".m4a")
-            if not audio_f.exists():
-                audio_f = f.with_suffix(".wav")
-            if not audio_f.exists():
-                audio_f = f.with_suffix(".mp3")
-                # hack to find files, probably should look
-                # at all files in dir or store file in metadata
-            r = Recording(meta, audio_f, self.config)
-            self.add_recording(r)
-            self.samples.extend(r.samples)
+            try:
+                meta = load_metadata(f)
+                audio_f = f.with_suffix(".m4a")
+                if not audio_f.exists():
+                    audio_f = f.with_suffix(".wav")
+                if not audio_f.exists():
+                    audio_f = f.with_suffix(".mp3")
+                    # hack to find files, probably should look
+                    # at all files in dir or store file in metadata
+                r = Recording(meta, audio_f, self.config)
+                self.add_recording(r)
+                self.samples.extend(r.samples)
+            except:
+                logging.error("Error loading %s", f, exc_info=True)
 
     def add_recording(self, r):
         self.recs.append(r)
@@ -653,6 +656,10 @@ def show_s(data, id):
     plt.savefig(f"foo-tf-2-{id}.png")
 
 
+# what positoins in db are scaled by
+TOP_FREQ = 48000 / 2
+
+
 class Track:
     def __init__(self, metadata, filename, rec_id, rec):
         self.rec = rec
@@ -661,8 +668,16 @@ class Track:
         self.start = metadata["start"]
         self.end = metadata["end"]
         self.id = metadata.get("id")
-        self.min_freq = metadata.get("minFreq")
-        self.max_freq = metadata.get("maxFreq")
+        positions = metadata.get("positions", [])
+        self.min_freq = None
+        self.max_freq = None
+        if len(positions) > 0:
+            y = positions[0]["y"]
+            height = positions[0]["height"]
+            if height != 1:
+                self.min_freq = y * TOP_FREQ
+                self.max_freq = height * TOP_FREQ + self.min_freq
+
         self.automatic_tags = set()
         self.human_tags = set()
         self.automatic = metadata.get("automatic")
@@ -838,9 +853,12 @@ def load_data(
             offset = np.random.randint(0, extra_frames)
             s_data = np.pad(s_data, (offset, extra_frames - offset))
         assert len(s_data) == int(segment_l * sr)
-        if min_freq is not None or max_freq is not None:
-            butter_bandpass_filter(s_data, min_freq, max_freq, sr)
-        spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
+
+        # try do this at train stage
+        # if min_freq is not None or max_freq is not None:
+        # butter_bandpass_filter(s_data, min_freq, max_freq, sr)
+        # spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
+
         #     mel = mel_spec(
         #         spectogram,
         #         sr,
@@ -897,7 +915,7 @@ def load_data(
         #     fmax=fmax,
         #     n_mels=n_mels,
         # )
-        spec = SpectrogramData(None, None, spectogram, None, data_length, None, None)
+        spec = SpectrogramData(None, None, None, s_data.copy(), data_length, None, None)
     except:
         logging.error(
             "Error getting segment  start %s lenght %s",

@@ -93,10 +93,10 @@ def create_tf_example(sample, labels):
         "audio/rec_id": tfrecord_util.bytes_feature(str(sample.rec_id).encode("utf8")),
         "audio/track_id": tfrecord_util.bytes_feature(track_ids.encode("utf8")),
         "audio/sample_rate": tfrecord_util.int64_feature(sample.sr),
-        "audio/min_freq": tfrecord_util.int64_feature(
+        "audio/min_freq": tfrecord_util.float_feature(
             -1 if sample.min_freq is None else sample.min_freq
         ),
-        "audio/max_freq": tfrecord_util.int64_feature(
+        "audio/max_freq": tfrecord_util.float_feature(
             -1 if sample.max_freq is None else sample.max_freq
         ),
         "audio/length": tfrecord_util.float_feature(sample.length),
@@ -115,7 +115,7 @@ def create_tf_example(sample, labels):
         # "audio/mel_h": tfrecord_util.int64_feature(mel.shape[0]),
         # "audio/mfcc_h": tfrecord_util.int64_feature(data.mfcc.shape[1]),
         # "audio/mfcc_w": tfrecord_util.int64_feature(data.mfcc.shape[0]),
-        "audio/raw": tfrecord_util.float_list_feature(np.float32(data.stft.ravel())),
+        "audio/raw": tfrecord_util.float_list_feature(np.float32(data.raw.ravel())),
         # "audio/raw_l": tfrecord_util.int64_feature(len(data.stft)),
         # "audio/mel_s    ": tfrecord_util.float_list_feature(data.mel_s.ravel()),
     }

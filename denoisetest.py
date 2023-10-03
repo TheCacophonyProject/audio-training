@@ -445,7 +445,7 @@ def tracks_to_audio(tracks, spectogram, frames, sr=48000, hop_length=281):
         bins = 1 + n_fft / 2
         max_f = sr / 2
         gap = max_f / bins
-        bandpassed = butter_bandpass_filter(data, low_pass, high_pass, sr, order=2)
+        bandpassed = butter_bandpass_filter(data, low_pass, high_pass, sr, order=5)
 
         # if low_pass is not None:
         #     min_bin = low_pass // gap
@@ -466,11 +466,11 @@ def main():
     args = parse_args()
 
     # mix_file(args.file, args.mix)
-    # signal, noise, spectogram, frames = signal_noise(args.file)
-    # tracks = signals_to_tracks(signal)
+    signal, noise, spectogram, frames = signal_noise(args.file)
+    tracks = signals_to_tracks(signal)
     # tracks_to_audio(tracks, spectogram, frames)
-    # plot_mel_signals(np.abs(spectogram), tracks)
-    # return
+    plot_mel_signals(np.abs(spectogram), tracks)
+    return
     # process(args.file)
     process(args.file)
     # data = np.array(data)
@@ -645,6 +645,12 @@ class Signal:
         self.end = self.end + extension
         self.start = max(self.start, 0)
 
+        new_length = (self.freq_end - self.freq_start) * scale
+        extension = (new_length - self.length) / 2
+        self.freq_start = self.freq_start - extension
+        self.freq_end = self.freq_end + extension
+        self.freq_start = max(self.freq_start, 0)
+
     def merge(self, other):
         self.start = min(self.start, other.start)
         self.end = max(self.end, other.end)
@@ -674,7 +680,7 @@ def butter_bandpass(lowcut, highcut, fs, order=5):
     return sos
 
 
-def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
+def butter_bandpass_filter(data, lowcut, highcut, fs, order=2):
     sos = butter_bandpass(lowcut, highcut, fs, order=order)
     filtered = sosfilt(sos, data)
     return filtered

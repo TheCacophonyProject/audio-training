@@ -436,6 +436,7 @@ def get_dataset(filenames, labels, **args):
     )
     dataset = dataset.filter(others_filter)
     datasets = [dataset]
+    # may perform better without adding generics birds but sitll having generic label
     if use_generic_bird:
         datasets.append(bird_dataset)
     if args.get("filenames_2") is not None:
@@ -463,7 +464,7 @@ def get_dataset(filenames, labels, **args):
             stop_on_empty_dataset=args.get("stop_on_empty", True),
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
-    dataset = dataset.map(lambda x, y: (x, y[0]))
+    # dataset = dataset.map(lambda x, y: (x, y[0]))
     resample_data = args.get("resample", False)
     if resample_data:
         logging.info("Resampling data")
@@ -471,7 +472,7 @@ def get_dataset(filenames, labels, **args):
     pcen = args.get("pcen", False)
     if pcen:
         logging.info("Taking PCEN")
-        dataset = dataset.map(lambda x, y: pcen_function(x, y))
+        # dataset = dataset.map(lambda x, y: pcen_function(x, y))
     # epoch_size = np.sum(dist)
     # logging.info("Setting dataset size to %s", epoch_size)
     # # if not args.get("only_features", False):
@@ -481,7 +482,7 @@ def get_dataset(filenames, labels, **args):
     #     epoch_size = epoch_size // scale_epoch
     # dataset = dataset.take(epoch_size)
     batch_size = args.get("batch_size", None)
-
+    dataset = dataset.take(10)
     # dataset = dataset.cache()
     if args.get("shuffle", True):
         dataset = dataset.shuffle(
@@ -713,6 +714,47 @@ def mel_from_raw(raw):
     return mel
 
 
+from scipy.signal import butter, sosfilt, sosfreqz, freqs
+
+
+def butter_bandpass(lowcut, highcut, fs, order=2):
+    nyq = 0.5 * fs
+    btype = "lowpass"
+    freqs = []
+    if lowcut > 0:
+        btype = "bandpass"
+        low = lowcut / nyq
+        freqs.append(low)
+    if highcut > 0:
+        high = highcut / nyq
+        if high < 1:
+            freqs.append(high)
+        else:
+            btype = "highpass"
+    else:
+        btype = "highpass"
+    if len(freqs) == 0:
+        return None
+    sos = butter(order, freqs, analog=False, btype=btype, output="sos")
+    return sos
+
+
+def butter_function(x, lowcut, highcut):
+    x = tf.numpy_function(butter_bandpass_filter, [x, lowcut, highcut], tf.float32)
+    return x
+
+
+def butter_bandpass_filter(data, lowcut, highcut, fs=48000, order=2):
+    if lowcut is None and highcut is None:
+        logging.warn("No freq to filter")
+        return data
+    sos = butter_bandpass(lowcut, highcut, fs, order=order)
+    if sos is None:
+        return data
+    filtered = sosfilt(sos, data)
+    return np.float32(filtered)
+
+
 def apply_pcen(x):
     x = librosa.pcen(x * (2**31), sr=48000, hop_length=281)
     return np.float32(x)
@@ -770,10 +812,13 @@ def read_tfrecord(
 
     else:
         logging.info("Loading sft audio")
+        tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((48000 * 3), tf.float32)
+        # tfrecord_format["audio/raw"] = tf.io.FixedLenFeature(
+        #     (2401, mel_s[1]), tf.float32
+        # )
+        tfrecord_format["audio/min_freq"] = tf.io.FixedLenFeature((), tf.float32)
+        tfrecord_format["audio/max_freq"] = tf.io.FixedLenFeature((), tf.float32)
 
-        tfrecord_format["audio/raw"] = tf.io.FixedLenFeature(
-            (2401, mel_s[1]), tf.float32
-        )
     if not all_human:
         tfrecord_format["audio/signal_percent"] = tf.io.FixedLenFeature((), tf.float32)
 
@@ -790,8 +835,22 @@ def read_tfrecord(
     if embeddings:
         image = example["embedding"]
     else:
-        stft = example["audio/raw"]
-        stft = tf.reshape(stft, [2401, mel_s[1]])
+        raw = example["audio/raw"]
+        min_freq = example["audio/min_freq"]
+        max_freq = example["audio/max_freq"]
+        raw = butter_function(raw, min_freq, max_freq)
+        stft = tf.signal.stft(
+            raw,
+            4800,
+            HOP_LENGTH,
+            fft_length=4800,
+            window_fn=tf.signal.hann_window,
+            pad_end=True,
+            name=None,
+        )
+        stft = tf.transpose(stft, [1, 0])
+        stft = tf.math.abs(stft)
+        # stft = tf.reshape(stft, [2401, mel_s[1]])
         image = tf.tensordot(MEL_WEIGHTS, stft, 1)
         image = tf.expand_dims(image, axis=2)
 
@@ -854,7 +913,7 @@ def read_tfrecord(
 
         label = tf.cast(label, tf.float32)
 
-        return image, (label, embed_preds, signal_percent)
+        return image, (label, embed_preds, signal_percent, min_freq, max_freq)
 
     return image
 
@@ -962,6 +1021,7 @@ def main():
 
     for e in range(1):
         for x, y in resampled_ds:
+            show_batch(x, y, labels)
             print("X batch of ", x.shape, " Has memory of ", getsize(np.array(x)), "MB")
 
 
@@ -996,68 +1056,30 @@ def getsize(obj):
     return size * 0.000001
 
 
-def show_batch(image_batch, label_batch, species_batch, labels, species):
-    # mfcc = image_batch[1]
-    # sftf = image_batch[1]
-    # image_batch = image_batch[0]
+def show_batch(image_batch, label_batch, labels):
+    min_freq = label_batch[3]
+    max_freq = label_batch[4]
+    label_batch = label_batch[0]
     fig = plt.figure(figsize=(20, 20))
-    # mfcc = image_batch[2]
-    image_batch = image_batch
     print("images in batch", len(image_batch), len(label_batch))
     num_images = len(image_batch)
-    # rows = int(math.ceil(math.sqrt(num_images)))
     i = 0
     for n in range(num_images):
-        # print(image_batch[n].numpy().shape)
-        # print(image_batch[n])
-        # return
         lbl = []
         for l_i, l in enumerate(label_batch[n]):
             if l == 1:
                 lbl.append(labels[l_i])
-        # print(label_batch[n][label_batch[n] == 1], "BB")
-        # lbl = labels[np.argmax(label_batch[n])]
-        # if lbl != "morepork":
-        # continue
-        # if rec_batch[n] != 1384657:
-        # continue
-        # print("showing", image_batch[n].shape, sftf[n].shape)
         p = n
         i += 1
         ax = plt.subplot(num_images // 3 + 1, 3, p + 1)
         # plot_spec(image_batch[n][:, :, 0], ax)
         # # plt.imshow(np.uint8(image_batch[n]))
         spc = None
-        if species_batch is not None:
-            spc = species[np.argmax(species_batch[n])]
         plt.title(f"{lbl} ({spc}")
-        # # plt.axis("off")
-        # ax = plt.subplot(num_images, 3, p + 1)
         img = image_batch[n]
-        print("image is", img.shape)
+        print("Min freq", min_freq[n], "max", max_freq[n])
         plot_mel(image_batch[n][:, :, 0], ax)
-        # plot_mel(image_batch[n][:, :, 0], ax)
 
-        #
-        # ax = plt.subplot(num_images, 3, p + 2)
-        # plot_mel(image_batch[n][:, :, 1], ax)
-        # plt.title(f"{lbl} ({spc} more")
-        #
-        # ax = plt.subplot(num_images, 3, p + 3)
-        # plot_mel(image_batch[n][:, :, 2], ax)power_to_db
-        # plt.title(f"{lbl} ({spc} all")
-
-        # plt.imshow(np.uint8(image_batch[n]))
-        # plt.title(f"{lbl} ({spc} - {rec_batch[n]}) mel")
-        # plt.axis("off")
-        # print(image_batch[1][n].shape)
-        # ax = plt.subplot(num_images, 3, p + 3)
-        # plot_mfcc(image_batch[n][:, :, 0], ax)
-        # plt.title(labels[np.argmax(label_batch[n])] + " mfcc")
-        # plt.axis("off")
-        # name = Path(".") / f"{n}.wav"
-        # print(image_batch[n].shape)
-        # sf.write(str(name), image_batch[n], 48000)
     plt.show()
 
 
@@ -1075,7 +1097,7 @@ def plot_mel(mel, ax):
         fmax=11000,
         fmin=50,
         ax=ax,
-        hop_length=201,
+        hop_length=HOP_LENGTH,
     )
 
 

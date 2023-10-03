@@ -343,7 +343,7 @@ def get_spect(
             n_mels=n_mels,
         )
     else:
-        data = butter_bandpass_filter(data, low_pass, high_pass, sr, order=1)
+        data = butter_bandpass_filter(data, low_pass, high_pass, sr)
 
         # data = bandpassed + noise
 
