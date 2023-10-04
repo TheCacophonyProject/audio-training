@@ -464,7 +464,8 @@ def get_dataset(filenames, labels, **args):
             stop_on_empty_dataset=args.get("stop_on_empty", True),
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
-    # dataset = dataset.map(lambda x, y: (x, y[0]))
+
+    dataset = dataset.map(lambda x, y: (x, y[0]))
     resample_data = args.get("resample", False)
     if resample_data:
         logging.info("Resampling data")
