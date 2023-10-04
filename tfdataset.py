@@ -464,8 +464,9 @@ def get_dataset(filenames, labels, **args):
             stop_on_empty_dataset=args.get("stop_on_empty", True),
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
+    dataset = dataset.map(lambda x, y: raw_to_mel(x, y))
 
-    dataset = dataset.map(lambda x, y: (x, y[0]))
+    # dataset = dataset.map(lambda x, y: (x, y[0]))
     resample_data = args.get("resample", False)
     if resample_data:
         logging.info("Resampling data")
@@ -739,6 +740,25 @@ def butter_bandpass(lowcut, highcut, fs, order=2):
     return sos
 
 
+def raw_to_mel(raw, y):
+    raw = butter_function(raw, y[3], y[4])
+    stft = tf.signal.stft(
+        raw,
+        4800,
+        HOP_LENGTH,
+        fft_length=4800,
+        window_fn=tf.signal.hann_window,
+        pad_end=True,
+        name=None,
+    )
+    stft = tf.transpose(stft, [1, 0])
+    stft = tf.math.abs(stft)
+    # stft = tf.reshape(stft, [2401, mel_s[1]])
+    image = tf.tensordot(MEL_WEIGHTS, stft, 1)
+    image = tf.expand_dims(image, axis=2)
+    return image, y
+
+
 def butter_function(x, lowcut, highcut):
     x = tf.numpy_function(butter_bandpass_filter, [x, lowcut, highcut], tf.float32)
     return x
@@ -840,21 +860,21 @@ def read_tfrecord(
         raw = example["audio/raw"]
         min_freq = example["audio/min_freq"]
         max_freq = example["audio/max_freq"]
-        raw = butter_function(raw, min_freq, max_freq)
-        stft = tf.signal.stft(
-            raw,
-            4800,
-            HOP_LENGTH,
-            fft_length=4800,
-            window_fn=tf.signal.hann_window,
-            pad_end=True,
-            name=None,
-        )
-        stft = tf.transpose(stft, [1, 0])
-        stft = tf.math.abs(stft)
-        # stft = tf.reshape(stft, [2401, mel_s[1]])
-        image = tf.tensordot(MEL_WEIGHTS, stft, 1)
-        image = tf.expand_dims(image, axis=2)
+        # raw = butter_function(raw, min_freq, max_freq)
+        # stft = tf.signal.stft(
+        #     raw,
+        #     4800,
+        #     HOP_LENGTH,
+        #     fft_length=4800,
+        #     window_fn=tf.signal.hann_window,
+        #     pad_end=True,
+        #     name=None,
+        # )
+        # stft = tf.transpose(stft, [1, 0])
+        # stft = tf.math.abs(stft)
+        # # stft = tf.reshape(stft, [2401, mel_s[1]])
+        # image = tf.tensordot(MEL_WEIGHTS, stft, 1)
+        # image = tf.expand_dims(image, axis=2)
 
     if augment:
         logging.info("Augmenting")
@@ -915,7 +935,7 @@ def read_tfrecord(
 
         label = tf.cast(label, tf.float32)
 
-        return image, (
+        return raw, (
             label,
             embed_preds,
             signal_percent,
