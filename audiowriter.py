@@ -314,9 +314,9 @@ def save_data(
         orig_frames = None
         for t in rec.tracks:
             if t.end is None:
-                logging.info(
-                    "Track end is none so setting to rec length %s", len(frames) / sr
-                )
+                # logging.info(
+                #     "Track end is none so setting to rec length %s", len(frames) / sr
+                # )
                 t.end = len(frames) / sr
         # rec.tracks[0].end = len0(frames) / sr
         rec.load_samples(

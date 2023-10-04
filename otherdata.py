@@ -201,7 +201,7 @@ def flickr_data():
                 noisy_name = noisy_p / f"bird-{rec_name.name}"
                 if noisy_name.exists():
                     add_rec(dataset, noisy_name, ["human", "bird"], config)
-                    logging.info("Adding %s %s %s", noisy_name, " from ", rec_name)
+                    # logging.info("Adding %s from  %s", noisy_name, rec_name)
                     added = True
                     labels.append("bird")
             else:
@@ -209,7 +209,7 @@ def flickr_data():
                 print("looking for %s", noisy_name)
                 if noisy_name.exists():
                     add_rec(dataset, noisy_name, ["human", "noise"], config)
-                    print("Adding %s %s %s", noisy_name, " from ", rec_name)
+                    # logging.info("Adding %s from  %s", noisy_name, rec_name)
                     added = True
                     labels.append("noise")
         if not added:
