@@ -100,7 +100,9 @@ def create_tf_example(sample, labels):
             -1 if sample.max_freq is None else sample.max_freq
         ),
         "audio/length": tfrecord_util.float_feature(sample.length),
-        "audio/signal_percent": tfrecord_util.float_feature(sample.signal_percent),
+        "audio/signal_percent": tfrecord_util.float_feature(
+            0 if sample.signal_percent is None else sample.signal_percent
+        ),
         "audio/raw_length": tfrecord_util.float_feature(data.raw_length),
         "audio/start_s": tfrecord_util.float_feature(sample.start),
         "audio/class/text": tfrecord_util.bytes_feature(tags.encode("utf8")),

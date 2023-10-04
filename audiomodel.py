@@ -58,7 +58,6 @@ import matplotlib.pyplot as plt
 import badwinner
 import badwinner2
 from sklearn.model_selection import KFold
-import tensorflow_addons as tfa
 import math
 
 from resnet import wr_resnet

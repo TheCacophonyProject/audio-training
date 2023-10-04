@@ -180,25 +180,29 @@ def mix_noise(w):
 def flickr_data():
     config = Config()
     dataset = AudioDataset("Flickr", config)
-    # p = Path("./flickr/wavs")
     p = Path("/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/wavs")
+    # p = Path("./flickr/wavs")
 
     wav_files = list(p.glob("*.wav"))
     noisy_p = Path(
         "/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/noisy-wavs"
     )
+    # noisy_p = Path("./flickr/noisy-wavs")
+
     # noisy_wav_files.extend(list(p.glob("*.wav")))
     random.shuffle(wav_files)
 
     for rec_name in wav_files:
         rand_f = np.random.rand()
         added = False
-        if rand_f > 0.7:
+        labels = ["human"]
+        if rand_f > 0.0:
             noisy_name = noisy_p / f"bird-{rec_name.name}"
             if noisy_name.exists():
                 add_rec(dataset, noisy_name, ["human", "bird"], config)
                 logging.info("Adding %s %s %s", noisy_name, " from ", rec_name)
                 added = True
+                labels.append("bird")
             else:
                 noisy_name = noisy_p / f"noise-{rec_name.name}"
                 print("looking for %s", noisy_name)
@@ -206,8 +210,9 @@ def flickr_data():
                     add_rec(dataset, noisy_name, ["human", "noise"], config)
                     print("Adding %s %s %s", noisy_name, " from ", rec_name)
                     added = True
+                    labels.append("noise")
         if not added:
-            add_rec(dataset, rec_name, ["human"], config)
+            add_rec(dataset, rec_name, labels, config)
         if len(dataset.recs) > len(wav_files) / 3:
             break
 
@@ -276,7 +281,6 @@ def add_rec(dataset, rec_name, labels, config):
         tag = {"automatic": False, "what": l}
         tags.append(tag)
         r.human_tags.add(l)
-
     # try:
     #     y, sr = librosa.load(rec_name)
     #     end = librosa.get_duration(y=y, sr=sr)
@@ -287,7 +291,7 @@ def add_rec(dataset, rec_name, labels, config):
     t = Track({"id": id, "start": 0, "end": None, "tags": tags}, rec_name, r.id, r)
     # r.load_samples()
     r.tracks.append(t)
-    sample = AudioSample(r, r.human_tags, 0, None, [t.id], 1)
+    sample = AudioSample(r, r.human_tags, 0, None, [t.id], 1, None)
     r.samples = [sample]
     dataset.add_recording(r)
     dataset.samples.extend(r.samples)
