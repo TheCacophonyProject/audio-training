@@ -746,7 +746,6 @@ def butter_function(x, lowcut, highcut):
 
 def butter_bandpass_filter(data, lowcut, highcut, fs=48000, order=2):
     if lowcut <= 0 and highcut <= 0:
-        logging.warn("No freq to filter")
         return data
     sos = butter_bandpass(lowcut, highcut, fs, order=order)
     if sos is None:
