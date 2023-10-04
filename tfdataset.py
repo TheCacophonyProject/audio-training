@@ -482,7 +482,6 @@ def get_dataset(filenames, labels, **args):
     #     epoch_size = epoch_size // scale_epoch
     # dataset = dataset.take(epoch_size)
     batch_size = args.get("batch_size", None)
-    dataset = dataset.take(10)
     # dataset = dataset.cache()
     if args.get("shuffle", True):
         dataset = dataset.shuffle(
@@ -745,7 +744,7 @@ def butter_function(x, lowcut, highcut):
 
 
 def butter_bandpass_filter(data, lowcut, highcut, fs=48000, order=2):
-    if lowcut is None and highcut is None:
+    if lowcut <= 0 and highcut <= 0:
         logging.warn("No freq to filter")
         return data
     sos = butter_bandpass(lowcut, highcut, fs, order=order)
@@ -812,6 +811,9 @@ def read_tfrecord(
 
     else:
         logging.info("Loading sft audio")
+        tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
+        tfrecord_format["audio/track_id"] = tf.io.FixedLenFeature((), tf.string)
+
         tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((48000 * 3), tf.float32)
         # tfrecord_format["audio/raw"] = tf.io.FixedLenFeature(
         #     (2401, mel_s[1]), tf.float32
@@ -913,7 +915,15 @@ def read_tfrecord(
 
         label = tf.cast(label, tf.float32)
 
-        return image, (label, embed_preds, signal_percent, min_freq, max_freq)
+        return image, (
+            label,
+            embed_preds,
+            signal_percent,
+            min_freq,
+            max_freq,
+            example["audio/rec_id"],
+            example["audio/track_id"],
+        )
 
     return image
 
@@ -994,7 +1004,7 @@ def main():
         # species_list = ["bird", "human", "rain", "other"]
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-        filenames.extend(tf.io.gfile.glob(f"{d}/train/*.tfrecord"))
+        filenames.extend(tf.io.gfile.glob(f"{d}/validation/*.tfrecord"))
     labels.add("bird")
     labels.add("noise")
     labels = list(labels)
@@ -1059,6 +1069,8 @@ def getsize(obj):
 def show_batch(image_batch, label_batch, labels):
     min_freq = label_batch[3]
     max_freq = label_batch[4]
+    recs = label_batch[5]
+    tracks = label_batch[6]
     label_batch = label_batch[0]
     fig = plt.figure(figsize=(20, 20))
     print("images in batch", len(image_batch), len(label_batch))
@@ -1077,7 +1089,7 @@ def show_batch(image_batch, label_batch, labels):
         spc = None
         plt.title(f"{lbl} ({spc}")
         img = image_batch[n]
-        print("Min freq", min_freq[n], "max", max_freq[n])
+        print("Min freq", min_freq[n], "max", max_freq[n], recs[n], lbl, tracks[n])
         plot_mel(image_batch[n][:, :, 0], ax)
 
     plt.show()

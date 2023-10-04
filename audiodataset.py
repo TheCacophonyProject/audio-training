@@ -299,6 +299,7 @@ class AudioSample:
         self.predicted_labels = None
         self.min_freq = min_freq
         self.max_freq = max_freq
+
         if bin_id is None:
             self.bin_id = f"{self.rec_id}"
         else:
@@ -385,107 +386,6 @@ class Recording:
     def space_signals(self, spacing=0.1):
         self.signals = space_signals(signals, spacing)
 
-    def load_samples_old(self, segment_length, segment_stride):
-        global SAMPLE_GROUP_ID
-        SAMPLE_GROUP_ID += 1
-        sorted_tracks = sorted(
-            self.tracks,
-            key=lambda track: track.start,
-        )
-        actual_s = segment_stride
-        self.samples = []
-        if len(sorted_tracks) == 0:
-            return
-        track = sorted_tracks[0]
-        # print("have", len(sorted_tracks), "tracks")
-        # for t in sorted_tracks:
-        # print("Tracks is", t.filename, t.start, t.end)
-        start = track.start
-        end = start + segment_length
-        i = 1
-        labels = set()
-        labels = labels | track.human_tags
-        bin = 0
-        bin_id = f"{self.id}-{bin}"
-        tracks = [track.id]
-        # print("rec-", self.id, "tracks is", track.start, track.end, track.id)
-        while True:
-            # logging.info("Using %s %s", start, end)
-            # start = round(start, 1)
-            # end = round(end, 1)
-            other_tracks = []
-            tracks = [track.id]
-            labels = set(track.human_tags)
-            for t in sorted_tracks[i:]:
-                # starts in this sample
-                if t.start > end:
-                    break
-                if t.start < start:
-                    s = start
-                else:
-                    s = t.start
-
-                if t.end > end:
-                    # possible to miss out on some of a track
-                    e = end
-                else:
-                    e = t.end
-                intersect = e - s
-                if intersect > 0.5:
-                    # if t.start<= start and t.end <= end:
-                    other_tracks.append(t)
-                    labels = labels | t.human_tags
-                    tracks.append(t.id)
-            self.samples.append(
-                AudioSample(
-                    self,
-                    labels,
-                    start,
-                    min(track.end, end),
-                    tracks,
-                    SAMPLE_GROUP_ID,
-                    bin_id,
-                )
-            )
-            if "morepork" in labels:
-                segment_stride = 3.5
-            else:
-                segment_stride = actual_s
-            # print("sample length is", self.samples[-1].length)
-            start += segment_stride
-            # print("track end is ", track.end, " and start is", start)
-            if (track.end - start) < segment_length / 2:
-                old_end = track.end
-                track = None
-                start = start - segment_length
-                # find the next track after start
-                # get new track
-                for z, t in enumerate(sorted_tracks[i:]):
-                    # print("checking track ", t.human_tags, t.start)
-                    if t.end > start:
-                        if t.start > old_end:
-                            pass
-                            # new bin as non overlapping audio
-                            # bin += 1
-                            # bin_id = f"{self.id}-{bin}"
-                        track = t
-                        tracks = [t.id]
-                        start = max(start, t.start)
-                        i = i + z + 1
-                        labels = set()
-                        labels = labels | track.human_tags
-                        break
-                if track is None:
-                    # got all tracks
-                    break
-            end = start + segment_length
-        # other_tracks = [t for t in sorted_tracks[i:] if t.start<= start and t.end >= end]
-        # for t in sorted_tracks:
-        # for t in self.tracks:
-        # print(self.id, "have track from ", t.start, t.end)
-        # for s in self.samples:
-        # print(self.id, "Have sample", s.start, s.end, s.tags, self.filename)
-
     def load_samples(self, segment_length, segment_stride, do_overlap=True):
         self.samples = []
         global SAMPLE_GROUP_ID
@@ -495,7 +395,10 @@ class Recording:
             key=lambda track: track.start,
         )
         # always take 1 one sample, but dont bother with more if they are short
-        min_sample_length = segment_length
+        # want to sample end of tracks always
+        # does this make data unfair for shorter concise tracks
+        min_sample_length = segment_length - segment_stride + 1 / 20
+
         # can be used to seperate among train/val/test
         bin_id = f"{self.id}-0"
 
@@ -565,11 +468,11 @@ class Recording:
                 if start > track.end or (end - start) < min_sample_length:
                     break
 
-        # other_tracks = [t for t in sorted_tracks[i:] if t.start<= start and t.end >= end]
-        # for t in sorted_tracks:
-        # print("FOR ", self.id)
-        # for t in self.tracks:
-        #     print(self.id, "have track from ", t.start, t.end)
+            # other_tracks = [t for t in sorted_tracks[i:] if t.start<= start and t.end >= end]
+            # for t in sorted_tracks:
+            # print("FOR ", self.id)
+            # for t in self.tracks:
+            #     print(self.id, "have track from ", t.start, t.end)
         # for s in self.samples:
         #     print(
         #         self.id,
@@ -680,7 +583,6 @@ class Track:
             if height != 1:
                 self.min_freq = y * TOP_FREQ
                 self.max_freq = height * TOP_FREQ + self.min_freq
-
         self.automatic_tags = set()
         self.human_tags = set()
         self.automatic = metadata.get("automatic")

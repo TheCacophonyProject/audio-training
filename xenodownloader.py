@@ -18,8 +18,8 @@ def download_file(url, local_filename):
 
 
 base_url = "https://www.xeno-canto.org/api/2/recordings"
-bird = "Rifleman"
-dl_path = Path("./rifleman")
+bird = "golden%20whistler"
+dl_path = Path(f"./golden-whistler")
 url = f"{base_url}?query={bird}"
 print("getting", url)
 r = requests.get(url)
@@ -29,11 +29,19 @@ for r in results.get("recordings"):
     dl = r.get("file")
     date = r.get("date")
     time = r.get("time")
-    date_time = datetime.datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
+    try:
+        date_time = datetime.datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
+    except:
+        print("Error with", r.get("id"))
+        if date[-2:] == "00":
+            date = f"{date[:-2]}01"
+        date_time = datetime.datetime.strptime(f"{date}", "%Y-%m-%d")
+
     filename = r.get("file-name")
     filename = dl_path / filename
     meta_file = filename.with_suffix(".txt")
-    if meta_file.exists():
+    print("Saving meta", meta_file, meta_file.exists())
+    if not meta_file.exists():
         meta_data = {
             "recordingDateTime": date_time.isoformat(),
             "location": {"lat": float(r.get("lat")), "lng": float(r.get("lng"))},
