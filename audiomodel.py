@@ -346,8 +346,7 @@ class AudioModel:
         run_name="test",
         epochs=100,
         weights=None,
-        multi_label=False,
-        use_generic_bird=True,
+        **args,
     ):
         self.log_dir = self.log_dir / run_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -355,10 +354,10 @@ class AudioModel:
             self.labels,
             self.input_shape,
             test=True,
-            use_generic_bird=use_generic_bird,
+            **args,
         )
         self.num_classes = len(self.labels)
-        self.build_model(multi_label=multi_label)
+        self.build_model(multi_label=args.get("multi_label", True))
         bytes_needed = keras_model_memory_usage_in_bytes(self.model, self.batch_size)
         logging.info(
             "Need %s MB for model with batch size %s ",
@@ -387,8 +386,10 @@ class AudioModel:
         checkpoints = self.checkpoints(run_name)
         # self.model.save(os.path.join(self.checkpoint_folder, run_name))
         # return
-        class_weights = get_weighting(self.train, self.labels)
-        logging.info("Weights are %s", class_weights)
+        class_weights = None
+        if args.get("use_weighting", True):
+            class_weights = get_weighting(self.train, self.labels)
+            logging.info("Weights are %s", class_weights)
         history = self.model.fit(
             self.train,
             validation_data=self.validation,
@@ -424,34 +425,29 @@ class AudioModel:
         #         )
         #     if self.test:
         #         test_accuracy = self.model.evaluate(self.test)
+        self.save(run_name, history=history, test_results=test_accuracy, **args)
 
-        self.save(
-            run_name,
-            history=history,
-            test_results=test_accuracy,
-            multi_label=multi_label,
-        )
-
-    def save(self, run_name=None, history=None, test_results=None, multi_label=False):
+    def save(self, run_name=None, history=None, test_results=None, **args):
         # create a save point
         if run_name is None:
             run_name = self.params.model_name
-        self.model.save(os.path.join(self.checkpoint_folder, run_name))
-        self.save_metadata(run_name, history, test_results, multi_label)
+        # self.model.save(os.path.join(self.checkpoint_folder, run_name))
+        self.save_metadata(run_name, history, test_results, **args)
         if self.test is not None:
             confusion(self.model, self.labels, self.test, run_name)
 
-    def save_metadata(
-        self, run_name=None, history=None, test_results=None, multi_label=False
-    ):
+    def save_metadata(self, run_name, history, test_results, **args):
         #  save metadata
         if run_name is None:
             run_name = self.params.model_name
         model_stats = {}
+        model_stats.update(args)
         model_stats.update(self.training_data_meta)
         model_stats["name"] = self.model_name
+        # model_stats["use_generic_bird"] = args.get("use_generic_bird", False)
+        # model_stats["filter_freq"] = args.get("filter_freq", False)
         model_stats["labels"] = self.labels
-        model_stats["multi_label"] = multi_label
+        # model_stats["multi_label"] = args.get("multi_label", False)
         model_stats["mean_sub"] = self.mean_sub
         model_stats["loss_fn"] = self.loss_fn
         model_stats["bird_labels"] = SPECIFIC_BIRD_LABELS
@@ -612,12 +608,12 @@ class AudioModel:
         checks.append(hist_callback)
         return checks
 
-    def load_datasets(self, labels, shape, test=False, use_generic_bird=True):
+    def load_datasets(self, labels, shape, test=False, **args):
         logging.info(
             "Loading datasets with %s and secondary dir %s generic bird %s",
             self.data_dir,
             self.second_data_dir,
-            use_generic_bird,
+            args.get("use_generic_bird"),
         )
         labels = set()
         filenames = []
@@ -661,7 +657,7 @@ class AudioModel:
             excluded_labels=excluded_labels,
             filenames_2=second_filenames,
             embeddings=self.model_name == "embeddings",
-            use_generic_bird=use_generic_bird,
+            **args
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
         self.num_train_instance = epoch_size
@@ -685,7 +681,7 @@ class AudioModel:
             excluded_labels=excluded_labels,
             filenames_2=second_filenames,
             embeddings=self.model_name == "embeddings",
-            use_generic_bird=use_generic_bird,
+            **args
             # preprocess_fn=self.preprocess_fn,
         )
 
@@ -714,7 +710,7 @@ class AudioModel:
                 shuffle=False,
                 filenames_2=second_filenames,
                 embeddings=self.model_name == "embeddings",
-                use_generic_bird=use_generic_bird,
+                **args,
                 # preprocess_fn=self.preprocess_fn,
             )
         self.remapped = remapped
@@ -1224,6 +1220,7 @@ def main():
             excluded_labels=excluded_labels,
             stop_on_empty=False,
             use_generic_bird=args.use_bird,
+            filter_freq=args.filter_freq,
         )
         for l in excluded_labels:
             labels.remove(l)
@@ -1260,6 +1257,8 @@ def main():
                 weights=args.weights,
                 multi_label=args.multi,
                 use_generic_bird=args.use_bird,
+                filter_freq=args.filter_freq,
+                use_weighting=args.use_weighting,
             )
 
 
@@ -1301,6 +1300,15 @@ def parse_args():
     parser.add_argument(
         "--lme", action="count", help="Use log mean expo instead of global avg"
     )
+    parser.add_argument(
+        "--filter-freq", default=False, action="count", help="Filter Freq"
+    )
+    parser.add_argument(
+        "--use-weighting",
+        default=False,
+        action="count",
+        help="Use weighting for classes",
+    )
 
     parser.add_argument("--multi", default=True, action="count", help="Multi label")
     parser.add_argument(
@@ -1308,7 +1316,7 @@ def parse_args():
         type=str2bool,
         nargs="?",
         const=True,
-        default=None,
+        default=True,
         help="Use bird as well as specific label",
     )
 
@@ -1322,10 +1330,9 @@ def parse_args():
     parser.add_argument("name", help="Run name")
 
     args = parser.parse_args()
-    print(args)
     args.multi = args.multi > 0
 
-    args.multi = args.multi > 0
+    args.filter_freq = args.filter_freq > 0
     if args.dataset_dir is not None:
         args.dataset_dir = Path(args.dataset_dir)
     if args.second_dataset_dir is not None:

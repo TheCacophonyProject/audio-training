@@ -429,7 +429,8 @@ def get_dataset(filenames, labels, **args):
         tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
     )
     bird_dataset = dataset.filter(bird_filter)
-    if args.get("filter_signal", 0.1) is not None:
+    if args.get("filter_signal") is not None:
+        logging.info("Filtering signal by percent 0.1")
         bird_dataset = bird_dataset.filter(filter_signal)
     others_filter = lambda x, y: not tf.math.reduce_all(
         tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
@@ -438,7 +439,8 @@ def get_dataset(filenames, labels, **args):
     datasets = [dataset]
     # may perform better without adding generics birds but sitll having generic label
     if use_generic_bird:
-        datasets.append(bird_dataset)
+        logging.info("Not adding generic bird tags as found performas better")
+        # datasets.append(bird_dataset)
     if args.get("filenames_2") is not None:
         logging.info("Loading second files %s", args.get("filenames_2")[:1])
         second = args.get("filenames_2")
@@ -464,9 +466,10 @@ def get_dataset(filenames, labels, **args):
             stop_on_empty_dataset=args.get("stop_on_empty", True),
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
-    dataset = dataset.map(lambda x, y: raw_to_mel(x, y))
+    logging.info("Filtering freq %s", args.get("filter_freq", False))
+    dataset = dataset.map(lambda x, y: raw_to_mel(x, y, args.get("filter_freq", False)))
 
-    # dataset = dataset.map(lambda x, y: (x, y[0]))
+    dataset = dataset.map(lambda x, y: (x, y[0]))
     resample_data = args.get("resample", False)
     if resample_data:
         logging.info("Resampling data")
@@ -474,14 +477,11 @@ def get_dataset(filenames, labels, **args):
     pcen = args.get("pcen", False)
     if pcen:
         logging.info("Taking PCEN")
-        # dataset = dataset.map(lambda x, y: pcen_function(x, y))
+        dataset = dataset.map(lambda x, y: pcen_function(x, y))
+
+    # dist = get_distribution(dataset, num_labels)
     # epoch_size = np.sum(dist)
-    # logging.info("Setting dataset size to %s", epoch_size)
-    # # if not args.get("only_features", False):
-    # # dataset = dataset.repeat(2)
-    # scale_epoch = args.get("scale_epoch", None)
-    # if scale_epoch:
-    #     epoch_size = epoch_size // scale_epoch
+    # tf complains about running out of data if i dont specify the size????
     # dataset = dataset.take(epoch_size)
     batch_size = args.get("batch_size", None)
     # dataset = dataset.cache()
@@ -740,8 +740,22 @@ def butter_bandpass(lowcut, highcut, fs, order=2):
     return sos
 
 
-def raw_to_mel(raw, y):
-    raw = butter_function(raw, y[3], y[4])
+@tf.function
+def raw_to_mel(raw, y, filter_freq, butter_random=True):
+    if filter_freq:
+        logging.info("Filtering freq")
+        if butter_random:
+            logging.info("Random butter")
+            rand = tf.random.uniform((), 0, 5)
+            # do butter pass 3/5ths of the time
+            raw = tf.cond(
+                rand <= 3,
+                lambda: butter_function(raw, y[3], y[4]),
+                lambda: tf.identity(raw),
+            )
+        else:
+            raw = butter_function(raw, y[3], y[4])
+        # raw =
     stft = tf.signal.stft(
         raw,
         4800,
@@ -801,6 +815,7 @@ def read_tfrecord(
     no_bird=False,
     all_human=False,
     embeddings=False,
+    filter_freqs=False,
 ):
     bird_l = tf.constant(["bird"])
     # tf_more_mask = tf.constant(morepork_mask)
@@ -1045,6 +1060,7 @@ def main():
         resample=False,
         excluded_labels=excluded_labels,
         stop_on_empty=False,
+        filter_freq=True,
         # filenames_2=filenames_2
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
