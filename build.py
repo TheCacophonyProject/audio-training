@@ -655,7 +655,7 @@ def parse_args():
     )
     parser.add_argument(
         "--filter-freq",
-        default=False,
+        default=True,
         action="count",
         help="Filter frequency of tracks",
     )

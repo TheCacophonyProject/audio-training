@@ -62,7 +62,7 @@ class Config:
         self.fmin = args.get("fmin", 50)
         self.fmax = args.get("fmax", 11000)
         self.n_mels = args.get("mels", 160)
-        self.filter_frequency = args.get("filter_freq", False)
+        self.filter_frequency = args.get("filter_freq", True)
 
 
 class AudioDataset:

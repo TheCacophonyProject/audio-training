@@ -310,6 +310,7 @@ def save_data(
                 # )
                 t.end = len(frames) / sr
         # rec.tracks[0].end = len0(frames) / sr
+        print(config.filter_frequency)
         rec.load_samples(
             config.segment_length,
             config.segment_stride,
