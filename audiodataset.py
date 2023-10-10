@@ -705,9 +705,7 @@ def plot_mel(mel):
     # plt.clf()
 
 
-SpectrogramData = namedtuple(
-    "SpectrogramData", "spect mel stft raw raw_length pcen mel_s"
-)
+SpectrogramData = namedtuple("SpectrogramData", "raw raw_length buttered")
 
 Tag = namedtuple("Tag", "what confidence automatic original")
 
@@ -759,68 +757,10 @@ def load_data(
             s_data = np.pad(s_data, (offset, extra_frames - offset))
         assert len(s_data) == int(segment_l * sr)
 
-        # try do this at train stage
-        # if min_freq is not None or max_freq is not None:
-        # butter_bandpass_filter(s_data, min_freq, max_freq, sr)
-        # spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
-
-        #     mel = mel_spec(
-        #         spectogram,
-        #         sr,
-        #         n_fft,
-        #         hop_length,
-        #         n_mels,
-        #         fmin,
-        #         fmax,
-        #         break_freq,
-        #         power=2,
-        #     )
-        #     mel_pcen = mel_spec(
-        #         spectogram,
-        #         sr,
-        #         n_fft,
-        #         hop_length,
-        #         n_mels,
-        #         fmin,
-        #         fmax,
-        #         break_freq,
-        #         power=1,
-        #     )
-        #     print(mel_pcen.shape)
-        # else:
-        #     # these should b derivable from spectogram but the librosa exmaples produce different results....
-        #     mel = librosa.feature.melspectrogram(
-        #         y=s_data,
-        #         sr=sr,
-        #         n_fft=n_fft,
-        #         hop_length=hop_length,
-        #         fmin=fmin,
-        #         fmax=fmax,
-        #         n_mels=n_mels,
-        #     )
-        # mel_pcen = librosa.feature.melspectrogram(
-        #     y=s_data,
-        #     sr=sr,
-        #     n_fft=n_fft,
-        #     hop_length=hop_length,
-        #     fmin=fmin,
-        #     fmax=fmax,
-        #     n_mels=n_mels,
-        #     power=1,
-        # )
-        # pcen_s = librosa.pcen(mel_pcen * (2**31), sr=sr, hop_length=hop_length)
-        mfcc = None
-        # pcen_s = None
-        # mfcc = librosa.feature.mfcc(
-        #     y=s_data,
-        #     sr=sr,
-        #     hop_length=hop_length,
-        #     htk=htk,
-        #     fmin=fmin,
-        #     fmax=fmax,
-        #     n_mels=n_mels,
-        # )
-        spec = SpectrogramData(None, None, None, s_data.copy(), data_length, None, None)
+        buttered = butter_bandpass_filter(s_data, min_freq, max_freq, sr)
+        if buttered is None:
+            print("NO butter")
+        spec = SpectrogramData(s_data.copy(), data_length, buttered)
     except:
         logging.error(
             "Error getting segment  start %s lenght %s",
@@ -856,13 +796,13 @@ def butter_bandpass(lowcut, highcut, fs, order=2):
     return sos
 
 
-def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
-    if lowcut is None and highcut is None:
+def butter_bandpass_filter(data, lowcut, highcut, fs, order=2):
+    if lowcut is None and highcut is None or highcut <= lowcut:
         logging.warn("No freq to filter")
-        return data
+        return None
     sos = butter_bandpass(lowcut, highcut, fs, order=order)
     if sos is None:
-        return data
+        return None
     filtered = sosfilt(sos, data)
     return filtered
 

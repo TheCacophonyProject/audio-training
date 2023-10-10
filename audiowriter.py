@@ -106,21 +106,12 @@ def create_tf_example(sample, labels):
         "audio/raw_length": tfrecord_util.float_feature(data.raw_length),
         "audio/start_s": tfrecord_util.float_feature(sample.start),
         "audio/class/text": tfrecord_util.bytes_feature(tags.encode("utf8")),
-        # "audio/class/label": tfrecord_util.int64_feature(labels.index(tags.tag)),
-        # "audio/sftf": tfrecord_util.float_list_feature(audio_data.ravel()),
-        # "audio/mel": tfrecord_util.float_list_feature(mel.ravel()),
-        # "audio/pcen": tfrecord_util.float_list_feature(data.pcen.ravel()),
-        # # "audio/mfcc": tfrecord_util.float_list_feature(data.mfcc.ravel()),
-        # # "audio/sftf_w": tfrecord_util.int64_feature(audio_data.shape[1]),
-        # # "audio/sftf_h": tfrecord_util.int64_feature(audio_data.shape[0]),
-        # "audio/mel_w": tfrecord_util.int64_feature(mel.shape[1]),
-        # "audio/mel_h": tfrecord_util.int64_feature(mel.shape[0]),
-        # "audio/mfcc_h": tfrecord_util.int64_feature(data.mfcc.shape[1]),
-        # "audio/mfcc_w": tfrecord_util.int64_feature(data.mfcc.shape[0]),
         "audio/raw": tfrecord_util.float_list_feature(np.float32(data.raw.ravel())),
-        # "audio/raw_l": tfrecord_util.int64_feature(len(data.stft)),
-        # "audio/mel_s    ": tfrecord_util.float_list_feature(data.mel_s.ravel()),
     }
+    if data.buttered is not None:
+        feature_dict["audio/buttered"] = tfrecord_util.float_list_feature(
+            np.float32(data.buttered.ravel())
+        )
     if sample.predicted_labels is not None:
         predicted_labels = ",".join(sample.predicted_labels)
         pred_dic = {

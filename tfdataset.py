@@ -246,6 +246,8 @@ def load_dataset(filenames, num_labels, labels, args):
             no_bird=args.get("no_bird", False),
             all_human=args.get("all_human", False),
             embeddings=args.get("embeddings", False),
+            filter_freq=args.get("filter_freq", False),
+            random_butter=args.get("random_butter", 0),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -466,8 +468,9 @@ def get_dataset(filenames, labels, **args):
             stop_on_empty_dataset=args.get("stop_on_empty", True),
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
-    logging.info("Filtering freq %s", args.get("filter_freq", False))
-    dataset = dataset.map(lambda x, y: raw_to_mel(x, y, args.get("filter_freq", False)))
+    # logging.info("Filtering freq %s", args.get("filter_freq", False))
+    # filter freq done in writing stage to speed up
+    dataset = dataset.map(lambda x, y: raw_to_mel(x, y, False))
 
     dataset = dataset.map(lambda x, y: (x, y[0]))
     resample_data = args.get("resample", False)
@@ -815,7 +818,8 @@ def read_tfrecord(
     no_bird=False,
     all_human=False,
     embeddings=False,
-    filter_freqs=False,
+    filter_freq=False,
+    random_butter=0,
 ):
     bird_l = tf.constant(["bird"])
     # tf_more_mask = tf.constant(morepork_mask)
@@ -848,13 +852,17 @@ def read_tfrecord(
         logging.info("Loading sft audio")
         tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
         tfrecord_format["audio/track_id"] = tf.io.FixedLenFeature((), tf.string)
-
         tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((48000 * 3), tf.float32)
+
+        tfrecord_format["audio/buttered"] = tf.io.FixedLenFeature(
+            (48000 * 3), tf.float32, default_value=tf.zeros((48000 * 3))
+        )
+
         # tfrecord_format["audio/raw"] = tf.io.FixedLenFeature(
         #     (2401, mel_s[1]), tf.float32
         # )
-        tfrecord_format["audio/min_freq"] = tf.io.FixedLenFeature((), tf.float32)
-        tfrecord_format["audio/max_freq"] = tf.io.FixedLenFeature((), tf.float32)
+        # tfrecord_format["audio/min_freq"] = tf.io.FixedLenFeature((), tf.float32)
+        # tfrecord_format["audio/max_freq"] = tf.io.FixedLenFeature((), tf.float32)
 
     if not all_human:
         tfrecord_format["audio/signal_percent"] = tf.io.FixedLenFeature((), tf.float32)
@@ -872,9 +880,24 @@ def read_tfrecord(
     if embeddings:
         image = example["embedding"]
     else:
-        raw = example["audio/raw"]
-        min_freq = example["audio/min_freq"]
-        max_freq = example["audio/max_freq"]
+        buttered = example["audio/buttered"] if filter_freq else None
+        if filter_freq and tf.math.count_nonzero(buttered) > 0:
+            if random_butter > 0:
+                rand = tf.random.uniform((), 0, 1)
+                # do butter pass 3/5ths of the time
+                raw = tf.cond(
+                    rand <= random_butter,
+                    lambda: tf.identity(example["audio/buttered"]),
+                    lambda: tf.identity(example["audio/raw"]),
+                )
+            else:
+                logging.info("USing buttered")
+                raw = example["audio/buttered"]
+        else:
+            raw = example["audio/raw"]
+
+        # min_freq = example["audio/min_freq"]
+        # max_freq = example["audio/max_freq"]
         # raw = butter_function(raw, min_freq, max_freq)
         # stft = tf.signal.stft(
         #     raw,
@@ -954,8 +977,8 @@ def read_tfrecord(
             label,
             embed_preds,
             signal_percent,
-            min_freq,
-            max_freq,
+            # min_freq,
+            # max_freq,
             example["audio/rec_id"],
             example["audio/track_id"],
         )
@@ -1050,6 +1073,7 @@ def main():
     filenames_2 = tf.io.gfile.glob(f"./flickr-training-data/validation/*.tfrecord")
     # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
     # weights = [0.5] * len(labels)
+    start = time.time()
     resampled_ds, remapped, _ = get_dataset(
         # dir,
         filenames,
@@ -1061,12 +1085,14 @@ def main():
         excluded_labels=excluded_labels,
         stop_on_empty=False,
         filter_freq=True,
+        random_butter=0.9
         # filenames_2=filenames_2
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
 
     for e in range(1):
         for x, y in resampled_ds:
+            print("took", time.time() - start)
             show_batch(x, y, labels)
             print("X batch of ", x.shape, " Has memory of ", getsize(np.array(x)), "MB")
 
@@ -1103,11 +1129,11 @@ def getsize(obj):
 
 
 def show_batch(image_batch, label_batch, labels):
-    min_freq = label_batch[3]
-    max_freq = label_batch[4]
-    recs = label_batch[5]
-    tracks = label_batch[6]
-    label_batch = label_batch[0]
+    # min_freq = label_batch[3]
+    # max_freq = label_batch[4]
+    # recs = label_batch[3]
+    # tracks = label_batch[4]
+    # label_batch = label_batch[0]
     fig = plt.figure(figsize=(20, 20))
     print("images in batch", len(image_batch), len(label_batch))
     num_images = len(image_batch)
@@ -1125,7 +1151,6 @@ def show_batch(image_batch, label_batch, labels):
         spc = None
         plt.title(f"{lbl} ({spc}")
         img = image_batch[n]
-        print("Min freq", min_freq[n], "max", max_freq[n], recs[n], lbl, tracks[n])
         plot_mel(image_batch[n][:, :, 0], ax)
 
     plt.show()

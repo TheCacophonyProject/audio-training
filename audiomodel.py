@@ -1259,6 +1259,7 @@ def main():
                 use_generic_bird=args.use_bird,
                 filter_freq=args.filter_freq,
                 use_weighting=args.use_weighting,
+                random_butter=args.random_butter,
             )
 
 
@@ -1302,6 +1303,12 @@ def parse_args():
     )
     parser.add_argument(
         "--filter-freq", default=False, action="count", help="Filter Freq"
+    )
+    parser.add_argument(
+        "--random-butter",
+        default=0,
+        type=float,
+        help="Random butter a percentage between 0-1 of using butter",
     )
     parser.add_argument(
         "--use-weighting",
