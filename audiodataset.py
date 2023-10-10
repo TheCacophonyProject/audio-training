@@ -758,8 +758,6 @@ def load_data(
         assert len(s_data) == int(segment_l * sr)
 
         buttered = butter_bandpass_filter(s_data, min_freq, max_freq, sr)
-        if buttered is None:
-            print("NO butter")
         spec = SpectrogramData(s_data.copy(), data_length, buttered)
     except:
         logging.error(

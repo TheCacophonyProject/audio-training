@@ -319,11 +319,8 @@ def save_data(
         rec.sample_rate = resample
         for i, sample in enumerate(samples):
             try:
-                min_freq = None
-                max_freq = None
-                if filter_frequency:
-                    min_freq = sample.min_freq
-                    max_freq = sample.max_freq
+                min_freq = sample.min_freq
+                max_freq = sample.max_freq
                 spec = load_data(
                     config,
                     sample.start,
