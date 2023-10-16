@@ -482,7 +482,7 @@ def get_dataset(filenames, labels, **args):
         logging.info("Taking PCEN")
         dataset = dataset.map(lambda x, y: pcen_function(x, y))
 
-    dist = get_distribution(dataset, num_labels)
+    dist = get_distribution(dataset, num_labels, batched=False)
     epoch_size = np.sum(dist)
     # tf complains about running out of data if i dont specify the size????
     dataset = dataset.take(epoch_size)
