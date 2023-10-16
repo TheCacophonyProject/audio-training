@@ -431,7 +431,7 @@ class AudioModel:
         # create a save point
         if run_name is None:
             run_name = self.params.model_name
-        # self.model.save(os.path.join(self.checkpoint_folder, run_name))
+        self.model.save(os.path.join(self.checkpoint_folder, run_name))
         self.save_metadata(run_name, history, test_results, **args)
         if self.test is not None:
             confusion(self.model, self.labels, self.test, run_name)
