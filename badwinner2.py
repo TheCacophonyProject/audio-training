@@ -200,25 +200,28 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False, lme=Fals
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Conv2D(128, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    # x = tf.keras.layers.Conv2D(128, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
-    # x = tf.keras.layers.BatchNormalization()(x)
 
-    # Original is based of 90 mels, if we want to put all mels into a singl channel can add a nother conv
-    # see how they perform
-    x = tf.keras.layers.Conv2D(128, (12, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    # Original is based of 80 mels, which only needs one conv 17x 3
+    # we can either have a bigger conv or 2 large ones
+
+    # At this point we have 48 mel bands remaining if we started with 160
+    # Squish the information into smaller features essentially combining mel bands
+    x = tf.keras.layers.Conv2D(128, (28, 3), activation=tf.keras.layers.LeakyReLU())(x)
     x = tf.keras.layers.BatchNormalization()(x)
+    # Squish again so that we have 5 condense mel bands
     x = tf.keras.layers.Conv2D(128, (17, 3), activation=tf.keras.layers.LeakyReLU())(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    # x = tf.keras.layers.Conv2D(128, (17, 3), activation=tf.keras.layers.LeakyReLU())(x)
 
-    # x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.MaxPool2D((10, 3))(x)
+    # Pool the mel bands so that we have a shape of (1,X) essentially brining all the mel bands
+    # into a set of features per time range
+    x = tf.keras.layers.MaxPool2D((5, 3))(x)
     x = tf.keras.layers.Dropout(0.5)(x)
 
-    # probably dont need to be as big
+    # probably dont need to be as big (ORiginal 1 x 9 is based of 5 second segments)
+    # could reduce this
     x = tf.keras.layers.Conv2D(
         1024,
-        (1, 9),
+        (1, 6),
         activation=tf.keras.layers.LeakyReLU(),
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
@@ -241,11 +244,14 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False, lme=Fals
         activation=tf.keras.layers.LeakyReLU(),
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
-    # x = logmeanexp(x, axis=2, sharpness=10)
+
+    # Since we have quite specific track information, LME might not be so usefull, as this is more
+    #  like an inbetween max and average, higher the sharpness the more like max it becomes
+    # haven't found any benefit using LME
     if lme:
-        # is this the same as global pooling????
         x = logmeanexp(x, axis=1, sharpness=5, keepdims=False)
         x = logmeanexp(x, axis=2, sharpness=5, keepdims=False)
+
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
     x = tf.keras.activations.sigmoid(x)
@@ -286,7 +292,7 @@ def logmeanexp(x, axis=None, keepdims=False, sharpness=5):
 def main():
     init_logging()
     args = parse_args()
-    model = build_model_res((160, 513, 1), None, 6)
+    model = build_model((160, 513, 1), None, 21, multi_label=True, lme=False)
     model.summary()
     model.compile(
         optimizer=tf.keras.optimizers.Adam(),
