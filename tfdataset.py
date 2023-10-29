@@ -24,6 +24,7 @@ NOISE_PATH = []
 MERGE_LABELS = {
     "house sparrow": "sparrow",
     "new zealand fantail": "fantail",
+    "australian magpie": "magpie",
 }
 
 # seed = 1341
@@ -100,6 +101,23 @@ def set_specific_by_count(meta):
     training_rec = counts["train"]["rec_counts"]
 
     validation = counts["validation"]["sample_counts"]
+
+    # set counts to be counts of all merged labels
+    for k, v in MERGE_LABELS.items():
+        for dataset in [counts, training, training_rec, validation]:
+            if k in dataset:
+                total_count = dataset[k]
+                for merge_l in v:
+                    if merge_l in dataset:
+                        total_count += dataset[merge_l]
+                datset[k] = total_count
+                logging.info("Adjusting count %s to %s", k, total_count)
+
+                for merge_l in v:
+                    if merge_l in dataset:
+                        dataset[merge_l] = total_count
+                        logging.info("Adjusting count %s to %s", merge_l, total_count)
+
     labels_with_data = []
     for label, count in training.items():
         rec_count = training_rec[label]
@@ -304,7 +322,7 @@ def get_remappings(
     labels, excluded_labels, keep_excluded_in_extra=True, use_generic_bird=True
 ):
     extra_label_map = {}
-    remapped = {}
+    # remapped = {}
     re_dic = {}
     new_labels = labels.copy()
     for excluded in excluded_labels:
@@ -313,7 +331,7 @@ def get_remappings(
     for l in labels:
         if l in excluded_labels:
             re_dic[l] = -1
-            remapped[l] = []
+            # remapped[l] = []
             logging.info("Excluding %s", l)
         else:
             if l in MERGE_LABELS and MERGE_LABELS[l] in labels:
@@ -321,7 +339,7 @@ def get_remappings(
                 re_dic[l] = new_labels.index(MERGE_LABELS[l])
             else:
                 re_dic[l] = new_labels.index(l)
-            remapped[l] = [l]
+            # remapped[l] = [l]
             # values.append(new_labels.index(l))
     if not use_generic_bird:
         re_dic["bird"] = -1
@@ -362,9 +380,9 @@ def get_remappings(
             continue
         if l in excluded_labels:
             continue
-        remapped[remap_label].append(l)
+        # remapped[remap_label].append(l)
         re_dic[l] = new_labels.index(remap_label)
-        del remapped[l]
+        # del remapped[l]
     return (extra_label_map, re_dic, new_labels)
 
 
@@ -482,12 +500,12 @@ def get_dataset(filenames, labels, **args):
         logging.info("Taking PCEN")
         dataset = dataset.map(lambda x, y: pcen_function(x, y))
 
-    dist = get_distribution(dataset, num_labels, batched=False)
-    epoch_size = np.sum(dist)
+    # dist = get_distribution(dataset, num_labels, batched=False)
+    # epoch_size = np.sum(dist)
     # tf complains about running out of data if i dont specify the size????
     dataset = dataset.take(epoch_size)
     batch_size = args.get("batch_size", None)
-    # dataset = dataset.cache()
+    dataset = dataset.cache()
     if args.get("shuffle", True):
         dataset = dataset.shuffle(
             4096, reshuffle_each_iteration=args.get("reshuffle", True)

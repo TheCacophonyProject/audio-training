@@ -217,11 +217,9 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False, lme=Fals
     x = tf.keras.layers.MaxPool2D((5, 3))(x)
     x = tf.keras.layers.Dropout(0.5)(x)
 
-    # probably dont need to be as big (ORiginal 1 x 9 is based of 5 second segments)
-    # could reduce this
     x = tf.keras.layers.Conv2D(
         1024,
-        (1, 6),
+        (1, 9),
         activation=tf.keras.layers.LeakyReLU(),
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
