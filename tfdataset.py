@@ -107,16 +107,14 @@ def set_specific_by_count(meta):
         for dataset in [counts, training, training_rec, validation]:
             if k in dataset:
                 total_count = dataset[k]
-                for merge_l in v:
-                    if merge_l in dataset:
-                        total_count += dataset[merge_l]
-                datset[k] = total_count
+                if v in dataset:
+                    total_count += dataset[v]
+                dataset[k] = total_count
                 logging.info("Adjusting count %s to %s", k, total_count)
 
-                for merge_l in v:
-                    if merge_l in dataset:
-                        dataset[merge_l] = total_count
-                        logging.info("Adjusting count %s to %s", merge_l, total_count)
+                if v in dataset:
+                    dataset[v] = total_count
+                    logging.info("Adjusting count %s to %s", v, total_count)
 
     labels_with_data = []
     for label, count in training.items():
@@ -262,7 +260,6 @@ def load_dataset(filenames, num_labels, labels, args):
             mean_sub=args.get("mean_sub", False),
             add_noise=args.get("add_noise", False),
             no_bird=args.get("no_bird", False),
-            all_human=args.get("all_human", False),
             embeddings=args.get("embeddings", False),
             filter_freq=args.get("filter_freq", False),
             random_butter=args.get("random_butter", 0),
@@ -467,7 +464,6 @@ def get_dataset(filenames, labels, **args):
         # bird_c = dist[labels.index("bird")]
 
         args["no_bird"] = True
-        args["all_human"] = True
         # added bird noise to human recs but it messes model, so dont use for now
         dataset_2 = load_dataset(second, len(labels), labels, args)
 
@@ -834,7 +830,6 @@ def read_tfrecord(
     mean_sub=False,
     add_noise=False,
     no_bird=False,
-    all_human=False,
     embeddings=False,
     filter_freq=False,
     random_butter=0,
@@ -882,8 +877,7 @@ def read_tfrecord(
         # tfrecord_format["audio/min_freq"] = tf.io.FixedLenFeature((), tf.float32)
         # tfrecord_format["audio/max_freq"] = tf.io.FixedLenFeature((), tf.float32)
 
-    if not all_human:
-        tfrecord_format["audio/signal_percent"] = tf.io.FixedLenFeature((), tf.float32)
+    tfrecord_format["audio/signal_percent"] = tf.io.FixedLenFeature((), tf.float32)
 
     example = tf.io.parse_single_example(example, tfrecord_format)
     # raw = example["audio/raw"]
@@ -976,18 +970,7 @@ def read_tfrecord(
             label = tf.math.logical_and(label, no_noise_mask)
 
             label = tf.cast(label, tf.int32)
-        if all_human:
-            logging.info("ADDING ALL HUMNAN")
-            # mixed noise didnt add human label so add here
-            human_mask = np.zeros(num_labels, dtype=bool)
-            human_mask[human_i] = 1
-            human_mask = tf.constant(human_mask)
-            label = tf.cast(label, tf.bool)
-            label = tf.math.logical_or(label, human_mask)
-
-            label = tf.cast(label, tf.int32)
-        else:
-            signal_percent = example["audio/signal_percent"]
+        signal_percent = example["audio/signal_percent"]
 
         label = tf.cast(label, tf.float32)
 
