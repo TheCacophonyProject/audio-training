@@ -28,6 +28,7 @@ import tensorflow as tf
 # #
 import tensorflow as tf
 import tensorflow_decision_forests as tfdf
+from tensorflow.keras import layers
 
 #
 #
@@ -496,7 +497,39 @@ class AudioModel:
 
     def build_model(self, multi_label=False):
         num_labels = len(self.labels)
-        if self.model_name == "badwinner2":
+        if self.model_name == "merge":
+            inputs = []
+            inputs.append(tf.keras.Input(shape=(68, 60), name="short_f"))
+            inputs.append(tf.keras.Input(shape=(136, 3), name="mid_f"))
+
+            short, mid = feature_cnn(inputs[0], inputs[1], num_labels)
+            bad_model = badwinner2.build_model(
+                self.input_shape,
+                None,
+                num_labels,
+                multi_label=multi_label,
+                lme=self.lme,
+                add_dense=True,
+            )
+
+            inputs.append(bad_model.inputs[0])
+            output = tf.keras.layers.Concatenate()([short, mid, bad_model.output])
+
+            # output = tf.keras.layers.Conv2D(
+            #     num_labels,
+            #     1,
+            #     activation=tf.keras.layers.LeakyReLU(),
+            #     kernel_initializer=tf.keras.initializers.Orthogonal(),
+            # )(output)
+            # # x = logmeanexp(x, sharpness=1, axis=2)
+            # output = tf.keras.layers.GlobalAveragePooling2D()(x)
+            #
+            output = layers.Dense(num_labels)(output)
+            output = tf.keras.activations.sigmoid(output)
+
+            self.model = tf.keras.models.Model(inputs, outputs=output)
+            self.model.summary()
+        elif self.model_name == "badwinner2":
             logging.info("Building bad winner2")
             self.model = badwinner2.build_model(
                 self.input_shape,
@@ -541,7 +574,7 @@ class AudioModel:
                 num_labels, activation=activation, name="prediction"
             )(x)
 
-            outputs = [birds]
+            output = [birds]
             self.model = tf.keras.models.Model(input, outputs=outputs)
 
         if multi_label:
@@ -1267,6 +1300,7 @@ def main():
                 use_weighting=args.use_weighting,
                 random_butter=args.random_butter,
                 only_features=args.only_features,
+                features=args.features,
             )
 
 
@@ -1326,7 +1360,9 @@ def parse_args():
     parser.add_argument(
         "--only-features", default=False, action="count", help="Train on features"
     )
-
+    parser.add_argument(
+        "--features", default=False, action="count", help="Train on features"
+    )
     parser.add_argument("--multi", type=str2bool, default=True, help="Multi label")
     parser.add_argument(
         "--use-bird",
@@ -1348,7 +1384,8 @@ def parse_args():
 
     args = parser.parse_args()
     # args.multi = args.multi > 0
-
+    args.only_features = args.only_features > 0
+    args.features = args.features > 0
     args.filter_freq = args.filter_freq > 0
     if args.dataset_dir is not None:
         args.dataset_dir = Path(args.dataset_dir)
@@ -1623,6 +1660,26 @@ def keras_model_memory_usage_in_bytes(model, batch_size):
         + non_trainable_count
     )
     return total_memory
+
+
+def feature_cnn(short_features, mid_features, num_labels):
+    short_features = tf.keras.layers.Dense(128, activation="relu")(short_features)
+    short_features = tf.keras.layers.Dense(128, activation="relu")(short_features)
+    short_features = tf.keras.layers.Dropout(0.1)(short_features)
+    short_features = tf.keras.layers.GlobalAveragePooling1D()(short_features)
+
+    short_features = tf.keras.layers.Dense(num_labels, activation="sigmoid")(
+        short_features
+    )
+
+    mid_features = tf.keras.layers.Dense(128, activation="relu")(mid_features)
+    mid_features = tf.keras.layers.Dense(128, activation="relu")(mid_features)
+    mid_features = tf.keras.layers.Dropout(0.1)(mid_features)
+    mid_features = tf.keras.layers.GlobalAveragePooling1D()(mid_features)
+
+    mid_features = tf.keras.layers.Dense(num_labels, activation="sigmoid")(mid_features)
+
+    return short_features, mid_features
 
 
 if __name__ == "__main__":

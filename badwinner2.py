@@ -120,7 +120,9 @@ def res_block(X, filters, stage, block, stride=1):
     return X
 
 
-def build_model_res(input_shape, norm_layer, num_labels, multi_label=False):
+def build_model_res(
+    input_shape, norm_layer, num_labels, multi_label=False, add_dense=True
+):
     input = tf.keras.Input(shape=input_shape, name="input")
     # x = norm_layer(input)
     # if multi_label:
@@ -164,22 +166,25 @@ def build_model_res(input_shape, norm_layer, num_labels, multi_label=False):
 
     x = tf.keras.layers.Dropout(0.5)(x)
 
-    x = tf.keras.layers.Conv2D(
-        num_labels,
-        1,
-        activation=tf.keras.layers.LeakyReLU(),
-        kernel_initializer=tf.keras.initializers.Orthogonal(),
-    )(x)
-    # x = logmeanexp(x, sharpness=1, axis=2)
-    x = tf.keras.layers.GlobalAveragePooling2D()(x)
+    if add_dense:
+        x = tf.keras.layers.Conv2D(
+            num_labels,
+            1,
+            activation=tf.keras.layers.LeakyReLU(),
+            kernel_initializer=tf.keras.initializers.Orthogonal(),
+        )(x)
+        # x = logmeanexp(x, sharpness=1, axis=2)
+        x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
-    x = tf.keras.activations.sigmoid(x)
+        x = tf.keras.activations.sigmoid(x)
 
     model = tf.keras.models.Model(input, outputs=x)
     return model
 
 
-def build_model(input_shape, norm_layer, num_labels, multi_label=False, lme=False):
+def build_model(
+    input_shape, norm_layer, num_labels, multi_label=False, lme=False, add_dense=True
+):
     input = tf.keras.Input(shape=input_shape, name="input")
     # x = norm_layer(input)
     # if multi_label:
@@ -236,23 +241,24 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False, lme=Fals
 
     x = tf.keras.layers.Dropout(0.5)(x)
 
-    x = tf.keras.layers.Conv2D(
-        num_labels,
-        1,
-        activation=tf.keras.layers.LeakyReLU(),
-        kernel_initializer=tf.keras.initializers.Orthogonal(),
-    )(x)
+    if add_dense:
+        x = tf.keras.layers.Conv2D(
+            num_labels,
+            1,
+            activation=tf.keras.layers.LeakyReLU(),
+            kernel_initializer=tf.keras.initializers.Orthogonal(),
+        )(x)
 
-    # Since we have quite specific track information, LME might not be so usefull, as this is more
-    #  like an inbetween max and average, higher the sharpness the more like max it becomes
-    # haven't found any benefit using LME
-    if lme:
-        x = logmeanexp(x, axis=1, sharpness=5, keepdims=False)
-        x = logmeanexp(x, axis=2, sharpness=5, keepdims=False)
+        # Since we have quite specific track information, LME might not be so usefull, as this is more
+        #  like an inbetween max and average, higher the sharpness the more like max it becomes
+        # haven't found any benefit using LME
+        if lme:
+            x = logmeanexp(x, axis=1, sharpness=5, keepdims=False)
+            x = logmeanexp(x, axis=2, sharpness=5, keepdims=False)
+        print("ADDED GLOBAL")
+        x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
-    x = tf.keras.layers.GlobalAveragePooling2D()(x)
-
-    x = tf.keras.activations.sigmoid(x)
+        x = tf.keras.activations.sigmoid(x)
 
     model = tf.keras.models.Model(input, outputs=x)
     return model

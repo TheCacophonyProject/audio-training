@@ -263,6 +263,7 @@ def load_dataset(filenames, num_labels, labels, args):
             filter_freq=args.get("filter_freq", False),
             random_butter=args.get("random_butter", 0),
             only_features=args.get("only_features", False),
+            features=args.get("features", False),
             multi=args.get("multi_label", True),
         ),
         num_parallel_calls=AUTOTUNE,
@@ -271,7 +272,10 @@ def load_dataset(filenames, num_labels, labels, args):
     if args.get("filter_bad", False):
         dataset = dataset.filter(lambda x, y: not filter_bad_tracks(x, y, labels))
     if not args.get("only_features", False):
-        filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
+        if args.get("features"):
+            filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[2]))
+        else:
+            filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
         dataset = dataset.filter(filter_nan)
 
     filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y[0]), 0)
@@ -486,8 +490,12 @@ def get_dataset(filenames, labels, **args):
         )
     # logging.info("Filtering freq %s", args.get("filter_freq", False))
     # filter freq done in writing stage to speed up
+    logging.info("args %s", args)
+
     if not args.get("only_features", False):
-        dataset = dataset.map(lambda x, y: raw_to_mel(x, y, False))
+        dataset = dataset.map(
+            lambda x, y: raw_to_mel(x, y, args.get("features", False))
+        )
 
     dataset = dataset.map(lambda x, y: (x, y[0]))
     resample_data = args.get("resample", False)
@@ -677,21 +685,14 @@ def butter_bandpass(lowcut, highcut, fs, order=2):
 
 
 @tf.function
-def raw_to_mel(raw, y, filter_freq, butter_random=True):
-    if filter_freq:
-        logging.info("Filtering freq")
-        if butter_random:
-            logging.info("Random butter")
-            rand = tf.random.uniform((), 0, 5)
-            # do butter pass 3/5ths of the time
-            raw = tf.cond(
-                rand <= 3,
-                lambda: butter_function(raw, y[3], y[4]),
-                lambda: tf.identity(raw),
-            )
-        else:
-            raw = butter_function(raw, y[3], y[4])
-        # raw =
+def raw_to_mel(x, y, features=False):
+    print("FEATURES", features)
+    if features:
+        raw = x[2]
+        print("Using x[2]", raw.shape)
+    else:
+        raw = x
+
     stft = tf.signal.stft(
         raw,
         4800,
@@ -706,7 +707,11 @@ def raw_to_mel(raw, y, filter_freq, butter_random=True):
     # stft = tf.reshape(stft, [2401, mel_s[1]])
     image = tf.tensordot(MEL_WEIGHTS, stft, 1)
     image = tf.expand_dims(image, axis=2)
-    return image, y
+    if features:
+        x = (x[0], x[1], image)
+    else:
+        x = image
+    return x, y
 
 
 def butter_function(x, lowcut, highcut):
@@ -753,6 +758,7 @@ def read_tfrecord(
     filter_freq=False,
     random_butter=0,
     only_features=False,
+    features=False,
     multi=True,
 ):
     bird_l = tf.constant(["bird"])
@@ -783,11 +789,8 @@ def read_tfrecord(
         tfrecord_format["embedding"] = tf.io.FixedLenFeature(
             EMBEDDING_SHAPE, tf.float32
         )
-    elif only_features:
-        tfrecord_format["audio/short_f"] = tf.io.FixedLenFeature((68 * 60), tf.float32)
-        tfrecord_format["audio/mid_f"] = tf.io.FixedLenFeature((136 * 3), tf.float32)
 
-    else:
+    elif not only_features:
         logging.info("Loading sft audio")
 
         tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((48000 * 3), tf.float32)
@@ -801,6 +804,9 @@ def read_tfrecord(
         # )
         # tfrecord_format["audio/min_freq"] = tf.io.FixedLenFeature((), tf.float32)
         # tfrecord_format["audio/max_freq"] = tf.io.FixedLenFeature((), tf.float32)
+    if features or only_features:
+        tfrecord_format["audio/short_f"] = tf.io.FixedLenFeature((68 * 60), tf.float32)
+        tfrecord_format["audio/mid_f"] = tf.io.FixedLenFeature((136 * 3), tf.float32)
 
     tfrecord_format["audio/signal_percent"] = tf.io.FixedLenFeature((), tf.float32)
 
@@ -808,23 +814,17 @@ def read_tfrecord(
     # raw = example["audio/raw"]
 
     label = tf.cast(example["audio/class/text"], tf.string)
-    labels = tf.strings.split(label, sep="\n")
+    split_labels = tf.strings.split(label, sep="\n")
     global remapped_y, extra_label_map
-    labels = remapped_y.lookup(labels)
+    labels = remapped_y.lookup(split_labels)
     if multi:
-        extra = extra_label_map.lookup(labels)
+        extra = extra_label_map.lookup(split_labels)
         labels = tf.concat([labels, extra], axis=0)
     embed_preds = None
     if embeddings:
         image = example["embedding"]
-    elif only_features:
-        short_f = example["audio/short_f"]
-        mid_f = example["audio/mid_f"]
-        # mid_f = tf.reshape(mid_f, (136, 3))
-        # short_f = tf.reshape(short_f, (68, 60))
-        raw = tf.concat((short_f, mid_f), axis=0)
-        # raw = tf.expand_dims(raw, axis=0)
-    else:
+
+    elif not only_features:
         buttered = example["audio/buttered"] if filter_freq else None
         if filter_freq and tf.math.count_nonzero(buttered) > 0:
             if random_butter > 0:
@@ -841,6 +841,16 @@ def read_tfrecord(
         else:
             raw = example["audio/raw"]
 
+    if features or only_features:
+        short_f = example["audio/short_f"]
+        mid_f = example["audio/mid_f"]
+        mid_f = tf.reshape(mid_f, (136, 3))
+        short_f = tf.reshape(short_f, (68, 60))
+        if only_features:
+            raw = tf.concat((short_f, mid_f), axis=0)
+        else:
+            raw = (short_f, mid_f, raw)
+        # raw = tf.expand_dims(raw, axis=0)
     if augment:
         logging.info("Augmenting")
     if mean_sub:
