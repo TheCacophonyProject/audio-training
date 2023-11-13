@@ -247,7 +247,6 @@ def load_dataset(filenames, num_labels, labels, args):
     one_hot = args.get("one_hot", True)
     dataset = dataset.apply(tf.data.experimental.ignore_errors())
     # dataset = dataset.filter(filter_short)
-
     dataset = dataset.map(
         partial(
             read_tfrecord,
@@ -263,15 +262,17 @@ def load_dataset(filenames, num_labels, labels, args):
             embeddings=args.get("embeddings", False),
             filter_freq=args.get("filter_freq", False),
             random_butter=args.get("random_butter", 0),
+            only_features=args.get("only_features", False),
+            multi=args.get("multi_label", True),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
     if args.get("filter_bad", False):
         dataset = dataset.filter(lambda x, y: not filter_bad_tracks(x, y, labels))
-
-    filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
-    dataset = dataset.filter(filter_nan)
+    if not args.get("only_features", False):
+        filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
+        dataset = dataset.filter(filter_nan)
 
     filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y[0]), 0)
     dataset = dataset.filter(filter_excluded)
@@ -398,6 +399,7 @@ def get_dataset(filenames, labels, **args):
     extra_label_map, remapped, labels = get_remappings(
         labels, excluded_labels, use_generic_bird=use_generic_bird
     )
+
     remapped_y = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(list(remapped.keys())),
@@ -484,7 +486,8 @@ def get_dataset(filenames, labels, **args):
         )
     # logging.info("Filtering freq %s", args.get("filter_freq", False))
     # filter freq done in writing stage to speed up
-    dataset = dataset.map(lambda x, y: raw_to_mel(x, y, False))
+    if not args.get("only_features", False):
+        dataset = dataset.map(lambda x, y: raw_to_mel(x, y, False))
 
     dataset = dataset.map(lambda x, y: (x, y[0]))
     resample_data = args.get("resample", False)
@@ -499,10 +502,10 @@ def get_dataset(filenames, labels, **args):
     # dist = get_distribution(dataset, num_labels, batched=False)
     # epoch_size = np.sum(dist)
     # tf complains about running out of data if i dont specify the size????
-    dataset = dataset.take(epoch_size)
+    # dataset = dataset.take(epoch_size)
     batch_size = args.get("batch_size", None)
     dataset = dataset.cache()
-    if args.get("shuffle", True):
+    if args.get("shuffle", True) and args.get("only_features") == False:
         dataset = dataset.shuffle(
             4096, reshuffle_each_iteration=args.get("reshuffle", True)
         )
@@ -648,90 +651,6 @@ def get_weighting(dataset, labels):
     return weights
 
 
-def resample(dataset, labels, og):
-    target_dist = np.empty((len(labels)), dtype=np.float32)
-    target_dist[:] = 1 / len(labels)
-
-    rej = dataset.rejection_resample(
-        class_func=class_func,
-        target_dist=target_dist,
-    )
-    dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
-    return dataset
-
-
-def resample_old(dataset, labels):
-    excluded_labels = []
-    # excluded_labels = ["human", "bird", "morepork", "kiwi"]
-    num_labels = len(labels)
-    true_categories = [y for x, y in dataset]
-    if len(true_categories) == 0:
-        return None
-    true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    c = Counter(list(true_categories))
-    print("COUNTER", c)
-    dist = np.empty((num_labels), dtype=np.float32)
-    target_dist = np.empty((num_labels), dtype=np.float32)
-    for i in range(num_labels):
-        if labels[i] in excluded_labels:
-            dist[i] = 0
-            logging.info("Excluding %s for %s", c[i], labels[i])
-
-        else:
-            dist[i] = c[i]
-
-            logging.info("Have %s for %s", dist[i], labels[i])
-    # GP TESTING Just to remove some labels
-    dist = dist / np.sum(dist)
-
-    zeros = dist[dist == 0]
-    non_zero_labels = num_labels - len(zeros)
-    target_dist[:] = 1 / non_zero_labels
-
-    dist = dist / np.sum(dist)
-    dist_max = np.max(dist)
-    # really this is what we want but when the values become too small they never get sampled
-    # so need to try reduce the large gaps in distribution
-    # can use class weights to adjust more, or just throw out some samples
-    max_range = target_dist[0] / 2
-    for i in range(num_labels):
-        if dist[i] == 0:
-            target_dist[i] = 0
-        # elif dist_max - dist[i] > (max_range * 2):
-        # target_dist[i] = dist[i]
-        # print("adjusting for ", labels[i])
-        target_dist[i] = max(0, target_dist[i])
-    target_dist = target_dist / np.sum(target_dist)
-    rej = dataset.rejection_resample(
-        class_func=class_func,
-        target_dist=target_dist,
-    )
-    dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
-    return dataset
-
-
-@tf.function
-def mel_from_raw(raw):
-    stft = tf.signal.stft(
-        raw,
-        4800,
-        HOP_LENGTH,
-        fft_length=4800,
-        window_fn=tf.signal.hann_window,
-        pad_end=True,
-        name=None,
-    )
-    stft = tf.transpose(stft, [1, 0])
-    stft = tf.math.abs(stft)
-    # if you want power
-    # stft = tf.math.square(stft)
-    mel = tf.tensordot(MEL_WEIGHTS, stft, 1)
-    # mel = tfio.audio.dbscale(mel, top_db=80)
-
-    mel = tf.expand_dims(mel, 2)
-    return mel
-
-
 from scipy.signal import butter, sosfilt, sosfreqz, freqs
 
 
@@ -833,6 +752,8 @@ def read_tfrecord(
     embeddings=False,
     filter_freq=False,
     random_butter=0,
+    only_features=False,
+    multi=True,
 ):
     bird_l = tf.constant(["bird"])
     # tf_more_mask = tf.constant(morepork_mask)
@@ -854,17 +775,21 @@ def read_tfrecord(
     #     ],
     #     dtype=tf.float32,
     # ),
+    tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
+    tfrecord_format["audio/track_id"] = tf.io.FixedLenFeature((), tf.string)
     if embeddings:
         logging.info("Loading embeddings")
 
         tfrecord_format["embedding"] = tf.io.FixedLenFeature(
             EMBEDDING_SHAPE, tf.float32
         )
+    elif only_features:
+        tfrecord_format["audio/short_f"] = tf.io.FixedLenFeature((68 * 60), tf.float32)
+        tfrecord_format["audio/mid_f"] = tf.io.FixedLenFeature((136 * 3), tf.float32)
 
     else:
         logging.info("Loading sft audio")
-        tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
-        tfrecord_format["audio/track_id"] = tf.io.FixedLenFeature((), tf.string)
+
         tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((48000 * 3), tf.float32)
 
         tfrecord_format["audio/buttered"] = tf.io.FixedLenFeature(
@@ -885,12 +810,20 @@ def read_tfrecord(
     label = tf.cast(example["audio/class/text"], tf.string)
     labels = tf.strings.split(label, sep="\n")
     global remapped_y, extra_label_map
-    extra = extra_label_map.lookup(labels)
     labels = remapped_y.lookup(labels)
-    labels = tf.concat([labels, extra], axis=0)
+    if multi:
+        extra = extra_label_map.lookup(labels)
+        labels = tf.concat([labels, extra], axis=0)
     embed_preds = None
     if embeddings:
         image = example["embedding"]
+    elif only_features:
+        short_f = example["audio/short_f"]
+        mid_f = example["audio/mid_f"]
+        # mid_f = tf.reshape(mid_f, (136, 3))
+        # short_f = tf.reshape(short_f, (68, 60))
+        raw = tf.concat((short_f, mid_f), axis=0)
+        # raw = tf.expand_dims(raw, axis=0)
     else:
         buttered = example["audio/buttered"] if filter_freq else None
         if filter_freq and tf.math.count_nonzero(buttered) > 0:
@@ -908,24 +841,6 @@ def read_tfrecord(
         else:
             raw = example["audio/raw"]
 
-        # min_freq = example["audio/min_freq"]
-        # max_freq = example["audio/max_freq"]
-        # raw = butter_function(raw, min_freq, max_freq)
-        # stft = tf.signal.stft(
-        #     raw,
-        #     4800,
-        #     HOP_LENGTH,
-        #     fft_length=4800,
-        #     window_fn=tf.signal.hann_window,
-        #     pad_end=True,
-        #     name=None,
-        # )
-        # stft = tf.transpose(stft, [1, 0])
-        # stft = tf.math.abs(stft)
-        # # stft = tf.reshape(stft, [2401, mel_s[1]])
-        # image = tf.tensordot(MEL_WEIGHTS, stft, 1)
-        # image = tf.expand_dims(image, axis=2)
-
     if augment:
         logging.info("Augmenting")
     if mean_sub:
@@ -935,19 +850,10 @@ def read_tfrecord(
         mel_m = tf.expand_dims(mel_m, axis=1)
         # mean over each mel bank
         mel = mel - mel_m
-    #
-    if Z_NORM:
-        print("Subbing znorm")
-        mel = (mel - zvals["mean"]) / zvals["std"]
-    if preprocess_fn is not None:
-        logging.info("Preprocessing with %s", preprocess_fn)
-        raise Exception("Done preprocess for audio")
-        # image = preprocess_fn(image)
-
     if labeled:
         # label = tf.cast(example["audio/class/label"], tf.int32)
 
-        if one_hot:
+        if one_hot and not only_features:
             label = tf.reduce_max(
                 tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
             )
@@ -955,6 +861,9 @@ def read_tfrecord(
                 embed_preds = tf.reduce_max(
                     tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
                 )
+        else:
+            label = labels
+        print(label.dtype, label)
         signal_percent = 0.0
         if no_bird:
             logging.info("no bird")
@@ -1086,13 +995,16 @@ def main():
         excluded_labels=excluded_labels,
         stop_on_empty=False,
         filter_freq=True,
-        random_butter=0.9
+        random_butter=0.9,
+        only_features=True
         # filenames_2=filenames_2
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
 
     for e in range(1):
         for x, y in resampled_ds:
+            print(x.shape)
+
             print("took", time.time() - start)
             show_batch(x, y, labels)
             print("X batch of ", x.shape, " Has memory of ", getsize(np.array(x)), "MB")

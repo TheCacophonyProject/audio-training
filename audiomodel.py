@@ -27,6 +27,7 @@ import tensorflow as tf
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 # #
 import tensorflow as tf
+import tensorflow_decision_forests as tfdf
 
 #
 #
@@ -358,12 +359,13 @@ class AudioModel:
         )
         self.num_classes = len(self.labels)
         self.build_model(multi_label=args.get("multi_label", True))
-        bytes_needed = keras_model_memory_usage_in_bytes(self.model, self.batch_size)
-        logging.info(
-            "Need %s MB for model with batch size %s ",
-            bytes_needed * 0.000001,
-            self.batch_size,
-        )
+        # bytes_needed = keras_model_memory_usage_in_bytes(self.model, self.batch_size)
+        # logging.info(
+        #     "Need %s MB for model with batch size %s ",
+        #     bytes_needed * 0.000001,
+        #     self.batch_size,
+        # )
+        # self.model.build([(None, 60, 60), (None, 136, 3)])
         if weights is not None:
             self.load_weights(weights)
         # 1 / 0
@@ -382,7 +384,7 @@ class AudioModel:
         #         # tf.keras.metrics.Precision(),
         #     ],
         # )
-        self.model.summary()
+        # self.model.summary()
         checkpoints = self.checkpoints(run_name)
         # self.model.save(os.path.join(self.checkpoint_folder, run_name))
         # return
@@ -390,19 +392,22 @@ class AudioModel:
         if args.get("use_weighting", True):
             class_weights = get_weighting(self.train, self.labels)
             logging.info("Weights are %s", class_weights)
-        history = self.model.fit(
-            self.train,
-            validation_data=self.validation,
-            epochs=epochs,
-            shuffle=False,
-            callbacks=[
-                tf.keras.callbacks.TensorBoard(
-                    self.log_dir, write_graph=True, write_images=True
-                ),
-                *checkpoints,
-            ],  # log metricslast_stats
-            class_weight=class_weights,
-        )
+        if self.model_name == "features":
+            history = self.model.fit(self.train, validation_data=self.validation)
+        else:
+            history = self.model.fit(
+                self.train,
+                validation_data=self.validation,
+                epochs=epochs,
+                shuffle=False,
+                callbacks=[
+                    tf.keras.callbacks.TensorBoard(
+                        self.log_dir, write_graph=True, write_images=True
+                    ),
+                    *checkpoints,
+                ],  # log metricslast_stats
+                class_weight=class_weights,
+            )
 
         history = history.history
         test_accuracy = None
@@ -500,17 +505,15 @@ class AudioModel:
                 multi_label=multi_label,
                 lme=self.lme,
             )
+        elif self.model_name == "features":
+            self.model = tfdf.keras.RandomForestModel()
+            return
         elif self.model_name == "badwinner2-res":
             logging.info("Building bad winner2 res")
             self.model = badwinner2.build_model_res(
                 self.input_shape, None, num_labels, multi_label=multi_label
             )
-        elif self.model_name == "badwinner":
-            logging.info("Building bad winner")
-            raise Exception("Dont use bad winner use badwinner 2")
-            self.model = badwinner.build_model(
-                self.input_shape, None, num_labels, multi_label=multi_label
-            )
+
         elif self.model_name == "embeddings":
             self.model = get_linear_model(self.input_shape, len(self.labels))
         elif self.model_name == "wr-resnet":
@@ -1074,16 +1077,19 @@ def confusion(model, labels, dataset, filename="confusion.png"):
         print("Incorrects are", wrong_labels)
         if lbl_count == 0:
             continue
-        print(
-            "{}( {}%)\t{}( {}% )".format(
-                tp, round(100 * tp / (tp + fp)), fp, round(100 * fp / (tp + fp))
+        try:
+            print(
+                "{}( {}%)\t{}( {}% )".format(
+                    tp, round(100 * tp / (tp + fp)), fp, round(100 * fp / (tp + fp))
+                )
             )
-        )
-        print(
-            "{}( {}%)\t{}( {}% )".format(
-                fn, round(100 * fn / (tn + fn)), tn, round(100 * tn / (tn + fn))
+            print(
+                "{}( {}%)\t{}( {}% )".format(
+                    fn, round(100 * fn / (tn + fn)), tn, round(100 * tn / (tn + fn))
+                )
             )
-        )
+        except:
+            pass
     y_true = mlb.fit_transform(y_true)
     predicted_categories = mlb.fit_transform(predicted_categories)
     cms = multilabel_confusion_matrix(
@@ -1260,6 +1266,7 @@ def main():
                 filter_freq=args.filter_freq,
                 use_weighting=args.use_weighting,
                 random_butter=args.random_butter,
+                only_features=args.only_features,
             )
 
 
@@ -1316,8 +1323,11 @@ def parse_args():
         action="count",
         help="Use weighting for classes",
     )
+    parser.add_argument(
+        "--only-features", default=False, action="count", help="Train on features"
+    )
 
-    parser.add_argument("--multi", default=True, action="count", help="Multi label")
+    parser.add_argument("--multi", type=str2bool, default=True, help="Multi label")
     parser.add_argument(
         "--use-bird",
         type=str2bool,
@@ -1337,7 +1347,7 @@ def parse_args():
     parser.add_argument("name", help="Run name")
 
     args = parser.parse_args()
-    args.multi = args.multi > 0
+    # args.multi = args.multi > 0
 
     args.filter_freq = args.filter_freq > 0
     if args.dataset_dir is not None:

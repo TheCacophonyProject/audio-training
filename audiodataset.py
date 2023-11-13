@@ -9,7 +9,7 @@ import soundfile as sf
 import librosa
 
 import matplotlib.pyplot as plt
-
+import random
 import tensorflow as tf
 import numpy as np
 import math
@@ -17,7 +17,9 @@ import librosa.display
 
 import audioread.ffdec  # Use ffmpeg decoder
 from custommels import mel_spec
+import sys
 
+sys.path.append("../pyAudioAnalysis")
 #
 # SEGMENT_LENGTH = 2.5  # seconds
 # SEGMENT_STRIDE = 1  # of a second
@@ -50,6 +52,7 @@ RELABEL["golden whistler"] = "whistler"
 RELABEL["norfolk golden whistler"] = "whistler"
 
 SAMPLE_GROUP_ID = 0
+MIN_TRACK_LENGTH = 1.5
 
 
 class Config:
@@ -328,6 +331,7 @@ class Recording:
         self.rec_date = metadata.get("recordingDateTime")
         self.signals = metadata.get("signal", [])
         self.noises = metadata.get("noise", [])
+        self.duration = metadata.get("duration")
         if self.rec_date is not None:
             self.rec_date = parse_date(self.rec_date)
 
@@ -406,6 +410,12 @@ class Recording:
             start = track.start
             end = start + segment_length
             end = min(end, track.end)
+            # logging.info("Adjusting start end %s %s", start, end)
+            # start, end = ensure_track_length(
+            #     start, end, MIN_TRACK_LENGTH, track_end=self.duration
+            # )
+            # logging.info("Now is start end %s %s", start, end)
+
             # print("checking", track.start, "-", track.end, track.human_tags)
             while True:
                 min_freq = track.min_freq
@@ -566,6 +576,26 @@ def show_s(data, id):
 TOP_FREQ = 48000 / 2
 
 
+def load_features(signal, sr):
+    from pyAudioAnalysis import MidTermFeatures as aF
+
+    # defaults from the pyAudio wiki
+    mw = 1.0
+    ms = 1.0
+    sw = 0.050
+    ss = 0.050
+    mid_features, short_features, _ = aF.mid_feature_extraction(
+        signal,
+        sr,
+        round(sr * mw),
+        round(sr * ms),
+        round(sr * sw),
+        round(sr * ss),
+    )
+
+    return short_features, mid_features
+
+
 class Track:
     def __init__(self, metadata, filename, rec_id, rec):
         self.rec = rec
@@ -588,9 +618,18 @@ class Track:
         self.automatic = metadata.get("automatic")
         self.original_tags = set()
         self.signal_percent = None
+        self.mid_features = None
+        self.short_features = None
         tags = metadata.get("tags", [])
         for tag in tags:
             self.add_tag(tag)
+
+    def ensure_track_length(self, rec_duration):
+        start, end = ensure_track_length(
+            self.start, self.end, MIN_TRACK_LENGTH, track_end=rec_duration
+        )
+        self.start = start
+        self.end = end
 
     def add_tag(self, tag):
         what = tag.get("what")
@@ -705,13 +744,22 @@ def plot_mel(mel):
     # plt.clf()
 
 
-SpectrogramData = namedtuple("SpectrogramData", "raw raw_length buttered")
+SpectrogramData = namedtuple(
+    "SpectrogramData", "raw raw_length buttered short_features,mid_features"
+)
 
 Tag = namedtuple("Tag", "what confidence automatic original")
 
 
 def load_data(
-    config, start_s, frames, sr, n_fft=None, end=None, min_freq=None, max_freq=None
+    config,
+    start_s,
+    frames,
+    sr,
+    n_fft=None,
+    end=None,
+    min_freq=None,
+    max_freq=None,
 ):
     segment_l = config.segment_length
     segment_stride = config.segment_stride
@@ -751,14 +799,23 @@ def load_data(
         #     data_length = len(sub) / sr
         # else:
         #     s_data = frames[start:end]
+        short_f, mid_f = load_features(s_data, sr)
+        windows = short_f.shape[1]
+        if windows < 60:
+            short_f = np.pad(short_f, ((0, 0), (0, 60 - windows)))
+        windows = mid_f.shape[1]
+        if windows < 3:
+            mid_f = np.pad(mid_f, ((0, 0), (0, 3 - windows)))
+
+        assert short_f.shape == (68, 60)
+        assert mid_f.shape == (136, 3)
         if len(s_data) < int(segment_l * sr):
             extra_frames = int(segment_l * sr) - len(s_data)
             offset = np.random.randint(0, extra_frames)
             s_data = np.pad(s_data, (offset, extra_frames - offset))
         assert len(s_data) == int(segment_l * sr)
-
         buttered = butter_bandpass_filter(s_data, min_freq, max_freq, sr)
-        spec = SpectrogramData(s_data.copy(), data_length, buttered)
+        spec = SpectrogramData(s_data.copy(), data_length, buttered, short_f, mid_f)
     except:
         logging.error(
             "Error getting segment  start %s lenght %s",
@@ -828,3 +885,20 @@ def space_signals(signals, spacing=0.1):
     # for s in new_signals:
     #     print(s)
     return new_signals
+
+
+# makes sure track is a certain length otherwise adjusts start and end  randomly to make length
+def ensure_track_length(start, end, min_length, track_end=None):
+    current_length = end - start
+    extra_length = min_length - current_length
+    if extra_length <= 0:
+        return start, end
+
+    begin_pad = np.random.randint(extra_length * 10) / 10
+    start = start - begin_pad
+    start = max(start, 0)
+    end = start + min_length
+    if track_end is not None:
+        end = min(end, track_end)
+
+    return start, end

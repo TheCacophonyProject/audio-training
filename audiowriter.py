@@ -48,7 +48,7 @@ import librosa
 from audiodataset import load_data, SpectrogramData
 from multiprocessing import Pool
 import tensorflow_hub as hub
-
+from audiodataset import load_features
 import psutil
 
 
@@ -107,6 +107,12 @@ def create_tf_example(sample, labels):
         "audio/start_s": tfrecord_util.float_feature(sample.start),
         "audio/class/text": tfrecord_util.bytes_feature(tags.encode("utf8")),
         "audio/raw": tfrecord_util.float_list_feature(np.float32(data.raw.ravel())),
+        "audio/short_f": tfrecord_util.float_list_feature(
+            np.float32(data.short_features.ravel())
+        ),
+        "audio/mid_f": tfrecord_util.float_list_feature(
+            np.float32(data.mid_features.ravel())
+        ),
     }
     if data.buttered is not None:
         feature_dict["audio/buttered"] = tfrecord_util.float_list_feature(
@@ -279,6 +285,7 @@ def save_data(
     config,
     embedding_labels,
     filter_frequency,
+    add_features=True,
 ):
     resample = 48000
     try:
@@ -309,12 +316,15 @@ def save_data(
                 #     "Track end is none so setting to rec length %s", len(frames) / sr
                 # )
                 t.end = len(frames) / sr
+            t.ensure_track_length(rec.duration)
+            # if add_features:
+            # load_features(t, frames, sr)
         # rec.tracks[0].end = len0(frames) / sr
-        print(config.filter_frequency)
+        rec.duration = len(frames) / sr
         rec.load_samples(
             config.segment_length,
             config.segment_stride,
-            do_overlap=not config.filter_frequency,
+            # do_overlap=not config.filter_frequency,
         )
         samples = rec.samples
         rec.sample_rate = resample
@@ -322,6 +332,7 @@ def save_data(
             try:
                 min_freq = sample.min_freq
                 max_freq = sample.max_freq
+
                 spec = load_data(
                     config,
                     sample.start,
