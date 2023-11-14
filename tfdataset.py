@@ -316,7 +316,7 @@ def get_distribution(dataset, num_labels, batched=True, one_hot=True):
         for y in true_categories:
             non_zero = tf.where(y).numpy()
             classes.extend(non_zero.flatten())
-            classes = np.array(classes)
+        classes = np.array(classes)
     else:
         classes = np.array(true_categories)
     c = Counter(list(classes))
