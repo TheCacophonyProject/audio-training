@@ -1059,6 +1059,31 @@ def log_confusion_matrix(epoch, logs, model, dataset, writer, labels):
 
 
 def confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
+    true_categories = [y for x, y in dataset]
+    true_categories = tf.concat(true_categories, axis=0)
+    y_true = []
+    if one_hot:
+        y_true = np.int64(tf.argmax(true_categories, axis=1))
+    else:
+        y_true = np.array(true_categories)
+    y_pred = model.predict(dataset)
+    # y_pred = np.int64(tf.argmax(y_pred, axis=1))
+
+    predicted_categories = []
+    labels.append("None")
+    for pred in y_pred:
+        max_i = np.argmax(pred)
+        max_p = pred[max_i]
+        if max_p > 0.7:
+            predicted_categories.append(cur_preds)
+        else:
+            predicted_categories.append(len(labels) - 1)
+    cm = confusion_matrix(y_true, predicted_categories, labels=np.arange(len(labels)))
+    figure = plot_confusion_matrix(cm, class_names=self.labels)
+    plt.savefig(f"./confusions/{filename}", format="png")
+
+
+def multi_confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
     from sklearn.preprocessing import MultiLabelBinarizer
 
     mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
@@ -1069,8 +1094,10 @@ def confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
         for y in true_categories:
             non_zero = tf.where(y).numpy()
             y_true.append(list(non_zero.flatten()))
-
-        true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        # only usefull if not multi
+        # true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    else:
+        y_true = np.array(true_categories)
     y_pred = model.predict(dataset)
 
     predicted_categories = []
@@ -1223,7 +1250,7 @@ def main():
         print("Meta", meta_file)
         with open(str(meta_file), "r") as f:
             meta_data = json.load(f)
-
+        multi = meta_data.get("multi")
         labels = meta_data.get("labels")
         print("model labels are", labels)
         # labels = meta_file.get("labels")
@@ -1285,9 +1312,22 @@ def main():
         if dataset is not None:
             # best_threshold(model, labels, dataset, args.confusion)
             # return
-            confusion(
-                model, labels, dataset, args.confusion, one_hot=not args.only_features
-            )
+            if multi:
+                multi_confusion(
+                    model,
+                    labels,
+                    dataset,
+                    args.confusion,
+                    one_hot=not meta.get("only_features"),
+                )
+            else:
+                confusion(
+                    model,
+                    labels,
+                    dataset,
+                    args.confusion,
+                    one_hot=not meta.get("only_features"),
+                )
 
     else:
         am = AudioModel(args.model_name, args.dataset_dir, args.second_dataset_dir)
