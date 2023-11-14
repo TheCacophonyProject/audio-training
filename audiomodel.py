@@ -1058,19 +1058,20 @@ def log_confusion_matrix(epoch, logs, model, dataset, writer, labels):
             tf.summary.image(f"Confusion Matrix {i}", cm_image, step=epoch)
 
 
-def confusion(model, labels, dataset, filename="confusion.png"):
+def confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
     from sklearn.preprocessing import MultiLabelBinarizer
 
     mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
     true_categories = [y for x, y in dataset]
     true_categories = tf.concat(true_categories, axis=0)
     y_true = []
-    for y in true_categories:
-        non_zero = tf.where(y).numpy()
-        y_true.append(list(non_zero.flatten()))
-    y_true = y_true
+    if one_hot:
+        for y in true_categories:
+            non_zero = tf.where(y).numpy()
+            y_true.append(list(non_zero.flatten()))
+        y_true = y_true
 
-    true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        true_categories = np.int64(tf.argmax(true_categories, axis=1))
     y_pred = model.predict(dataset)
 
     predicted_categories = []
@@ -1262,6 +1263,9 @@ def main():
             stop_on_empty=False,
             use_generic_bird=args.use_bird,
             filter_freq=args.filter_freq,
+            only_features=args.only_features,
+            features=args.features,
+            multi_label=args.multi,
         )
         for l in excluded_labels:
             labels.remove(l)
@@ -1282,7 +1286,9 @@ def main():
         if dataset is not None:
             # best_threshold(model, labels, dataset, args.confusion)
             # return
-            confusion(model, labels, dataset, args.confusion)
+            confusion(
+                model, labels, dataset, args.confusion, one_hot=not args.only_features
+            )
 
     else:
         am = AudioModel(args.model_name, args.dataset_dir, args.second_dataset_dir)

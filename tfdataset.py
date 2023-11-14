@@ -278,7 +278,10 @@ def load_dataset(filenames, num_labels, labels, args):
             filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
         dataset = dataset.filter(filter_nan)
 
-    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y[0]), 0)
+        filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y[0]), 0)
+    else:
+        filter_excluded = lambda x, y: tf.math.greater(y[0], -1)
+
     dataset = dataset.filter(filter_excluded)
     return dataset
 
@@ -885,16 +888,18 @@ def read_tfrecord(
         if no_bird:
             logging.info("no bird")
             # dont use bird or noise label from mixed ones
-            no_bird_mask = np.ones(num_labels, dtype=bool)
-            no_bird_mask[bird_i] = 0
-            no_bird_mask = tf.constant(no_bird_mask)
-            label = tf.cast(label, tf.bool)
-            label = tf.math.logical_and(label, no_bird_mask)
-            no_noise_mask = np.ones(num_labels, dtype=bool)
-            no_noise_mask[noise_i] = 0
-            no_noise_mask = tf.constant(no_noise_mask)
-            label = tf.math.logical_and(label, no_noise_mask)
-
+            if one_hot:
+                no_bird_mask = np.ones(num_labels, dtype=bool)
+                no_bird_mask[bird_i] = 0
+                no_bird_mask = tf.constant(no_bird_mask)
+                label = tf.cast(label, tf.bool)
+                label = tf.math.logical_and(label, no_bird_mask)
+                no_noise_mask = np.ones(num_labels, dtype=bool)
+                no_noise_mask[noise_i] = 0
+                no_noise_mask = tf.constant(no_noise_mask)
+                label = tf.math.logical_and(label, no_noise_mask)
+            else:
+                print("Not doing no bird as not implemeneted")
             label = tf.cast(label, tf.int32)
         signal_percent = example["audio/signal_percent"]
 
