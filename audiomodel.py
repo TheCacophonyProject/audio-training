@@ -523,7 +523,9 @@ class AudioModel:
             # )(output)
             # # x = logmeanexp(x, sharpness=1, axis=2)
             # output = tf.keras.layers.GlobalAveragePooling2D()(x)
-            #
+
+            # rather than dense could just weight each output with a learnable weight and then average
+            #  i think this should learn it the same but allow for more complex patterns
             output = layers.Dense(num_labels)(output)
             output = tf.keras.activations.sigmoid(output)
 

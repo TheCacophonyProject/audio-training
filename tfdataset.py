@@ -445,19 +445,26 @@ def get_dataset(filenames, labels, **args):
     # 1 / 0
     num_labels = len(labels)
     dataset = load_dataset(filenames, num_labels, labels, args)
-    bird_mask = np.zeros(num_labels, dtype=bool)
-    bird_mask[bird_i] = 1
-    bird_mask = tf.constant(bird_mask)
-    bird_filter = lambda x, y: tf.math.reduce_all(
-        tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
-    )
+    if args.get("only_features", False):
+        bird_mask = tf.constant(bird_i, dtype=tf.float32)
+        bird_filter = lambda x, y: tf.math.equal(y[0], bird_mask)
+        others_filter = lambda x, y: not tf.math.equal(y[0], bird_mask)
+
+    else:
+        bird_mask = np.zeros(num_labels, dtype=bool)
+        bird_mask[bird_i] = 1
+        bird_mask = tf.constant(bird_mask)
+        bird_filter = lambda x, y: tf.math.reduce_all(
+            tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
+        )
+        others_filter = lambda x, y: not tf.math.reduce_all(
+            tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
+        )
     bird_dataset = dataset.filter(bird_filter)
     if args.get("filter_signal") is not None:
         logging.info("Filtering signal by percent 0.1")
         bird_dataset = bird_dataset.filter(filter_signal)
-    others_filter = lambda x, y: not tf.math.reduce_all(
-        tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
-    )
+
     dataset = dataset.filter(others_filter)
     datasets = [dataset]
     # may perform better without adding generics birds but sitll having generic label
@@ -820,6 +827,8 @@ def read_tfrecord(
     if multi:
         extra = extra_label_map.lookup(split_labels)
         labels = tf.concat([labels, extra], axis=0)
+    else:
+        labels = tf.reduce_max(labels)
     embed_preds = None
     if embeddings:
         image = example["embedding"]
@@ -844,11 +853,11 @@ def read_tfrecord(
     if features or only_features:
         short_f = example["audio/short_f"]
         mid_f = example["audio/mid_f"]
-        mid_f = tf.reshape(mid_f, (136, 3))
-        short_f = tf.reshape(short_f, (68, 60))
         if only_features:
             raw = tf.concat((short_f, mid_f), axis=0)
         else:
+            mid_f = tf.reshape(mid_f, (136, 3))
+            short_f = tf.reshape(short_f, (68, 60))
             raw = (short_f, mid_f, raw)
         # raw = tf.expand_dims(raw, axis=0)
     if augment:
@@ -998,6 +1007,7 @@ def main():
         # dir,
         filenames,
         labels,
+        use_generic_bird=False,
         batch_size=32,
         image_size=DIMENSIONS,
         augment=False,
@@ -1006,7 +1016,8 @@ def main():
         stop_on_empty=False,
         filter_freq=True,
         random_butter=0.9,
-        only_features=True
+        only_features=True,
+        multi=False
         # filenames_2=filenames_2
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
