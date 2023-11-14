@@ -1069,7 +1069,6 @@ def confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
         for y in true_categories:
             non_zero = tf.where(y).numpy()
             y_true.append(list(non_zero.flatten()))
-        y_true = y_true
 
         true_categories = np.int64(tf.argmax(true_categories, axis=1))
     y_pred = model.predict(dataset)

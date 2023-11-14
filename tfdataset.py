@@ -299,7 +299,7 @@ def preprocess(data):
     return tf.keras.applications.inception_v3.preprocess_input(x), y
 
 
-def get_distribution(dataset, num_labels, batched=True):
+def get_distribution(dataset, num_labels, batched=True, one_hot=True):
     true_categories = [y for x, y in dataset]
     dist = np.zeros((num_labels), dtype=np.float32)
     if len(true_categories) == 0:
@@ -312,11 +312,13 @@ def get_distribution(dataset, num_labels, batched=True):
     if len(true_categories) == 0:
         return dist
     classes = []
-    for y in true_categories:
-        non_zero = tf.where(y).numpy()
-        classes.extend(non_zero.flatten())
-    classes = np.array(classes)
-
+    if one_hot:
+        for y in true_categories:
+            non_zero = tf.where(y).numpy()
+            classes.extend(non_zero.flatten())
+            classes = np.array(classes)
+    else:
+        classes = np.array(true_categories)
     c = Counter(list(classes))
     for i in range(num_labels):
         dist[i] = c[i]
@@ -516,7 +518,7 @@ def get_dataset(filenames, labels, **args):
         logging.info("Taking PCEN")
         dataset = dataset.map(lambda x, y: pcen_function(x, y))
 
-    # dist = get_distribution(dataset, num_labels, batched=False)
+    # dist = get_distribution(dataset, num_labels, batched=False,one_hot=not args.get("only_features"))
     # epoch_size = np.sum(dist)
     # tf complains about running out of data if i dont specify the size????
     # dataset = dataset.take(epoch_size)
@@ -1024,7 +1026,9 @@ def main():
         # filenames_2=filenames_2
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
-
+    dist = get_distribution(resampled_ds, len(labels), batched=True, one_hot=False)
+    for l, d in zip(labels, dist):
+        print(f"{l} has {d}")
     for e in range(1):
         for x, y in resampled_ds:
             print(x.shape)
