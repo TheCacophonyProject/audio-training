@@ -552,7 +552,7 @@ def get_dataset(filenames, labels, **args):
         )
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
 
-    return dataset, remapped, 0
+    return dataset, remapped, 0, labels
 
 
 def filter_signal(x, y):
@@ -697,10 +697,8 @@ def butter_bandpass(lowcut, highcut, fs, order=2):
 
 @tf.function
 def raw_to_mel(x, y, features=False):
-    print("FEATURES", features)
     if features:
         raw = x[2]
-        print("Using x[2]", raw.shape)
     else:
         raw = x
 
@@ -1008,7 +1006,7 @@ def main():
     # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
     # weights = [0.5] * len(labels)
     start = time.time()
-    resampled_ds, remapped, _ = get_dataset(
+    resampled_ds, remapped, _, labels = get_dataset(
         # dir,
         filenames,
         labels,

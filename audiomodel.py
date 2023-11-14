@@ -177,7 +177,7 @@ class AudioModel:
             labels.remove(l)
         for train_index, test_index in skf.split(filenames):
             fold += 1
-            self.train, remapped, _ = get_dataset(
+            self.train, remapped, _, _ = get_dataset(
                 # dir,
                 filenames[train_index],
                 og_labels,
@@ -190,7 +190,7 @@ class AudioModel:
                 use_generic_bird=use_generic_bird,
                 # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
             )
-            self.validation, remapped, _ = get_dataset(
+            self.validation, remapped, _, _ = get_dataset(
                 # dir,
                 filenames[test_index],
                 og_labels,
@@ -685,7 +685,7 @@ class AudioModel:
         excluded_labels = get_excluded_labels(self.labels)
 
         logging.info("labels are %s Excluding %s", self.labels, excluded_labels)
-        self.train, remapped, epoch_size = get_dataset(
+        self.train, remapped, epoch_size, _ = get_dataset(
             # dir,
             filenames,
             self.labels,
@@ -710,7 +710,7 @@ class AudioModel:
                 f"{str(self.second_data_dir)}/validation/*.tfrecord"
             )
         logging.info("Loading Val")
-        self.validation, _, _ = get_dataset(
+        self.validation, _, _, _ = get_dataset(
             # dir,
             filenames,
             self.labels,
@@ -736,7 +736,7 @@ class AudioModel:
                     f"{str(self.second_data_dir)}/test/*.tfrecord"
                 )
 
-            self.test, _, _ = get_dataset(
+            self.test, _, _, _ = get_dataset(
                 # dir,
                 filenames,
                 self.labels,
@@ -1248,7 +1248,7 @@ def main():
 
         excluded_labels = get_excluded_labels(labels)
         # self.labels = meta.get("labels", [])
-        dataset, _, _ = get_dataset(
+        dataset, _, _, _ = get_dataset(
             tf.io.gfile.glob(f"{str(base_dir)}/test/*.tfrecord"),
             labels,
             image_size=DIMENSIONS,
