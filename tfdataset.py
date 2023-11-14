@@ -518,10 +518,13 @@ def get_dataset(filenames, labels, **args):
         logging.info("Taking PCEN")
         dataset = dataset.map(lambda x, y: pcen_function(x, y))
 
-    # dist = get_distribution(dataset, num_labels, batched=False,one_hot=not args.get("only_features"))
-    # epoch_size = np.sum(dist)
-    # tf complains about running out of data if i dont specify the size????
-    # dataset = dataset.take(epoch_size)
+    dist = get_distribution(
+        dataset, num_labels, batched=False, one_hot=not args.get("only_features")
+    )
+    epoch_size = np.sum(dist)
+    # tf because of sample from datasets
+    dataset = dataset.repeat(2)
+    dataset = dataset.take(epoch_size)
     batch_size = args.get("batch_size", None)
     dataset = dataset.cache()
     if args.get("shuffle", True) and args.get("only_features") == False:

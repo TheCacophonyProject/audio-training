@@ -440,7 +440,10 @@ class AudioModel:
         self.model.save(os.path.join(self.checkpoint_folder, run_name))
         self.save_metadata(run_name, history, test_results, **args)
         if self.test is not None:
-            confusion(self.model, self.labels, self.test, run_name)
+            if args.get("multi_label"):
+                multi_confusion(self.model, self.labels, self.test, run_name)
+            else:
+                confusion(self.model, self.labels, self.test, run_name)
 
     def save_metadata(self, run_name, history, test_results, **args):
         #  save metadata
