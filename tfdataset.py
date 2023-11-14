@@ -449,7 +449,6 @@ def get_dataset(filenames, labels, **args):
         bird_mask = tf.constant(bird_i, dtype=tf.float32)
         bird_filter = lambda x, y: tf.math.equal(y[0], bird_mask)
         others_filter = lambda x, y: not tf.math.equal(y[0], bird_mask)
-
     else:
         bird_mask = np.zeros(num_labels, dtype=bool)
         bird_mask[bird_i] = 1
@@ -882,7 +881,6 @@ def read_tfrecord(
                 )
         else:
             label = labels
-        print(label.dtype, label)
         signal_percent = 0.0
         if no_bird:
             logging.info("no bird")
@@ -1017,7 +1015,7 @@ def main():
         filter_freq=True,
         random_butter=0.9,
         only_features=True,
-        multi=False
+        multi_label=False
         # filenames_2=filenames_2
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
