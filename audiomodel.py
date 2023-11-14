@@ -1075,11 +1075,11 @@ def confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
         max_i = np.argmax(pred)
         max_p = pred[max_i]
         if max_p > 0.7:
-            predicted_categories.append(cur_preds)
+            predicted_categories.append(max_i)
         else:
             predicted_categories.append(len(labels) - 1)
     cm = confusion_matrix(y_true, predicted_categories, labels=np.arange(len(labels)))
-    figure = plot_confusion_matrix(cm, class_names=self.labels)
+    figure = plot_confusion_matrix(cm, class_names=labels)
     plt.savefig(f"./confusions/{filename}", format="png")
 
 
@@ -1244,13 +1244,14 @@ def main():
             compile=False,
         )
 
-        model.load_weights(load_model / "val_binary_accuracy").expect_partial()
-
         meta_file = load_model / "metadata.txt"
         print("Meta", meta_file)
         with open(str(meta_file), "r") as f:
             meta_data = json.load(f)
-        multi = meta_data.get("multi")
+        if not meta_data.get("only_features"):
+            logging.info("Using val binary accuracy")
+            model.load_weights(load_model / "val_binary_accuracy").expect_partial()
+        multi = meta_data.get("multi_label")
         labels = meta_data.get("labels")
         print("model labels are", labels)
         # labels = meta_file.get("labels")
@@ -1288,10 +1289,10 @@ def main():
             excluded_labels=excluded_labels,
             stop_on_empty=False,
             use_generic_bird=args.use_bird,
-            filter_freq=args.filter_freq,
-            only_features=args.only_features,
-            features=args.features,
-            multi_label=args.multi,
+            filter_freq=meta_data.get("filter_freq", False),
+            only_features=meta_data.get("only_features", False),
+            features=meta_data.get("features"),
+            multi_label=meta_data.get("multi_label"),
         )
         for l in excluded_labels:
             labels.remove(l)
@@ -1318,7 +1319,7 @@ def main():
                     labels,
                     dataset,
                     args.confusion,
-                    one_hot=not meta.get("only_features"),
+                    one_hot=not meta_data.get("only_features"),
                 )
             else:
                 confusion(
@@ -1326,7 +1327,7 @@ def main():
                     labels,
                     dataset,
                     args.confusion,
-                    one_hot=not meta.get("only_features"),
+                    one_hot=not meta_data.get("only_features"),
                 )
 
     else:
