@@ -503,10 +503,10 @@ def get_dataset(filenames, labels, **args):
     # filter freq done in writing stage to speed up
     logging.info("args %s", args)
 
-    if not args.get("only_features", False):
-        dataset = dataset.map(
-            lambda x, y: raw_to_mel(x, y, args.get("features", False))
-        )
+    # if not args.get("only_features", False):
+    #     dataset = dataset.map(
+    #         lambda x, y: raw_to_mel(x, y, args.get("features", False))
+    #     )
 
     dataset = dataset.map(lambda x, y: (x, y[0]))
     resample_data = args.get("resample", False)
@@ -804,18 +804,24 @@ def read_tfrecord(
 
     elif not only_features:
         logging.info("Loading sft audio")
+        #
+        # tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((48000 * 3), tf.float32)
+        #
+        # tfrecord_format["audio/buttered"] = tf.io.FixedLenFeature(
+        #     (48000 * 3), tf.float32, default_value=tf.zeros((48000 * 3))
+        # )
 
-        tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((48000 * 3), tf.float32)
+        tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((2401 * 513), tf.float32)
 
         tfrecord_format["audio/buttered"] = tf.io.FixedLenFeature(
-            (48000 * 3), tf.float32, default_value=tf.zeros((48000 * 3))
+            (2401 * 513), tf.float32, default_value=tf.zeros((2401 * 513))
         )
 
-        # tfrecord_format["audio/raw"] = tf.io.FixedLenFeature(
-        #     (2401, mel_s[1]), tf.float32
-        # )
-        # tfrecord_format["audio/min_freq"] = tf.io.FixedLenFeature((), tf.float32)
-        # tfrecord_format["audio/max_freq"] = tf.io.FixedLenFeature((), tf.float32)
+    # tfrecord_format["audio/raw"] = tf.io.FixedLenFeature(
+    #     (2401, mel_s[1]), tf.float32
+    # )
+    # tfrecord_format["audio/min_freq"] = tf.io.FixedLenFeature((), tf.float32)
+    # tfrecord_format["audio/max_freq"] = tf.io.FixedLenFeature((), tf.float32)
     if features or only_features:
         tfrecord_format["audio/short_f"] = tf.io.FixedLenFeature((68 * 60), tf.float32)
         tfrecord_format["audio/mid_f"] = tf.io.FixedLenFeature((136 * 3), tf.float32)
@@ -854,6 +860,9 @@ def read_tfrecord(
                 raw = example["audio/buttered"]
         else:
             raw = example["audio/raw"]
+        raw = tf.reshape(raw, (2401, 513))
+        raw = tf.tensordot(MEL_WEIGHTS, raw, 1)
+        raw = tf.expand_dims(raw, axis=2)
 
     if features or only_features:
         short_f = example["audio/short_f"]
@@ -1022,12 +1031,12 @@ def main():
         stop_on_empty=False,
         filter_freq=True,
         random_butter=0.9,
-        only_features=True,
-        multi_label=False
+        only_features=False,
+        multi_label=True
         # filenames_2=filenames_2
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
-    dist = get_distribution(resampled_ds, len(labels), batched=True, one_hot=False)
+    dist = get_distribution(resampled_ds, len(labels), batched=True, one_hot=True)
     for l, d in zip(labels, dist):
         print(f"{l} has {d}")
     for e in range(1):

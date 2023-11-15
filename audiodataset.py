@@ -815,7 +815,14 @@ def load_data(
             s_data = np.pad(s_data, (offset, extra_frames - offset))
         assert len(s_data) == int(segment_l * sr)
         buttered = butter_bandpass_filter(s_data, min_freq, max_freq, sr)
-        spec = SpectrogramData(s_data.copy(), data_length, buttered, short_f, mid_f)
+        spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
+        spectogram_buttered = np.abs(
+            librosa.stft(buttered, n_fft=n_fft, hop_length=hop_length)
+        )
+
+        spec = SpectrogramData(
+            spectogram, data_length, spectogram_buttered, short_f, mid_f
+        )
     except:
         logging.error(
             "Error getting segment  start %s lenght %s",
