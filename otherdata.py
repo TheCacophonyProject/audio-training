@@ -200,7 +200,13 @@ def flickr_data():
             if rand_f > 0.85:
                 noisy_name = noisy_p / f"bird-{rec_name.name}"
                 if noisy_name.exists():
-                    add_rec(dataset, noisy_name, ["human", "bird"], config)
+                    add_rec(
+                        dataset,
+                        noisy_name,
+                        ["human"],
+                        config,
+                        mixed_label="bird",
+                    )
                     # logging.info("Adding %s from  %s", noisy_name, rec_name)
                     added = True
                     labels.append("bird")
@@ -208,7 +214,7 @@ def flickr_data():
                 noisy_name = noisy_p / f"noise-{rec_name.name}"
                 print("looking for %s", noisy_name)
                 if noisy_name.exists():
-                    add_rec(dataset, noisy_name, ["human", "noise"], config)
+                    add_rec(dataset, noisy_name, ["human"], config, mixed_label="noise")
                     # logging.info("Adding %s from  %s", noisy_name, rec_name)
                     added = True
                     labels.append("noise")
@@ -272,7 +278,7 @@ def flickr_data():
         json.dump(meta_data, f, indent=4)
 
 
-def add_rec(dataset, rec_name, labels, config):
+def add_rec(dataset, rec_name, labels, config, mixed_label=None):
     id = None
     id, id_2, speaker = rec_name.stem.split("_")
     id = f"{id}-{id_2}-{speaker}"
@@ -290,9 +296,12 @@ def add_rec(dataset, rec_name, labels, config):
     # except:
     #     continue
     t = Track({"id": id, "start": 0, "end": None, "tags": tags}, rec_name, r.id, r)
+    t.mixed_label = mixed_label
     # r.load_samples()
     r.tracks.append(t)
-    sample = AudioSample(r, r.human_tags, 0, None, [t.id], 1, None)
+    sample = AudioSample(
+        r, r.human_tags, 0, None, [t.id], 1, None, mixed_label=mixed_label
+    )
     r.samples = [sample]
     dataset.add_recording(r)
     dataset.samples.extend(r.samples)

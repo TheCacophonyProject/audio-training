@@ -111,6 +111,12 @@ def create_tf_example(sample, labels):
             np.float32(data.mid_features.ravel())
         ),
     }
+    if sample.mixed_label is not None:
+        logging.info("Adding mixed label %s", sample.mixed_label)
+        feature_dict["audio/class/text"] = (
+            tfrecord_util.bytes_feature(sample.mixed_label.encode("utf8")),
+        )
+
     if data.buttered is not None:
         feature_dict["audio/buttered"] = tfrecord_util.float_list_feature(
             np.float32(data.buttered.ravel())

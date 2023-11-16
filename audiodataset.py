@@ -269,7 +269,9 @@ class AudioSample:
         bin_id=None,
         min_freq=None,
         max_freq=None,
+        mixed_label=None,
     ):
+        self.mixed_label = mixed_label
         self.rec_id = rec.id
         self.tags = list(tags)
         self.tags.sort()
@@ -494,6 +496,7 @@ class Recording:
                         bin_id=bin_id,
                         min_freq=min_freq,
                         max_freq=max_freq,
+                        mixed_label=track.mixed_label,
                     )
                 )
                 # s = self.samples[-1]
@@ -591,6 +594,7 @@ class Track:
         self.signal_percent = None
         self.mid_features = None
         self.short_features = None
+        self.mixed_label = None
         tags = metadata.get("tags", [])
         for tag in tags:
             self.add_tag(tag)
