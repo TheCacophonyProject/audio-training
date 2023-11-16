@@ -113,7 +113,7 @@ def create_tf_example(sample, labels):
     }
     if sample.mixed_label is not None:
         logging.info("Adding mixed label %s", sample.mixed_label)
-        feature_dict["audio/class/text"] = (
+        feature_dict["audio/class/mixed_label"] = (
             tfrecord_util.bytes_feature(sample.mixed_label.encode("utf8")),
         )
 
