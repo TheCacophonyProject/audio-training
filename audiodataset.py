@@ -256,23 +256,6 @@ def filter_track(track):
     return False
 
 
-def get_samples(rec_frames, sample):
-    end = 0
-    start = 0
-    while end < len(frames):
-        AudioSample(
-            self,
-            labels,
-            start,
-            min(track.end, end),
-            tracks,
-            SAMPLE_GROUP_ID,
-            bin_id,
-        )
-        start += SEGMENT_STRIDE
-        end = start + SEGMENT_LENGTH
-
-
 class AudioSample:
     def __init__(
         self,
@@ -390,7 +373,7 @@ class Recording:
     def space_signals(self, spacing=0.1):
         self.signals = space_signals(signals, spacing)
 
-    def load_samples(self, segment_length, segment_stride, do_overlap=True):
+    def load_samples(self, segment_length, segment_stride, do_overlap=False):
         self.samples = []
         global SAMPLE_GROUP_ID
         SAMPLE_GROUP_ID += 1
@@ -401,7 +384,9 @@ class Recording:
         # always take 1 one sample, but dont bother with more if they are short
         # want to sample end of tracks always
         # does this make data unfair for shorter concise tracks
-        min_sample_length = segment_length - segment_stride + 1 / 20
+
+        SEG_LEEWAY = 0.5
+        min_sample_length = segment_length - SEG_LEEWAY
 
         # can be used to seperate among train/val/test
         bin_id = f"{self.id}-0"
@@ -410,14 +395,17 @@ class Recording:
             start = track.start
             end = start + segment_length
             end = min(end, track.end)
-            # logging.info("Adjusting start end %s %s", start, end)
-            # start, end = ensure_track_length(
-            #     start, end, MIN_TRACK_LENGTH, track_end=self.duration
-            # )
-            # logging.info("Now is start end %s %s", start, end)
-
-            # print("checking", track.start, "-", track.end, track.human_tags)
+            track_samples = (track.length - segment_length) / segment_stride
+            left_over = track_samples - int(track_samples)
+            track_samples = int(track_samples) + 1
+            # adjust start times by a random float this way we can incorporate
+            # end sometimes and start othertimes
+            sample_i = 1
             while True:
+                if left_over < SEG_LEEWAY and sample_i == track_samples:
+                    start_jitter = np.random.rand() * left_over
+                    start += start_jitter
+                sample_i += 1
                 min_freq = track.min_freq
                 max_freq = track.max_freq
                 labels = set(track.human_tags)
@@ -443,7 +431,7 @@ class Recording:
                         )
 
                         # enough overlap or we engulf the track
-                        if overlap >= min_overlap or (overlap >= other_track.length):
+                        if overlap >= min_overlap:
                             other_tracks.append(other_track)
                             labels = labels | other_track.human_tags
                             if min_freq is not None:
@@ -472,74 +460,20 @@ class Recording:
                         max_freq=max_freq,
                     )
                 )
+                # s = self.samples[-1]
+                # print(
+                #     "Have sample",
+                #     s.start,
+                #     s.end,
+                #     " from track ",
+                #     track.start,
+                #     track.end,
+                # )
                 start += segment_stride
                 end = start + segment_length
                 end = min(end, track.end)
                 if start > track.end or (end - start) < min_sample_length:
                     break
-
-            # other_tracks = [t for t in sorted_tracks[i:] if t.start<= start and t.end >= end]
-            # for t in sorted_tracks:
-            # print("FOR ", self.id)
-            # for t in self.tracks:
-            #     print(self.id, "have track from ", t.start, t.end)
-        # for s in self.samples:
-        #     print(
-        #         self.id,
-        #         "Have sample",
-        #         s.start,
-        #         s.end,
-        #         s.tags,
-        #         self.filename,
-        #         s.track_ids,
-        #     )
-
-    # def load_recording(self, resample=None):
-    #     try:
-    #         print("Loading", self.filename)
-    #         # with open(str(self.filename), "rb") as f:
-    #         # frames, sr = librosa.load(self.filename)
-    #         #  librosa wont close the file properly..... go figure
-    #         aro = audioread.ffdec.FFmpegAudioFile(self.filename)
-    #         frames, sr = librosa.load(aro, sr=None)
-    #         assert sr == 48000
-    #         aro.close()
-    #         if resample is not None and resample != sr:
-    #             frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
-    #             sr = resample
-    #             self.resampled = True
-    #         self.sample_rate = sr
-    #         self.rec_data = frames
-    #     except:
-    #         logging.error("Coult not load %s", str(self.filename), exc_info=True)
-    #         return False
-    #     return True
-
-    # def get_data(self, resample=None):
-    #     global SAMPLE_GROUP_ID
-    #     SAMPLE_GROUP_ID += 1
-    #
-    #     # 1 / 0
-    #     if self.rec_data is None:
-    #         loaded = self.load_recording(resample)
-    #         if not loaded:
-    #             return None
-    #     sr = self.sample_rate
-    #     frames = self.rec_data
-    #     for sample in self.samples:
-    #         spectogram, mel, mfcc, s_data = load_data(sample.start, frames, sr)
-    #         if spectogram is None:
-    #             print("error loading")
-    #             continue
-    #         sample.spectogram_data = SpectrogramData(
-    #             spectogram,
-    #             mel,
-    #             mfcc,
-    #             s_data.copy(),
-    #         )
-    #         sample.sr = sr
-    #
-    #     return self.samples
 
     @property
     def bin_id(self):

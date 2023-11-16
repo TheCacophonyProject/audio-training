@@ -498,13 +498,14 @@ def main():
     print("saving to", record_dir)
     # return
     dataset_counts = {}
+    dataset_recs = {}
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
         create_tf_records(dataset, dir, datasets[0].labels, num_shards=100)
         r_counts = dataset.get_rec_counts()
         for k, v in r_counts.items():
             r_counts[k] = len(v)
-
+        dataset_recs[dataset.name] = [s.id for s in dataset.recs]
         dataset_counts[dataset.name] = {
             "rec_counts": r_counts,
             "sample_counts": dataset.get_counts(),
@@ -525,6 +526,7 @@ def main():
         "labels": datasets[0].labels,
         "type": "audio",
         "counts": dataset_counts,
+        "recs": dataset_recs,
         "by_label": False,
         "relabbled": RELABEL,
     }
