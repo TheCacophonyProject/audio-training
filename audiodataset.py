@@ -401,7 +401,10 @@ class Recording:
             track_samples = int(track_samples) + 1
 
             sample_jitter = None
-            sample_starts = np.arange(track_samples, step=segment_stride) + track.start
+            sample_starts = (
+                np.arange(track_samples, step=segment_stride, dtype=np.float32)
+                + track.start
+            )
 
             if track.length > max_track_length:
                 # if track is long lets just take some random samples
