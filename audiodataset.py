@@ -386,25 +386,58 @@ class Recording:
         # does this make data unfair for shorter concise tracks
 
         SEG_LEEWAY = 0.5
+        MAX_TRACK_SAMPLES = 4
+
+        max_track_length = segment_length + (MAX_TRACK_SAMPLES - 1) * segment_stride
         min_sample_length = segment_length - SEG_LEEWAY
 
         # can be used to seperate among train/val/test
         bin_id = f"{self.id}-0"
-
         for track in self.tracks:
-            start = track.start
-            end = start + segment_length
-            end = min(end, track.end)
+            # lets cap samples at 4 per track
             track_samples = (track.length - segment_length) / segment_stride
+            track_samples = max(track_samples, 0)
             left_over = track_samples - int(track_samples)
             track_samples = int(track_samples) + 1
+
+            sample_jitter = None
+            sample_starts = np.arange(track_samples, step=segment_stride) + track.start
+
+            if track.length > max_track_length:
+                # if track is long lets just take some random samples
+                extra_length = track.length - max_track_length
+                sample_jitter = extra_length / MAX_TRACK_SAMPLES
+                sample_starts = np.random.choice(
+                    sample_starts, MAX_TRACK_SAMPLES, replace=False
+                ) + np.random.rand(MAX_TRACK_SAMPLES)
+                left_over = 0
             # adjust start times by a random float this way we can incorporate
             # end sometimes and start othertimes
+
+            # if a track has a little bit that will be cut off at the end
+            # adjust tsample to be random start
+            if left_over > 0 and track_samples == 1 and left_over < SEG_LEEWAY:
+                start_jitter = np.random.rand() * left_over
+                sample_starts += start_jitter
             sample_i = 1
-            while True:
-                if left_over < SEG_LEEWAY and sample_i == track_samples:
-                    start_jitter = np.random.rand() * left_over
-                    start += start_jitter
+            for start in sample_starts:
+                end = start + segment_length
+                end = min(end, track.end)
+                if sample_i > 1:
+                    if start > track.end or (end - start) < min_sample_length:
+                        # dont think this will ever happen
+                        break
+                if (
+                    left_over > 0
+                    and left_over < SEG_LEEWAY
+                    and sample_i == track_samples
+                ):
+                    # always include end
+                    # this is assuming segment_stride has already include a sample
+                    # with the start anyway
+                    end = track.end
+                    start = end - segment_length
+
                 sample_i += 1
                 min_freq = track.min_freq
                 max_freq = track.max_freq
@@ -451,7 +484,7 @@ class Recording:
                         self,
                         labels,
                         start,
-                        min(track.end, end),
+                        end,
                         [track.id for t in other_tracks],
                         SAMPLE_GROUP_ID,
                         track.signal_percent,
@@ -469,9 +502,10 @@ class Recording:
                 #     track.start,
                 #     track.end,
                 # )
-                start += segment_stride
-                end = start + segment_length
-                end = min(end, track.end)
+                # incase of jitter
+                # start += segment_stride
+                # end = start + segment_length
+                # end = min(end, track.end)
                 if start > track.end or (end - start) < min_sample_length:
                     break
 
