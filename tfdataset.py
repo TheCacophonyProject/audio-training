@@ -518,13 +518,13 @@ def get_dataset(filenames, labels, **args):
         logging.info("Taking PCEN")
         dataset = dataset.map(lambda x, y: pcen_function(x, y))
 
-    dist = get_distribution(
-        dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
-    )
-    epoch_size = np.sum(dist)
+    # dist = get_distribution(
+    #     dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
+    # )
+    # epoch_size = np.sum(dist)
     # tf because of sample from datasets
-    dataset = dataset.repeat(2)
-    dataset = dataset.take(epoch_size)
+    # dataset = dataset.repeat(2)
+    # dataset = dataset.take(epoch_size)
     batch_size = args.get("batch_size", None)
     dataset = dataset.cache()
     if args.get("shuffle", True):
@@ -868,11 +868,11 @@ def read_tfrecord(
         short_f = example["audio/short_f"]
         mid_f = example["audio/mid_f"]
         if only_features:
-            # raw = tf.concat((short_f, mid_f), axis=0)
-            mid_f = tf.reshape(mid_f, (136, 3))
-            short_f = tf.reshape(short_f, (68, 60))
+            raw = tf.concat((short_f, mid_f), axis=0)
+            # mid_f = tf.reshape(mid_f, (136, 3))
+            # short_f = tf.reshape(short_f, (68, 60))
 
-            raw = (short_f, mid_f)
+            # raw = (short_f, mid_f)
         else:
             mid_f = tf.reshape(mid_f, (136, 3))
             short_f = tf.reshape(short_f, (68, 60))

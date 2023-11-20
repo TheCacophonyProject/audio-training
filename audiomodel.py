@@ -1303,6 +1303,7 @@ def main():
             mean_sub=mean_sub,
             excluded_labels=excluded_labels,
             stop_on_empty=False,
+            one_hot=args.one_hot,
             use_generic_bird=args.use_bird,
             filter_freq=meta_data.get("filter_freq", False),
             only_features=meta_data.get("only_features", False),
@@ -1426,7 +1427,7 @@ def parse_args():
         "--multi-label", type=str2bool, default=True, help="Multi label"
     )
     parser.add_argument(
-        "--use-bird",
+        "--use-generic-bird",
         type=str2bool,
         nargs="?",
         const=True,
