@@ -50,10 +50,21 @@ matplotlib.use("TkAgg")
 import cv2
 from audiodataset import Recording
 
+SIGNAL_WIDTH = 0.25
+
 
 #
 #
+# def load_recording(file, resample=48000):
+#     aro = audioread.ffdec.FFmpegAudioFile(file)
+#     frames, sr = librosa.load(aro, sr=None)
+#     aro.close()
+#     if resample is not None and resample != sr:
+#         frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
+#         sr = resample
+#     return frames, sr
 def load_recording(file, resample=48000):
+    # librosa.load(file) giving strange results
     aro = audioread.ffdec.FFmpegAudioFile(file)
     frames, sr = librosa.load(aro, sr=None)
     aro.close()
@@ -64,11 +75,13 @@ def load_recording(file, resample=48000):
 
 
 def signal_noise(file, hop_length=281):
-    frames, sr = load_recording(file)
+    frames, sr = load_recording(file, resample=22050)
     end = get_end(frames, sr)
     frames = frames[: int(sr * end)]
     n_fft = sr // 10
     spectogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
+    plot_spec(spectogram)
+
     signals, noise = signal_noise_data(
         np.abs(spectogram), sr, hop_length=hop_length, n_fft=n_fft
     )
@@ -114,17 +127,9 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     signal = cv2.erode(signal, np.ones((height // 10, width), np.uint8))
 
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(signal)
-    for i, s in enumerate(stats):
-        # print(i, s)
-        if i == 1:
-            small_mask[small_mask == i] = 200
 
-        if i == 0:
-            continue
-        if s[2] <= min_width:
-            small_mask[small_mask == i] = 200
-    stats = sorted(stats, key=lambda stat: stat[0])
     stats = stats[1:]
+    stats = sorted(stats, key=lambda stat: stat[0])
     # # for x in small_mask:
     # # print(x[-10:])
     stats = [s for s in stats if s[2] > min_width]
@@ -140,9 +145,7 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
         start = s[0] * 281 / sr
         end = (s[0] + s[2]) * 281 / sr
         signals.append(Signal(start, end, freq_range[0], freq_range[1]))
-        # print(signals[0])
-        # 1 / 0
-        # break
+
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(noise)
     stats = stats[1:]
     stats = [s for s in stats if s[2] > 4]
@@ -385,7 +388,8 @@ def signals_to_tracks(unique_signals):
     while merged:
         count += 1
         unique_signals, merged = merge_signals(unique_signals)
-    min_length = 0.5
+
+    min_length = 0.35
     to_delete = []
     # for s in unique_signals:
     # print("Enlarged are", s)
@@ -409,6 +413,17 @@ def signals_to_tracks(unique_signals):
             f_overlap = s.mel_freq_overlap(s2)
             range = s2.mel_freq_range
             range *= 0.7
+            print(
+                "Comparing",
+                s,
+                " and ",
+                s2,
+                " f overlap",
+                f_overlap,
+                range,
+                " engulfed",
+                engulfed,
+            )
             if f_overlap > range and engulfed:
                 to_delete.append(s2)
             # elif engulfed and s2.freq_start > s.freq_start and s2.freq_end < s.freq_end:
@@ -467,7 +482,10 @@ def main():
 
     # mix_file(args.file, args.mix)
     signal, noise, spectogram, frames = signal_noise(args.file)
+
     tracks = signals_to_tracks(signal)
+    for t in tracks:
+        print(t)
     # tracks_to_audio(tracks, spectogram, frames)
     plot_mel_signals(np.abs(spectogram), tracks)
     return
@@ -646,10 +664,12 @@ class Signal:
         self.start = max(self.start, 0)
 
         new_length = (self.freq_end - self.freq_start) * scale
-        extension = (new_length - self.length) / 2
+        extension = (new_length - (self.freq_end - self.freq_start)) / 2
         self.freq_start = self.freq_start - extension
         self.freq_end = self.freq_end + extension
         self.freq_start = max(self.freq_start, 0)
+        self.mel_freq_start = mel_freq(self.freq_start)
+        self.mel_freq_end = mel_freq(self.freq_end)
 
     def merge(self, other):
         self.start = min(self.start, other.start)
@@ -660,7 +680,9 @@ class Signal:
         self.mel_freq_end = mel_freq(self.freq_end)
 
     def __str__(self):
-        return f"Signal: {self.start}-{self.end}  mel: {self.mel_freq_start} {self.mel_freq_end}"
+        return (
+            f"Signal: {self.start}-{self.end}  mel: {self.freq_start} {self.freq_end}"
+        )
 
 
 from scipy.signal import butter, sosfilt, sosfreqz, freqs

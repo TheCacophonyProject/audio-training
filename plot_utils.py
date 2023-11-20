@@ -76,10 +76,11 @@ def plot_spec(S, filename="spec"):
     fig = plt.figure(figsize=(10, 10))
     ax = plt.subplot(1, 1, 1)
     img = librosa.display.specshow(
+        # S,
         librosa.amplitude_to_db(S, ref=np.max),
         x_axis="time",
         y_axis="linear",
-        sr=48000,
+        sr=22050,
         fmax=22050,
         fmin=0,
         ax=ax,

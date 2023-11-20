@@ -277,7 +277,7 @@ def load_dataset(filenames, num_labels, labels, args):
         else:
             filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
         dataset = dataset.filter(filter_nan)
-
+    if args.get("one_hot", True):
         filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y[0]), 0)
     else:
         filter_excluded = lambda x, y: tf.math.greater(y[0], -1)
@@ -450,7 +450,7 @@ def get_dataset(filenames, labels, **args):
     # 1 / 0
     num_labels = len(labels)
     dataset = load_dataset(filenames, num_labels, labels, args)
-    if args.get("only_features", False):
+    if not args.get("one_hot", True):
         bird_mask = tf.constant(bird_i, dtype=tf.float32)
         bird_filter = lambda x, y: tf.math.equal(y[0], bird_mask)
         others_filter = lambda x, y: not tf.math.equal(y[0], bird_mask)
@@ -519,7 +519,7 @@ def get_dataset(filenames, labels, **args):
         dataset = dataset.map(lambda x, y: pcen_function(x, y))
 
     dist = get_distribution(
-        dataset, num_labels, batched=False, one_hot=not args.get("only_features")
+        dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
     )
     epoch_size = np.sum(dist)
     # tf because of sample from datasets
@@ -527,7 +527,7 @@ def get_dataset(filenames, labels, **args):
     dataset = dataset.take(epoch_size)
     batch_size = args.get("batch_size", None)
     dataset = dataset.cache()
-    if args.get("shuffle", True) and args.get("only_features") == False:
+    if args.get("shuffle", True):
         dataset = dataset.shuffle(
             4096, reshuffle_each_iteration=args.get("reshuffle", True)
         )
@@ -868,7 +868,11 @@ def read_tfrecord(
         short_f = example["audio/short_f"]
         mid_f = example["audio/mid_f"]
         if only_features:
-            raw = tf.concat((short_f, mid_f), axis=0)
+            # raw = tf.concat((short_f, mid_f), axis=0)
+            mid_f = tf.reshape(mid_f, (136, 3))
+            short_f = tf.reshape(short_f, (68, 60))
+
+            raw = (short_f, mid_f)
         else:
             mid_f = tf.reshape(mid_f, (136, 3))
             short_f = tf.reshape(short_f, (68, 60))
@@ -886,7 +890,7 @@ def read_tfrecord(
     if labeled:
         # label = tf.cast(example["audio/class/label"], tf.int32)
 
-        if one_hot and not only_features:
+        if one_hot:
             label = tf.reduce_max(
                 tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
             )

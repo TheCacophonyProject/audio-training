@@ -543,6 +543,18 @@ class AudioModel:
                 multi_label=multi_label,
                 lme=self.lme,
             )
+        elif self.model_name == "features-cnn":
+            inputs = []
+            inputs.append(tf.keras.Input(shape=(68, 60), name="short_f"))
+            inputs.append(tf.keras.Input(shape=(136, 3), name="mid_f"))
+
+            short, mid = feature_cnn(inputs[0], inputs[1], num_labels)
+            output = tf.keras.layers.Concatenate()([short, mid])
+            output = layers.Dense(num_labels)(output)
+            output = tf.keras.activations.sigmoid(output)
+
+            self.model = tf.keras.models.Model(inputs, outputs=output)
+            self.model.summary()
         elif self.model_name == "features":
             self.model = tfdf.keras.RandomForestModel()
             return
@@ -738,7 +750,7 @@ class AudioModel:
                 second_filenames = tf.io.gfile.glob(
                     f"{str(self.second_data_dir)}/test/*.tfrecord"
                 )
-
+            args["shuffle"] = False
             self.test, _, _, _ = get_dataset(
                 # dir,
                 filenames,
@@ -748,7 +760,7 @@ class AudioModel:
                 resample=False,
                 excluded_labels=excluded_labels,
                 mean_sub=self.mean_sub,
-                shuffle=False,
+                # shuffle=False,2
                 filenames_2=second_filenames,
                 embeddings=self.model_name == "embeddings",
                 **args,
@@ -1343,15 +1355,7 @@ def main():
             # args.multi = args.multi == 1
             am.train_model(
                 run_name=args.name,
-                epochs=args.epochs,
-                weights=args.weights,
-                multi_label=args.multi,
-                use_generic_bird=args.use_bird,
-                filter_freq=args.filter_freq,
-                use_weighting=args.use_weighting,
-                random_butter=args.random_butter,
-                only_features=args.only_features,
-                features=args.features,
+                **args.__dict__,
             )
 
 
@@ -1414,7 +1418,13 @@ def parse_args():
     parser.add_argument(
         "--features", default=False, action="count", help="Train on features"
     )
-    parser.add_argument("--multi", type=str2bool, default=True, help="Multi label")
+    parser.add_argument(
+        "--one-hot", type=str2bool, default=True, help="One hot labeling "
+    )
+    parser.add_argument("--shuffle", type=str2bool, default=True, help="Shuffle DS")
+    parser.add_argument(
+        "--multi-label", type=str2bool, default=True, help="Multi label"
+    )
     parser.add_argument(
         "--use-bird",
         type=str2bool,
@@ -1459,8 +1469,8 @@ def init_logging():
 
 class MetaJSONEncoder(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, SegmentType):
-            return obj.name
+        if isinstance(obj, Path):
+            return str(obj)
         return json.JSONEncoder.default(self, obj)
 
 
