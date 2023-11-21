@@ -1325,7 +1325,7 @@ def main():
             excluded_labels=excluded_labels,
             stop_on_empty=False,
             one_hot=args.one_hot,
-            use_generic_bird=args.use_bird,
+            use_generic_bird=args.use_generic_bird,
             filter_freq=meta_data.get("filter_freq", False),
             only_features=meta_data.get("only_features", False),
             features=meta_data.get("features"),
