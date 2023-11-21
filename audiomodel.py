@@ -359,7 +359,25 @@ class AudioModel:
             **args,
         )
         self.num_classes = len(self.labels)
-        self.build_model(multi_label=args.get("multi_label", True))
+        if args.get("rf_model") and args.get("cnn_model"):
+            models = []
+            inputs = []
+
+            outputs = []
+
+            rf = tf.keras.models.load_model(args.get("rf_model"))
+            cnn = tf.keras.models.load_model(args.get("cnn_model"))
+            cnn.load_weights(Path(args.get("cnn_model") / "val_acc"))
+            cnn.trainable = False
+            rf.trainable = False
+            output = tf.keras.layers.Concatenate()([rf, cnn.output])
+            output = layers.Dense(len(self.labels))(output)
+            output = tf.keras.activations.sigmoid(output)
+
+            self.model = tf.keras.models.Model([rf, cnn.input], outputs=output)
+            self.model.summary()
+        else:
+            self.build_model(multi_label=args.get("multi_label", True))
         # bytes_needed = keras_model_memory_usage_in_bytes(self.model, self.batch_size)
         # logging.info(
         #     "Need %s MB for model with batch size %s ",
@@ -440,6 +458,9 @@ class AudioModel:
         self.model.save(os.path.join(self.checkpoint_folder, run_name))
         self.save_metadata(run_name, history, test_results, **args)
         if self.test is not None:
+            self.model.load_weights(
+                os.path.join(self.checkpoint_folder, run_name, "val_acc")
+            )
             if args.get("multi_label"):
                 multi_confusion(self.model, self.labels, self.test, run_name)
             else:
@@ -1393,6 +1414,9 @@ def parse_args():
         help="Secondary dataset directory to use",
     )
     parser.add_argument("--confusion", help="Save confusion matrix for model")
+    parser.add_argument("--rf_model", help="RF Model to use")
+    parser.add_argument("--cnn_model", help="CNN Model to use with val_acc weights")
+
     parser.add_argument("-w", "--weights", help="Weights to use")
     parser.add_argument("--cross", action="count", help="Cross fold val")
     parser.add_argument(

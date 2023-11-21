@@ -255,7 +255,6 @@ def build_model(
         if lme:
             x = logmeanexp(x, axis=1, sharpness=5, keepdims=False)
             x = logmeanexp(x, axis=2, sharpness=5, keepdims=False)
-        print("ADDED GLOBAL")
         x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
         x = tf.keras.activations.sigmoid(x)
