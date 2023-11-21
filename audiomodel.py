@@ -24,7 +24,7 @@ from audiowriter import create_tf_records
 import tensorflow as tf
 
 # hopefully the good gpu
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # #
 import tensorflow as tf
 import tensorflow_decision_forests as tfdf
@@ -366,19 +366,42 @@ class AudioModel:
             outputs = []
 
             rf = tf.keras.models.load_model(args.get("rf_model"))
-            cnn = tf.keras.models.load_model(args.get("cnn_model"))
-            cnn.load_weights(Path(args.get("cnn_model") / "val_acc"))
+            cnn = tf.keras.models.load_model(args.get("cnn_model"), compile=False)
+            cnn.load_weights(Path(args.get("cnn_model")) / "val_binary_accuracy")
             cnn.trainable = False
             rf.trainable = False
-            output = tf.keras.layers.Concatenate()([rf, cnn.output])
+
+            inputs = [
+                tf.keras.Input(shape=(68 * 60 + 136 * 3), name="features"),
+                cnn.input,
+            ]
+            output = tf.keras.layers.Concatenate()([rf(inputs[0]), cnn.outputs[0]])
             output = layers.Dense(len(self.labels))(output)
             output = tf.keras.activations.sigmoid(output)
 
-            self.model = tf.keras.models.Model([rf, cnn.input], outputs=output)
+            self.model = tf.keras.models.Model(inputs=inputs, outputs=output)
             self.model.summary()
+            if args.get("multi_label"):
+                acc = tf.metrics.binary_accuracy
+            else:
+                acc = tf.metrics.categorical_accuracy
+            loss_fn = loss(args.get("multi_label", True))
+            loss_fn = WeightedCrossEntropy(self.labels)
+            self.loss_fn = loss_fn.name
+            self.model.compile(
+                optimizer=optimizer(lr=self.learning_rate),
+                loss=loss_fn,
+                metrics=[
+                    acc,  #
+                    tf.keras.metrics.AUC(),
+                    tf.keras.metrics.Recall(),
+                    tf.keras.metrics.Precision(),
+                    tf.keras.losses.Huber(),
+                ],
+            )
         else:
             self.build_model(multi_label=args.get("multi_label", True))
-        # bytes_needed = keras_model_memory_usage_in_bytes(self.model, self.batch_size)
+            # bytes_needed = keras_model_memory_usage_in_bytes(self.model, self.batch_size)
         # logging.info(
         #     "Need %s MB for model with batch size %s ",
         #     bytes_needed * 0.000001,
@@ -454,13 +477,12 @@ class AudioModel:
     def save(self, run_name=None, history=None, test_results=None, **args):
         # create a save point
         if run_name is None:
-            run_name = self.params.model_name
+            run_name = self.model_name
         self.model.save(os.path.join(self.checkpoint_folder, run_name))
         self.save_metadata(run_name, history, test_results, **args)
         if self.test is not None:
-            self.model.load_weights(
-                os.path.join(self.checkpoint_folder, run_name, "val_acc")
-            )
+            acc = "val_binary_accuracy" if args.get("multi_label") else "val_acc"
+            self.model.load_weights(os.path.join(self.checkpoint_folder, run_name, acc))
             if args.get("multi_label"):
                 multi_confusion(self.model, self.labels, self.test, run_name)
             else:
