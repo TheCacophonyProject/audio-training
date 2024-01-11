@@ -313,7 +313,7 @@ def main():
     init_logging()
     args = parse_args()
     model = build_model(
-        (160, 513, 1), None, 21, multi_label=True, lme=False, big_condense=False
+        (160, 513, 1), None, 21, multi_label=True, lme=False, big_condense=True
     )
     model.summary()
     model.compile(
