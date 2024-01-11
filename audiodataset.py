@@ -54,6 +54,9 @@ RELABEL["norfolk golden whistler"] = "whistler"
 SAMPLE_GROUP_ID = 0
 MIN_TRACK_LENGTH = 1.5
 
+LOW_SAMPLES_LABELS = ["australasian bittern", "banded dotterel"]
+logging.info("Allow %s to have a recording over multiple datasets", LOW_SAMPLES_LABELS)
+
 
 class Config:
     def __init__(self, **args):
@@ -270,7 +273,9 @@ class AudioSample:
         min_freq=None,
         max_freq=None,
         mixed_label=None,
+        low_sample=False,
     ):
+        self.low_sample = low_sample
         self.mixed_label = mixed_label
         self.rec_id = rec.id
         self.tags = list(tags)
@@ -392,7 +397,7 @@ class Recording:
 
         max_track_length = segment_length + (MAX_TRACK_SAMPLES - 1) * segment_stride
         min_sample_length = segment_length - SEG_LEEWAY
-
+        low_sample_rec = any([True for l in self.human_tags if l in LOW_SAMPLES_LABELS])
         # can be used to seperate among train/val/test
         bin_id = f"{self.id}-0"
         for track in self.tracks:
@@ -447,6 +452,7 @@ class Recording:
                 min_freq = track.min_freq
                 max_freq = track.max_freq
                 labels = set(track.human_tags)
+
                 other_tracks = []
                 if do_overlap:
                     for other_track in sorted_tracks:
@@ -484,6 +490,8 @@ class Recording:
                                     max_freq = max(other_track.max_freq, max_freq)
 
                 other_tracks.append(track)
+                if low_sample_rec:
+                    bin_id = f"{self.id}-{int(start // segment_length)}"
                 self.samples.append(
                     AudioSample(
                         self,
@@ -497,6 +505,7 @@ class Recording:
                         min_freq=min_freq,
                         max_freq=max_freq,
                         mixed_label=track.mixed_label,
+                        low_sample=low_sample_rec,
                     )
                 )
                 # s = self.samples[-1]

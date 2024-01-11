@@ -42,6 +42,8 @@ SPECIFIC_BIRD_LABELS = [
     "rifleman",
     "sparrow",
     "fantail",
+    "australasian bittern",
+    "banded dotterel"
 ]
 GENERIC_BIRD_LABELS = [
     "new zealand fantail",

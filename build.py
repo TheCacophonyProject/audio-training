@@ -17,7 +17,14 @@ import sys
 # from config.config import Config
 import numpy as np
 
-from audiodataset import AudioDataset, RELABEL, Track, AudioSample, Config
+from audiodataset import (
+    AudioDataset,
+    RELABEL,
+    Track,
+    AudioSample,
+    Config,
+    LOW_SAMPLES_LABELS as dataset_low_samples,
+)
 from audiowriter import create_tf_records
 import warnings
 import math
@@ -31,7 +38,7 @@ MAX_TEST_BINS = None
 MAX_TEST_SAMPLES = None
 MIN_SAMPLES = 1
 MIN_BINS = 1
-LOW_SAMPLES_LABELS = []
+LOW_SAMPLES_LABELS = ["bittern"]
 VAL_PERCENT = 0.15
 TEST_PERCENT = 0.05
 
@@ -548,9 +555,9 @@ def validate_datasets(datasets):
         assert t not in test_tracks
 
     #  make sure all tags from a recording are only in one dataset
-    train_tracks = [f"{s.rec_id}" for s in train.samples]
-    val_tracks = [f"{s.rec_id}" for s in validation.samples]
-    test_tracks = [f"{s.rec_id}" for s in test.samples]
+    train_tracks = [f"{s.rec_id}" for s in train.samples if not s.low_sample]
+    val_tracks = [f"{s.rec_id}" for s in validation.samples if not s.low_sample]
+    test_tracks = [f"{s.rec_id}" for s in test.samples if not s.low_sample]
     for t in train_tracks:
         assert t not in val_tracks and t not in test_tracks
 
