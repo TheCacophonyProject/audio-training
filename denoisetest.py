@@ -75,13 +75,11 @@ def load_recording(file, resample=48000):
 
 
 def signal_noise(file, hop_length=281):
-    frames, sr = load_recording(file, resample=22050)
+    frames, sr = load_recording(file)
     end = get_end(frames, sr)
     frames = frames[: int(sr * end)]
     n_fft = sr // 10
     spectogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
-    plot_spec(spectogram)
-
     signals, noise = signal_noise_data(
         np.abs(spectogram), sr, hop_length=hop_length, n_fft=n_fft
     )
@@ -391,10 +389,8 @@ def signals_to_tracks(unique_signals):
 
     min_length = 0.35
     to_delete = []
-    # for s in unique_signals:
     # print("Enlarged are", s)
     for s in unique_signals:
-        # print(s)
         # continue
         if s in to_delete:
             continue
@@ -413,17 +409,17 @@ def signals_to_tracks(unique_signals):
             f_overlap = s.mel_freq_overlap(s2)
             range = s2.mel_freq_range
             range *= 0.7
-            print(
-                "Comparing",
-                s,
-                " and ",
-                s2,
-                " f overlap",
-                f_overlap,
-                range,
-                " engulfed",
-                engulfed,
-            )
+            # print(
+            #     "Comparing",
+            #     s,
+            #     " and ",
+            #     s2,
+            #     " f overlap",
+            #     f_overlap,
+            #     range,
+            #     " engulfed",
+            #     engulfed,
+            # )
             if f_overlap > range and engulfed:
                 to_delete.append(s2)
             # elif engulfed and s2.freq_start > s.freq_start and s2.freq_end < s.freq_end:
@@ -482,7 +478,9 @@ def main():
 
     # mix_file(args.file, args.mix)
     signal, noise, spectogram, frames = signal_noise(args.file)
-
+    for s in signal:
+        print(s)
+    1 / 0
     tracks = signals_to_tracks(signal)
     for t in tracks:
         print(t)
@@ -656,8 +654,11 @@ class Signal:
     def length(self):
         return self.end - self.start
 
-    def enlarge(self, scale):
+    def enlarge(self, scale, min_track_length=0.7):
         new_length = self.length * scale
+        if new_length < min_track_length:
+            new_length = min_track_length
+
         extension = (new_length - self.length) / 2
         self.start = self.start - extension
         self.end = self.end + extension

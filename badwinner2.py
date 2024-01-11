@@ -183,7 +183,13 @@ def build_model_res(
 
 
 def build_model(
-    input_shape, norm_layer, num_labels, multi_label=False, lme=False, add_dense=True
+    input_shape,
+    norm_layer,
+    num_labels,
+    multi_label=False,
+    lme=False,
+    add_dense=True,
+    big_condense=True,
 ):
     input = tf.keras.Input(shape=input_shape, name="input")
     # x = norm_layer(input)
@@ -211,11 +217,22 @@ def build_model(
 
     # At this point we have 48 mel bands remaining if we started with 160
     # Squish the information into smaller features essentially combining mel bands
-    x = tf.keras.layers.Conv2D(128, (28, 3), activation=tf.keras.layers.LeakyReLU())(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    # Squish again so that we have 5 condense mel bands
-    x = tf.keras.layers.Conv2D(128, (17, 3), activation=tf.keras.layers.LeakyReLU())(x)
-    x = tf.keras.layers.BatchNormalization()(x)
+    if big_condense:
+        x = tf.keras.layers.Conv2D(
+            128, (44, 3), activation=tf.keras.layers.LeakyReLU()
+        )(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+    else:
+        x = tf.keras.layers.Conv2D(
+            128, (28, 3), activation=tf.keras.layers.LeakyReLU()
+        )(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+        x = tf.keras.layers.Conv2D(
+            128, (17, 3), activation=tf.keras.layers.LeakyReLU()
+        )(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+
+        # Squish again so that we have 5 condense mel bands
 
     # Pool the mel bands so that we have a shape of (1,X) essentially brining all the mel bands
     # into a set of features per time range
@@ -295,7 +312,9 @@ def logmeanexp(x, axis=None, keepdims=False, sharpness=5):
 def main():
     init_logging()
     args = parse_args()
-    model = build_model((160, 513, 1), None, 21, multi_label=True, lme=False)
+    model = build_model(
+        (160, 513, 1), None, 21, multi_label=True, lme=False, big_condense=False
+    )
     model.summary()
     model.compile(
         optimizer=tf.keras.optimizers.Adam(),

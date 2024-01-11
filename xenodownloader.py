@@ -18,8 +18,8 @@ def download_file(url, local_filename):
 
 
 base_url = "https://www.xeno-canto.org/api/2/recordings"
-bird = "golden%20whistler"
-dl_path = Path(f"./golden-whistler")
+bird = "Australasian%Bittern"
+dl_path = Path(f"./bittern")
 url = f"{base_url}?query={bird}"
 print("getting", url)
 r = requests.get(url)

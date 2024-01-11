@@ -16,7 +16,6 @@ import math
 # from dateutil.parser import parse as parse_date
 import sys
 import itertools
-import tensorflow_addons as tfa
 
 # from config.config import Config
 import numpy as np
@@ -296,6 +295,9 @@ def load_samples(
                 high_pass=t.freq_end,
                 show_spec=show_spec,
             )
+            # if t.start > 24 and t.start < 34:
+            #     print(spect[:, :, 0].shape, "Spec for ", sr_start / sr, sr_end / sr)
+            #     plot_spec(spect[:, :, 0])
             if show_spec:
                 print("Showing spec for ", t)
             show_spec = False
@@ -343,7 +345,10 @@ def get_spect(
             n_mels=n_mels,
         )
     else:
-        data = butter_bandpass_filter(data, low_pass, high_pass, sr)
+        butter = False
+        if butter:
+            print("applying butter")
+            data = butter_bandpass_filter(data, low_pass, high_pass, sr)
 
         # data = bandpassed + noise
 
@@ -619,8 +624,6 @@ def main():
     # test(args.file)
     # return
     logging.info("Loading %s with weights %s", load_model, "val_acc")
-    hamming = tfa.metrics.HammingLoss(mode="multilabel", threshold=0.8)
-    prec_at_k = tf.keras.metrics.TopKCategoricalAccuracy()
     model = tf.keras.models.load_model(
         str(load_model),
         # custom_objects={
@@ -741,20 +744,43 @@ def main():
     start = 0
 
     for d, t in zip(data, tracks):
+        pred_counts = [0] * len(labels)
         print("Predicting", t, " samples are ", len(data))
         predictions = model.predict(np.array(d))
-        for p in predictions:
-            print("For track", t, " have ", np.round(100 * p))
+        for start_i, p in enumerate(predictions):
+            print(
+                "Pred for start ", t.start + start_i * segment_stride, np.round(p * 100)
+            )
+            for i, percent in enumerate(p):
+                if percent >= prob_thresh:
+                    pred_counts[i] += 1
+                    # print(
+                    #     "For track",
+                    #     t.start + start_i * segment_stride,
+                    #     " have ",
+                    #     labels[i],
+                    #     " ",
+                    #     np.round(100 * percent),
+                    # )
+        pred_labels = []
+        # print("COUNTS are", pred_counts, " more than ", len(predictions) // 2)
+
         prediction = np.mean(predictions, axis=0)
         print("Prediction is", np.round(100 * prediction))
+        print("count pred is ", pred_labels)
         result = ModelResult(model_name)
         t.predictions.append(result)
         max_p = None
-
+        for l_i, p_counts in enumerate(pred_counts):
+            if p_counts >= max(1, len(predictions) // 2):
+                pred_labels.append(labels[l_i])
+                result.labels.append(labels[l_i])
+                result.confidences.append(100)
+        continue
         for i, p in enumerate(prediction):
             if max_p is None or p > max_p[1]:
                 max_p = (i, p)
-            print("probably of ", labels[i], round(100 * p))
+            # print("probably of ", labels[i], round(100 * p))
             if p >= prob_thresh:
                 result.labels.append(labels[i])
                 result.confidences.append(round(p * 100))
