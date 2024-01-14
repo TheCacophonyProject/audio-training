@@ -1141,6 +1141,56 @@ def confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
     plt.savefig(f"./confusions/{filename}", format="png")
 
 
+def multi_confusion_single(
+    model, labels, dataset, filename="confusion.png", one_hot=True, prob_thresh=0.7
+):
+    from sklearn.preprocessing import MultiLabelBinarizer
+
+    mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
+    true_categories = [y for x, y in dataset]
+    true_categories = tf.concat(true_categories, axis=0)
+    # y_true = []
+    # if one_hot:
+    #     for y in true_categories:
+    #         non_zero = tf.where(y).numpy()
+    #         y_true.append(list(non_zero.flatten()))
+    # only usefull if not multi
+    # true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    # else:
+    # y_true = np.array(true_categories)
+    y_pred = model.predict(dataset)
+
+    labels.append("nothing")
+
+    flat_p = []
+    flat_y = []
+    for y, p in zip(true_categories, y_pred):
+        index = 0
+        for y_l, p_l in zip(y, p):
+            predicted = p_l >= prob_thresh
+            if y_l == 0 and predicted:
+                flat_y.append(len(labels) - 1)
+                flat_p.append(index)
+            elif y_l == 1 and predicted:
+                flat_y.append(index)
+                flat_p.append(index)
+            elif y_l == 1 and not predicted:
+                flat_y.append(index)
+                flat_p.append(len(labels) - 1)
+
+            index += 1
+
+    flat_p = np.int64(flat_p)
+    flat_y = np.int64(flat_y)
+
+    cm = confusion_matrix(flat_y, flat_p, labels=np.arange(len(labels)))
+    confusion_path = Path(f"./confusions/{filename}")
+    np.save(str(confusion_path.with_suffix(".npy")), cm)
+    # Log the confusion matrix as an image summary.
+    figure = plot_confusion_matrix(cm, class_names=labels)
+    plt.savefig(confusion_path, format="png")
+
+
 def multi_confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
     from sklearn.preprocessing import MultiLabelBinarizer
 
@@ -1373,7 +1423,7 @@ def main():
             # best_threshold(model, labels, dataset, args.confusion)
             # return
             if multi:
-                multi_confusion(
+                multi_confusion_single(
                     model,
                     labels,
                     dataset,
