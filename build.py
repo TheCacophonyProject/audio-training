@@ -33,6 +33,11 @@ import soundfile as sf
 
 # warnings.filterwarnings("ignore")
 # remove librosa pysound warnings
+# tensorflow stealing my log handler
+root_logger = logging.getLogger()
+for handler in root_logger.handlers:
+    if isinstance(handler, logging.StreamHandler) and handler.stream == sys.stderr:
+        root_logger.removeHandler(handler)
 
 MAX_TEST_BINS = None
 MAX_TEST_SAMPLES = None
@@ -55,9 +60,7 @@ def split_label(
     sample_bins = set()
     tracks = set()
     num_samples = 0
-    rec_by_id = {}
-    for r in dataset.recs:
-        rec_by_id[r.id] = r
+    rec_by_id = dataset.recs
     for s in dataset.samples:
         rec = rec_by_id[s.rec_id]
         if label not in rec.human_tags:
@@ -78,7 +81,6 @@ def split_label(
         return
     # sample_bins duplicates
     # sample_bins = list(set(sample_bins))
-
     random.shuffle(sample_bins)
     train_c, validate_c, test_c = datasets
 
@@ -112,11 +114,6 @@ def split_label(
         num_test_bins = min(MAX_TEST_BINS, num_test_bins)
 
     num_test_bins -= existing_test_count
-    if label == "rifleman":
-        num_validate_bins = 2
-        num_validate_samples = 2
-        num_test_bins = 1
-        num_test_samples = 1
 
     bin_limit = num_validate_bins
     sample_limit = num_validate_samples
@@ -185,7 +182,6 @@ def split_label(
             rec = rec_by_id[sample.rec_id]
             train_c.add_sample(rec, sample)
             dataset.remove(sample)
-
             added += 1
         samples_by_bin[sample_bin] = []
 
@@ -224,7 +220,6 @@ def split_randomly(dataset, test_clips=[], no_test=False):
             no_test=no_test
             # existing_test_count=existing_test_count,
         )
-
     return train, validation, test
 
 
@@ -243,7 +238,7 @@ def dataset_from_signal(args):
         set_dir = signal_dir / s
         dataset = AudioDataset(s, config)
         dataset.load_meta(set_dir)
-        for r in dataset.recs:
+        for r in dataset.recs.values():
             r_id += 1
             r.id = r_id
             file_name = r.filename.stem
@@ -326,7 +321,7 @@ def filter_birds(dataset):
     deleted_count = 0
     from tfdataset import GENERIC_BIRD_LABELS
 
-    for r in dataset.recs:
+    for r in dataset.recs.values():
         # r.space_signals()
         tracks_del = []
         for t in r.tracks:
@@ -410,7 +405,7 @@ def filter_birds(dataset):
 def trim_noise(dataset):
     dataset.samples = []
     # set tracks to start at first signal within the track start end and end with last signal
-    for r in dataset.recs:
+    for r in dataset.recs.values():
         # r.space_signals()
         tracks_del = []
         for t in r.tracks:
@@ -508,15 +503,15 @@ def main():
     dataset_recs = {}
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
-        create_tf_records(dataset, dir, datasets[0].labels, num_shards=100)
         r_counts = dataset.get_rec_counts()
         for k, v in r_counts.items():
             r_counts[k] = len(v)
-        dataset_recs[dataset.name] = [s.id for s in dataset.recs]
+        dataset_recs[dataset.name] = list(dataset.recs.keys())
         dataset_counts[dataset.name] = {
             "rec_counts": r_counts,
             "sample_counts": dataset.get_counts(),
         }
+        create_tf_records(dataset, dir, datasets[0].labels, num_shards=100)
 
         # dataset.saveto_numpy(os.path.join(base_dir))
     # dont need dataset anymore just need some meta
@@ -572,7 +567,7 @@ def create_signal_data(dataset, output_path, labels):
             if child.is_file():
                 child.unlink()
     output_path.mkdir(parents=True, exist_ok=True)
-    recs = dataset.recs
+    recs = dataset.recs.values()
     np.random.shuffle(recs)
     audio_data = {}
     print("recs are", len(recs))

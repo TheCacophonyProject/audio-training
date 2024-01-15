@@ -54,7 +54,7 @@ RELABEL["norfolk golden whistler"] = "whistler"
 SAMPLE_GROUP_ID = 0
 MIN_TRACK_LENGTH = 1.5
 
-LOW_SAMPLES_LABELS = ["australasian bittern", "banded dotterel"]
+LOW_SAMPLES_LABELS = ["australasian bittern", "banded dotterel", "rifleman"]
 logging.info("Allow %s to have a recording over multiple datasets", LOW_SAMPLES_LABELS)
 
 
@@ -76,8 +76,7 @@ class AudioDataset:
         # self.base_path = Path(base_path)
         self.config = config
         self.name = name
-        self.recs = []
-        self.rec_keys = []
+        self.recs = {}
         self.labels = set()
         # self.samples_by_label
         self.samples = []
@@ -101,7 +100,7 @@ class AudioDataset:
                 logging.error("Error loading %s", f, exc_info=True)
 
     def add_recording(self, r):
-        self.recs.append(r)
+        self.recs[r.id] = r
         # r.get_human_tags()
         for tag in r.human_tags:
             self.labels.add(tag)
@@ -118,26 +117,26 @@ class AudioDataset:
 
     def get_counts(self):
         counts = {}
+
         for s in self.samples:
             for tag in s.tags:
                 if tag in counts:
                     counts[tag] += 1
                 else:
-                    counts[tag] = 0
+                    counts[tag] = 1
         return counts
 
     def remove_rec(self, rec):
-        self.recs.remove(rec)
         for s in rec.samples:
             self.samples.remove(s)
-        if rec.id in self.rec_keys:
-            self.rec_keys.remove(rec.id)
+        if rec.id in self.recs:
+            del self.recs[rec.id]
 
     def print_counts(self):
         counts = {}
         original_c = {}
         rec_counts = {}
-        for r in self.recs:
+        for r in self.recs.values():
             for track in r.tracks:
                 tags = track.tags
                 # if len(tags) == 0:
@@ -219,9 +218,15 @@ class AudioDataset:
             )
 
     def add_sample(self, rec, sample):
-        if sample.rec_id not in self.rec_keys:
-            self.recs.append(rec)
-            self.rec_keys.append(rec.id)
+        # make a clone of recordings so it is independent of original rec, and add correct tracks
+        if sample.rec_id not in self.recs:
+            cloned_rec = rec.clone()
+            cloned_rec.tracks = []
+            self.recs[rec.id] = cloned_rec
+
+        tracks = [t for t in rec.tracks if t.id in sample.track_ids]
+        self.recs[rec.id].samples.append(sample)
+        self.recs[rec.id].add_tracks(tracks)
         self.samples.append(sample)
         for t in sample.tags:
             self.labels.add(t)
@@ -312,7 +317,7 @@ class AudioSample:
 
 
 class Recording:
-    def __init__(self, metadata, filename, config):
+    def __init__(self, metadata, filename, config, load_samples=True):
         self.filename = filename
         self.metadata = metadata
         self.id = metadata.get("id")
@@ -338,8 +343,23 @@ class Recording:
         self.rec_data = None
         self.resampled = False
         self.samples = []
-        self.signal_percent()
-        self.load_samples(config.segment_length, config.segment_stride)
+        if load_samples:
+            self.signal_percent()
+            self.load_samples(config.segment_length, config.segment_stride)
+
+    def add_tracks(self, tracks):
+        for t in tracks:
+            if len([True for existing in self.tracks if existing.id == t.id]) == 1:
+                continue
+            if filter_track(t):
+                continue
+            self.tracks.append(t)
+            for tag in t.human_tags:
+                self.human_tags.add(tag)
+
+    def clone(self):
+        cloned = Recording(self.metadata, self.filename, None, load_samples=False)
+        return cloned
 
     def signal_percent(self):
         freq_filter = 1000
@@ -783,16 +803,21 @@ def load_data(
         #     data_length = len(sub) / sr
         # else:
         #     s_data = frames[start:end]
-        short_f, mid_f = load_features(s_data, sr)
-        windows = short_f.shape[1]
-        if windows < 60:
-            short_f = np.pad(short_f, ((0, 0), (0, 60 - windows)))
-        windows = mid_f.shape[1]
-        if windows < 3:
-            mid_f = np.pad(mid_f, ((0, 0), (0, 3 - windows)))
+        short_f = None
+        mid_f = None
+        try:
+            short_f, mid_f = load_features(s_data, sr)
+            windows = short_f.shape[1]
+            if windows < 60:
+                short_f = np.pad(short_f, ((0, 0), (0, 60 - windows)))
+            windows = mid_f.shape[1]
+            if windows < 3:
+                mid_f = np.pad(mid_f, ((0, 0), (0, 3 - windows)))
 
-        assert short_f.shape == (68, 60)
-        assert mid_f.shape == (136, 3)
+            assert short_f.shape == (68, 60)
+            assert mid_f.shape == (136, 3)
+        except:
+            logging.info("Error loading features")
         if len(s_data) < int(segment_l * sr):
             extra_frames = int(segment_l * sr) - len(s_data)
             offset = np.random.randint(0, extra_frames)

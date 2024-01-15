@@ -43,7 +43,7 @@ SPECIFIC_BIRD_LABELS = [
     "sparrow",
     "fantail",
     "australasian bittern",
-    "banded dotterel"
+    "banded dotterel",
 ]
 GENERIC_BIRD_LABELS = [
     "new zealand fantail",
@@ -568,6 +568,7 @@ def filter_signal(x, y):
 # an attempt to filter out bad tracks by filtering out bird tracks
 # that are predicted as noise or human
 def filter_bad_tracks(x, y, labels):
+    logging.info("Filtering bad tracks")
     # filtering before batching
     actual = y[0]
     # actual = tf.expand_dims(actual, 0)
@@ -1012,7 +1013,7 @@ def main():
         # species_list = ["bird", "human", "rain", "other"]
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-        filenames.extend(tf.io.gfile.glob(f"{d}/validation/*.tfrecord"))
+        filenames.extend(tf.io.gfile.glob(f"{d}/test/*.tfrecord"))
     labels.add("bird")
     labels.add("noise")
     labels = list(labels)
@@ -1045,6 +1046,7 @@ def main():
     dist = get_distribution(resampled_ds, len(labels), batched=True, one_hot=True)
     for l, d in zip(labels, dist):
         print(f"{l} has {d}")
+    return
     for e in range(1):
         for x, y in resampled_ds:
             print(x.shape)

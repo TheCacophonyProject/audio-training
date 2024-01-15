@@ -104,13 +104,16 @@ def create_tf_example(sample, labels):
         "audio/start_s": tfrecord_util.float_feature(sample.start),
         "audio/class/text": tfrecord_util.bytes_feature(tags.encode("utf8")),
         "audio/raw": tfrecord_util.float_list_feature(np.float32(data.raw.ravel())),
-        "audio/short_f": tfrecord_util.float_list_feature(
-            np.float32(data.short_features.ravel())
-        ),
-        "audio/mid_f": tfrecord_util.float_list_feature(
-            np.float32(data.mid_features.ravel())
-        ),
     }
+    if data.short_features is not None:
+        feature_dict["audio/short_f"] = tfrecord_util.float_list_feature(
+            np.float32(data.short_features.ravel())
+        )
+    if data.mid_features is not None:
+        feature_dict["audio/mid_f"] = tfrecord_util.float_list_feature(
+            np.float32(data.mid_features.ravel())
+        )
+
     if sample.mixed_label is not None:
         logging.info("Adding mixed label %s", sample.mixed_label)
         feature_dict["audio/class/mixed_label"] = (
@@ -245,7 +248,7 @@ def process_job(queue, labels, config, base_dir):
                     config.filter_frequency,
                 )
                 del rec
-                if saved > 500:
+                if saved > 200:
                     logging.info("Closing old writer")
                     writer.close()
                     writer_i += 1
@@ -477,7 +480,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
             if child.is_file():
                 child.unlink()
     output_path.mkdir(parents=True, exist_ok=True)
-    samples = dataset.recs
+    samples = dataset.recs.values()
     samples = sorted(
         samples,
         key=lambda sample: sample.id,
@@ -518,7 +521,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     except:
         logging.error("Error saving track info", exc_info=True)
 
-    for r in dataset.recs:
+    for r in dataset.recs.values():
         r.rec_data = None
         for s in r.samples:
             s.spectogram_data = None
