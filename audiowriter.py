@@ -415,7 +415,9 @@ def save_embeddings(rec):
                 )
                 t.end = len(frames) / sr
         # rec.tracks[0].end = len0(frames) / sr
-        rec.load_samples(config.segment_length, config.segment_stride)
+        # this might be needed for other data from flickr etc but causes problems
+        #  when splitting tracks over multiple datasets
+        # rec.load_samples(config.segment_length, config.segment_stride)
         samples = rec.samples
         rec.sample_rate = resample
         for i, sample in enumerate(samples):
