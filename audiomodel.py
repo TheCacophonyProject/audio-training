@@ -71,6 +71,11 @@ from resnet import wr_resnet
 # k = 2
 # lr_step_epoch = 100
 # lr_decay = 0.1
+# tensorflow stealing my log handler
+root_logger = logging.getLogger()
+for handler in root_logger.handlers:
+    if isinstance(handler, logging.StreamHandler) and handler.stream == sys.stderr:
+        root_logger.removeHandler(handler)
 
 
 class AudioModel:
@@ -1521,6 +1526,8 @@ def parse_args():
     parser.add_argument(
         "--one-hot", type=str2bool, default=True, help="One hot labeling "
     )
+    parser.add_argument("--resample", default=False, action="count", help="Resample DS")
+
     parser.add_argument("--shuffle", type=str2bool, default=True, help="Shuffle DS")
     parser.add_argument(
         "--multi-label", type=str2bool, default=True, help="Multi label"
@@ -1545,6 +1552,7 @@ def parse_args():
 
     args = parser.parse_args()
     # args.multi = args.multi > 0
+    args.resample = args.resample > 0
     args.only_features = args.only_features > 0
     args.features = args.features > 0
     args.filter_freq = args.filter_freq > 0

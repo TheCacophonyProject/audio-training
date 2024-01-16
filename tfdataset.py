@@ -513,6 +513,9 @@ def get_dataset(filenames, labels, **args):
     dataset = dataset.map(lambda x, y: (x, y[0]))
     resample_data = args.get("resample", False)
     if resample_data:
+        dist = get_distribution(
+            dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
+        )
         logging.info("Resampling data")
         dataset = resample(dataset, labels, dist)
     pcen = args.get("pcen", False)
@@ -520,9 +523,6 @@ def get_dataset(filenames, labels, **args):
         logging.info("Taking PCEN")
         dataset = dataset.map(lambda x, y: pcen_function(x, y))
 
-    # dist = get_distribution(
-    #     dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
-    # )
     # epoch_size = np.sum(dist)
     # tf because of sample from datasets
     # dataset = dataset.repeat(2)
@@ -558,6 +558,31 @@ def get_dataset(filenames, labels, **args):
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
 
     return dataset, remapped, 0, labels
+
+
+def resample(dataset, new_labels, dist):
+    logging.info("RESAMPLING")
+    # seems the only way to get even distribution
+    label_ds = []
+    for i, l in enumerate(new_labels):
+        if dist[i] == 0:
+            continue
+        l_mask = np.zeros((len(new_labels)))
+        l_mask[i] = 1
+        # mask = tf.constant(mask, dtype=tf.float32)
+
+        l_filter = lambda x, y: tf.math.reduce_all(tf.math.equal(y, l_mask))
+        l_dataset = dataset.filter(l_filter)
+        l_dataset = l_dataset.shuffle(40096, reshuffle_each_iteration=True)
+
+        label_ds.append(l_dataset)
+    dataset = tf.data.Dataset.sample_from_datasets(
+        label_ds,
+        # weights=[1 / len(new_labels)] * len(new_labels),
+        stop_on_empty_dataset=True,
+        rerandomize_each_iteration=True,
+    )
+    return dataset
 
 
 def filter_signal(x, y):
@@ -1033,7 +1058,7 @@ def main():
         batch_size=32,
         image_size=DIMENSIONS,
         augment=False,
-        resample=False,
+        resample=True,
         excluded_labels=excluded_labels,
         stop_on_empty=False,
         filter_freq=True,
