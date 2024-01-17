@@ -805,7 +805,7 @@ class AudioModel:
                 self.labels,
                 batch_size=self.batch_size,
                 image_size=self.input_shape,
-                resample=False,
+                # resample=False,
                 excluded_labels=excluded_labels,
                 mean_sub=self.mean_sub,
                 # shuffle=False,2
