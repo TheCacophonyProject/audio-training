@@ -748,7 +748,7 @@ class AudioModel:
         excluded_labels = get_excluded_labels(self.labels)
 
         logging.info("labels are %s Excluding %s", self.labels, excluded_labels)
-        self.train, remapped, epoch_size, _ = get_dataset(
+        self.train, remapped, epoch_size, new_labels = get_dataset(
             # dir,
             filenames,
             self.labels,
@@ -815,9 +815,7 @@ class AudioModel:
                 # preprocess_fn=self.preprocess_fn,
             )
         self.remapped = remapped
-        for l in excluded_labels:
-            if l != "bird":
-                self.labels.remove(l)
+        self.labels = new_labels
         self.training_data_meta = meta
 
     def get_base_model(self, input_shape, weights="imagenet"):
