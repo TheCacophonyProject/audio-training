@@ -653,7 +653,9 @@ class AudioModel:
             optimizer=optimizer(lr=self.learning_rate),
             loss=loss_fn,
             metrics=[
-                acc,  #
+                acc,
+                precAtK(k=3),
+                tf.keras.losses.BinaryFocalCrossentropy(),
                 tf.keras.metrics.AUC(),
                 tf.keras.metrics.Recall(),
                 tf.keras.metrics.Precision(),
@@ -669,6 +671,7 @@ class AudioModel:
             "val_auc",
             "val_recall",
             "val_huber_loss",
+            "val_precK",
         ]
         checks = []
         for m in metrics:
@@ -1777,6 +1780,33 @@ class WeightedCrossEntropy(tf.keras.losses.Loss):
         config = {}
         base_config = super().get_config()
         return {**base_config, **config}
+
+
+class precAtK(tf.keras.metrics.Metric):
+    def __init__(self, name="precK", k=3, **kwargs):
+        super(precAtK, self).__init__(name=name, **kwargs)
+        self.k = k
+        self.k_percent = self.add_weight(
+            "k_percent", initializer="zeros", dtype=tf.float64
+        )
+        # self.total = self.add_weight("total", initializer="zeros", dtype=tf.int32)
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        top_pred = tf.math.top_k(y_pred, k=3)
+        top_true = tf.math.top_k(y_true, k=3)
+        # print("Return ", top_pred.indices, " vs ", top_true.indices)
+        # flattened = tf.keras.layers.Flatten(top_true.indices)
+        k_percent = tf.size(
+            tf.sets.intersection(top_pred.indices, top_true.indices).values
+        ) / tf.size(top_true.indices)
+        self.k_percent.assign_add(k_percent)
+
+    def reset_state(self):
+        self.k_percent.assign(0)
+        # self.top_true.assign(0)
+
+    def result(self):
+        return self.k_percent
 
 
 def keras_model_memory_usage_in_bytes(model, batch_size):
