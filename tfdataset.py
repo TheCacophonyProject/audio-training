@@ -512,10 +512,10 @@ def get_dataset(filenames, labels, **args):
 
     dataset = dataset.map(lambda x, y: (x, y[0]))
     resample_data = args.get("resample", False)
+    dist = get_distribution(
+        dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
+    )
     if resample_data:
-        dist = get_distribution(
-            dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
-        )
         logging.info("Resampling data")
         dataset = resample(dataset, labels, dist)
     pcen = args.get("pcen", False)
@@ -523,12 +523,12 @@ def get_dataset(filenames, labels, **args):
         logging.info("Taking PCEN")
         dataset = dataset.map(lambda x, y: pcen_function(x, y))
 
-    # epoch_size = np.sum(dist)
+    epoch_size = np.sum(dist)
     # tf because of sample from datasets
-    # dataset = dataset.repeat(2)
-    # dataset = dataset.take(epoch_size)
+    dataset = dataset.repeat(2)
+    dataset = dataset.take(epoch_size)
     batch_size = args.get("batch_size", None)
-    dataset = dataset.cache()
+    # dataset = dataset.cache()
     if args.get("shuffle", True):
         dataset = dataset.shuffle(
             4096, reshuffle_each_iteration=args.get("reshuffle", True)
