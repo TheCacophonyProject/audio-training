@@ -1794,10 +1794,15 @@ class precAtK(tf.keras.metrics.Metric):
     def update_state(self, y_true, y_pred, sample_weight=None):
         top_pred = tf.math.top_k(y_pred, k=3)
         top_true = tf.math.top_k(y_true, k=3)
+        mask = tf.math.greater(top_true.values, 0)
+        # dont want to count 0 values in top_k
+        top_true_indices = tf.ragged.boolean_mask(top_true.indices, mask)
+        non_zero = tf.size(top_true_indices)
+        top_true_indices = top_true_indices.to_tensor(default_value=-1)
         k_percent = tf.size(
-            tf.sets.intersection(top_pred.indices, top_true.indices).values
+            tf.sets.intersection(top_pred.indices, top_true_indices).values
         )
-        self.total.assign_add(tf.size(top_true.indices))
+        self.total.assign_add(non_zero)
         self.k_percent.assign_add(k_percent)
 
     def reset_state(self):
