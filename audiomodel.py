@@ -1787,26 +1787,25 @@ class precAtK(tf.keras.metrics.Metric):
         super(precAtK, self).__init__(name=name, **kwargs)
         self.k = k
         self.k_percent = self.add_weight(
-            "k_percent", initializer="zeros", dtype=tf.float64
+            "k_percent", initializer="zeros", dtype=tf.int32
         )
-        # self.total = self.add_weight("total", initializer="zeros", dtype=tf.int32)
+        self.total = self.add_weight("total", initializer="zeros", dtype=tf.int32)
 
     def update_state(self, y_true, y_pred, sample_weight=None):
         top_pred = tf.math.top_k(y_pred, k=3)
         top_true = tf.math.top_k(y_true, k=3)
-        # print("Return ", top_pred.indices, " vs ", top_true.indices)
-        # flattened = tf.keras.layers.Flatten(top_true.indices)
         k_percent = tf.size(
             tf.sets.intersection(top_pred.indices, top_true.indices).values
-        ) / tf.size(top_true.indices)
+        )
+        self.total.assign_add(tf.size(top_true.indices))
         self.k_percent.assign_add(k_percent)
 
     def reset_state(self):
         self.k_percent.assign(0)
-        # self.top_true.assign(0)
+        self.total.assign(0)
 
     def result(self):
-        return self.k_percent
+        return self.k_percent / self.total
 
 
 def keras_model_memory_usage_in_bytes(model, batch_size):
