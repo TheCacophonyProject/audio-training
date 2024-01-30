@@ -726,16 +726,18 @@ class AudioModel:
             second_filenames = tf.io.gfile.glob(
                 f"{str(self.second_data_dir)}/train/*.tfrecord"
             )
-        datasets = ["."]
-        for d in datasets:
-            # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
-            filenames.extend(
-                tf.io.gfile.glob(f"{str(self.data_dir)}/{d}/train/*.tfrecord")
-            )
-            file = f"{self.data_dir}/{d}/training-meta.json"
-            with open(file, "r") as f:
-                meta = json.load(f)
-            labels.update(meta.get("labels", []))
+        # datasets = ["."]
+        # for d in datasets:
+        #     # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
+        #     filenames.extend(
+        #         tf.io.gfile.glob(f"{str(self.data_dir)}/{d}/train/*.tfrecord")
+        #     )
+        training_files_dir = self.data_dir / "train"
+
+        file = f"{self.data_dir}/training-meta.json"
+        with open(file, "r") as f:
+            meta = json.load(f)
+        labels.update(meta.get("labels", []))
         set_specific_by_count(meta)
         labels = list(labels)
         labels.sort()
@@ -753,7 +755,8 @@ class AudioModel:
         logging.info("labels are %s Excluding %s", self.labels, excluded_labels)
         self.train, remapped, epoch_size, new_labels = get_dataset(
             # dir,
-            filenames,
+            training_files_dir,
+            # filenames,
             self.labels,
             batch_size=self.batch_size,
             image_size=self.input_shape,
@@ -766,11 +769,11 @@ class AudioModel:
         )
         self.num_train_instance = epoch_size
         filenames = []
-        for d in datasets:
-            # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
-            filenames.extend(
-                tf.io.gfile.glob(f"{str(self.data_dir)}/{d}/validation/*.tfrecord")
-            )
+        # for d in datasets:
+        #     # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
+        #     filenames.extend(
+        #         tf.io.gfile.glob(f"{str(self.data_dir)}/{d}/validation/*.tfrecord")
+        #     )
         if self.second_data_dir is not None:
             second_filenames = tf.io.gfile.glob(
                 f"{str(self.second_data_dir)}/validation/*.tfrecord"
@@ -778,7 +781,8 @@ class AudioModel:
         logging.info("Loading Val")
         self.validation, _, _, _ = get_dataset(
             # dir,
-            filenames,
+            self.data_dir / "validation",
+            # filenames,
             self.labels,
             batch_size=self.batch_size,
             image_size=self.input_shape,
@@ -792,11 +796,11 @@ class AudioModel:
         if test:
             logging.info("Loading test")
             filenames = []
-            for d in datasets:
-                # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
-                filenames.extend(
-                    tf.io.gfile.glob(f"{str(self.data_dir)}/{d}/test/*.tfrecord")
-                )
+            # for d in datasets:
+            #     # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
+            #     filenames.extend(
+            #         tf.io.gfile.glob(f"{str(self.data_dir)}/{d}/test/*.tfrecord")
+            #     )
             if self.second_data_dir is not None:
                 second_filenames = tf.io.gfile.glob(
                     f"{str(self.second_data_dir)}/test/*.tfrecord"
@@ -804,7 +808,8 @@ class AudioModel:
             args["shuffle"] = False
             self.test, _, _, _ = get_dataset(
                 # dir,
-                filenames,
+                self.data_dir / "test",
+                # filenames,
                 self.labels,
                 batch_size=self.batch_size,
                 image_size=self.input_shape,

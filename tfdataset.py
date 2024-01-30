@@ -508,9 +508,10 @@ def get_dataset(dir, labels, **args):
         #     stop_on_empty_dataset=args.get("stop_on_empty", True),
         #     rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         # )
+    logging.info("Stopping on empty? %s", args.get("resample", False))
     dataset = tf.data.Dataset.sample_from_datasets(
         datasets,
-        stop_on_empty_dataset=args.get("stop_on_empty", True),
+        stop_on_empty_dataset=args.get("stop_on_empty", args.get("resample", False)),
         rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
     )
     # logging.info("Filtering freq %s", args.get("filter_freq", False))
@@ -527,9 +528,9 @@ def get_dataset(dir, labels, **args):
     dist = get_distribution(
         dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
     )
-    if resample_data:
-        logging.info("Resampling data")
-        dataset = resample(dataset, labels, dist)
+    # if resample_data:
+    #     logging.info("Resampling data")
+    #     dataset = resample(dataset, labels, dist)
     pcen = args.get("pcen", False)
     if pcen:
         logging.info("Taking PCEN")
@@ -543,7 +544,7 @@ def get_dataset(dir, labels, **args):
     # dataset = dataset.cache()
     if args.get("shuffle", True):
         dataset = dataset.shuffle(
-            4096, reshuffle_each_iteration=args.get("reshuffle", True)
+            40096, reshuffle_each_iteration=args.get("reshuffle", True)
         )
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
@@ -1067,7 +1068,7 @@ def main():
             batch_size=32,
             image_size=DIMENSIONS,
             augment=False,
-            resample=False,
+            resample=True,
             excluded_labels=excluded_labels,
             stop_on_empty=True,
             filter_freq=False,
