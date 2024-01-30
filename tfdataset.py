@@ -400,7 +400,7 @@ noise_i = None
 bird_mask = None
 
 
-def get_dataset(filenames, labels, **args):
+def get_dataset(dir, labels, **args):
     excluded_labels = args.get("excluded_labels", [])
     use_generic_bird = args.get("use_generic_bird", True)
 
@@ -451,28 +451,39 @@ def get_dataset(filenames, labels, **args):
     # print("keys", keys, " values", values)
     # 1 / 0
     num_labels = len(labels)
-    dataset = load_dataset(filenames, num_labels, labels, args)
-    if not args.get("one_hot", True):
-        bird_mask = tf.constant(bird_i, dtype=tf.float32)
-        bird_filter = lambda x, y: tf.math.equal(y[0], bird_mask)
-        others_filter = lambda x, y: not tf.math.equal(y[0], bird_mask)
-    else:
-        bird_mask = np.zeros(num_labels, dtype=bool)
-        bird_mask[bird_i] = 1
-        bird_mask = tf.constant(bird_mask)
-        bird_filter = lambda x, y: tf.math.reduce_all(
-            tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
-        )
-        others_filter = lambda x, y: not tf.math.reduce_all(
-            tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
-        )
-    bird_dataset = dataset.filter(bird_filter)
-    if args.get("filter_signal") is not None:
-        logging.info("Filtering signal by percent 0.1")
-        bird_dataset = bird_dataset.filter(filter_signal)
+    datasets = []
+    logging.info("Dirs from %s", dir)
+    for lbl_dir in dir.iterdir():
+        if lbl_dir.name == "bird":
+            logging.info("Skipping bird")
+            continue
+        filenames = tf.io.gfile.glob(str(lbl_dir / "*.tfrecord"))
 
-    dataset = dataset.filter(others_filter)
-    datasets = [dataset]
+        lbl_dataset = load_dataset(filenames, num_labels, labels, args)
+        logging.info("Loading %s", lbl_dir)
+        datasets.append(lbl_dataset)
+        # break
+    # if not args.get("one_hot", True):
+    #     bird_mask = tf.constant(bird_i, dtype=tf.float32)
+    #     bird_filter = lambda x, y: tf.math.equal(y[0], bird_mask)
+    #     others_filter = lambda x, y: not tf.math.equal(y[0], bird_mask)
+    # else:
+    #     bird_mask = np.zeros(num_labels, dtype=bool)
+    #     bird_mask[bird_i] = 1
+    #     bird_mask = tf.constant(bird_mask)
+    #     bird_filter = lambda x, y: tf.math.reduce_all(
+    #         tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
+    #     )
+    #     others_filter = lambda x, y: not tf.math.reduce_all(
+    #         tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
+    #     )
+    # bird_dataset = dataset.filter(bird_filter)
+    # if args.get("filter_signal") is not None:
+    #     logging.info("Filtering signal by percent 0.1")
+    #     bird_dataset = bird_dataset.filter(filter_signal)
+
+    # dataset = dataset.filter(others_filter)
+    # datasets = [dataset]
     # may perform better without adding generics birds but sitll having generic label
     if use_generic_bird:
         logging.info("Not adding generic bird tags as found performas better")
@@ -487,20 +498,21 @@ def get_dataset(filenames, labels, **args):
         dataset_2 = load_dataset(second, len(labels), labels, args)
 
         datasets.append(dataset_2)
-        dataset = tf.data.Dataset.sample_from_datasets(
-            datasets,
-            stop_on_empty_dataset=args.get("stop_on_empty", True),
-            rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
-        )
+
         # for i, d in enumerate(dist):
         # dist[i] += dist_2[i]
     else:
         logging.info("Not using second")
-        dataset = tf.data.Dataset.sample_from_datasets(
-            datasets,
-            stop_on_empty_dataset=args.get("stop_on_empty", True),
-            rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
-        )
+        # dataset = tf.data.Dataset.sample_from_datasets(
+        #     datasets,
+        #     stop_on_empty_dataset=args.get("stop_on_empty", True),
+        #     rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
+        # )
+    dataset = tf.data.Dataset.sample_from_datasets(
+        datasets,
+        stop_on_empty_dataset=args.get("stop_on_empty", True),
+        rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
+    )
     # logging.info("Filtering freq %s", args.get("filter_freq", False))
     # filter freq done in writing stage to speed up
     logging.info("args %s", args)
@@ -1025,49 +1037,49 @@ def main():
     # return
     datasets = ["other-training-data", "training-data", "chime-training-data"]
     datasets = ["training-data"]
-    datasets = ["./audio-data/training-data"]
+    dataset_dirs = ["./audio-data/training-data"]
     filenames = []
     labels = set()
-    for d in datasets:
+    datasets = []
+    for d in dataset_dirs:
+        tf_dir = Path(d)
         # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
         file = f"{d}/training-meta.json"
         with open(file, "r") as f:
             meta = json.load(f)
         labels.update(meta.get("labels", []))
+        labels.add("bird")
+        labels.add("noise")
+        labels = list(labels)
+        set_specific_by_count(meta)
+        excluded_labels = get_excluded_labels(labels)
+        labels.sort()
         # print("loaded labels", labels)
         # species_list = ["bird", "human", "rain", "other"]
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-        filenames.extend(tf.io.gfile.glob(f"{d}/test/*.tfrecord"))
-    labels.add("bird")
-    labels.add("noise")
-    labels = list(labels)
-    set_specific_by_count(meta)
-    excluded_labels = get_excluded_labels(labels)
-    labels.sort()
 
-    filenames_2 = tf.io.gfile.glob(f"./flickr-training-data/validation/*.tfrecord")
-    # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
-    # weights = [0.5] * len(labels)
-    start = time.time()
-    resampled_ds, remapped, _, labels = get_dataset(
-        # dir,
-        filenames,
-        labels,
-        use_generic_bird=False,
-        batch_size=32,
-        image_size=DIMENSIONS,
-        augment=False,
-        resample=True,
-        excluded_labels=excluded_labels,
-        stop_on_empty=False,
-        filter_freq=True,
-        random_butter=0.9,
-        only_features=False,
-        multi_label=True
-        # filenames_2=filenames_2
-        # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
-    )
+        resampled_ds, remapped, _, labels = get_dataset(
+            tf_dir / "train",
+            # filenames,
+            labels,
+            # use_generic_bird=False,
+            batch_size=32,
+            image_size=DIMENSIONS,
+            augment=False,
+            resample=False,
+            excluded_labels=excluded_labels,
+            stop_on_empty=True,
+            filter_freq=False,
+            random_butter=0.9,
+            only_features=False,
+            multi_label=True
+            # filenames_2=filenames_2
+            # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
+        )
+        break
+        # filenames.extend(tf.io.gfile.glob(f"{d}/test/**/*.tfrecord"))
+
     dist = get_distribution(resampled_ds, len(labels), batched=True, one_hot=True)
     for l, d in zip(labels, dist):
         print(f"{l} has {d}")

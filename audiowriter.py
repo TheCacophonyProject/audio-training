@@ -52,7 +52,7 @@ from audiodataset import load_features
 import psutil
 
 
-def create_tf_example(sample, labels):
+def create_tf_example(sample):
     """Converts image and annotations to a tf.Example proto.
 
         Args:
@@ -226,36 +226,57 @@ def process_job(queue, labels, config, base_dir):
     name = f"{writer_i}-{pid}.tfrecord"
 
     options = tf.io.TFRecordOptions(compression_type="GZIP")
-    writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
+    writers = {}
+    counts = {}
+    for l in labels:
+        counts[l] = 0
+        l_dir = base_dir / l
+        l_dir.mkdir(exist_ok=True)
+        writers[l] = tf.io.TFRecordWriter(
+            str(l_dir / f"{writer_i}-{pid}.tfrecord"), options=options
+        )
+
+    # writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
     i = 0
     saved = 0
+
     while True:
         i += 1
         rec = queue.get()
         try:
             if rec == "DONE":
-                writer.close()
+                for writer in writers.values():
+                    writer.close()
                 break
             else:
                 saved += save_data(
                     rec,
-                    writer,
+                    writers,
                     model,
                     embedding_model,
                     base_dir,
                     config,
                     embedding_labels,
                     config.filter_frequency,
+                    counts,
                 )
                 del rec
-                if saved > 200:
-                    logging.info("Closing old writer")
-                    writer.close()
-                    writer_i += 1
-                    name = f"{writer_i}-{pid}.tfrecord"
-                    logging.info("Opening %s", name)
-                    saved = 0
-                    writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
+                for lbl, count in counts.items():
+                    if count > 200:
+                        logging.info("Closing old writer for %s", lbl)
+                        writers[lbl].close()
+
+                        writer_i += 1
+                        name = f"{writer_i}-{pid}.tfrecord"
+                        logging.info("Opening %s", name)
+                        saved = 0
+                        counts[lbl] = 0
+                        l_dir = base_dir / lbl
+                        writers[l] = tf.io.TFRecordWriter(
+                            str(l_dir / f"{writer_i}-{pid}.tfrecord"),
+                            options=options,
+                        )
+                    # writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
                 if i % 10 == 0:
                     logging.info("Clear gc")
                     gc.collect()
@@ -263,34 +284,35 @@ def process_job(queue, labels, config, base_dir):
             logging.error("Process_job error %s", rec.filename, exc_info=True)
 
 
-def close_writer(empty=None):
-    global writer
-    if writer is not None:
-        logging.info("Closing old writer")
-        writer.close()
+# def close_writer(empty=None):
+#     global writer
+#     if writer is not None:
+#         logging.info("Closing old writer")
+#         writer.close()
 
 
-def assign_writer():
-    close_writer()
-    pid = os.getpid()
-    global writer_i
-    writer_i += 1
-    w = name = f"{writer_i}-{pid}.tfrecord"
-    logging.info("assigning writer %s", w)
-    options = tf.io.TFRecordOptions(compression_type="GZIP")
-    global writer
-    writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
+# def assign_writer():
+#     close_writer()
+#     pid = os.getpid()
+#     global writer_i
+#     writer_i += 1
+#     w = name = f"{writer_i}-{pid}.tfrecord"
+#     logging.info("assigning writer %s", w)
+#     options = tf.io.TFRecordOptions(compression_type="GZIP")
+#     global writer
+#     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
 
 
 def save_data(
     rec,
-    writer,
+    writers,
     model,
     embedding_model,
     base_dir,
     config,
     embedding_labels,
     filter_frequency,
+    counts,
     add_features=True,
 ):
     resample = 48000
@@ -370,7 +392,10 @@ def save_data(
                 sample.sr = resample
             except:
                 logging.error("Error %s ", rec.id, exc_info=True)
-            tf_example, num_annotations_skipped = create_tf_example(sample, labels)
+            writer_lbl = sample.first_tag
+            tf_example, num_annotations_skipped = create_tf_example(sample)
+            writer = writers[writer_lbl]
+            counts[writer_lbl] += 1
             writer.write(tf_example.SerializeToString())
             del sample
         saved = len(samples)
@@ -481,6 +506,11 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
         for child in output_path.glob("*"):
             if child.is_file():
                 child.unlink()
+            else:
+                for subc in child.iterdir():
+                    if subc.is_file():
+                        subc.unlink()
+                child.rmdir()
     output_path.mkdir(parents=True, exist_ok=True)
     samples = dataset.recs.values()
     samples = sorted(
