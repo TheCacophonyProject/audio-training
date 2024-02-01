@@ -1399,7 +1399,7 @@ def main():
         excluded_labels = get_excluded_labels(labels)
         # self.labels = meta.get("labels", [])
         dataset, _, _, _ = get_dataset(
-            tf.io.gfile.glob(f"{str(base_dir)}/test/*.tfrecord"),
+            base_dir / "test",
             labels,
             image_size=DIMENSIONS,
             shuffle=False,
