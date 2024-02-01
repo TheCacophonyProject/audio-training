@@ -1371,8 +1371,8 @@ def main():
         with open(str(meta_file), "r") as f:
             meta_data = json.load(f)
         if not meta_data.get("only_features"):
-            logging.info("Using val binary accuracy")
-            model.load_weights(load_model / "val_binary_accuracy").expect_partial()
+            logging.info("Using %s weights",args.weight)
+            model.load_weights(args.weight).expect_partial()
         multi = meta_data.get("multi_label")
         labels = meta_data.get("labels")
         print("model labels are", labels)
