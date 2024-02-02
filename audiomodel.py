@@ -1371,9 +1371,9 @@ def main():
         with open(str(meta_file), "r") as f:
             meta_data = json.load(f)
         if not meta_data.get("only_features"):
-            if args.weight is not None:
-                logging.info("Using %s weights", args.weight)
-                model.load_weights(args.weight).expect_partial()
+            if args.weights is not None:
+                logging.info("Using %s weights", args.weights)
+                model.load_weights(args.weights).expect_partial()
         multi = meta_data.get("multi_label")
         labels = meta_data.get("labels")
         print("model labels are", labels)
