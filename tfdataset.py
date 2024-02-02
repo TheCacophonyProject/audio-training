@@ -454,9 +454,9 @@ def get_dataset(dir, labels, **args):
     datasets = []
     logging.info("Dirs from %s", dir)
     for lbl_dir in dir.iterdir():
-        if lbl_dir.name == "bird":
-            logging.info("Skipping bird")
-            continue
+        # if lbl_dir.name == "bird":
+        # logging.info("Skipping bird")
+        # continue
         filenames = tf.io.gfile.glob(str(lbl_dir / "*.tfrecord"))
 
         lbl_dataset = load_dataset(filenames, num_labels, labels, args)
@@ -485,6 +485,7 @@ def get_dataset(dir, labels, **args):
     # dataset = dataset.filter(others_filter)
     # datasets = [dataset]
     # may perform better without adding generics birds but sitll having generic label
+    dataset_2 = None
     if use_generic_bird:
         logging.info("Not adding generic bird tags as found performas better")
         # datasets.append(bird_dataset)
@@ -497,7 +498,7 @@ def get_dataset(dir, labels, **args):
         # added bird noise to human recs but it messes model, so dont use for now
         dataset_2 = load_dataset(second, len(labels), labels, args)
 
-        datasets.append(dataset_2)
+        # datasets.append(dataset_2)
 
         # for i, d in enumerate(dist):
         # dist[i] += dist_2[i]
@@ -514,6 +515,37 @@ def get_dataset(dir, labels, **args):
         stop_on_empty_dataset=args.get("stop_on_empty", args.get("resample", False)),
         rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
     )
+
+    if not args.get("one_hot", True):
+        bird_mask = tf.constant(bird_i, dtype=tf.float32)
+        bird_filter = lambda x, y: tf.math.equal(y[0], bird_mask)
+        others_filter = lambda x, y: not tf.math.equal(y[0], bird_mask)
+    else:
+        bird_mask = np.zeros(num_labels, dtype=bool)
+        bird_mask[bird_i] = 1
+        bird_mask = tf.constant(bird_mask)
+        bird_filter = lambda x, y: tf.math.reduce_all(
+            tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
+        )
+        others_filter = lambda x, y: not tf.math.reduce_all(
+            tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
+        )
+    bird_dataset = dataset.filter(bird_filter)
+    if args.get("filter_signal") is not None:
+        logging.info("Filtering signal by percent 0.1")
+        bird_dataset = bird_dataset.filter(filter_signal)
+
+    dataset = dataset.filter(others_filter)
+
+    if dataset_2 is not None:
+        logging.info("Adding second dataset")
+        dataset = tf.data.Dataset.sample_from_datasets(
+            [dataset, dataset_2],
+            stop_on_empty_dataset=True,
+            rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
+        )
+    # datasets = [dataset]
+
     # logging.info("Filtering freq %s", args.get("filter_freq", False))
     # filter freq done in writing stage to speed up
     logging.info("args %s", args)
@@ -1070,7 +1102,7 @@ def main():
             augment=False,
             resample=True,
             excluded_labels=excluded_labels,
-            stop_on_empty=True,
+            # stop_on_empty=True,
             filter_freq=False,
             random_butter=0.9,
             only_features=False,
