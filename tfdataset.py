@@ -569,6 +569,9 @@ def get_dataset(dir, labels, **args):
         dataset = dataset.map(lambda x, y: pcen_function(x, y))
 
     epoch_size = np.sum(dist)
+
+    for l, d in zip(labels, dist):
+        logging.info(f" for {l} have {d}")
     # tf because of sample from datasets
     dataset = dataset.repeat(2)
     dataset = dataset.take(epoch_size)

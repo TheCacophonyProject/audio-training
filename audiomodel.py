@@ -24,7 +24,7 @@ from audiowriter import create_tf_records
 import tensorflow as tf
 
 # hopefully the good gpu
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 # #
 import tensorflow as tf
 import tensorflow_decision_forests as tfdf
@@ -232,7 +232,7 @@ class AudioModel:
                         save_weights_only=True,
                         mode="min",
                     )
-                ]
+                ],
                 # callbacks=[
                 #     tf.keras.callbacks.TensorBoard(
                 #         self.log_dir, write_graph=True, write_images=True
@@ -764,7 +764,7 @@ class AudioModel:
             excluded_labels=excluded_labels,
             filenames_2=second_filenames,
             embeddings=self.model_name == "embeddings",
-            **args
+            **args,
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
         self.num_train_instance = epoch_size
@@ -789,7 +789,7 @@ class AudioModel:
             excluded_labels=excluded_labels,
             filenames_2=second_filenames,
             embeddings=self.model_name == "embeddings",
-            **args
+            **args,
             # preprocess_fn=self.preprocess_fn,
         )
 
