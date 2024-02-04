@@ -654,7 +654,9 @@ class AudioModel:
             loss=loss_fn,
             metrics=[
                 acc,
-                precAtK(k=3),
+                precAtK(
+                    k=3, num_labels=len(self.labels), bird_i=self.labels.index("bird")
+                ),
                 tf.keras.losses.BinaryFocalCrossentropy(),
                 tf.keras.metrics.AUC(),
                 tf.keras.metrics.Recall(),
@@ -1355,6 +1357,16 @@ def plot_confusion_matrix(cm, class_names):
     return figure
 
 
+def ktest():
+
+    labels = ["bird", "whistler", "bittern"]
+    metric = precAtK(num_labels=3, bird_i=0)
+    y_true = np.array([[1, 1, 0]])
+    y_pred = np.array([[1, 0, 0]])
+    metric.update_state(y_true, y_pred)
+    print("Result is ", metric.result())
+
+
 def main():
     init_logging()
     args = parse_args()
@@ -1789,34 +1801,70 @@ class WeightedCrossEntropy(tf.keras.losses.Loss):
 
 
 class precAtK(tf.keras.metrics.Metric):
-    def __init__(self, name="precK", k=3, **kwargs):
+    def __init__(
+        self, name="precK", k=3, num_labels=None, bird_i=None, weighting=None, **kwargs
+    ):
         super(precAtK, self).__init__(name=name, **kwargs)
+        self.bird_mask = None
+        if bird_i is not None:
+            bird_mask = np.ones((num_labels))
+            bird_mask[bird_i] = 0
+            self.bird_mask = tf.constant(bird_mask, dtype=tf.bool)
+        self.weighting = None
+        if weighting is not None:
+            self.weighting = tf.constant(weighting)
+        self.num_labels = num_labels
         self.k = k
         self.k_percent = self.add_weight(
-            "k_percent", initializer="zeros", dtype=tf.int32
+            "k_percent", initializer="zeros", dtype=tf.float32
         )
         self.total = self.add_weight("total", initializer="zeros", dtype=tf.int32)
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        top_pred = tf.math.top_k(y_pred, k=3)
-        top_true = tf.math.top_k(y_true, k=3)
+        if self.bird_mask is not None:
+
+            p_masked = tf.cast(
+                tf.logical_and(tf.cast(y_pred, tf.bool), self.bird_mask),
+                tf.int32,
+            )
+            y_masked = tf.cast(
+                tf.logical_and(tf.cast(y_true, tf.bool), self.bird_mask),
+                tf.int32,
+            )
+
+        else:
+            p_masked = y_pred
+            y_masked = y_true
+        top_pred = tf.math.top_k(p_masked, k=3)
+        top_true = tf.math.top_k(y_masked, k=3)
         mask = tf.math.greater(top_true.values, 0)
         # dont want to count 0 values in top_k
         top_true_indices = tf.ragged.boolean_mask(top_true.indices, mask)
         non_zero = tf.size(top_true_indices)
         top_true_indices = top_true_indices.to_tensor(default_value=-1)
-        k_percent = tf.size(
-            tf.sets.intersection(top_pred.indices, top_true_indices).values
-        )
+
+        mask = tf.math.greater(top_pred.values, 0)
+        # dont want to count 0 values in top_k
+        top_pred_indices = tf.ragged.boolean_mask(top_pred.indices, mask)
+        non_zero = tf.size(top_true_indices)
+        top_pred_indices = top_pred_indices.to_tensor(default_value=-1)
+
+        intersection = tf.sets.intersection(top_pred_indices, top_true_indices).values
+        k_percent = tf.size(intersection)
+        if self.weighting is not None:
+            one_hot_intersection = tf.one_hot(intersection, self.num_labels)
+            print(self.weighting.dtype, one_hot_intersection.dtype)
+
+            k_percent = tf.math.reduce_sum(one_hot_intersection * self.weighting)
         self.total.assign_add(non_zero)
-        self.k_percent.assign_add(k_percent)
+        self.k_percent.assign_add(tf.cast(k_percent, tf.float32))
 
     def reset_state(self):
         self.k_percent.assign(0)
         self.total.assign(0)
 
     def result(self):
-        return self.k_percent / self.total
+        return self.k_percent / tf.cast(self.total, tf.float32)
 
 
 def keras_model_memory_usage_in_bytes(model, batch_size):
