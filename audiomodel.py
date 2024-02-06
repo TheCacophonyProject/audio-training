@@ -95,7 +95,7 @@ class AudioModel:
         self.data_dir = data_dir
         self.second_data_dir = second_data_dir
         self.model_name = model_name
-        self.batch_size = 32
+        self.batch_size = 16
         self.validation = None
         self.test = None
         self.train = None
@@ -655,7 +655,9 @@ class AudioModel:
             metrics=[
                 acc,
                 precAtK(
-                    k=3, num_labels=len(self.labels), bird_i=self.labels.index("bird")
+                    k=3,
+                    num_labels=len(self.labels),
+                    # , bird_i=self.labels.index("bird")
                 ),
                 tf.keras.losses.BinaryFocalCrossentropy(),
                 tf.keras.metrics.AUC(),
@@ -1361,8 +1363,8 @@ def ktest():
 
     labels = ["bird", "whistler", "bittern"]
     metric = precAtK(num_labels=3, bird_i=0)
-    y_true = np.array([[1, 1, 0]])
-    y_pred = np.array([[1, 0, 0]])
+    y_true = np.array([[1, 0, 0]])
+    y_pred = np.array([[0.1, 0.1, 0]])
     metric.update_state(y_true, y_pred)
     print("Result is ", metric.result())
 
@@ -1370,6 +1372,8 @@ def ktest():
 def main():
     init_logging()
     args = parse_args()
+    # ktest()
+    # return
     if args.confusion is not None:
         load_model = Path(args.name)
         logging.info("Loading %s with weights %s", load_model, "val_acc")
@@ -1864,7 +1868,7 @@ class precAtK(tf.keras.metrics.Metric):
         self.total.assign(0)
 
     def result(self):
-        return self.k_percent / tf.cast(self.total, tf.float32)
+        return self.k_percent / tf.math.maximum(tf.cast(self.total, tf.float32), 1)
 
 
 def keras_model_memory_usage_in_bytes(model, batch_size):
