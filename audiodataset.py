@@ -284,7 +284,11 @@ class AudioSample:
         self.mixed_label = mixed_label
         self.rec_id = rec.id
         self.tags = list(tags)
-        self.first_tag =self.tags[0]
+        non_bird = [t for t in tags if t != "bird"]
+        if len(non_bird) > 0:
+            self.first_tag = non_bird[0]
+        else:
+            self.first_tag = self.tags[0]
         self.tags.sort()
         self.start = start
         self.end = end

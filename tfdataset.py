@@ -541,6 +541,7 @@ def get_dataset(dir, labels, **args):
         logging.info("Adding second dataset")
         dataset = tf.data.Dataset.sample_from_datasets(
             [dataset, dataset_2],
+            weights=[0.6, 0.4],
             stop_on_empty_dataset=True,
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
@@ -1109,7 +1110,7 @@ def main():
             filter_freq=False,
             random_butter=0.9,
             only_features=False,
-            multi_label=True
+            multi_label=True,
             # filenames_2=filenames_2
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
