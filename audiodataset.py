@@ -284,7 +284,7 @@ class AudioSample:
         self.mixed_label = mixed_label
         self.rec_id = rec.id
         self.tags = list(tags)
-        non_bird = [t for t in tags if t != "bird"]
+        non_bird = [t for t in tags if t not in ["noirse", "bird"]]
         if len(non_bird) > 0:
             self.first_tag = non_bird[0]
         else:
