@@ -452,15 +452,22 @@ def get_dataset(dir, labels, **args):
     # 1 / 0
     num_labels = len(labels)
     datasets = []
-    logging.info("Dirs from %s", dir)
+    logging.info("Loading tf records from %s", dir)
+    filenames = tf.io.gfile.glob(str(dir / "*.tfrecord"))
+
+    lbl_dataset = load_dataset(filenames, num_labels, labels, args)
+    logging.info("Loading %s files from %s",len(filenames), dir)
+    datasets.append(lbl_dataset)
     for lbl_dir in dir.iterdir():
+        if not lbl_dir.is_dir():
+            continue
         # if lbl_dir.name == "bird":
-        # logging.info("Skipping bird")
-        # continue
+        #     logging.info("Skipping bird")
+        #     continue
         filenames = tf.io.gfile.glob(str(lbl_dir / "*.tfrecord"))
 
         lbl_dataset = load_dataset(filenames, num_labels, labels, args)
-        logging.info("Loading %s", lbl_dir)
+        logging.info("Loading %s files from %s",len(filenames), lbl_dir)
         datasets.append(lbl_dataset)
         # break
     # if not args.get("one_hot", True):

@@ -489,7 +489,7 @@ class AudioModel:
             acc = "val_binary_accuracy" if args.get("multi_label") else "val_acc"
             self.model.load_weights(os.path.join(self.checkpoint_folder, run_name, acc))
             if args.get("multi_label"):
-                multi_confusion(self.model, self.labels, self.test, run_name)
+                multi_confusion_single(self.model, self.labels, self.test, run_name)
             else:
                 confusion(self.model, self.labels, self.test, run_name)
 
@@ -1200,10 +1200,11 @@ def multi_confusion_single(
 
     cm = confusion_matrix(flat_y, flat_p, labels=np.arange(len(labels)))
     confusion_path = Path(f"./confusions/{filename}")
+
     np.save(str(confusion_path.with_suffix(".npy")), cm)
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
-    plt.savefig(confusion_path, format="png")
+    plt.savefig(confusion_path.with_suffix(".png"), format="png")
 
 
 def multi_confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
@@ -1287,7 +1288,9 @@ def multi_confusion(model, labels, dataset, filename="confusion.png", one_hot=Tr
         cm2[1] = np.flip(cm[0])
         figure = plot_confusion_matrix(cm2, class_names=[labels[i], "not"])
         logging.info("Saving confusion to %s", filename)
-        plt.savefig(f"./confusions/{labels[i]}-{filename}", format="png")
+        file_name = Path(f"./confusions/{labels[i]}-{filename}")
+        file_name = file_name.with_suffix(".png")
+        plt.savefig(file_name, format="png")
 
 
 #
@@ -1332,7 +1335,7 @@ def plot_confusion_matrix(cm, class_names):
       class_names (array, shape = [n]): String names of the integer classes
     """
 
-    figure = plt.figure(figsize=(24, 24))
+    figure = plt.figure(figsize=(8, 8))
     plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
     plt.title("Confusion matrix")
     plt.colorbar()
@@ -1340,15 +1343,17 @@ def plot_confusion_matrix(cm, class_names):
     plt.xticks(tick_marks, class_names, rotation=45)
     plt.yticks(tick_marks, class_names)
 
-    # Normalize the confusion matrix.
+    # Use white text if squares are dark; otherwise black.
     counts = cm.copy()
     threshold = counts.max() / 2.0
+
+    print("Threshold is", threshold, " for ", cm.max())
+    # Normalize the confusion matrix.
+
     cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
     cm = np.nan_to_num(cm)
     cm = np.uint8(np.round(cm * 100))
 
-    # Use white text if squares are dark; otherwise black.
-    threshold = cm.max() / 2.0
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
         color = "white" if counts[i, j] > threshold else "black"
         plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
