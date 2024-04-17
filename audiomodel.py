@@ -1183,11 +1183,11 @@ def multi_confusion_single(
     bird_index= labels.index("bird")
     for y, p in zip(true_categories, y_pred):
         index = 0
-        arg_sorted = np.argsort(p_l)
+        arg_sorted = np.argsort(p)
         best_label = arg_sorted[-1]
         if best_label == bird_index:
             best_label = arg_sorted[-2]
-        best_prob = p_l[best_label]
+        best_prob = p[best_label]
 
         for y_l, p_l in zip(y, p):
             predicted = p_l >= prob_thresh
@@ -1225,8 +1225,7 @@ def multi_confusion_single(
     none_p = np.int64(none_p)
     none_y = np.int64(none_y)
     cm = confusion_matrix(none_y, none_p, labels=np.arange(len(labels)))
-    confusion_path = Path(f"./confusions/{filename}-none")
-
+    confusion_path = confusion_path.parent / f"{confusion_path.stem}-none"
     np.save(str(confusion_path.with_suffix(".npy")), cm)
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
