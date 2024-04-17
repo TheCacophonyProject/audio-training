@@ -1176,11 +1176,19 @@ def multi_confusion_single(
     y_pred = model.predict(dataset)
 
     labels.append("nothing")
-
+    none_p = []
+    none_y = []
     flat_p = []
     flat_y = []
+    bird_index= labels.index("bird")
     for y, p in zip(true_categories, y_pred):
         index = 0
+        arg_sorted = np.argsort(p_l)
+        best_label = arg_sorted[-1]
+        if best_label == bird_index:
+            best_label = arg_sorted[-2]
+        best_prob = p_l[best_label]
+
         for y_l, p_l in zip(y, p):
             predicted = p_l >= prob_thresh
             if y_l == 0 and predicted:
@@ -1192,11 +1200,18 @@ def multi_confusion_single(
             elif y_l == 1 and not predicted:
                 flat_y.append(index)
                 flat_p.append(len(labels) - 1)
-
+                if index != bird_index and best_prob > 0.5:
+                    none_p.append(best_label)
+                    none_y.append(index)
+                                        
             index += 1
 
     flat_p = np.int64(flat_p)
     flat_y = np.int64(flat_y)
+
+
+    none_p = np.int64(none_p)
+    none_y = np.int64(none_y)
 
     cm = confusion_matrix(flat_y, flat_p, labels=np.arange(len(labels)))
     confusion_path = Path(f"./confusions/{filename}")
@@ -1206,6 +1221,16 @@ def multi_confusion_single(
     figure = plot_confusion_matrix(cm, class_names=labels)
     plt.savefig(confusion_path.with_suffix(".png"), format="png")
 
+
+    none_p = np.int64(none_p)
+    none_y = np.int64(none_y)
+    cm = confusion_matrix(none_y, none_p, labels=np.arange(len(labels)))
+    confusion_path = Path(f"./confusions/{filename}-none")
+
+    np.save(str(confusion_path.with_suffix(".npy")), cm)
+    # Log the confusion matrix as an image summary.
+    figure = plot_confusion_matrix(cm, class_names=labels)
+    plt.savefig(confusion_path.with_suffix(".png"), format="png")
 
 def multi_confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
     from sklearn.preprocessing import MultiLabelBinarizer
