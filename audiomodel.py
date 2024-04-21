@@ -1415,10 +1415,7 @@ def main():
         print("Meta", meta_file)
         with open(str(meta_file), "r") as f:
             meta_data = json.load(f)
-        if not meta_data.get("only_features"):
-            if args.weights is not None:
-                logging.info("Using %s weights", args.weights)
-                model.load_weights(args.weights).expect_partial()
+
         multi = meta_data.get("multi_label")
         labels = meta_data.get("labels")
         print("model labels are", labels)
@@ -1482,22 +1479,34 @@ def main():
         if dataset is not None:
             # best_threshold(model, labels, dataset, args.confusion)
             # return
-            if multi:
-                multi_confusion_single(
-                    model,
-                    labels,
-                    dataset,
-                    args.confusion,
-                    one_hot=not meta_data.get("only_features"),
-                )
+            if not meta_data.get("only_features"):
+                weight_files = [None]
             else:
-                confusion(
-                    model,
-                    labels,
-                    dataset,
-                    args.confusion,
-                    one_hot=not meta_data.get("only_features"),
-                )
+                weight_files = [None, "val_precK","val_binary_accuracy" if multi else "val_acc"]
+            
+            for w in weight_files:
+                if w is not None:
+                    logging.info("Using %s weights", w)
+                    model.load_weights(w).expect_partial()
+
+                file_prefix = "final" if w is None else w
+                confusion_file = args.confusion.parent / f"{args.confusion.stem}-{file_prefix}"
+                if multi:
+                    multi_confusion_single(
+                        model,
+                        labels,
+                        dataset,
+                        confusion_file,
+                        one_hot=not meta_data.get("only_features"),
+                    )
+                else:
+                    confusion(
+                        model,
+                        labels,
+                        dataset,
+                        confusion_file,
+                        one_hot=not meta_data.get("only_features"),
+                    )
 
     else:
         am = AudioModel(args.model_name, args.dataset_dir, args.second_dataset_dir)
