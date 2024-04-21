@@ -1479,15 +1479,19 @@ def main():
         if dataset is not None:
             # best_threshold(model, labels, dataset, args.confusion)
             # return
-            if not meta_data.get("only_features"):
+            weight_base_path = load_model
+            if not load_model.is_dir():
+                weight_base_path = load_model.parent
+            args.confusion = Path(args.confusion)
+            if meta_data.get("only_features"):
                 weight_files = [None]
             else:
                 weight_files = [None, "val_precK","val_binary_accuracy" if multi else "val_acc"]
             
             for w in weight_files:
                 if w is not None:
-                    logging.info("Using %s weights", w)
-                    model.load_weights(w).expect_partial()
+                    logging.info("Using %s weights",weight_base_path/ w)
+                    model.load_weights(weight_base_path/w).expect_partial()
 
                 file_prefix = "final" if w is None else w
                 confusion_file = args.confusion.parent / f"{args.confusion.stem}-{file_prefix}"
