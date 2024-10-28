@@ -280,6 +280,7 @@ class AudioSample:
         mixed_label=None,
         low_sample=False,
     ):
+        self.location = rec.location
         self.low_sample = low_sample
         self.mixed_label = mixed_label
         self.rec_id = rec.id
@@ -332,6 +333,20 @@ class Recording:
         self.signals = metadata.get("signal", [])
         self.noises = metadata.get("noise", [])
         self.duration = metadata.get("duration")
+        location = metadata.get("location")
+        self.location = None
+        lat = None
+        lng = None
+        country_code = None
+        if location is not None:
+            try:
+                lat = location.get("lat")
+                lng = location.get("lng")
+                self.location = (lat, lng)
+
+            except:
+                logging.error("Could not parse lat lng", exc_info=True)
+                pass
         if self.rec_date is not None:
             self.rec_date = parse_date(self.rec_date)
 

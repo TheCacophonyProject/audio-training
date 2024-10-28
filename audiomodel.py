@@ -390,7 +390,7 @@ class AudioModel:
                 acc = tf.metrics.binary_accuracy
             else:
                 acc = tf.metrics.categorical_accuracy
-            loss_fn = loss(args.get("multi_label", True))
+            # loss_fn = loss(args.get("multi_label", True))
             loss_fn = WeightedCrossEntropy(self.labels)
             self.loss_fn = loss_fn.name
             self.model.compile(
@@ -1180,7 +1180,7 @@ def multi_confusion_single(
     none_y = []
     flat_p = []
     flat_y = []
-    bird_index= labels.index("bird")
+    bird_index = labels.index("bird")
     for y, p in zip(true_categories, y_pred):
         index = 0
         arg_sorted = np.argsort(p)
@@ -1203,12 +1203,11 @@ def multi_confusion_single(
                 if index != bird_index and best_prob > 0.5:
                     none_p.append(best_label)
                     none_y.append(index)
-                                        
+
             index += 1
 
     flat_p = np.int64(flat_p)
     flat_y = np.int64(flat_y)
-
 
     none_p = np.int64(none_p)
     none_y = np.int64(none_y)
@@ -1221,7 +1220,6 @@ def multi_confusion_single(
     figure = plot_confusion_matrix(cm, class_names=labels)
     plt.savefig(confusion_path.with_suffix(".png"), format="png")
 
-
     none_p = np.int64(none_p)
     none_y = np.int64(none_y)
     cm = confusion_matrix(none_y, none_p, labels=np.arange(len(labels)))
@@ -1230,6 +1228,7 @@ def multi_confusion_single(
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
     plt.savefig(confusion_path.with_suffix(".png"), format="png")
+
 
 def multi_confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
     from sklearn.preprocessing import MultiLabelBinarizer
@@ -1359,7 +1358,7 @@ def plot_confusion_matrix(cm, class_names):
       class_names (array, shape = [n]): String names of the integer classes
     """
 
-    figure = plt.figure(figsize=(24,24))
+    figure = plt.figure(figsize=(24, 24))
     plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
     plt.title("Confusion matrix")
     plt.colorbar()
@@ -1486,15 +1485,21 @@ def main():
             if meta_data.get("only_features"):
                 weight_files = [None]
             else:
-                weight_files = [None, "val_precK","val_binary_accuracy" if multi else "val_acc"]
-            
+                weight_files = [
+                    None,
+                    "val_precK",
+                    "val_binary_accuracy" if multi else "val_acc",
+                ]
+
             for w in weight_files:
                 if w is not None:
-                    logging.info("Using %s weights",weight_base_path/ w)
-                    model.load_weights(weight_base_path/w).expect_partial()
+                    logging.info("Using %s weights", weight_base_path / w)
+                    model.load_weights(weight_base_path / w).expect_partial()
 
                 file_prefix = "final" if w is None else w
-                confusion_file = args.confusion.parent / f"{args.confusion.stem}-{file_prefix}"
+                confusion_file = (
+                    args.confusion.parent / f"{args.confusion.stem}-{file_prefix}"
+                )
                 if multi:
                     multi_confusion_single(
                         model,
@@ -1826,19 +1831,21 @@ class WeightedCrossEntropy(tf.keras.losses.Loss):
         y_pred = tf.clip_by_value(
             y_pred, tf.keras.backend.epsilon(), 1.0 - tf.keras.backend.epsilon()
         )
+        possible_labels = y_true[1]
+        y_true = y_true[0]
+        # birds = tf.math.reduce_all(tf.math.equal(y_true, self.bird_mask), axis=1)
+        # birds = tf.expand_dims(birds, 1)
 
-        birds = tf.math.reduce_all(tf.math.equal(y_true, self.bird_mask), axis=1)
-        birds = tf.expand_dims(birds, 1)
-
-        loss_matrix = tf.where(birds, self.bird_loss, self.normal_loss)
+        # loss_matrix = tf.where(birds, possible_labels, self.normal_loss)
 
         term_0 = (1 - y_true) * tf.math.log(1 - y_pred + tf.keras.backend.epsilon())
-        term_0 = term_0 * loss_matrix
+        term_0 = term_0 * possible_labels
         # since a lot of our bird tags may have specific birds lets not penalize the model for
-        # choosing a specific bird in this scenario
+        # choosing a specific bird in this scenario, only calculate loss from not being bird
+
         term_1 = y_true * tf.math.log(y_pred + tf.keras.backend.epsilon())
         loss = tf.keras.backend.mean(term_0 + term_1, axis=1)
-        return -loss
+        return [-loss, -loss]
 
     def get_config(self):
         config = {}

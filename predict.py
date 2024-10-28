@@ -727,6 +727,7 @@ def main():
             data, length = yamn_embeddings(file, segment_stride)
         else:
             frames, sr = load_recording(file)
+            frames = butter_bandpass_filter(frames, 0, 10000, sr, order=5)
 
             data = load_samples(
                 frames,

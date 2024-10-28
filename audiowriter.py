@@ -86,7 +86,14 @@ def create_tf_example(sample):
     data = sample.spectogram_data
     tags = sample.tags_s
     track_ids = " ".join(map(str, sample.track_ids))
+    logging.info("Writing location %s", sample.location)
     feature_dict = {
+        "audio/lat": tfrecord_util.float_feature(
+            0 if sample.location is None else sample.location[0]
+        ),
+        "audio/lng": tfrecord_util.float_feature(
+            0 if sample.location is None else sample.location[1]
+        ),
         "audio/rec_id": tfrecord_util.bytes_feature(str(sample.rec_id).encode("utf8")),
         "audio/track_id": tfrecord_util.bytes_feature(track_ids.encode("utf8")),
         "audio/sample_rate": tfrecord_util.int64_feature(sample.sr),

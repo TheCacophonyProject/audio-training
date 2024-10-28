@@ -19,7 +19,7 @@ import soundfile as sf
 
 BIRD_PATH = []
 NOISE_PATH = []
-
+NZ_BOX = [166.509144322, -34.4506617165, 178.517093541, -46.641235447]
 
 MERGE_LABELS = {
     "house sparrow": "sparrow",
@@ -215,6 +215,11 @@ Z_NORM = False
 # Z_NORM = True
 import random
 
+# labels to apply weighting to if  y true is generic "bird"
+NZ_BIRD_LOSS_WEIGHTING = []
+BIRD_WEIGHTING = []
+SPECIFIC_BIRD_MASK = []
+
 
 def load_dataset(filenames, num_labels, labels, args):
     random.shuffle(filenames)
@@ -249,6 +254,27 @@ def load_dataset(filenames, num_labels, labels, args):
     one_hot = args.get("one_hot", True)
     dataset = dataset.apply(tf.data.experimental.ignore_errors())
     # dataset = dataset.filter(filter_short)
+
+    # set up weighting based on specific and generic birds
+    global NZ_BIRD_LOSS_WEIGHTING, BIRD_WEIGHTING, SPECIFIC_BIRD_MASK, GENERIC_BIRD_MASK
+    SPECIFIC_BIRD_MASK = np.zeros(num_labels)
+    BIRD_WEIGHTING = np.zeros(num_labels)
+    NZ_BIRD_LOSS_WEIGHTING = np.zeros(num_labels)
+    GENERIC_BIRD_MASK = np.zeros(num_labels)
+    if "rifleman" in labels:
+        NZ_BIRD_LOSS_WEIGHTING[labels.index("rifleman")] = 1
+    NZ_BIRD_LOSS_WEIGHTING[labels.index("bird")] = 1
+    BIRD_WEIGHTING[labels.index("bird")] = 1
+    GENERIC_BIRD_MASK[labels.index("bird")] = 1
+
+    for i, l in enumerate(labels):
+        if (l in GENERIC_BIRD_LABELS or l in SPECIFIC_BIRD_LABELS) and l != "bird":
+            SPECIFIC_BIRD_MASK[i] = 1
+    SPECIFIC_BIRD_MASK = tf.constant(SPECIFIC_BIRD_MASK, dtype=tf.float32)
+    BIRD_WEIGHTING = tf.constant(BIRD_WEIGHTING, dtype=tf.float32)
+    NZ_BIRD_LOSS_WEIGHTING = tf.constant(NZ_BIRD_LOSS_WEIGHTING, dtype=tf.float32)
+    GENERIC_BIRD_MASK = tf.constant(GENERIC_BIRD_MASK, dtype=tf.float32)
+
     dataset = dataset.map(
         partial(
             read_tfrecord,
@@ -302,7 +328,7 @@ def preprocess(data):
 
 
 def get_distribution(dataset, num_labels, batched=True, one_hot=True):
-    true_categories = [y for x, y in dataset]
+    true_categories = [y[0] for x, y in dataset]
     dist = np.zeros((num_labels), dtype=np.float32)
     if len(true_categories) == 0:
         return dist
@@ -324,7 +350,7 @@ def get_distribution(dataset, num_labels, batched=True, one_hot=True):
     c = Counter(list(classes))
     for i in range(num_labels):
         dist[i] = c[i]
-    return dist
+    return dist, len(true_categories)
 
 
 def get_remappings(
@@ -456,18 +482,18 @@ def get_dataset(dir, labels, **args):
     filenames = tf.io.gfile.glob(str(dir / "*.tfrecord"))
 
     lbl_dataset = load_dataset(filenames, num_labels, labels, args)
-    logging.info("Loading %s files from %s",len(filenames), dir)
+    logging.info("Loading %s files from %s", len(filenames), dir)
     datasets.append(lbl_dataset)
     for lbl_dir in dir.iterdir():
         if not lbl_dir.is_dir():
             continue
-        # if lbl_dir.name == "bird":
-        #     logging.info("Skipping bird")
-        #     continue
+        # if lbl_dir.name != "bird":
+        # logging.info("Skipping bird")
+        # continue
         filenames = tf.io.gfile.glob(str(lbl_dir / "*.tfrecord"))
 
         lbl_dataset = load_dataset(filenames, num_labels, labels, args)
-        logging.info("Loading %s files from %s",len(filenames), lbl_dir)
+        logging.info("Loading %s files from %s", len(filenames), lbl_dir)
         datasets.append(lbl_dataset)
         # break
     # if not args.get("one_hot", True):
@@ -493,9 +519,9 @@ def get_dataset(dir, labels, **args):
     # datasets = [dataset]
     # may perform better without adding generics birds but sitll having generic label
     dataset_2 = None
-    if use_generic_bird:
-        logging.info("Not adding generic bird tags as found performas better")
-        # datasets.append(bird_dataset)
+    # if use_generic_bird:
+    # logging.info("Not adding generic bird tags as found performas better")
+    # datasets.append(bird_dataset)
     if args.get("filenames_2") is not None:
         logging.info("Loading second files %s", args.get("filenames_2")[:1])
         second = args.get("filenames_2")
@@ -537,12 +563,12 @@ def get_dataset(dir, labels, **args):
         others_filter = lambda x, y: not tf.math.reduce_all(
             tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
         )
-    bird_dataset = dataset.filter(bird_filter)
+    # bird_dataset = dataset.filter(bird_filter)
     if args.get("filter_signal") is not None:
         logging.info("Filtering signal by percent 0.1")
         bird_dataset = bird_dataset.filter(filter_signal)
 
-    dataset = dataset.filter(others_filter)
+    # dataset = dataset.filter(others_filter)
 
     if dataset_2 is not None:
         logging.info("Adding second dataset")
@@ -562,10 +588,12 @@ def get_dataset(dir, labels, **args):
     #     dataset = dataset.map(
     #         lambda x, y: raw_to_mel(x, y, args.get("features", False))
     #     )
-
-    dataset = dataset.map(lambda x, y: (x, y[0]))
+    for x, y in dataset:
+        print(y)
+    dataset = dataset.map(lambda x, y: (x, (y[0], y[5])))
     resample_data = args.get("resample", False)
-    dist = get_distribution(
+
+    dist, epoch_size = get_distribution(
         dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
     )
     # if resample_data:
@@ -575,8 +603,6 @@ def get_dataset(dir, labels, **args):
     if pcen:
         logging.info("Taking PCEN")
         dataset = dataset.map(lambda x, y: pcen_function(x, y))
-
-    epoch_size = np.sum(dist)
 
     for l, d in zip(labels, dist):
         logging.info(f" for {l} have {d}")
@@ -731,7 +757,7 @@ def get_weighting(dataset, labels):
     #         continue
     #     dont_weigh.append(l)
     num_labels = len(labels)
-    dist = get_distribution(dataset, num_labels)
+    dist, _ = get_distribution(dataset, num_labels)
     for l, d in zip(labels, dist):
         print(l, "  : ", d)
     zeros = dist[dist == 0]
@@ -857,26 +883,7 @@ def read_tfrecord(
     features=False,
     multi=True,
 ):
-    bird_l = tf.constant(["bird"])
-    # tf_more_mask = tf.constant(morepork_mask)
-    # tf_human_mask = tf.constant(human_mask)
     tfrecord_format = {"audio/class/text": tf.io.FixedLenFeature((), tf.string)}
-    # "audio/sftf": tf.io.FixedLenFeature([sftf_s[0] * sftf_s[1]], dtype=tf.float32),
-    # "audio/mel": tf.io.FixedLenFeature([mel_s[0] * mel_s[1]], dtype=tf.float32),
-    # "audio/mfcc": tf.io.FixedLenFeature([mfcc_s[0] * mfcc_s[1]], dtype=tf.float32),
-    # "audio/class/label": tf.io.FixedLenFeature((), tf.int64),
-    # "audio/length": tf.io.FixedLenFeature((), tf.int64),
-    # "audio/sftf_w": tf.io.FixedLenFeature((), tf.int64),
-    # "audio/sftf_h": tf.io.FixedLenFeature((), tf.int64),
-    # "audio/mel_w": tf.io.FixedLenFeature((), tf.int64),
-    # "audio/mel_h": tf.io.FixedLenFeature((), tf.int64),
-    # "audio/mfcc_w": tf.io.FixedLenFeature((), tf.int64),
-    # "audio/raw": tf.io.FixedLenFeature(
-    #     [
-    #         120000,
-    #     ],
-    #     dtype=tf.float32,
-    # ),
     tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
     tfrecord_format["audio/track_id"] = tf.io.FixedLenFeature((), tf.string)
     if embeddings:
@@ -888,24 +895,13 @@ def read_tfrecord(
 
     elif not only_features:
         logging.info("Loading sft audio")
-        #
-        # tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((48000 * 3), tf.float32)
-        #
-        # tfrecord_format["audio/buttered"] = tf.io.FixedLenFeature(
-        #     (48000 * 3), tf.float32, default_value=tf.zeros((48000 * 3))
-        # )
-
+        tfrecord_format["audio/lat"] = tf.io.FixedLenFeature((), tf.float32)
+        tfrecord_format["audio/lng"] = tf.io.FixedLenFeature((), tf.float32)
         tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((2401 * 513), tf.float32)
-
         tfrecord_format["audio/buttered"] = tf.io.FixedLenFeature(
             (2401 * 513), tf.float32, default_value=tf.zeros((2401 * 513))
         )
 
-    # tfrecord_format["audio/raw"] = tf.io.FixedLenFeature(
-    #     (2401, mel_s[1]), tf.float32
-    # )
-    # tfrecord_format["audio/min_freq"] = tf.io.FixedLenFeature((), tf.float32)
-    # tfrecord_format["audio/max_freq"] = tf.io.FixedLenFeature((), tf.float32)
     if features or only_features:
         tfrecord_format["audio/short_f"] = tf.io.FixedLenFeature((68 * 60), tf.float32)
         tfrecord_format["audio/mid_f"] = tf.io.FixedLenFeature((136 * 3), tf.float32)
@@ -913,7 +909,6 @@ def read_tfrecord(
     tfrecord_format["audio/signal_percent"] = tf.io.FixedLenFeature((), tf.float32)
 
     example = tf.io.parse_single_example(example, tfrecord_format)
-    # raw = example["audio/raw"]
 
     label = tf.cast(example["audio/class/text"], tf.string)
     split_labels = tf.strings.split(label, sep="\n")
@@ -1004,7 +999,32 @@ def read_tfrecord(
         signal_percent = example["audio/signal_percent"]
 
         label = tf.cast(label, tf.float32)
+        possible_labels = tf.ones(label.shape, tf.float32)
 
+        lat = example["audio/lat"]
+        lng = example["audio/lng"]
+        # if label has no specific bird in it and has generic bird, weight differently
+        if not tf.math.reduce_any(
+            tf.math.logical_and(
+                tf.cast(label, tf.bool), tf.cast(SPECIFIC_BIRD_MASK, tf.bool)
+            )
+        ) and tf.math.reduce_any(
+            tf.math.logical_and(
+                tf.cast(label, tf.bool), tf.cast(GENERIC_BIRD_MASK, tf.bool)
+            )
+        ):
+            if lat == 0 or lng == 0:
+                possible_labels = NZ_BIRD_LOSS_WEIGHTING
+            elif (
+                lat <= NZ_BOX[1]
+                and lat >= NZ_BOX[3]
+                and lng >= NZ_BOX[0]
+                and lng <= NZ_BOX[2]
+            ):
+                possible_labels = NZ_BIRD_LOSS_WEIGHTING
+            else:
+                possible_labels = BIRD_WEIGHTING
+        print(NZ_BIRD_LOSS_WEIGHTING, BIRD_WEIGHTING)
         return raw, (
             label,
             embed_preds,
@@ -1013,6 +1033,7 @@ def read_tfrecord(
             # max_freq,
             example["audio/rec_id"],
             example["audio/track_id"],
+            possible_labels,
         )
 
     return image
@@ -1081,7 +1102,7 @@ def main():
     # return
     datasets = ["other-training-data", "training-data", "chime-training-data"]
     datasets = ["training-data"]
-    dataset_dirs = ["./audio-data/training-data"]
+    dataset_dirs = ["./audio-training/training-data"]
     filenames = []
     labels = set()
     datasets = []
@@ -1104,14 +1125,14 @@ def main():
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
 
         resampled_ds, remapped, _, labels = get_dataset(
-            tf_dir / "train",
+            tf_dir / "validation",
             # filenames,
             labels,
             # use_generic_bird=False,
             batch_size=32,
             image_size=DIMENSIONS,
             augment=False,
-            resample=True,
+            resample=False,
             excluded_labels=excluded_labels,
             # stop_on_empty=True,
             filter_freq=False,
@@ -1123,11 +1144,38 @@ def main():
         )
         break
         # filenames.extend(tf.io.gfile.glob(f"{d}/test/**/*.tfrecord"))
-
-    dist = get_distribution(resampled_ds, len(labels), batched=True, one_hot=True)
+    print("labels are ", labels)
+    global NZ_BIRD_LOSS_WEIGHTING, BIRD_WEIGHTING, SPECIFIC_BIRD_MASK, GENERIC_BIRD_MASK
+    print("GENERIC_BIRD_MASK", GENERIC_BIRD_MASK)
+    print("SPECIFIC", SPECIFIC_BIRD_MASK)
+    dist, _ = get_distribution(resampled_ds, len(labels), batched=True, one_hot=True)
+    print("Dist is ", dist)
     for l, d in zip(labels, dist):
         print(f"{l} has {d}")
-    return
+
+    # testing loss function results
+    # from audiomodel import WeightedCrossEntropy
+
+    # custom_loss = WeightedCrossEntropy(labels)
+    # for x, y in resampled_ds:
+    #     for y_true, y_possible in zip(y[0], y[1]):
+    #         pred = tf.constant([[1, 0, 0, 1]], dtype=tf.float32)
+    #         y_true = tf.expand_dims(y_true, 0)
+    #         y_possible = tf.expand_dims(y_possible, 0)
+
+    #         loss = custom_loss.call([y_true, y_possible], pred)
+    #         print(
+    #             "for y  ",
+    #             y_true,
+    #             " with pred ",
+    #             pred,
+    #             " loss is ",
+    #             loss,
+    #             " and possible",
+    #             y_possible,
+    #         )
+    #         print("")
+    # return
     for e in range(1):
         for x, y in resampled_ds:
             print(x.shape)
