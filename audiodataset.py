@@ -769,7 +769,7 @@ def plot_mel(mel):
 
 
 SpectrogramData = namedtuple(
-    "SpectrogramData", "raw raw_length buttered short_features,mid_features"
+    "SpectrogramData", "raw spectogram raw_length buttered short_features,mid_features"
 )
 
 Tag = namedtuple("Tag", "what confidence automatic original")
@@ -852,7 +852,7 @@ def load_data(
         else:
             spectogram_buttered = buttered
         spec = SpectrogramData(
-            spectogram, data_length, spectogram_buttered, short_f, mid_f
+            s_data, spectogram, data_length, spectogram_buttered, short_f, mid_f
         )
     except:
         logging.error(

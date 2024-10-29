@@ -44,7 +44,6 @@ from denoisetest import (
 )
 from plot_utils import plot_mel, plot_mel_signals, plot_spec
 import matplotlib.patches as patches
-import tensorflow_hub as hub
 import csv
 
 matplotlib.use("TkAgg")

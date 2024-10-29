@@ -86,7 +86,6 @@ def create_tf_example(sample):
     data = sample.spectogram_data
     tags = sample.tags_s
     track_ids = " ".join(map(str, sample.track_ids))
-    logging.info("Writing location %s", sample.location)
     feature_dict = {
         "audio/lat": tfrecord_util.float_feature(
             0 if sample.location is None else sample.location[0]
@@ -110,6 +109,9 @@ def create_tf_example(sample):
         "audio/raw_length": tfrecord_util.float_feature(data.raw_length),
         "audio/start_s": tfrecord_util.float_feature(sample.start),
         "audio/class/text": tfrecord_util.bytes_feature(tags.encode("utf8")),
+        "audio/spectogram": tfrecord_util.float_list_feature(
+            np.float32(data.spectogram.ravel())
+        ),
         "audio/raw": tfrecord_util.float_list_feature(np.float32(data.raw.ravel())),
     }
     if data.short_features is not None:
@@ -216,7 +218,7 @@ DO_EMBEDDING = False
 #         embedding_labels = meta_data.get("labels")
 
 
-def process_job(queue, labels, config, base_dir):
+def process_job(queue, labels, config, base_dir, writer_i):
     import gc
 
     # Load the model.
@@ -229,7 +231,6 @@ def process_job(queue, labels, config, base_dir):
 
     pid = os.getpid()
 
-    writer_i = 1
     name = f"{writer_i}-{pid}.tfrecord"
 
     options = tf.io.TFRecordOptions(compression_type="GZIP")
@@ -268,25 +269,10 @@ def process_job(queue, labels, config, base_dir):
                     counts,
                 )
                 del rec
-                for lbl, count in counts.items():
-                    if count > 200:
-                        logging.info("Closing old writer for %s", lbl)
-                        writers[lbl].close()
-
-                        writer_i += 1
-                        name = f"{writer_i}-{pid}.tfrecord"
-                        logging.info("Opening %s", name)
-                        saved = 0
-                        counts[lbl] = 0
-                        l_dir = base_dir / lbl
-                        writers[l] = tf.io.TFRecordWriter(
-                            str(l_dir / f"{writer_i}-{pid}.tfrecord"),
-                            options=options,
-                        )
-                    # writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
                 if i % 10 == 0:
                     logging.info("Clear gc")
                     gc.collect()
+                    writer.flush()
         except:
             logging.error("Process_job error %s", rec.filename, exc_info=True)
 
@@ -531,31 +517,36 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     logging.info("labels are %s", labels)
     num_processes = 8
     total_recs = len(samples)
+    writer_i = 0
+    index = 0
+    jobs_per_process = 300 * num_processes
     try:
-        job_queue = Queue()
-        processes = []
-        for i in range(num_processes):
-            p = Process(
-                target=process_job,
-                args=(job_queue, labels, dataset.config, output_path),
-            )
-            processes.append(p)
-            p.start()
-        for s in samples:
-            job_queue.put(s)
-
-        logging.info("Processing %d", job_queue.qsize())
-        for i in range(len(processes)):
-            job_queue.put(("DONE"))
-        for process in processes:
-            try:
-                process.join()
-            except KeyboardInterrupt:
-                logging.info("KeyboardInterrupt, terminating.")
-                for process in processes:
-                    process.terminate()
-                exit()
-        logging.info("Saved %s", len(samples))
+        while index < len(samples):
+            job_queue = Queue()
+            processes = []
+            for i in range(num_processes):
+                p = Process(
+                    target=process_job,
+                    args=(job_queue, labels, dataset.config, output_path, writer_i),
+                )
+                processes.append(p)
+                p.start()
+            for s in samples[index : index + jobs_per_process]:
+                job_queue.put(s)
+            writer_i += 1
+            index += jobs_per_process
+            logging.info("Processing %d", job_queue.qsize())
+            for i in range(len(processes)):
+                job_queue.put(("DONE"))
+            for process in processes:
+                try:
+                    process.join()
+                except KeyboardInterrupt:
+                    logging.info("KeyboardInterrupt, terminating.")
+                    for process in processes:
+                        process.terminate()
+                    exit()
+            logging.info("Saved %s", len(samples))
 
     except:
         logging.error("Error saving track info", exc_info=True)

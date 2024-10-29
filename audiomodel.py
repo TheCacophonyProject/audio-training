@@ -1594,6 +1594,13 @@ def parse_args():
         "--features", default=False, action="count", help="Train on features"
     )
     parser.add_argument(
+        "--use_bird_tags",
+        default=False,
+        action="count",
+        help="Use tracks of generic bird tags ( without specific birds) in training",
+    )
+
+    parser.add_argument(
         "--one-hot", type=str2bool, default=True, help="One hot labeling "
     )
     parser.add_argument("--resample", default=False, action="count", help="Resample DS")
