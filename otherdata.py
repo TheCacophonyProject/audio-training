@@ -196,28 +196,28 @@ def flickr_data():
         rand_f = np.random.rand()
         added = False
         labels = ["human"]
-        if rand_f > 0.7:
-            if rand_f > 0.85:
-                noisy_name = noisy_p / f"bird-{rec_name.name}"
-                if noisy_name.exists():
-                    add_rec(
-                        dataset,
-                        noisy_name,
-                        ["human"],
-                        config,
-                        mixed_label="bird",
-                    )
-                    # logging.info("Adding %s from  %s", noisy_name, rec_name)
-                    added = True
-                    labels.append("bird")
-            else:
-                noisy_name = noisy_p / f"noise-{rec_name.name}"
-                print("looking for %s", noisy_name)
-                if noisy_name.exists():
-                    add_rec(dataset, noisy_name, ["human"], config, mixed_label="noise")
-                    # logging.info("Adding %s from  %s", noisy_name, rec_name)
-                    added = True
-                    labels.append("noise")
+        # if rand_f > 0.7:
+        #     if rand_f > 0.85:
+        #         noisy_name = noisy_p / f"bird-{rec_name.name}"
+        #         if noisy_name.exists():
+        #             add_rec(
+        #                 dataset,
+        #                 noisy_name,
+        #                 ["human"],
+        #                 config,
+        #                 mixed_label="bird",
+        #             )
+        #             # logging.info("Adding %s from  %s", noisy_name, rec_name)
+        #             added = True
+        #             labels.append("bird")
+        #     else:
+        #         noisy_name = noisy_p / f"noise-{rec_name.name}"
+        #         print("looking for %s", noisy_name)
+        #         if noisy_name.exists():
+        #             add_rec(dataset, noisy_name, ["human"], config, mixed_label="noise")
+        #             # logging.info("Adding %s from  %s", noisy_name, rec_name)
+        #             added = True
+        #             labels.append("noise")
         if not added:
             add_rec(dataset, rec_name, labels, config)
         if len(dataset.recs) > len(wav_files) / 3:

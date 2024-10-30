@@ -268,11 +268,10 @@ def process_job(queue, labels, config, base_dir, writer_i):
                     config.filter_frequency,
                     counts,
                 )
-                del rec
                 if i % 10 == 0:
                     logging.info("Clear gc")
                     gc.collect()
-                    writer.flush()
+                del rec
         except:
             logging.error("Process_job error %s", rec.filename, exc_info=True)
 

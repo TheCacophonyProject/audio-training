@@ -1,5 +1,6 @@
 import sys
 import math
+
 import matplotlib.pyplot as plt
 
 import tensorflow as tf
@@ -175,6 +176,8 @@ SR = 48000
 BREAK_FREQ = 1000
 MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, 4800, BREAK_FREQ)
 MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
+MEL_WEIGHTS = tf.expand_dims(MEL_WEIGHTS, 0)
+
 DIMENSIONS = (160, 188)
 
 mel_s = (N_MELS, 513)
@@ -293,6 +296,7 @@ def load_dataset(filenames, num_labels, labels, args):
             only_features=args.get("only_features", False),
             features=args.get("features", False),
             multi=args.get("multi_label", True),
+            load_raw=args.get("load_raw", True),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -526,7 +530,7 @@ def get_dataset(dir, labels, **args):
     #     bird_dataset = bird_dataset.filter(filter_signal)
 
     if dataset_2 is not None:
-        logging.info("Adding second datasetwith weights [0.6,0.4]")
+        logging.info("Adding second dataset with weights [0.6,0.4]")
         dataset = tf.data.Dataset.sample_from_datasets(
             [dataset, dataset_2],
             weights=[0.6, 0.4],
@@ -539,8 +543,6 @@ def get_dataset(dir, labels, **args):
     dist, epoch_size = get_distribution(
         dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
     )
-    logging.info("Mapping raw to mel")
-    # dataset = dataset.map(lambda x, y: raw_to_mel(x, y))
 
     pcen = args.get("pcen", False)
     if pcen:
@@ -558,8 +560,26 @@ def get_dataset(dir, labels, **args):
         dataset = dataset.shuffle(
             40096, reshuffle_each_iteration=args.get("reshuffle", True)
         )
+
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
+    if args.get("load_raw", True):
+        logging.info("Mapping raw to mel")
+        if args.get("augment", False):
+            logging.info("Mixing up")
+            dataset2 = dataset.shuffle(
+                40096, reshuffle_each_iteration=args.get("reshuffle", True)
+            )
+            train_ds = tf.data.Dataset.zip((dataset, dataset2))
+
+            train_ds_mu = train_ds.map(
+                lambda ds_one, ds_two: mix_up(ds_one, ds_two, alpha=0.5)
+            )
+            # dataset = dataset.map(lambda x, y: mix_up(x, y, dataset2))
+
+            # doing mix up
+
+        dataset = train_ds_mu.map(lambda x, y: raw_to_mel(x, y))
 
     # dont think using this anymore GP
     if args.get("weight_specific", False):
@@ -586,6 +606,58 @@ def get_dataset(dir, labels, **args):
     return dataset, remapped, 0, labels
 
 
+def sample_beta_distribution(size, concentration_0=0.2, concentration_1=0.2):
+    gamma_1_sample = tf.random.gamma(shape=[size], alpha=concentration_1)
+    gamma_2_sample = tf.random.gamma(shape=[size], alpha=concentration_0)
+    return gamma_1_sample / (gamma_1_sample + gamma_2_sample)
+
+
+# https://keras.io/examples/vision/mixup/
+
+
+@tf.function
+def mix_up(ds_one, ds_two, alpha=0.5):
+    # Unpack two datasets
+    images_one, labels_one = ds_one
+    images_two, labels_two = ds_two
+    # batch_size = 32
+    batch_size = tf.keras.ops.shape(images_one)[0]
+
+    l = sample_beta_distribution(batch_size, alpha, alpha)
+    x_l = tf.keras.ops.reshape(l, (batch_size, 1))
+    y_l = tf.keras.ops.reshape(l, (batch_size, 1))
+
+    images = images_one * x_l + images_two * (1 - x_l)
+    labels = labels_one[0] * y_l + labels_two[0] * (1 - y_l)
+    possible_labels = tf.clip_by_value(labels_one[1] + labels_two[1], 0, 1)
+    return (images, (labels, possible_labels))
+
+
+# @tf.function
+# def mix_up(x, y, ds2):
+#     p = 0.5
+#     if tf.random.uniform((), 0, 1) < p:
+
+#         print(x2, y2)
+#         alpha = tf.random.uniform((), 0, 1)
+#         x = alpha * x + (1 - alpha) * x2
+#         # y = tf.clip_by_value(tf.math.logical_or(y, y2[0]), 0, 1)
+#     return x, y
+
+# for item in x:
+#     print(item)
+# data = x.as_numpy_iterator()
+# p = 0.5
+# indices = tf.range(data.shape[0])
+# shuffled_indices = tf.random.shuffle(indices)
+# alpha = tf.random.uniform(data.shape[0])
+# for i in range(data.shape[0]):
+#     if tf.random.uniform((), 0, 1) < p:
+#         data[i] = alpha[i] * x[i] + (1 - alpha[i]) * x[shuffled_indices[i]]
+#         data[i] = tf.clip_by_value(y[i] + y[shuffled_indices[i]], 0, 1)
+# return data, y
+
+
 @tf.function
 def read_tfrecord(
     example,
@@ -604,7 +676,7 @@ def read_tfrecord(
     only_features=False,
     features=False,
     multi=True,
-    load_raw=False,
+    load_raw=True,
 ):
     tfrecord_format = {"audio/class/text": tf.io.FixedLenFeature((), tf.string)}
     tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
@@ -755,7 +827,6 @@ def read_tfrecord(
                 possible_labels = NZ_BIRD_LOSS_WEIGHTING
             else:
                 possible_labels = BIRD_WEIGHTING
-        print(NZ_BIRD_LOSS_WEIGHTING, BIRD_WEIGHTING)
         return spectogram, (
             label,
             embed_preds,
@@ -862,7 +933,7 @@ def main():
             # use_generic_bird=False,
             batch_size=32,
             image_size=DIMENSIONS,
-            augment=False,
+            augment=True,
             resample=False,
             excluded_labels=excluded_labels,
             # stop_on_empty=True,
@@ -955,11 +1026,13 @@ def show_batch(image_batch, label_batch, labels):
     fig = plt.figure(figsize=(20, 20))
     print("images in batch", len(image_batch), len(label_batch))
     num_images = len(image_batch)
+    print("labl batch", label_batch)
     i = 0
     for n in range(num_images):
+        # print("Y is ", label_batch[n])
         lbl = []
         for l_i, l in enumerate(label_batch[n]):
-            if l == 1:
+            if l > 0:
                 lbl.append(labels[l_i])
         p = n
         i += 1
@@ -1149,7 +1222,6 @@ def raw_to_mel(x, y, features=False):
         raw = x[2]
     else:
         raw = x
-
     stft = tf.signal.stft(
         raw,
         4800,
@@ -1159,11 +1231,10 @@ def raw_to_mel(x, y, features=False):
         pad_end=True,
         name=None,
     )
-    stft = tf.transpose(stft, [1, 0])
+    stft = tf.transpose(stft, [0, 2, 1])
     stft = tf.math.abs(stft)
-    # stft = tf.reshape(stft, [2401, mel_s[1]])
-    image = tf.tensordot(MEL_WEIGHTS, stft, 1)
-    image = tf.expand_dims(image, axis=2)
+    image = tf.keras.backend.batch_dot(MEL_WEIGHTS, stft)
+    image = tf.expand_dims(image, axis=3)
     if features:
         x = (x[0], x[1], image)
     else:
