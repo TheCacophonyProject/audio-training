@@ -322,14 +322,14 @@ def get_distribution(dataset, num_labels, batched=True, one_hot=True):
     true_categories = [y[0] for x, y in dataset]
     dist = np.zeros((num_labels), dtype=np.float32)
     if len(true_categories) == 0:
-        return dist
+        return dist, 0
 
     if len(true_categories) == 0:
-        return dist
+        return dist, 0
     if batched:
         true_categories = tf.concat(true_categories, axis=0)
     if len(true_categories) == 0:
-        return dist
+        return dist, 0
     classes = []
     if one_hot:
         for y in true_categories:
@@ -572,14 +572,14 @@ def get_dataset(dir, labels, **args):
             )
             train_ds = tf.data.Dataset.zip((dataset, dataset2))
 
-            train_ds_mu = train_ds.map(
+            dataset = train_ds.map(
                 lambda ds_one, ds_two: mix_up(ds_one, ds_two, alpha=0.5)
             )
             # dataset = dataset.map(lambda x, y: mix_up(x, y, dataset2))
 
             # doing mix up
 
-        dataset = train_ds_mu.map(lambda x, y: raw_to_mel(x, y))
+        dataset = dataset.map(lambda x, y: raw_to_mel(x, y))
 
     # dont think using this anymore GP
     if args.get("weight_specific", False):

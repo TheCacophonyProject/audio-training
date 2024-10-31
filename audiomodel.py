@@ -27,7 +27,7 @@ import tensorflow as tf
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 # #
 import tensorflow as tf
-import tensorflow_decision_forests as tfdf
+# import tensorflow_decision_forests as tfdf
 from tensorflow.keras import layers
 
 #
@@ -728,7 +728,7 @@ class AudioModel:
         second_filenames = None
         if self.second_data_dir is not None:
             second_filenames = tf.io.gfile.glob(
-                f"{str(self.second_data_dir)}/train/*.tfrecord"
+                f"{str(self.second_data_dir)}/train/*/*.tfrecord"
             )
         # datasets = ["."]
         # for d in datasets:
@@ -764,7 +764,7 @@ class AudioModel:
             self.labels,
             batch_size=self.batch_size,
             image_size=self.input_shape,
-            augment=False,
+            augment=True,
             excluded_labels=excluded_labels,
             filenames_2=second_filenames,
             embeddings=self.model_name == "embeddings",
@@ -780,7 +780,7 @@ class AudioModel:
         #     )
         if self.second_data_dir is not None:
             second_filenames = tf.io.gfile.glob(
-                f"{str(self.second_data_dir)}/validation/*.tfrecord"
+                f"{str(self.second_data_dir)}/validation/*/*.tfrecord"
             )
         logging.info("Loading Val")
         self.validation, _, _, _ = get_dataset(
@@ -807,7 +807,7 @@ class AudioModel:
             #     )
             if self.second_data_dir is not None:
                 second_filenames = tf.io.gfile.glob(
-                    f"{str(self.second_data_dir)}/test/*.tfrecord"
+                    f"{str(self.second_data_dir)}/test/*/*.tfrecord"
                 )
             args["shuffle"] = False
             self.test, _, _, _ = get_dataset(
