@@ -27,6 +27,7 @@ import tensorflow as tf
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 # #
 import tensorflow as tf
+
 # import tensorflow_decision_forests as tfdf
 from tensorflow.keras import layers
 
@@ -225,7 +226,7 @@ class AudioModel:
                 class_weight=class_weights,
                 callbacks=[
                     tf.keras.callbacks.ModelCheckpoint(
-                        cm_dir / "val_loss",
+                        cm_dir / "val_loss.weights.h5",
                         monitor="val_loss",
                         verbose=1,
                         save_best_only=True,
@@ -679,7 +680,7 @@ class AudioModel:
         ]
         checks = []
         for m in metrics:
-            m_dir = os.path.join(self.checkpoint_folder, run_name, m)
+            m_dir = os.path.join(self.checkpoint_folder, run_name, f"{m}.weights.h5")
             if "loss" in m:
                 mode = "auto"
             else:
@@ -1876,9 +1877,9 @@ class precAtK(tf.keras.metrics.Metric):
         self.num_labels = num_labels
         self.k = k
         self.k_percent = self.add_weight(
-            "k_percent", initializer="zeros", dtype=tf.float32
+            name="k_percent", initializer="zeros", dtype=tf.float32
         )
-        self.total = self.add_weight("total", initializer="zeros", dtype=tf.int32)
+        self.total = self.add_weight(name="total", initializer="zeros", dtype=tf.int32)
 
     def update_state(self, y_true, y_pred, sample_weight=None):
         if self.bird_mask is not None:
