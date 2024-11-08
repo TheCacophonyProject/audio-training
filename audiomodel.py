@@ -243,7 +243,7 @@ class AudioModel:
             )
             logging.info("Finished fold %s", fold)
             self.model.load_weights(str(cm_dir / "val_loss"))
-            
+
             true_categories = [y for x, y in self.test]
             true_categories = tf.concat(true_categories, axis=0)
             y_true = []
@@ -1502,7 +1502,6 @@ def main():
                 if w is not None:
                     logging.info("Using %s weights", weight_base_path / w)
                     model.load_weights(weight_base_path / w)
-                    
 
                 file_prefix = "final" if w is None else w
                 confusion_file = (

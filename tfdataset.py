@@ -1299,29 +1299,29 @@ def pcen_function(x, y):
     return x, y
 
 
-def resample(dataset, new_labels, dist):
-    logging.info("RESAMPLING")
-    # seems the only way to get even distribution
-    label_ds = []
-    for i, l in enumerate(new_labels):
-        if dist[i] == 0:
-            continue
-        l_mask = np.zeros((len(new_labels)))
-        l_mask[i] = 1
-        # mask = tf.constant(mask, dtype=tf.float32)
+# def resample(dataset, new_labels, dist):
+#     logging.info("RESAMPLING")
+#     # seems the only way to get even distribution
+#     label_ds = []
+#     for i, l in enumerate(new_labels):
+#         if dist[i] == 0:
+#             continue
+#         l_mask = np.zeros((len(new_labels)))
+#         l_mask[i] = 1
+#         # mask = tf.constant(mask, dtype=tf.float32)
 
-        l_filter = lambda x, y: tf.math.reduce_all(tf.math.equal(y, l_mask))
-        l_dataset = dataset.filter(l_filter)
-        l_dataset = l_dataset.shuffle(40096, reshuffle_each_iteration=True)
+#         l_filter = lambda x, y: tf.math.reduce_all(tf.math.equal(y, l_mask))
+#         l_dataset = dataset.filter(l_filter)
+#         l_dataset = l_dataset.shuffle(40096, reshuffle_each_iteration=True)
 
-        label_ds.append(l_dataset)
-    dataset = tf.data.Dataset.sample_from_datasets(
-        label_ds,
-        # weights=[1 / len(new_labels)] * len(new_labels),
-        stop_on_empty_dataset=True,
-        rerandomize_each_iteration=True,
-    )
-    return dataset
+#         label_ds.append(l_dataset)
+#     dataset = tf.data.Dataset.sample_from_datasets(
+#         label_ds,
+#         # weights=[1 / len(new_labels)] * len(new_labels),
+#         stop_on_empty_dataset=True,
+#         rerandomize_each_iteration=True,
+#     )
+#     return dataset
 
 
 def filter_signal(x, y):
