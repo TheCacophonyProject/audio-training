@@ -30,8 +30,8 @@ import tensorflow as tf
 
 
 class MagTransform(tf.keras.layers.Layer):
-    def __init__(self):
-        super(MagTransform, self).__init__()
+    def __init__(self, **kwargs):
+        super(MagTransform, self).__init__(**kwargs)
         self.a = self.add_weight(
             initializer=tf.keras.initializers.Constant(value=0.0),
             name="a-power",
@@ -132,7 +132,8 @@ def build_model_res(
     x = MagTransform()(input)
     # x = tf.keras.layers.BatchNormalization()(x)
 
-    x = tf.keras.layers.Conv2D(64, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.Conv2D(64, (3, 3))
+    x = tf.keras.layers.LeakyReLU()(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
     # RESNET
@@ -141,27 +142,33 @@ def build_model_res(
     x = res_block(x, 128, 2, "b")
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Activation("relu")(x)
-    x = tf.keras.layers.Conv2D(128, (14, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.Conv2D(128, (14, 3))(x)
+    x = tf.keras.layers.LeakyReLU()(x)
+
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Conv2D(128, (22, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.Conv2D(128, (22, 3))(x)
+    x = tf.keras.layers.LeakyReLU()(x)
+
     x = tf.keras.layers.Dropout(0.5)(x)
 
     # probably dont need to be as big
     x = tf.keras.layers.Conv2D(
         1024,
         (1, 9),
-        activation=tf.keras.layers.LeakyReLU(),
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
+    x = tf.keras.layers.LeakyReLU()(x)
+
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Dropout(0.5)(x)
 
     x = tf.keras.layers.Conv2D(
         1024,
         1,
-        activation=tf.keras.layers.LeakyReLU(),
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
+    x = tf.keras.layers.LeakyReLU()(x)
+
     x = tf.keras.layers.BatchNormalization()(x)
 
     x = tf.keras.layers.Dropout(0.5)(x)
@@ -170,9 +177,10 @@ def build_model_res(
         x = tf.keras.layers.Conv2D(
             num_labels,
             1,
-            activation=tf.keras.layers.LeakyReLU(),
             kernel_initializer=tf.keras.initializers.Orthogonal(),
         )(x)
+        x = tf.keras.layers.LeakyReLU()(x)
+
         # x = logmeanexp(x, sharpness=1, axis=2)
         x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
@@ -199,17 +207,23 @@ def build_model(
 
     x = MagTransform()(input)
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Conv2D(64, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.Conv2D(64, (3, 3))(x)
+    x = tf.keras.layers.LeakyReLU()(x)
+
     x = tf.keras.layers.BatchNormalization()(x)
 
-    x = tf.keras.layers.Conv2D(64, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.Conv2D(64, (3, 3))(x)
+    x = tf.keras.layers.LeakyReLU()(x)
+
     x = tf.keras.layers.BatchNormalization()(x)
 
     x = tf.keras.layers.MaxPool2D((3, 3))(x)
 
-    x = tf.keras.layers.Conv2D(128, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.Conv2D(128, (3, 3))(x)
+    x = tf.keras.layers.LeakyReLU()(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Conv2D(128, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.Conv2D(128, (3, 3))(x)
+    x = tf.keras.layers.LeakyReLU()(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
     # Original is based of 80 mels, which only needs one conv 17x 3
@@ -218,18 +232,15 @@ def build_model(
     # At this point we have 48 mel bands remaining if we started with 160
     # Squish the information into smaller features essentially combining mel bands
     if big_condense:
-        x = tf.keras.layers.Conv2D(
-            128, (44, 3), activation=tf.keras.layers.LeakyReLU()
-        )(x)
+        x = tf.keras.layers.Conv2D(128, (44, 3))(x)
+        x = tf.keras.layers.LeakyReLU()(x)
         x = tf.keras.layers.BatchNormalization()(x)
     else:
-        x = tf.keras.layers.Conv2D(
-            128, (28, 3), activation=tf.keras.layers.LeakyReLU()
-        )(x)
+        x = tf.keras.layers.Conv2D(128, (28, 3))(x)
+        x = tf.keras.layers.LeakyReLU()(x)
         x = tf.keras.layers.BatchNormalization()(x)
-        x = tf.keras.layers.Conv2D(
-            128, (17, 3), activation=tf.keras.layers.LeakyReLU()
-        )(x)
+        x = tf.keras.layers.Conv2D(128, (17, 3))(x)
+        x = tf.keras.layers.LeakyReLU()(x)
         x = tf.keras.layers.BatchNormalization()(x)
 
         # Squish again so that we have 5 condense mel bands
@@ -242,18 +253,18 @@ def build_model(
     x = tf.keras.layers.Conv2D(
         1024,
         (1, 9),
-        activation=tf.keras.layers.LeakyReLU(),
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
+    x = tf.keras.layers.LeakyReLU()(x)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Dropout(0.5)(x)
 
     x = tf.keras.layers.Conv2D(
         1024,
         1,
-        activation=tf.keras.layers.LeakyReLU(),
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
+    x = tf.keras.layers.LeakyReLU()(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
     x = tf.keras.layers.Dropout(0.5)(x)
@@ -262,10 +273,9 @@ def build_model(
         x = tf.keras.layers.Conv2D(
             num_labels,
             1,
-            activation=tf.keras.layers.LeakyReLU(),
             kernel_initializer=tf.keras.initializers.Orthogonal(),
         )(x)
-
+        x = tf.keras.layers.LeakyReLU()(x)
         # Since we have quite specific track information, LME might not be so usefull, as this is more
         #  like an inbetween max and average, higher the sharpness the more like max it becomes
         # haven't found any benefit using LME

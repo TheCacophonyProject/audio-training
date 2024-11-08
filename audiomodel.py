@@ -407,6 +407,8 @@ class AudioModel:
             )
         else:
             self.build_model(multi_label=args.get("multi_label", True))
+            self.model.save(self.checkpoint_folder / run_name / f"{run_name}.keras")
+            self.save_metadata(run_name, None, None)
             # bytes_needed = keras_model_memory_usage_in_bytes(self.model, self.batch_size)
         # logging.info(
         #     "Need %s MB for model with batch size %s ",
@@ -484,10 +486,14 @@ class AudioModel:
         # create a save point
         if run_name is None:
             run_name = self.model_name
-        self.model.save(os.path.join(self.checkpoint_folder, run_name))
+        self.model.save(self.checkpoint_folder / run_name / f"{run_name}.keras")
         self.save_metadata(run_name, history, test_results, **args)
         if self.test is not None:
-            acc = "val_binary_accuracy" if args.get("multi_label") else "val_acc"
+            acc = (
+                "val_binary_accuracy.keras.h5"
+                if args.get("multi_label")
+                else "val_acc.keras.h5"
+            )
             self.model.load_weights(os.path.join(self.checkpoint_folder, run_name, acc))
             if args.get("multi_label"):
                 multi_confusion_single(self.model, self.labels, self.test, run_name)
@@ -704,7 +710,6 @@ class AudioModel:
             monitor="val_loss", verbose=1, mode="min"
         )
         checks.append(reduce_lr_callback)
-        print(str(self.log_dir / "cm"))
         file_writer_cm = tf.summary.create_file_writer(str(self.log_dir / "cm"))
         cm_callback = tf.keras.callbacks.LambdaCallback(
             on_epoch_end=lambda epoch, logs: log_confusion_matrix(
@@ -1487,9 +1492,9 @@ def main():
                 weight_files = [None]
             else:
                 weight_files = [
-                    None,
-                    "val_precK",
-                    "val_binary_accuracy" if multi else "val_acc",
+                    "val_loss.weights.h5",
+                    "val_precK.weights.h5",
+                    "val_binary_accuracy.weights.h5" if multi else "val_acc.weights.h5",
                 ]
 
             for w in weight_files:
