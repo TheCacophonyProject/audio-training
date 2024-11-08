@@ -78,8 +78,10 @@ def signal_noise(file, hop_length=281):
     frames, sr = load_recording(file)
     end = get_end(frames, sr)
     frames = frames[: int(sr * end)]
+    frames = frames[: sr * 4]
     n_fft = sr // 10
     spectogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
+    # plot_spec(spectogram)
     signals, noise = signal_noise_data(
         np.abs(spectogram), sr, hop_length=hop_length, n_fft=n_fft
     )

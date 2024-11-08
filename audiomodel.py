@@ -126,7 +126,7 @@ class AudioModel:
 
     def load_weights(self, weights_file):
         logging.info("Loading %s", weights_file)
-        self.model.load_weights(weights_file).expect_partial()
+        self.model.load_weights(weights_file)
 
     def cross_fold_train(
         self, run_name="test", epochs=15, multi=True, use_generic_bird=True
@@ -242,7 +242,8 @@ class AudioModel:
                 # ],  # log metricslast_stats
             )
             logging.info("Finished fold %s", fold)
-            self.model.load_weights(str(cm_dir / "val_loss")).expect_partial()
+            self.model.load_weights(str(cm_dir / "val_loss"))
+            
             true_categories = [y for x, y in self.test]
             true_categories = tf.concat(true_categories, axis=0)
             y_true = []
@@ -1500,7 +1501,8 @@ def main():
             for w in weight_files:
                 if w is not None:
                     logging.info("Using %s weights", weight_base_path / w)
-                    model.load_weights(weight_base_path / w).expect_partial()
+                    model.load_weights(weight_base_path / w)
+                    
 
                 file_prefix = "final" if w is None else w
                 confusion_file = (
