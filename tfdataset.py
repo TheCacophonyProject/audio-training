@@ -418,6 +418,46 @@ bird_mask = None
 
 
 def get_dataset(dir, labels, **args):
+    global MEL_WEIGHTS
+    MEL_WEIGHTS = tf.repeat(MEL_WEIGHTS, args.get("batch_size", 1), 0)
+
+    ds_first, remapped, epoch_size, labels = get_a_dataset(dir, labels, args)
+    args["epoch_size"] = epoch_size
+
+    if args.get("load_raw", True):
+        logging.info("Mapping raw to mel")
+        if args.get("augment", False):
+            logging.info("Mixing up")
+            # dataset2 = dataset.shuffle(
+            #     40096, reshuffle_each_iteration=args.get("reshuffle", True)
+            # )
+
+            if True:
+                ds_second, _, _, _ = get_a_dataset(dir, labels, args)
+            else:
+                pass
+                # dataset = ds_first.repeat(2)
+                # ds_fist = dataset.take(epoch_size)
+                # ds_second = dataset.take(epoch_size)
+                # ds_second =
+            train_ds = tf.data.Dataset.zip((ds_first, ds_second))
+
+            dataset = train_ds.map(
+                lambda ds_one, ds_two: mix_up(ds_one, ds_two, alpha=0.5)
+            )
+            # dataset = dataset.map(lambda x, y: mix_up(x, y, dataset2))
+
+            # doing mix up
+        else:
+            dataset = ds_first
+        dataset = dataset.map(lambda x, y: raw_to_mel(x, y))
+
+    dataset = dataset.prefetch(buffer_size=AUTOTUNE)
+    return dataset, remapped, epoch_size, labels
+
+
+def get_a_dataset(dir, labels, args):
+
     excluded_labels = args.get("excluded_labels", [])
     use_generic_bird = args.get("use_generic_bird", True)
 
@@ -540,46 +580,34 @@ def get_dataset(dir, labels, **args):
 
     dataset = dataset.map(lambda x, y: (x, (y[0], y[5])))
 
-    dist, epoch_size = get_distribution(
-        dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
-    )
+    epoch_size = args.get("epoch_size")
+    dist = None
+    if epoch_size is None:
+        dist, epoch_size = get_distribution(
+            dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
+        )
 
     pcen = args.get("pcen", False)
     if pcen:
         logging.info("Taking PCEN")
         dataset = dataset.map(lambda x, y: pcen_function(x, y))
-
-    for l, d in zip(labels, dist):
-        logging.info(f" for {l} have {d}")
+    if dist is not None:
+        for l, d in zip(labels, dist):
+            logging.info(f" for {l} have {d}")
     # tf because of sample from datasets
     dataset = dataset.repeat(2)
     dataset = dataset.take(epoch_size)
     batch_size = args.get("batch_size", None)
     # dataset = dataset.cache()
-    if args.get("shuffle", True):
-        dataset = dataset.shuffle(
-            40096, reshuffle_each_iteration=args.get("reshuffle", True)
-        )
+
+    # dont think we need this iwth interleave
+    # if args.get("shuffle", True):
+    #     dataset = dataset.shuffle(
+    #         40096, reshuffle_each_iteration=args.get("reshuffle", True)
+    #     )
 
     if batch_size is not None:
-        dataset = dataset.batch(batch_size)
-    if args.get("load_raw", True):
-        logging.info("Mapping raw to mel")
-        if args.get("augment", False):
-            logging.info("Mixing up")
-            dataset2 = dataset.shuffle(
-                40096, reshuffle_each_iteration=args.get("reshuffle", True)
-            )
-            train_ds = tf.data.Dataset.zip((dataset, dataset2))
-
-            dataset = train_ds.map(
-                lambda ds_one, ds_two: mix_up(ds_one, ds_two, alpha=0.5)
-            )
-            # dataset = dataset.map(lambda x, y: mix_up(x, y, dataset2))
-
-            # doing mix up
-
-        dataset = dataset.map(lambda x, y: raw_to_mel(x, y))
+        dataset = dataset.batch(batch_size, drop_remainder=True)
 
     # dont think using this anymore GP
     if args.get("weight_specific", False):
@@ -601,11 +629,11 @@ def get_dataset(dir, labels, **args):
                 x, y, num_labels, weighting, specific_mask, rest_weighting
             )
         )
-    dataset = dataset.prefetch(buffer_size=AUTOTUNE)
 
-    return dataset, remapped, 0, labels
+    return dataset, remapped, epoch_size, labels
 
 
+@tf.function
 def sample_beta_distribution(size, concentration_0=0.2, concentration_1=0.2):
     gamma_1_sample = tf.random.gamma(shape=[size], alpha=concentration_1)
     gamma_2_sample = tf.random.gamma(shape=[size], alpha=concentration_0)
@@ -1233,6 +1261,7 @@ def raw_to_mel(x, y, features=False):
     )
     stft = tf.transpose(stft, [0, 2, 1])
     stft = tf.math.abs(stft)
+
     image = tf.keras.backend.batch_dot(MEL_WEIGHTS, stft)
     image = tf.expand_dims(image, axis=3)
     if features:
