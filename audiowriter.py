@@ -224,7 +224,7 @@ def process_job(queue, labels, config, base_dir, writer_i):
 
     # Load the model.
     model = None
-
+    by_label = False
     embedding_model = None
     embedding_labels = None
     if DO_EMBEDDING:
@@ -237,12 +237,19 @@ def process_job(queue, labels, config, base_dir, writer_i):
     options = tf.io.TFRecordOptions(compression_type="GZIP")
     writers = {}
     counts = {}
+
     for l in labels:
         counts[l] = 0
-        l_dir = base_dir / l
-        l_dir.mkdir(exist_ok=True)
-        writers[l] = tf.io.TFRecordWriter(
-            str(l_dir / f"{writer_i}-{pid}.tfrecord"), options=options
+    if by_label:
+        for l in labels:
+            l_dir = base_dir / l
+            l_dir.mkdir(exist_ok=True)
+            writers[l] = tf.io.TFRecordWriter(
+                str(l_dir / f"{writer_i}-{pid}.tfrecord"), options=options
+            )
+    else:
+        writers["all"] = tf.io.TFRecordWriter(
+            str(base_dir / f"{writer_i}-{pid}.tfrecord"), options=options
         )
 
     # writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
@@ -268,6 +275,7 @@ def process_job(queue, labels, config, base_dir, writer_i):
                     embedding_labels,
                     config.filter_frequency,
                     counts,
+                    by_label,
                 )
                 if i % 10 == 0:
                     logging.info("Clear gc")
@@ -307,6 +315,7 @@ def save_data(
     filter_frequency,
     counts,
     add_features=True,
+    by_label=False,
 ):
     resample = 48000
     try:
@@ -387,7 +396,10 @@ def save_data(
                 logging.error("Error %s ", rec.id, exc_info=True)
             writer_lbl = sample.first_tag
             tf_example, num_annotations_skipped = create_tf_example(sample)
-            writer = writers[writer_lbl]
+            if by_label:
+                writer = writers[writer_lbl]
+            else:
+                writer = writers["all"]
             counts[writer_lbl] += 1
             writer.write(tf_example.SerializeToString())
             del sample

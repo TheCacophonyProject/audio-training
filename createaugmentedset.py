@@ -201,11 +201,22 @@ def get_a_dataset(dir, labels, **args):
     set_remapped_extra(remapped_y, extra_label_map)
 
     num_labels = len(labels)
+
     datasets = []
     logging.info("Loading tf records from %s", dir)
-    filenames = tf.io.gfile.glob(str(dir / "*/*.tfrecord"))
+    filenames = tf.io.gfile.glob(str(dir / "*.tfrecord"))
 
-    dataset = load_dataset(filenames, num_labels, labels, args)
+    lbl_dataset = load_dataset(filenames, num_labels, labels, args)
+    logging.info("Loading %s files from %s", len(filenames), dir)
+    datasets.append(lbl_dataset)
+    for lbl_dir in dir.iterdir():
+        if not lbl_dir.is_dir():
+            continue
+        filenames = tf.io.gfile.glob(str(lbl_dir / "*.tfrecord"))
+
+        lbl_dataset = load_dataset(filenames, num_labels, labels, args)
+        logging.info("Loading %s files from %s", len(filenames), lbl_dir)
+        datasets.append(lbl_dataset)
 
     # may perform better without adding generics birds but sitll having generic label
     dataset_2 = None
@@ -219,6 +230,12 @@ def get_a_dataset(dir, labels, **args):
     else:
         logging.info("Not using second dataset")
 
+    dataset = tf.data.Dataset.sample_from_datasets(
+        datasets,
+        # stop_on_empty_dataset=False,
+        stop_on_empty_dataset=args.get("stop_on_empty", args.get("resample", False)),
+        rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
+    )
     if not args.get("one_hot", True):
         bird_mask = tf.constant(bird_i, dtype=tf.float32)
         bird_filter = lambda x, y: tf.math.equal(y[0], bird_mask)

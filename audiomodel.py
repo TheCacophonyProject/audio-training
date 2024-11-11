@@ -662,11 +662,11 @@ class AudioModel:
             loss=loss_fn,
             metrics=[
                 acc,
-                precAtK(
-                    k=3,
-                    num_labels=len(self.labels),
-                    # , bird_i=self.labels.index("bird")
-                ),
+                # precAtK( not working on gpu
+                #     k=3,
+                #     num_labels=len(self.labels),
+                #     # , bird_i=self.labels.index("bird")
+                # ),
                 tf.keras.losses.BinaryFocalCrossentropy(),
                 tf.keras.metrics.AUC(),
                 tf.keras.metrics.Recall(),

@@ -421,8 +421,6 @@ bird_mask = None
 
 
 def get_dataset(dir, labels, **args):
-    # global MEL_WEIGHTS
-    # MEL_WEIGHTS = tf.repeat(MEL_WEIGHTS, args.get("batch_size", 1), 0)
 
     ds_first, remapped, epoch_size, labels = get_a_dataset(dir, labels, args)
     args["epoch_size"] = epoch_size
@@ -551,13 +549,18 @@ def get_a_dataset(dir, labels, args):
     else:
         logging.info("Not using second dataset")
 
-    logging.info("Stopping on empty? %s", args.get("resample", False))
-    dataset = tf.data.Dataset.sample_from_datasets(
-        datasets,
-        # stop_on_empty_dataset=False,
-        stop_on_empty_dataset=args.get("stop_on_empty", args.get("resample", False)),
-        rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
-    )
+    if len(datasets) == 1:
+        dataset = datasets[0]
+    else:
+        logging.info("Stopping on empty? %s", args.get("resample", False))
+        dataset = tf.data.Dataset.sample_from_datasets(
+            datasets,
+            # stop_on_empty_dataset=False,
+            stop_on_empty_dataset=args.get(
+                "stop_on_empty", args.get("resample", False)
+            ),
+            rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
+        )
     if not args.get("one_hot", True):
         bird_mask = tf.constant(bird_i, dtype=tf.float32)
         bird_filter = lambda x, y: tf.math.equal(y[0], bird_mask)
@@ -730,11 +733,13 @@ def read_tfrecord(
         logging.info("Loading sft audio")
         tfrecord_format["audio/lat"] = tf.io.FixedLenFeature((), tf.float32)
         tfrecord_format["audio/lng"] = tf.io.FixedLenFeature((), tf.float32)
-        tfrecord_format["audio/spectogram"] = tf.io.FixedLenFeature(
-            (2401 * 513), tf.float32
-        )
-        # tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((144000), tf.float32)
 
+        if load_raw:
+            tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((144000), tf.float32)
+        else:
+            tfrecord_format["audio/spectogram"] = tf.io.FixedLenFeature(
+                (2401 * 513), tf.float32
+            )
         tfrecord_format["audio/buttered"] = tf.io.FixedLenFeature(
             (2401 * 513), tf.float32, default_value=tf.zeros((2401 * 513))
         )
@@ -943,7 +948,7 @@ def main():
     datasets = ["other-training-data", "training-data", "chime-training-data"]
     datasets = ["training-data"]
     dataset_dirs = ["./audio-training/training-data"]
-    dataset_dirs = ["./augmented-training"]
+    # dataset_dirs = ["./augmented-training"]
 
     filenames = []
     labels = set()
@@ -1274,9 +1279,14 @@ def raw_to_mel(x, y, features=False):
     )
     stft = tf.transpose(stft, [0, 2, 1])
     stft = tf.math.abs(stft)
+    batch_size = tf.keras.ops.shape(x)[0]
 
-    image = tf.keras.backend.batch_dot(MEL_WEIGHTS, stft)
+    weights = tf.expand_dims(MEL_WEIGHTS, 0)
+    weights = tf.repeat(weights, batch_size, 0)
+
+    image = tf.keras.backend.batch_dot(weights, stft)
     image = tf.expand_dims(image, axis=3)
+
     if features:
         x = (x[0], x[1], image)
     else:
