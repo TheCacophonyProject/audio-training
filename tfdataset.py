@@ -176,7 +176,7 @@ SR = 48000
 BREAK_FREQ = 1000
 MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, 4800, BREAK_FREQ)
 MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
-MEL_WEIGHTS = tf.expand_dims(MEL_WEIGHTS, 0)
+# MEL_WEIGHTS = tf.expand_dims(MEL_WEIGHTS, 0)
 
 DIMENSIONS = (160, 188)
 
@@ -226,6 +226,7 @@ SPECIFIC_BIRD_MASK = []
 
 def load_dataset(filenames, num_labels, labels, args):
     random.shuffle(filenames)
+    read_record = args.get("read_record", read_tfrecord)
     #
     #     image_size,
     deterministic = args.get("deterministic", False)
@@ -280,7 +281,7 @@ def load_dataset(filenames, num_labels, labels, args):
 
     dataset = dataset.map(
         partial(
-            read_tfrecord,
+            read_record,
             num_labels=num_labels,
             image_size=image_size,
             labeled=labeled,
@@ -302,8 +303,10 @@ def load_dataset(filenames, num_labels, labels, args):
         deterministic=deterministic,
     )
     if args.get("filter_bad", False):
+        logging.info("Filtering bad")
         dataset = dataset.filter(lambda x, y: not filter_bad_tracks(x, y, labels))
     if not args.get("only_features", False):
+        logging.info("Removing Nan")
         if args.get("features"):
             filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[2]))
         else:
@@ -418,8 +421,8 @@ bird_mask = None
 
 
 def get_dataset(dir, labels, **args):
-    global MEL_WEIGHTS
-    MEL_WEIGHTS = tf.repeat(MEL_WEIGHTS, args.get("batch_size", 1), 0)
+    # global MEL_WEIGHTS
+    # MEL_WEIGHTS = tf.repeat(MEL_WEIGHTS, args.get("batch_size", 1), 0)
 
     ds_first, remapped, epoch_size, labels = get_a_dataset(dir, labels, args)
     args["epoch_size"] = epoch_size
@@ -428,9 +431,9 @@ def get_dataset(dir, labels, **args):
         logging.info("Mapping raw to mel")
         if args.get("augment", False):
             logging.info("Mixing up")
-            # dataset2 = dataset.shuffle(
-            #     40096, reshuffle_each_iteration=args.get("reshuffle", True)
-            # )
+
+            # Cannot get this to work
+            # STFT is so slow to calculate on the fly mayaswell ust make an augmented dataset
 
             if True:
                 ds_second, _, _, _ = get_a_dataset(dir, labels, args)
@@ -451,9 +454,18 @@ def get_dataset(dir, labels, **args):
         else:
             dataset = ds_first
         dataset = dataset.map(lambda x, y: raw_to_mel(x, y))
-
+    else:
+        dataset = ds_first
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     return dataset, remapped, epoch_size, labels
+
+
+def set_remapped_extra(remap, extra_l):
+
+    global extra_label_map
+    global remapped_y
+    extra_label_map = extra_l
+    remapped_y = remap
 
 
 def get_a_dataset(dir, labels, args):
@@ -542,10 +554,10 @@ def get_a_dataset(dir, labels, args):
     logging.info("Stopping on empty? %s", args.get("resample", False))
     dataset = tf.data.Dataset.sample_from_datasets(
         datasets,
+        # stop_on_empty_dataset=False,
         stop_on_empty_dataset=args.get("stop_on_empty", args.get("resample", False)),
         rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
     )
-
     if not args.get("one_hot", True):
         bird_mask = tf.constant(bird_i, dtype=tf.float32)
         bird_filter = lambda x, y: tf.math.equal(y[0], bird_mask)
@@ -563,7 +575,6 @@ def get_a_dataset(dir, labels, args):
     if not args.get("use_bird_tags", False):
         logging.info("Filtering out bird tags without specific bird")
         dataset = dataset.filter(others_filter)
-
     # bird_dataset = dataset.filter(bird_filter)
     # if args.get("filter_signal") is not None:
     #     logging.info("Filtering signal by percent 0.1")
@@ -607,7 +618,7 @@ def get_a_dataset(dir, labels, args):
     #     )
 
     if batch_size is not None:
-        dataset = dataset.batch(batch_size, drop_remainder=True)
+        dataset = dataset.batch(batch_size, drop_remainder=False)
 
     # dont think using this anymore GP
     if args.get("weight_specific", False):
@@ -629,7 +640,6 @@ def get_a_dataset(dir, labels, args):
                 x, y, num_labels, weighting, specific_mask, rest_weighting
             )
         )
-
     return dataset, remapped, epoch_size, labels
 
 
@@ -723,7 +733,7 @@ def read_tfrecord(
         tfrecord_format["audio/spectogram"] = tf.io.FixedLenFeature(
             (2401 * 513), tf.float32
         )
-        tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((144000), tf.float32)
+        # tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((144000), tf.float32)
 
         tfrecord_format["audio/buttered"] = tf.io.FixedLenFeature(
             (2401 * 513), tf.float32, default_value=tf.zeros((2401 * 513))
@@ -773,7 +783,7 @@ def read_tfrecord(
         spectogram = tf.reshape(spectogram, (2401, 513))
         spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
         spectogram = tf.expand_dims(spectogram, axis=2)
-
+        print("Loaded spect ", spectogram.shape)
     if features or only_features:
         short_f = example["audio/short_f"]
         mid_f = example["audio/mid_f"]
@@ -933,6 +943,8 @@ def main():
     datasets = ["other-training-data", "training-data", "chime-training-data"]
     datasets = ["training-data"]
     dataset_dirs = ["./audio-training/training-data"]
+    dataset_dirs = ["./augmented-training"]
+
     filenames = []
     labels = set()
     datasets = []
@@ -955,7 +967,7 @@ def main():
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
 
         resampled_ds, remapped, _, labels = get_dataset(
-            tf_dir / "validation",
+            tf_dir / "test",
             # filenames,
             labels,
             # use_generic_bird=False,
@@ -969,6 +981,8 @@ def main():
             random_butter=0.9,
             only_features=False,
             multi_label=True,
+            load_raw=False,
+            use_bird_tags=True,
             # filenames_2=filenames_2
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
