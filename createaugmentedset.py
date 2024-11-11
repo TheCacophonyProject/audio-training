@@ -249,10 +249,6 @@ def get_a_dataset(dir, labels, **args):
     batch_size = args.get("batch_size", None)
 
     # dont think we need this iwth interleave
-    if args.get("shuffle", True):
-        dataset = dataset.shuffle(
-            4096, reshuffle_each_iteration=args.get("reshuffle", True)
-        )
 
     if batch_size is not None:
         dataset = dataset.batch(
@@ -398,6 +394,7 @@ def create_tf_example(x, y, spectogram):
         first_percent,
     ) = y
     feature_dict = {
+        "audio/label": tfrecord_util.float_list_feature(np.float32(label)),
         "audio/lat": tfrecord_util.float_feature(lat),
         "audio/lng": tfrecord_util.float_feature(lng),
         "audio/rec_id": tfrecord_util.bytes_feature(str(rec_id).encode("utf8")),
@@ -437,7 +434,7 @@ def mix_up(ds_one, ds_two, alpha=0.5):
 
     images = images_one * first_percent + images_two * (1 - first_percent)
     labels = labels_one[0] * first_percent + labels_two[0] * (1 - first_percent)
-    labels = labels_one[0] + labels_two[0]
+    # labels = labels_one[0] + labels_two[0]
     labels = tf.clip_by_value(labels, 0, 1)
     (
         label,
@@ -488,7 +485,6 @@ def mix_up(ds_one, ds_two, alpha=0.5):
     for item in track_id.numpy():
         total.append(item.decode("utf8"))
     track_id = "\n".join(map(str, total))
-
     return (
         images,
         (

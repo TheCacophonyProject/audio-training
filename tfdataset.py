@@ -996,7 +996,6 @@ def main():
     print("Dist is ", dist)
     for l, d in zip(labels, dist):
         print(f"{l} has {d}")
-
     # testing loss function results
     # from audiomodel import WeightedCrossEntropy
 
