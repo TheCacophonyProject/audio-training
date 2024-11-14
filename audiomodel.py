@@ -1505,7 +1505,7 @@ def main():
             else:
                 weight_files = [
                     "val_loss.weights.h5",
-                    "val_precK.weights.h5",
+                    # "val_precK.weights.h5",
                     "val_binary_accuracy.weights.h5" if multi else "val_acc.weights.h5",
                 ]
 
