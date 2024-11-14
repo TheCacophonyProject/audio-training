@@ -583,6 +583,10 @@ def get_a_dataset(dir, labels, args):
     #     logging.info("Filtering signal by percent 0.1")
     #     bird_dataset = bird_dataset.filter(filter_signal)
 
+    if args.get("shuffle", True):
+        dataset = dataset.shuffle(
+            40096, reshuffle_each_iteration=args.get("reshuffle", True)
+        )
     if dataset_2 is not None:
         logging.info("Adding second dataset with weights [0.6,0.4]")
         dataset = tf.data.Dataset.sample_from_datasets(

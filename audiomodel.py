@@ -96,7 +96,7 @@ class AudioModel:
         self.data_dir = data_dir
         self.second_data_dir = second_data_dir
         self.model_name = model_name
-        self.batch_size = 32
+        self.batch_size = 8
         self.validation = None
         self.test = None
         self.train = None
@@ -408,6 +408,7 @@ class AudioModel:
             )
         else:
             self.build_model(multi_label=args.get("multi_label", True))
+            (self.checkpoint_folder / run_name).mkdir(parents=True, exist_ok=True)
             self.model.save(self.checkpoint_folder / run_name / f"{run_name}.keras")
             self.save_metadata(run_name, None, None)
             # bytes_needed = keras_model_memory_usage_in_bytes(self.model, self.batch_size)
@@ -1139,7 +1140,7 @@ def log_confusion_matrix(epoch, logs, model, dataset, writer, labels):
 
 
 def confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
-    true_categories = [y for x, y in dataset]
+    true_categories = [y[0] for x, y in dataset]
     true_categories = tf.concat(true_categories, axis=0)
     y_true = []
     if one_hot:
@@ -1169,7 +1170,7 @@ def multi_confusion_single(
     from sklearn.preprocessing import MultiLabelBinarizer
 
     mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
-    true_categories = [y for x, y in dataset]
+    true_categories = [y[0] for x, y in dataset]
     true_categories = tf.concat(true_categories, axis=0)
     # y_true = []
     # if one_hot:
@@ -1413,7 +1414,7 @@ def main():
         load_model = Path(args.name)
         logging.info("Loading %s with weights %s", load_model, "val_acc")
         model = tf.keras.models.load_model(
-            str(load_model),
+            str(load_model / f"{load_model.name}.keras"),
             compile=False,
         )
 
@@ -1422,7 +1423,7 @@ def main():
         with open(str(meta_file), "r") as f:
             meta_data = json.load(f)
 
-        multi = meta_data.get("multi_label")
+        multi = meta_data.get("multi_label", True)
         labels = meta_data.get("labels")
         print("model labels are", labels)
         # labels = meta_file.get("labels")
@@ -1447,14 +1448,23 @@ def main():
 
         excluded_labels = get_excluded_labels(labels)
         # self.labels = meta.get("labels", [])
+        print("Labels are ", labels)
+        print(
+            "Filter?",
+            meta_data.get("filter_freq", False),
+            " only f",
+            meta_data.get("only_features", False),
+            " features??",
+            meta_data.get("features"),
+            "multi?",
+            meta_data.get("multi_label"),
+        )
         dataset, _, _, _ = get_dataset(
             base_dir / "test",
             labels,
             image_size=DIMENSIONS,
             shuffle=False,
-            resample=False,
             deterministic=True,
-            reshuffle=False,
             batch_size=64,
             mean_sub=mean_sub,
             excluded_labels=excluded_labels,
@@ -1463,15 +1473,16 @@ def main():
             use_generic_bird=args.use_generic_bird,
             filter_freq=meta_data.get("filter_freq", False),
             only_features=meta_data.get("only_features", False),
-            features=meta_data.get("features"),
-            multi_label=meta_data.get("multi_label"),
+            features=meta_data.get("features", False),
+            multi_label=meta_data.get("multi_label", True),
+            # load_raw=False,
         )
         for l in excluded_labels:
             labels.remove(l)
         # acc = tf.metrics.binary_accuracy
         acc = tf.keras.metrics.BinaryAccuracy(threshold=0.5)
         model.compile(
-            optimizer=optimizer(lr=1),
+            optimizer=optimizer(lr=1.0),
             loss=loss(True),
             metrics=[
                 acc,  #
