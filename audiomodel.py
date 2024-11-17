@@ -1388,18 +1388,9 @@ def main():
         dataset_meta = None
         with open(meta_f, "r") as f:
             dataset_meta = json.load(f)
-        labels = dataset_meta.get("labels")
-        # if "bird" not in labels:
-        #     labels.append("bird")
-        # if "noise" not in labels:
-        #     labels.append("noise")
-        # # if "other" not in labels:
-        # # labels.append("other")
-        # labels.sort()
-        set_specific_by_count(dataset_meta)
+        labels = meta_data.get("labels")
 
-        # excluded_labels = get_excluded_labels(labels)
-        # # self.labels = meta.get("labels", [])
+        set_specific_by_count(dataset_meta)
         dataset, _, _, _, _ = get_dataset(
             base_dir / "test",
             labels,
