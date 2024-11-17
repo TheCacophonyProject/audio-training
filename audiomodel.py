@@ -1527,9 +1527,10 @@ def main():
                 file_prefix = "final" if w is None else w
                 confusion_file = (
                     "confusions"
-                    / load_model.stem
+                    / model_path.stem
                     / (args.confusion.parent / f"{args.confusion.stem}-{file_prefix}")
                 )
+                confusion_file.mkdir(exists_ok=True, parents=True)
                 if multi:
                     multi_confusion_single(
                         model,
