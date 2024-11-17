@@ -100,7 +100,7 @@ class AudioModel:
         self.validation = None
         self.test = None
         self.train = None
-        self.remapped = None
+        # self.remapped = None
         self.input_shape = DIMENSIONS
         if model_name == "embeddings":
             self.input_shape = EMBEDDING_SHAPE
@@ -359,12 +359,13 @@ class AudioModel:
     ):
         self.log_dir = self.log_dir / run_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.load_datasets(
+        remapped, excluded_labels, extra_label_map = self.load_datasets(
             self.labels,
-            self.input_shape,
-            test=True,
             **args,
         )
+        args["excluded_labels"] = excluded_labels
+        args["remapped"] = remapped
+        args["extra_label_map"] = extra_label_map
         self.num_classes = len(self.labels)
         if args.get("rf_model") and args.get("cnn_model"):
             models = []
@@ -413,36 +414,12 @@ class AudioModel:
             )
             (self.checkpoint_folder / run_name).mkdir(parents=True, exist_ok=True)
             self.model.save(self.checkpoint_folder / run_name / f"{run_name}.keras")
-            self.save_metadata(run_name, None, None)
-            # bytes_needed = keras_model_memory_usage_in_bytes(self.model, self.batch_size)
-        # logging.info(
-        #     "Need %s MB for model with batch size %s ",
-        #     bytes_needed * 0.000001,
-        #     self.batch_size,
-        # )
-        # self.model.build([(None, 60, 60), (None, 136, 3)])
+            self.save_metadata(run_name, None, None, **args)
+
         if weights is not None:
             self.load_weights(weights)
-        # 1 / 0
-        # load weights for bird or not then change last layer for more species
-        # x = tf.keras.layers.Dense(len(self.labels), activation="softmax")(
-        #     self.model.layers[-2].output
-        # )
-        # self.model = tf.keras.models.Model(self.model.input, outputs=x)
-        # self.model.compile(
-        #     optimizer=optimizer(lr=self.learning_rate),
-        #     loss=loss(multi_label),
-        #     metrics=[
-        #         "accuracy",
-        #         # tf.keras.metrics.AUC(),
-        #         # tf.keras.metrics.Recall(),
-        #         # tf.keras.metrics.Precision(),
-        #     ],
-        # )
-        # self.model.summary()
         checkpoints = self.checkpoints(run_name)
-        # self.model.save(os.path.join(self.checkpoint_folder, run_name))
-        # return
+
         class_weights = None
         if args.get("use_weighting", True):
             class_weights = get_weighting(self.train, self.labels)
@@ -466,25 +443,7 @@ class AudioModel:
 
         history = history.history
         test_accuracy = None
-        test_files = os.path.join(self.data_dir, "test")
-        #
-        # if len(test_files) > 0:
-        #     if self.test is None:
-        #         self.test, remapped = get_dataset(
-        #             # dir,
-        #             f"{self.data_dir}/training-data/test",
-        #             self.labels,
-        #             self.species,
-        #             batch_size=self.batch_size,
-        #             image_size=self.input_shape,
-        #             preprocess_fn=self.preprocess_fn,
-        #             reshuffle=False,
-        #             shuffle=False,
-        #             resample=False,
-        #             deterministic=True,
-        #         )
-        #     if self.test:
-        #         test_accuracy = self.model.evaluate(self.test)
+        self.load_test_set(**args)
         self.save(run_name, history=history, test_results=test_accuracy, **args)
 
     def save(self, run_name=None, history=None, test_results=None, **args):
@@ -531,8 +490,8 @@ class AudioModel:
         # model_stats["hyperparams"] = self.params
         model_stats["training_date"] = str(time.time())
         model_stats["version"] = self.VERSION
-        if self.remapped is not None:
-            model_stats["remapped"] = self.remapped
+        # if self.remapped is not None:
+        # model_stats["remapped"] = self.remapped
 
         if history:
             json_history = {}
@@ -733,7 +692,7 @@ class AudioModel:
         checks.append(hist_callback)
         return checks
 
-    def load_datasets(self, labels, shape, test=False, **args):
+    def load_datasets(self, labels, **args):
         logging.info(
             "Loading datasets with %s and secondary dir %s generic bird %s",
             self.data_dir,
@@ -747,12 +706,6 @@ class AudioModel:
             second_filenames = tf.io.gfile.glob(
                 f"{str(self.second_data_dir)}/train/*/*.tfrecord"
             )
-        # datasets = ["."]
-        # for d in datasets:
-        #     # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
-        #     filenames.extend(
-        #         tf.io.gfile.glob(f"{str(self.data_dir)}/{d}/train/*.tfrecord")
-        #     )
         training_files_dir = self.data_dir / "train"
 
         file = f"{self.data_dir}/training-meta.json"
@@ -772,12 +725,9 @@ class AudioModel:
         self.labels.sort()
         logging.info("Loading train")
         excluded_labels = get_excluded_labels(self.labels)
-
         logging.info("labels are %s Excluding %s", self.labels, excluded_labels)
-        self.train, remapped, epoch_size, new_labels = get_dataset(
-            # dir,
+        self.train, remapped, epoch_size, new_labels, extra_label_map = get_dataset(
             training_files_dir,
-            # filenames,
             self.labels,
             batch_size=self.batch_size,
             image_size=self.input_shape,
@@ -786,24 +736,17 @@ class AudioModel:
             filenames_2=second_filenames,
             embeddings=self.model_name == "embeddings",
             **args,
-            # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
+
         self.num_train_instance = epoch_size
-        filenames = []
-        # for d in datasets:
-        #     # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
-        #     filenames.extend(
-        #         tf.io.gfile.glob(f"{str(self.data_dir)}/{d}/validation/*.tfrecord")
-        #     )
         if self.second_data_dir is not None:
             second_filenames = tf.io.gfile.glob(
                 f"{str(self.second_data_dir)}/validation/*/*.tfrecord"
             )
         logging.info("Loading Val")
-        self.validation, _, _, _ = get_dataset(
-            # dir,
+
+        self.validation, _, _, _, _ = get_dataset(
             self.data_dir / "validation",
-            # filenames,
             self.labels,
             batch_size=self.batch_size,
             image_size=self.input_shape,
@@ -811,41 +754,32 @@ class AudioModel:
             filenames_2=second_filenames,
             embeddings=self.model_name == "embeddings",
             **args,
-            # preprocess_fn=self.preprocess_fn,
         )
 
-        if test:
-            logging.info("Loading test")
-            filenames = []
-            # for d in datasets:
-            #     # filenames = tf.io.gfile.glob(f"{base_dir}/{training_dir}/train/*.tfrecord")
-            #     filenames.extend(
-            #         tf.io.gfile.glob(f"{str(self.data_dir)}/{d}/test/*.tfrecord")
-            #     )
-            if self.second_data_dir is not None:
-                second_filenames = tf.io.gfile.glob(
-                    f"{str(self.second_data_dir)}/test/*/*.tfrecord"
-                )
-            args["shuffle"] = False
-            self.test, _, _, _ = get_dataset(
-                # dir,
-                self.data_dir / "test",
-                # filenames,
-                self.labels,
-                batch_size=self.batch_size,
-                image_size=self.input_shape,
-                # resample=False,
-                excluded_labels=excluded_labels,
-                mean_sub=self.mean_sub,
-                # shuffle=False,2
-                filenames_2=second_filenames,
-                embeddings=self.model_name == "embeddings",
-                **args,
-                # preprocess_fn=self.preprocess_fn,
-            )
-        self.remapped = remapped
         self.labels = new_labels
         self.training_data_meta = meta
+
+        return remapped, excluded_labels, extra_label_map
+
+    def load_test_set(self, **args):
+        logging.info("Loading test")
+        second_filenames = None
+        if self.second_data_dir is not None:
+            second_filenames = tf.io.gfile.glob(
+                f"{str(self.second_data_dir)}/test/*/*.tfrecord"
+            )
+        test_args = dict(args)
+        test_args["shuffle"] = False
+        self.test, _, _, _, _ = get_dataset(
+            self.data_dir / "test",
+            self.labels,
+            batch_size=self.batch_size,
+            image_size=self.input_shape,
+            mean_sub=self.mean_sub,
+            filenames_2=second_filenames,
+            embeddings=self.model_name == "embeddings",
+            **test_args,
+        )
 
     def get_base_model(self, input_shape, weights="imagenet"):
         pretrained_model = self.model_name
@@ -1437,11 +1371,9 @@ def main():
         multi = meta_data.get("multi_label", True)
         labels = meta_data.get("labels")
         print("model labels are", labels)
-        # labels = meta_file.get("labels")
-        model_name = meta_data.get("name")
-        mean_sub = meta_data.get("mean_sub")
 
-        preprocess = get_preprocess_fn(model_name)
+        model_name = meta_data.get("name")
+
         base_dir = Path(args.dataset_dir)
         meta_f = base_dir / "training-meta.json"
         dataset_meta = None
@@ -1457,28 +1389,19 @@ def main():
         labels.sort()
         set_specific_by_count(dataset_meta)
 
-        excluded_labels = get_excluded_labels(labels)
-        # self.labels = meta.get("labels", [])
-        print("Labels are ", labels)
-        print(
-            "Filter?",
-            meta_data.get("filter_freq", False),
-            " only f",
-            meta_data.get("only_features", False),
-            " features??",
-            meta_data.get("features"),
-            "multi?",
-            meta_data.get("multi_label"),
-        )
-        dataset, _, _, _ = get_dataset(
+        # excluded_labels = get_excluded_labels(labels)
+        # # self.labels = meta.get("labels", [])
+        dataset, _, _, _, _ = get_dataset(
             base_dir / "test",
             labels,
             image_size=DIMENSIONS,
             shuffle=False,
             deterministic=True,
             batch_size=64,
-            mean_sub=mean_sub,
-            excluded_labels=excluded_labels,
+            mean_sub=meta_data.get("mean_sub", False),
+            excluded_labels=meta_data.get("excluded_labels"),
+            remapped_labels=meta_data.get("remapped"),
+            extra_label_map=meta_data.get("extra_label_map"),
             stop_on_empty=False,
             one_hot=args.one_hot,
             use_generic_bird=args.use_generic_bird,

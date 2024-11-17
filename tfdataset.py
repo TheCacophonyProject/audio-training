@@ -422,7 +422,9 @@ bird_mask = None
 
 def get_dataset(dir, labels, **args):
 
-    ds_first, remapped, epoch_size, labels = get_a_dataset(dir, labels, args)
+    ds_first, remapped, epoch_size, labels, extra_label_dic = get_a_dataset(
+        dir, labels, args
+    )
     args["epoch_size"] = epoch_size
 
     if args.get("load_raw", True):
@@ -455,7 +457,7 @@ def get_dataset(dir, labels, **args):
     else:
         dataset = ds_first
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
-    return dataset, remapped, epoch_size, labels
+    return dataset, remapped, epoch_size, labels, extra_label_dic
 
 
 def set_remapped_extra(remap, extra_l):
@@ -468,16 +470,24 @@ def set_remapped_extra(remap, extra_l):
 
 def get_a_dataset(dir, labels, args):
 
+    extra_label_dic = args.get("extra_label_map")
+    remapped = args.get("remapped", [])
     excluded_labels = args.get("excluded_labels", [])
     use_generic_bird = args.get("use_generic_bird", True)
 
     global extra_label_map
     global remapped_y
-
-    extra_label_map, remapped, labels = get_remappings(
-        labels, excluded_labels, use_generic_bird=use_generic_bird
-    )
-
+    if extra_label_dic is None:
+        extra_label_dic, remapped, labels = get_remappings(
+            labels, excluded_labels, use_generic_bird=use_generic_bird
+        )
+    else:
+        logging.info(
+            "Load with predefined extra label dic %s remapped %s excluded %s",
+            extra_label_dic,
+            remapped,
+            excluded_labels,
+        )
     remapped_y = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(list(remapped.keys())),
@@ -489,7 +499,7 @@ def get_a_dataset(dir, labels, args):
     logging.info(
         "Remapped %s extra mapping %s new labels %s Use gen bird %s",
         remapped,
-        extra_label_map,
+        extra_label_dic,
         labels,
         use_generic_bird,
     )
@@ -508,8 +518,8 @@ def get_a_dataset(dir, labels, args):
     # extra_label_map["-10"] = -10
     extra_label_map = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
-            keys=tf.constant(list(extra_label_map.keys())),
-            values=tf.constant(list(extra_label_map.values())),
+            keys=tf.constant(list(extra_label_dic.keys())),
+            values=tf.constant(list(extra_label_dic.values())),
         ),
         default_value=tf.constant(-1),
         name="extra_label_map",
@@ -650,7 +660,7 @@ def get_a_dataset(dir, labels, args):
                 x, y, num_labels, weighting, specific_mask, rest_weighting
             )
         )
-    return dataset, remapped, epoch_size, labels
+    return dataset, remapped, epoch_size, labels, extra_label_dic
 
 
 @tf.function
