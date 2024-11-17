@@ -322,7 +322,7 @@ def load_dataset(filenames, num_labels, labels, args):
 
 
 def get_distribution(dataset, num_labels, batched=True, one_hot=True):
-    true_categories = [y[0] for x, y in dataset]
+    true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
     dist = np.zeros((num_labels), dtype=np.float32)
     if len(true_categories) == 0:
         return dist, 0
@@ -585,7 +585,7 @@ def get_a_dataset(dir, labels, args):
 
     if args.get("shuffle", True):
         dataset = dataset.shuffle(
-            40096, reshuffle_each_iteration=args.get("reshuffle", True)
+            4096, reshuffle_each_iteration=args.get("reshuffle", True)
         )
     if dataset_2 is not None:
         logging.info("Adding second dataset with weights [0.6,0.4]")
@@ -595,9 +595,12 @@ def get_a_dataset(dir, labels, args):
             stop_on_empty_dataset=True,
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
-
-    dataset = dataset.map(lambda x, y: (x, (y[0], y[5])))
-
+    logging.info("Loss fn is %s", args.get("loss_fn"))
+    if args.get("loss_fn") == "WeightedCrossEntropy":
+        logging.info("Mapping possiblebirds")
+        dataset = dataset.map(lambda x, y: (x, (y[0], y[5])))
+    else:
+        dataset = dataset.map(lambda x, y: (x, y[0]))
     epoch_size = args.get("epoch_size")
     dist = None
     if epoch_size is None:
@@ -791,7 +794,7 @@ def read_tfrecord(
             spectogram = example["audio/spectogram"]
         spectogram = tf.reshape(spectogram, (2401, 513))
         spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
-        spectogram = tf.expand_dims(spectogram, axis=2)
+        spectogram = tf.expand_dims(spectogram, axis=-1)
         print("Loaded spect ", spectogram.shape)
     if features or only_features:
         short_f = example["audio/short_f"]
@@ -1071,7 +1074,7 @@ def show_batch(image_batch, label_batch, labels):
     # min_freq = label_batch[3]
     # max_freq = label_batch[4]
     # recs = label_batch[3]
-    # tracks = label_batch[4]
+    tracks = label_batch[4]
     label_batch = label_batch[0]
     fig = plt.figure(figsize=(20, 20))
     print("images in batch", len(image_batch), len(label_batch))

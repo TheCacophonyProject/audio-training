@@ -407,7 +407,10 @@ class AudioModel:
                 ],
             )
         else:
-            self.build_model(multi_label=args.get("multi_label", True))
+            self.build_model(
+                multi_label=args.get("multi_label", True),
+                loss_fn=args.get("loss_fn", "keras"),
+            )
             (self.checkpoint_folder / run_name).mkdir(parents=True, exist_ok=True)
             self.model.save(self.checkpoint_folder / run_name / f"{run_name}.keras")
             self.save_metadata(run_name, None, None)
@@ -492,9 +495,9 @@ class AudioModel:
         self.save_metadata(run_name, history, test_results, **args)
         if self.test is not None:
             acc = (
-                "val_binary_accuracy.keras.h5"
+                "val_binary_accuracy.weights.h5"
                 if args.get("multi_label")
-                else "val_acc.keras.h5"
+                else "val_acc.weights.h5"
             )
             self.model.load_weights(os.path.join(self.checkpoint_folder, run_name, acc))
             if args.get("multi_label"):
@@ -555,7 +558,7 @@ class AudioModel:
             cls=MetaJSONEncoder,
         )
 
-    def build_model(self, multi_label=False):
+    def build_model(self, multi_label=False, loss_fn="keras"):
         num_labels = len(self.labels)
         if self.model_name == "merge":
             inputs = []
@@ -655,8 +658,13 @@ class AudioModel:
             acc = tf.metrics.binary_accuracy
         else:
             acc = tf.metrics.categorical_accuracy
-        loss_fn = loss(multi_label)
-        loss_fn = WeightedCrossEntropy(self.labels)
+        if loss_fn == "WeightedCrossEntropy":
+            logging.info("Using weighted cross entropy")
+            loss_fn = WeightedCrossEntropy(self.labels)
+        else:
+            logging.info("Using cross entropy")
+            loss_fn = loss(multi_label)
+
         self.loss_fn = loss_fn.name
         self.model.compile(
             optimizer=optimizer(lr=self.learning_rate),
@@ -675,6 +683,7 @@ class AudioModel:
                 tf.keras.losses.Huber(),
             ],
         )
+        self.model.summary()
 
     def checkpoints(self, run_name):
         metrics = [
@@ -1140,7 +1149,7 @@ def log_confusion_matrix(epoch, logs, model, dataset, writer, labels):
 
 
 def confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
-    true_categories = [y[0] for x, y in dataset]
+    true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
     true_categories = tf.concat(true_categories, axis=0)
     y_true = []
     if one_hot:
@@ -1170,7 +1179,7 @@ def multi_confusion_single(
     from sklearn.preprocessing import MultiLabelBinarizer
 
     mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
-    true_categories = [y[0] for x, y in dataset]
+    true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
     true_categories = tf.concat(true_categories, axis=0)
     # y_true = []
     # if one_hot:
@@ -1221,21 +1230,21 @@ def multi_confusion_single(
     none_y = np.int64(none_y)
 
     cm = confusion_matrix(flat_y, flat_p, labels=np.arange(len(labels)))
-    confusion_path = Path(f"./confusions/{filename}")
+    # confusion_path = Path(f"./confusions/{filename}")
 
-    np.save(str(confusion_path.with_suffix(".npy")), cm)
+    np.save(str(filename.with_suffix(".npy")), cm)
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
-    plt.savefig(confusion_path.with_suffix(".png"), format="png")
+    plt.savefig(filename.with_suffix(".png"), format="png")
 
     none_p = np.int64(none_p)
     none_y = np.int64(none_y)
     cm = confusion_matrix(none_y, none_p, labels=np.arange(len(labels)))
-    confusion_path = confusion_path.parent / f"{confusion_path.stem}-none"
-    np.save(str(confusion_path.with_suffix(".npy")), cm)
+    none_path = filename.parent / f"{filename.stem}-none"
+    np.save(str(filename.with_suffix(".npy")), cm)
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
-    plt.savefig(confusion_path.with_suffix(".png"), format="png")
+    plt.savefig(filename.with_suffix(".png"), format="png")
 
 
 def multi_confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
@@ -1319,7 +1328,7 @@ def multi_confusion(model, labels, dataset, filename="confusion.png", one_hot=Tr
         cm2[1] = np.flip(cm[0])
         figure = plot_confusion_matrix(cm2, class_names=[labels[i], "not"])
         logging.info("Saving confusion to %s", filename)
-        file_name = Path(f"./confusions/{labels[i]}-{filename}")
+        file_name = filename.parent / f"{labels[i]}-{filename}"
         file_name = file_name.with_suffix(".png")
         plt.savefig(file_name, format="png")
 
@@ -1411,14 +1420,16 @@ def main():
     # ktest()
     # return
     if args.confusion is not None:
-        load_model = Path(args.name)
-        logging.info("Loading %s with weights %s", load_model, "val_acc")
+        model_path = Path(args.name)
+        if model_path.is_dir():
+            model_path = model_path / f"{model_path.stem}.keras"
+        logging.info("Loading %s with weights %s", model_path, "val_acc")
         model = tf.keras.models.load_model(
-            str(load_model / f"{load_model.name}.keras"),
+            str(model_path),
             compile=False,
         )
 
-        meta_file = load_model / "metadata.txt"
+        meta_file = model_path.parent / "metadata.txt"
         print("Meta", meta_file)
         with open(str(meta_file), "r") as f:
             meta_data = json.load(f)
@@ -1496,9 +1507,8 @@ def main():
         if dataset is not None:
             # best_threshold(model, labels, dataset, args.confusion)
             # return
-            weight_base_path = load_model
-            if not load_model.is_dir():
-                weight_base_path = load_model.parent
+
+            weight_base_path = model_path.parent
             args.confusion = Path(args.confusion)
             if meta_data.get("only_features"):
                 weight_files = [None]
@@ -1516,7 +1526,9 @@ def main():
 
                 file_prefix = "final" if w is None else w
                 confusion_file = (
-                    args.confusion.parent / f"{args.confusion.stem}-{file_prefix}"
+                    "confusions"
+                    / load_model.stem
+                    / (args.confusion.parent / f"{args.confusion.stem}-{file_prefix}")
                 )
                 if multi:
                     multi_confusion_single(
@@ -1640,6 +1652,19 @@ def parse_args():
         "--model-name",
         default="badwinner2",
         help="Model to use badwinner, badwinner2, inc3",
+    )
+
+    parser.add_argument(
+        "--load-raw",
+        default=False,
+        action="count",
+        help="Load raw audio data rather than preprocessed spect",
+    )
+
+    parser.add_argument(
+        "--loss_fn",
+        default="keras",
+        help="loss function to use either keras (Binary or Categorical) depending on multi label or custom loss WeightedCrossEntropy",
     )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
