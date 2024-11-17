@@ -471,7 +471,7 @@ def set_remapped_extra(remap, extra_l):
 def get_a_dataset(dir, labels, args):
 
     extra_label_dic = args.get("extra_label_map")
-    remapped = args.get("remapped", [])
+    remapped = args.get("remapped_labels", [])
     excluded_labels = args.get("excluded_labels", [])
     use_generic_bird = args.get("use_generic_bird", True)
 

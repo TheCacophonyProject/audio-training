@@ -364,7 +364,7 @@ class AudioModel:
             **args,
         )
         args["excluded_labels"] = excluded_labels
-        args["remapped"] = remapped
+        args["remapped_labels"] = remapped
         args["extra_label_map"] = extra_label_map
         self.num_classes = len(self.labels)
         if args.get("rf_model") and args.get("cnn_model"):
@@ -656,7 +656,7 @@ class AudioModel:
         ]
         checks = []
         for m in metrics:
-            m_dir = os.path.join(self.checkpoint_folder, run_name, f"{m}.weights.h5")
+            m_dir = self.checkpoint_folder/ run_name/ f"{m}.weights.h5"
             if "loss" in m:
                 mode = "auto"
             else:
@@ -690,6 +690,10 @@ class AudioModel:
             on_epoch_end=log_hist_weights(self.model, file_writer_cm)
         )
         checks.append(hist_callback)
+
+        model_checkpt = tf.keras.callbacks.ModelCheckpoint(
+            self.checkpoint_folder, run_name, f"cp-{epoch:04d}.weights.h5"), verbose=1, save_weights_only=True,save_freq='epoch')
+        checks.papend(model_checkpt)
         return checks
 
     def load_datasets(self, labels, **args):
@@ -1110,6 +1114,7 @@ def confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
 def multi_confusion_single(
     model, labels, dataset, filename="confusion.png", one_hot=True, prob_thresh=0.7
 ):
+    filename = Path(filename)
     from sklearn.preprocessing import MultiLabelBinarizer
 
     mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
@@ -1380,13 +1385,13 @@ def main():
         with open(meta_f, "r") as f:
             dataset_meta = json.load(f)
         labels = dataset_meta.get("labels")
-        if "bird" not in labels:
-            labels.append("bird")
-        if "noise" not in labels:
-            labels.append("noise")
-        # if "other" not in labels:
-        # labels.append("other")
-        labels.sort()
+        # if "bird" not in labels:
+        #     labels.append("bird")
+        # if "noise" not in labels:
+        #     labels.append("noise")
+        # # if "other" not in labels:
+        # # labels.append("other")
+        # labels.sort()
         set_specific_by_count(dataset_meta)
 
         # excluded_labels = get_excluded_labels(labels)
@@ -1400,7 +1405,7 @@ def main():
             batch_size=64,
             mean_sub=meta_data.get("mean_sub", False),
             excluded_labels=meta_data.get("excluded_labels"),
-            remapped_labels=meta_data.get("remapped"),
+            remapped_labels=meta_data.get("remapped_labels"),
             extra_label_map=meta_data.get("extra_label_map"),
             stop_on_empty=False,
             one_hot=args.one_hot,
@@ -1411,8 +1416,6 @@ def main():
             multi_label=meta_data.get("multi_label", True),
             # load_raw=False,
         )
-        for l in excluded_labels:
-            labels.remove(l)
         # acc = tf.metrics.binary_accuracy
         acc = tf.keras.metrics.BinaryAccuracy(threshold=0.5)
         model.compile(
@@ -1449,11 +1452,11 @@ def main():
 
                 file_prefix = "final" if w is None else w
                 confusion_file = (
-                    "confusions"
+                    Path("./confusions")
                     / model_path.stem
                     / (args.confusion.parent / f"{args.confusion.stem}-{file_prefix}")
                 )
-                confusion_file.mkdir(exists_ok=True, parents=True)
+                confusion_file.mkdir(exist_ok=True, parents=True)
                 if multi:
                     multi_confusion_single(
                         model,
