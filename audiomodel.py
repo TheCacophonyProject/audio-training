@@ -656,7 +656,7 @@ class AudioModel:
         ]
         checks = []
         for m in metrics:
-            m_dir = self.checkpoint_folder/ run_name/ f"{m}.weights.h5"
+            m_dir = self.checkpoint_folder / run_name / f"{m}.weights.h5"
             if "loss" in m:
                 mode = "auto"
             else:
@@ -692,8 +692,12 @@ class AudioModel:
         checks.append(hist_callback)
 
         model_checkpt = tf.keras.callbacks.ModelCheckpoint(
-            self.checkpoint_folder, run_name, f"cp-{epoch:04d}.weights.h5"), verbose=1, save_weights_only=True,save_freq='epoch')
-        checks.papend(model_checkpt)
+            self.checkpoint_folder / run_name / f"chkpt.weights.h5",
+            verbose=1,
+            save_weights_only=True,
+            save_freq="epoch",
+        )
+        checks.append(model_checkpt)
         return checks
 
     def load_datasets(self, labels, **args):
