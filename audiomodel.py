@@ -1178,16 +1178,19 @@ def multi_confusion_single(
     np.save(str(filename.with_suffix(".npy")), cm)
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
+    logging.info("Saving confusion to %s", filename.with_suffix(".png"))
     plt.savefig(filename.with_suffix(".png"), format="png")
 
     none_p = np.int64(none_p)
     none_y = np.int64(none_y)
     cm = confusion_matrix(none_y, none_p, labels=np.arange(len(labels)))
     none_path = filename.parent / f"{filename.stem}-none"
-    np.save(str(filename.with_suffix(".npy")), cm)
+    logging.info("Saving confusion to %s", none_path.with_suffix(".png"))
+
+    np.save(str(none_path.with_suffix(".npy")), cm)
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
-    plt.savefig(filename.with_suffix(".png"), format="png")
+    plt.savefig(none_path.with_suffix(".png"), format="png")
 
 
 def multi_confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
@@ -1409,7 +1412,8 @@ def main():
             only_features=meta_data.get("only_features", False),
             features=meta_data.get("features", False),
             multi_label=meta_data.get("multi_label", True),
-            # load_raw=False,
+            loss_fn=meta_data.get("loss_fn"),
+            load_raw=args.load_raw,
         )
         # acc = tf.metrics.binary_accuracy
         acc = tf.keras.metrics.BinaryAccuracy(threshold=0.5)
@@ -1445,13 +1449,13 @@ def main():
                     logging.info("Using %s weights", weight_base_path / w)
                     model.load_weights(weight_base_path / w)
 
-                file_prefix = "final" if w is None else w
+                file_prefix = "final" if w is None else w[:-11]
                 confusion_file = (
                     Path("./confusions")
                     / model_path.stem
                     / (args.confusion.parent / f"{args.confusion.stem}-{file_prefix}")
                 )
-                confusion_file.mkdir(exist_ok=True, parents=True)
+                confusion_file.parent.mkdir(exist_ok=True, parents=True)
                 if multi:
                     multi_confusion_single(
                         model,
