@@ -1142,27 +1142,50 @@ def multi_confusion_single(
     flat_y = []
     bird_index = labels.index("bird")
     for y, p in zip(true_categories, y_pred):
+        # get predicted label that isn't bird and use this as overall tag
+        # may not work when we have 2 tags for a recording but i dont think this is the case at the moment
         index = 0
         arg_sorted = np.argsort(p)
         best_label = arg_sorted[-1]
-        if best_label == bird_index:
+        if best_label == bird_index and p[arg_sorted[-2]] != 0:
             best_label = arg_sorted[-2]
         best_prob = p[best_label]
 
+        best_labels = np.argwhere(p > prob_thresh).ravel()
+
+        # get true label that isn't bird if available and use this as overall tag
+        # arg_sorted = np.argsort(y)
+
+        true_labels = np.argwhere(y == 1).ravel()
+        # true_label = arg_sorted[-1]
+        # if true_label == bird_index and y[arg_sorted[-2]] != 0:
+        #     true_label = arg_sorted[-2]
+        # print("Y true is", y)
+        # print("Actual y is ", true_labels)
+        # print("P is ", np.round(p * 100))
+        # print("Actual p is ", best_labels)
         for y_l, p_l in zip(y, p):
             predicted = p_l >= prob_thresh
             if y_l == 0 and predicted:
-                flat_y.append(len(labels) - 1)
-                flat_p.append(index)
+                # can put this as none
+                # flat_y.append(len(labels) - 1)
+                for true_label in true_labels:
+                    if true_label not in best_labels:
+                        flat_y.append(true_label)
+                        flat_p.append(index)
             elif y_l == 1 and predicted:
                 flat_y.append(index)
                 flat_p.append(index)
             elif y_l == 1 and not predicted:
                 flat_y.append(index)
                 flat_p.append(len(labels) - 1)
-                if index != bird_index and best_prob > 0.5:
-                    none_p.append(best_label)
-                    none_y.append(index)
+
+                # is this index but we predicted something else add to missing conf
+                # if index != bird_index and best_prob > 0.5:
+                for best_label in best_labels:
+                    if best_label not in true_labels:
+                        none_y.append(index)
+                        none_p.append(best_label)
 
             index += 1
 
