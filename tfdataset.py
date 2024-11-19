@@ -17,7 +17,7 @@ import tensorflow_io as tfio
 from audiomentations import AddBackgroundNoise, PolarityInversion, Compose
 import soundfile as sf
 
-
+NFFT = 2048
 BIRD_PATH = []
 NOISE_PATH = []
 NZ_BOX = [166.509144322, -34.4506617165, 178.517093541, -46.641235447]
@@ -174,7 +174,7 @@ HOP_LENGTH = 281
 N_MELS = 160
 SR = 48000
 BREAK_FREQ = 1000
-MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, 4800, BREAK_FREQ)
+MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, NFFT, BREAK_FREQ)
 MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 # MEL_WEIGHTS = tf.expand_dims(MEL_WEIGHTS, 0)
 
@@ -436,7 +436,7 @@ def get_dataset(dir, labels, **args):
             # STFT is so slow to calculate on the fly mayaswell ust make an augmented dataset
 
             if True:
-                ds_second, _, _, _ = get_a_dataset(dir, labels, args)
+                ds_second, _, _, _, _ = get_a_dataset(dir, labels, args)
             else:
                 pass
                 # dataset = ds_first.repeat(2)
@@ -1287,22 +1287,32 @@ def raw_to_mel(x, y, features=False):
         raw = x
     stft = tf.signal.stft(
         raw,
-        4800,
+        NFFT,
         HOP_LENGTH,
-        fft_length=4800,
+        fft_length=NFFT,
         window_fn=tf.signal.hann_window,
         pad_end=True,
         name=None,
     )
+    print(
+        "Using hop length ",
+        HOP_LENGTH,
+        " and nfft ",
+        NFFT,
+        " STFT shape is ",
+        stft.shape,
+    )
+
     stft = tf.transpose(stft, [0, 2, 1])
     stft = tf.math.abs(stft)
     batch_size = tf.keras.ops.shape(x)[0]
 
     weights = tf.expand_dims(MEL_WEIGHTS, 0)
     weights = tf.repeat(weights, batch_size, 0)
-
     image = tf.keras.backend.batch_dot(weights, stft)
     image = tf.expand_dims(image, axis=3)
+
+    print("Applied weights shape is ", image.shape)
 
     if features:
         x = (x[0], x[1], image)
