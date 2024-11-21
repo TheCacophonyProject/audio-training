@@ -107,6 +107,10 @@ def create_tf_example(sample):
         "audio/signal_percent": tfrecord_util.float_feature(
             0 if sample.signal_percent is None else sample.signal_percent
         ),
+        "audio/low_sample": tfrecord_util.int64_feature(
+            sample.low_sample
+            # 1 if sample.low_sample else 0
+        ),
         "audio/raw_length": tfrecord_util.float_feature(data.raw_length),
         "audio/start_s": tfrecord_util.float_feature(sample.start),
         "audio/class/text": tfrecord_util.bytes_feature(tags.encode("utf8")),
@@ -222,6 +226,7 @@ DO_EMBEDDING = False
 def process_job(queue, labels, config, base_dir, writer_i):
     import gc
 
+    shards = 4
     # Load the model.
     model = None
     by_label = False
@@ -248,9 +253,11 @@ def process_job(queue, labels, config, base_dir, writer_i):
                 str(l_dir / f"{writer_i}-{pid}.tfrecord"), options=options
             )
     else:
-        writers["all"] = tf.io.TFRecordWriter(
-            str(base_dir / f"{writer_i}-{pid}.tfrecord"), options=options
-        )
+        for shard in range(shards):
+            writers[f"all-{shard}"] = tf.io.TFRecordWriter(
+                str(base_dir / f"{writer_i}-{pid}-{shard}.tfrecord"),
+                options=options,
+            )
 
     # writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
     i = 0
@@ -276,6 +283,7 @@ def process_job(queue, labels, config, base_dir, writer_i):
                     config.filter_frequency,
                     counts,
                     by_label,
+                    num_shards=shards,
                 )
                 if i % 10 == 0:
                     logging.info("Clear gc")
@@ -316,6 +324,7 @@ def save_data(
     counts,
     add_features=True,
     by_label=False,
+    num_shards=4,
 ):
     resample = 48000
     try:
@@ -399,7 +408,8 @@ def save_data(
             if by_label:
                 writer = writers[writer_lbl]
             else:
-                writer = writers["all"]
+                shard = i % num_shards
+                writer = writers[f"all-{shard}"]
             counts[writer_lbl] += 1
             writer.write(tf_example.SerializeToString())
             del sample
@@ -517,11 +527,11 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                         subc.unlink()
                 child.rmdir()
     output_path.mkdir(parents=True, exist_ok=True)
-    samples = dataset.recs.values()
-    samples = sorted(
-        samples,
-        key=lambda sample: sample.id,
-    )
+    samples = list(dataset.recs.values())
+    # samples = sorted(
+    #     samples,
+    #     key=lambda sample: sample.id,
+    # )
     np.random.shuffle(samples)
 
     num_labels = len(labels)

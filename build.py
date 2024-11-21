@@ -507,7 +507,7 @@ def balance_ds(original_ds, dataset):
                     small_stride_samples[unused.id] = unused
         # np.random.shuffle(extra_samples)
         logging.info(
-            "Unsued samples %s length %s missing %s",
+            "Unused samples %s length %s missing %s",
             lbl,
             len(unused_samples),
             extra_samples[lbl],
@@ -601,7 +601,7 @@ def main():
     dataset.print_counts()
 
     all_labels = set()
-    for d in datasets[:1]:
+    for d in datasets:
         logging.info("")
         logging.info("%s Dataset", d.name)
         d.print_sample_counts()
@@ -615,13 +615,13 @@ def main():
     #     for unused in rec.unused_samples:
     #         logging.info("Not Used samples are %s", unused)
     balance_ds(dataset, datasets[0])
+    logging.info("After balance")
     for d in datasets[:1]:
         logging.info("")
         logging.info("%s Dataset", d.name)
         d.print_sample_counts()
 
         all_labels.update(d.labels)
-    return
 
     all_labels = list(all_labels)
     all_labels.sort()
