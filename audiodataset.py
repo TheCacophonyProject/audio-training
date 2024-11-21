@@ -541,15 +541,15 @@ class Recording:
                 small_stirdes = (
                     small_stirdes + np.random.rand(len(small_stirdes)) / 2 - 0.25
                 )
-            logging.info(
-                "%s  Track times are %s-%s samples are %s num samples %s small strides %s",
-                track.human_tags,
-                track.start,
-                track.end,
-                sample_starts,
-                track_samples,
-                small_stirdes,
-            )
+            # logging.info(
+            #     "%s  Track times are %s-%s samples are %s num samples %s small strides %s",
+            #     track.human_tags,
+            #     track.start,
+            #     track.end,
+            #     sample_starts,
+            #     track_samples,
+            #     small_stirdes,
+            # )
             # if a track has a little bit that will be cut off at the end
             # adjust tsample to be random start
             if left_over > 0 and track_samples == 1 and left_over < SEG_LEEWAY:
@@ -654,16 +654,16 @@ class Recording:
                     if start > track.end or (end - start) < min_sample_length:
                         break
                 small_stride = True
-            for s in self.samples:
-                if track.id in s.track_ids:
-                    logging.info("USed samples are %s", s)
+            # for s in self.samples:
+            #     if track.id in s.track_ids:
+            #         logging.info("USed samples are %s", s)
 
-            for unused in self.unused_samples:
-                if track.id in unused.track_ids:
-                    logging.info("Not Used samples are %s", unused)
-            for unused in self.small_strides:
-                if track.id in unused.track_ids:
-                    logging.info("SMall stride samples are %s", unused)
+            # for unused in self.unused_samples:
+            #     if track.id in unused.track_ids:
+            #         logging.info("Not Used samples are %s", unused)
+            # for unused in self.small_strides:
+            #     if track.id in unused.track_ids:
+            #         logging.info("SMall stride samples are %s", unused)
 
     @property
     def bin_id(self):
