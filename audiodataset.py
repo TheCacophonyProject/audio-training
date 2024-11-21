@@ -30,6 +30,7 @@ sys.path.append("../pyAudioAnalysis")
 # FMAX = 11000
 # N_MELS = 120
 REJECT_TAGS = ["unidentified", "other", "mammal", "sheep"]
+MAX_TRACK_SAMPLES = 4
 
 ACCEPT_TAGS = None
 # # [
@@ -54,7 +55,8 @@ RELABEL["norfolk golden whistler"] = "whistler"
 SAMPLE_GROUP_ID = 0
 MIN_TRACK_LENGTH = 1.5
 
-LOW_SAMPLES_LABELS = ["australasian bittern", "banded dotterel", "rifleman"]
+# LOW_SAMPLES_LABELS = ["australasian bittern", "banded dotterel", "rifleman"]
+LOW_SAMPLES_LABELS = []
 logging.info("Allow %s to have a recording over multiple datasets", LOW_SAMPLES_LABELS)
 
 
@@ -94,13 +96,15 @@ class AudioDataset:
                     # hack to find files, probably should look
                     # at all files in dir or store file in metadata
                 r = Recording(meta, audio_f, self.config)
+
                 self.add_recording(r)
-                self.samples.extend(r.samples)
             except:
                 logging.error("Error loading %s", f, exc_info=True)
 
     def add_recording(self, r):
         self.recs[r.id] = r
+        self.samples.extend(r.samples)
+
         # r.get_human_tags()
         for tag in r.human_tags:
             self.labels.add(tag)
@@ -264,6 +268,9 @@ def filter_track(track):
     return False
 
 
+audio_id = 0
+
+
 class AudioSample:
     def __init__(
         self,
@@ -280,10 +287,16 @@ class AudioSample:
         mixed_label=None,
         low_sample=False,
     ):
-        self.location = rec.location
+        global audio_id
+        self.id = audio_id
+        audio_id += 1
+        self.rec_id = None
+        self.location = None
+        if rec is not None:
+            self.rec_id = rec.id
+            self.location = rec.location
         self.low_sample = low_sample
         self.mixed_label = mixed_label
-        self.rec_id = rec.id
         self.tags = list(tags)
         non_bird = [t for t in tags if t not in ["noirse", "bird"]]
         if len(non_bird) > 0:
@@ -309,6 +322,26 @@ class AudioSample:
         else:
             self.bin_id = bin_id
 
+    def clone(self):
+        cloned = AudioSample(
+            rec=None,
+            tags=self.tags,
+            start=self.start,
+            end=self.end,
+            track_ids=self.track_ids,
+            group_id=self.group,
+            signal_percent=self.signal_percent,
+            bin_id=self.bin_id,
+            min_freq=self.min_freq,
+            max_freq=self.max_freq,
+            low_sample=self.low_sample,
+        )
+        cloned.rec_id = self.rec_id
+        cloned.location = self.location
+        if self.bin_id is None:
+            self.bin_id = f"{self.rec_id}"
+        return cloned
+
     @property
     def length(self):
         return self.end - self.start
@@ -320,6 +353,9 @@ class AudioSample:
     @property
     def track_id(self):
         return self.bin_id
+
+    def __str__(self):
+        return f"{self.rec_id}:{self.tags} - {self.start}-{self.end}"
 
 
 class Recording:
@@ -363,6 +399,8 @@ class Recording:
         self.rec_data = None
         self.resampled = False
         self.samples = []
+        self.unused_samples = []
+        self.small_strides = []
         if load_samples:
             self.signal_percent()
             self.load_samples(config.segment_length, config.segment_stride)
@@ -420,7 +458,14 @@ class Recording:
     def space_signals(self, spacing=0.1):
         self.signals = space_signals(signals, spacing)
 
-    def load_samples(self, segment_length, segment_stride, do_overlap=False):
+    def load_samples(
+        self,
+        segment_length,
+        segment_stride,
+        do_overlap=False,
+    ):
+        max_samples = MAX_TRACK_SAMPLES
+
         self.samples = []
         global SAMPLE_GROUP_ID
         SAMPLE_GROUP_ID += 1
@@ -433,107 +478,159 @@ class Recording:
         # does this make data unfair for shorter concise tracks
 
         SEG_LEEWAY = 0.5
-        MAX_TRACK_SAMPLES = 4
 
-        max_track_length = segment_length + (MAX_TRACK_SAMPLES - 1) * segment_stride
         min_sample_length = segment_length - SEG_LEEWAY
-        low_sample_rec = any([True for l in self.human_tags if l in LOW_SAMPLES_LABELS])
+        # low_sample_rec = any([True for l in self.human_tags if l in LOW_SAMPLES_LABELS])
         # can be used to seperate among train/val/test
         bin_id = f"{self.id}-0"
         for track in self.tracks:
-            # lets cap samples at 4 per track
+            start_stride = segment_stride
+            max_samples = (track.length - segment_length) / segment_stride
+            if track.length > 3:
+                max_samples += 1
+            max_samples = round(max_samples)
+            max_samples = max(max_samples, 1)
+
             track_samples = (track.length - segment_length) / segment_stride
+            # if track_samples < 1:
+            # logging.info("Low track samples so small stride")
+            # start_stride = segment_stride / 2
+            # allow an extra track with we have over 1/2 segment stride
+            track_samples = round(track_samples)
             track_samples = max(track_samples, 0)
             left_over = track_samples - int(track_samples)
             track_samples = int(track_samples) + 1
 
+            # max_track_length = segment_length + (max_samples - 1) * segment_stride
+
             sample_jitter = None
             sample_starts = (
-                np.arange(track_samples, step=segment_stride, dtype=np.float32)
+                np.arange(track_samples, step=start_stride, dtype=np.float32)
                 + track.start
             )
 
-            if track.length > max_track_length:
+            max_samples = MAX_TRACK_SAMPLES
+            if track_samples > 1:
+                sample_starts = (
+                    sample_starts + np.random.rand(len(sample_starts)) / 2 - 0.25
+                )
+            if track_samples > max_samples:
+                # track.length > max_track_length:
+                # might be worth letting more samples for some labels
+
                 # if track is long lets just take some random samples
-                extra_length = track.length - max_track_length
-                sample_jitter = extra_length / MAX_TRACK_SAMPLES
-                sample_starts = np.random.choice(
-                    sample_starts, MAX_TRACK_SAMPLES, replace=False
-                ) + np.random.rand(MAX_TRACK_SAMPLES)
+                # extra_length = track.length - max_track_length
+                # sample_jitter = extra_length / max_samples
+                selected_samples = np.random.choice(
+                    sample_starts, max_samples, replace=False
+                )
+                # dont think this is needed + np.random.rand(max_samples)
                 left_over = 0
+            else:
+                selected_samples = sample_starts
             # adjust start times by a random float this way we can incorporate
             # end sometimes and start othertimes
 
+            small_stirdes = (
+                np.arange(track_samples, step=start_stride, dtype=np.float32)
+                + track.start
+                + start_stride / 2
+            )
+
+            if track_samples > 1:
+                small_stirdes = (
+                    small_stirdes + np.random.rand(len(small_stirdes)) / 2 - 0.25
+                )
+            logging.info(
+                "%s  Track times are %s-%s samples are %s num samples %s small strides %s",
+                track.human_tags,
+                track.start,
+                track.end,
+                sample_starts,
+                track_samples,
+                small_stirdes,
+            )
             # if a track has a little bit that will be cut off at the end
             # adjust tsample to be random start
             if left_over > 0 and track_samples == 1 and left_over < SEG_LEEWAY:
                 start_jitter = np.random.rand() * left_over
                 sample_starts += start_jitter
             sample_i = 1
-            for start in sample_starts:
-                end = start + segment_length
-                end = min(end, track.end)
-                if sample_i > 1:
-                    if start > track.end or (end - start) < min_sample_length:
-                        # dont think this will ever happen
-                        break
-                if (
-                    left_over > 0
-                    and left_over < SEG_LEEWAY
-                    and sample_i == track_samples
-                ):
-                    # always include end
-                    # this is assuming segment_stride has already include a sample
-                    # with the start anyway
-                    end = track.end
-                    start = end - segment_length
 
-                sample_i += 1
-                min_freq = track.min_freq
-                max_freq = track.max_freq
-                labels = set(track.human_tags)
+            low_sample_track = any(
+                [True for l in track.human_tags if l in LOW_SAMPLES_LABELS]
+            )
+            small_stride = False
+            for starts in [sample_starts, small_stirdes]:
+                for start in starts:
+                    used_sample = start in selected_samples
+                    end = start + segment_length
+                    end = min(end, track.end)
 
-                other_tracks = []
-                if do_overlap:
-                    for other_track in sorted_tracks:
-                        if track == other_track:
-                            continue
-
-                        # starts in this sample
-                        if other_track.start > end:
+                    if sample_i > 1:
+                        if start > track.end or (end - start) < min_sample_length:
+                            # dont think this will ever happen
                             break
-                        overlap = (
-                            (end - start)
-                            + (other_track.length)
-                            - (
-                                max(end, other_track.end)
-                                - min(start, other_track.start)
+                    if (
+                        left_over > 0
+                        and left_over < SEG_LEEWAY
+                        and sample_i == track_samples
+                    ):
+                        # always include end
+                        # this is assuming segment_stride has already include a sample
+                        # with the start anyway
+                        end = track.end
+                        start = end - segment_length
+
+                    sample_i += 1
+                    min_freq = track.min_freq
+                    max_freq = track.max_freq
+                    labels = set(track.human_tags)
+
+                    other_tracks = []
+                    if do_overlap:
+                        for other_track in sorted_tracks:
+                            if track == other_track:
+                                continue
+
+                            # starts in this sample
+                            if other_track.start > end:
+                                break
+                            overlap = (
+                                (end - start)
+                                + (other_track.length)
+                                - (
+                                    max(end, other_track.end)
+                                    - min(start, other_track.start)
+                                )
                             )
-                        )
-                        min_overlap = min(
-                            0.9 * segment_length, other_track.length * 0.9
-                        )
+                            min_overlap = min(
+                                0.9 * segment_length, other_track.length * 0.9
+                            )
 
-                        # enough overlap or we engulf the track
-                        if overlap >= min_overlap:
-                            other_tracks.append(other_track)
-                            labels = labels | other_track.human_tags
-                            if min_freq is not None:
-                                if other_track.min_freq is None:
-                                    min_freq = None
-                                else:
-                                    min_freq = min(other_track.min_freq, min_freq)
-                            if max_freq is not None:
-                                if other_track.max_freq is None:
-                                    max_freq = None
-                                else:
-                                    max_freq = max(other_track.max_freq, max_freq)
+                            # enough overlap or we engulf the track
+                            if overlap >= min_overlap:
+                                other_tracks.append(other_track)
+                                labels = labels | other_track.human_tags
+                                if min_freq is not None:
+                                    if other_track.min_freq is None:
+                                        min_freq = None
+                                    else:
+                                        min_freq = min(other_track.min_freq, min_freq)
+                                if max_freq is not None:
+                                    if other_track.max_freq is None:
+                                        max_freq = None
+                                    else:
+                                        max_freq = max(other_track.max_freq, max_freq)
 
-                other_tracks.append(track)
-                if low_sample_rec:
-                    bin_id = f"{self.id}-{int(start // segment_length)}"
-                self.samples.append(
-                    AudioSample(
+                    other_tracks.append(track)
+                    if low_sample_track:
+                        # if is a low sample track allow, tracks to spread over multiple datasets
+                        # might not be a good idea
+                        bin_id = f"{self.id}-{track.id}"
+                        # {int(start // segment_length)}"
+
+                    sample = AudioSample(
                         self,
                         labels,
                         start,
@@ -545,24 +642,28 @@ class Recording:
                         min_freq=min_freq,
                         max_freq=max_freq,
                         mixed_label=track.mixed_label,
-                        low_sample=low_sample_rec,
+                        low_sample=low_sample_track,
                     )
-                )
-                # s = self.samples[-1]
-                # print(
-                #     "Have sample",
-                #     s.start,
-                #     s.end,
-                #     " from track ",
-                #     track.start,
-                #     track.end,
-                # )
-                # incase of jitter
-                # start += segment_stride
-                # end = start + segment_length
-                # end = min(end, track.end)
-                if start > track.end or (end - start) < min_sample_length:
-                    break
+                    if used_sample:
+                        self.samples.append(sample)
+                    elif small_stride:
+                        self.small_strides.append(sample)
+                    else:
+                        self.unused_samples.append(sample)
+
+                    if start > track.end or (end - start) < min_sample_length:
+                        break
+                small_stride = True
+            for s in self.samples:
+                if track.id in s.track_ids:
+                    logging.info("USed samples are %s", s)
+
+            for unused in self.unused_samples:
+                if track.id in unused.track_ids:
+                    logging.info("Not Used samples are %s", unused)
+            for unused in self.small_strides:
+                if track.id in unused.track_ids:
+                    logging.info("SMall stride samples are %s", unused)
 
     @property
     def bin_id(self):

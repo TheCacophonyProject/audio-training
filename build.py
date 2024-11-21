@@ -202,6 +202,22 @@ def get_test_recorder(dataset, test_clips, after_date):
     return test_c
 
 
+def split_by_file(dataset, split, test_clips=[], no_test=False):
+    split_by_ds = split["recs"]
+    datasets = []
+    for name in ["train", "validation", "test"]:
+        split_clips = split_by_ds[name]
+        ds = AudioDataset(name, dataset.config)
+        datasets.append(ds)
+        logging.info("Loading %s using ids %s", name, split_clips)
+        for clip_id in split_clips:
+            if clip_id in dataset.recs:
+                rec = dataset.recs[clip_id]
+                ds.add_recording(rec)
+
+    return datasets
+
+
 def split_randomly(dataset, test_clips=[], no_test=False):
     # split data randomly such that a clip is only in one dataset
     # have tried many ways to split i.e. location and cameras found this is simplest
@@ -217,7 +233,7 @@ def split_randomly(dataset, test_clips=[], no_test=False):
             dataset,
             (train, validation, test),
             label,
-            no_test=no_test
+            no_test=no_test,
             # existing_test_count=existing_test_count,
         )
     return train, validation, test
@@ -442,6 +458,109 @@ def trim_noise(dataset):
         dataset.samples.extend(r.samples)
 
 
+# Try add some more samples for underpresented labels
+# Do this by not limiting long tracks to only 4 samples
+# And by allowing samples that start at strides of 0.5 seconds instead of just
+# one second
+# If still very low will repeat samples
+def balance_ds(original_ds, dataset):
+    lbl_counts = dataset.get_counts()
+    if "bird" in lbl_counts:
+        del lbl_counts["bird"]
+    if "noise" in lbl_counts:
+        del lbl_counts["noise"]
+    counts = list(lbl_counts.values())
+    counts.sort(reverse=True)
+    target_count = counts[2]
+
+    # median = np.mean(counts)
+
+    logging.info("COunts are %s", counts)
+    extra_samples = {}
+    low_samples = []
+    for lbl, count in lbl_counts.items():
+        extra_samples[lbl] = 0
+        if count < target_count:
+            extra_samples[lbl] = target_count - count
+            low_samples.append(lbl)
+    logging.info(
+        "Try get extra samples for %s target count %s",
+        extra_samples,
+        target_count,
+    )
+    # dataset.samples = []
+    for lbl in low_samples:
+        unused_samples = {}
+        small_stride_samples = {}
+        used_samples = {}
+        for clip_id, rec in original_ds.recs.items():
+            if rec.id not in dataset.recs:
+                continue
+            for sample in rec.samples:
+                if lbl in sample.tags:
+                    used_samples[sample.id] = sample
+            for unused in rec.unused_samples:
+                if lbl in unused.tags:
+                    unused_samples[unused.id] = unused
+            for unused in rec.small_strides:
+                if lbl in unused.tags:
+                    small_stride_samples[unused.id] = unused
+        # np.random.shuffle(extra_samples)
+        logging.info(
+            "Unsued samples %s length %s missing %s",
+            lbl,
+            len(unused_samples),
+            extra_samples[lbl],
+        )
+        selected_samples = np.random.choice(
+            list(unused_samples.values()),
+            int(min(len(unused_samples), extra_samples[lbl])),
+            replace=False,
+        )
+        extra_samples[lbl] -= len(selected_samples)
+        logging.info("Adding unused %s", len(selected_samples))
+
+        for sample in selected_samples:
+            sample.low_sample = True
+            rec = original_ds.recs[sample.rec_id]
+            rec.unused_samples.remove(sample)
+
+            dataset.recs[sample.rec_id].samples.append(sample)
+            dataset.samples.append(sample)
+
+        # small stride smaples
+        selected_samples = np.random.choice(
+            list(small_stride_samples.values()),
+            int(min(len(small_stride_samples), extra_samples[lbl])),
+            replace=False,
+        )
+        extra_samples[lbl] -= len(selected_samples)
+        logging.info("Adding small stride %s", len(selected_samples))
+        for sample in selected_samples:
+            sample.low_sample = True
+            rec = original_ds.recs[sample.rec_id]
+            rec.small_strides.remove(sample)
+
+            dataset.recs[sample.rec_id].samples.append(sample)
+            dataset.samples.append(sample)
+
+        extra_samples[lbl] -= len(selected_samples)
+
+        if extra_samples[lbl] > target_count / 2:
+            selected_samples = np.random.choice(
+                list(used_samples.values()),
+                int(min(len(used_samples), extra_samples[lbl])),
+                replace=False,
+            )
+            logging.info("Cloning %s", len(selected_samples))
+
+            for sample in selected_samples:
+                cloned = sample.clone()
+                cloned.low_sample = True
+                dataset.recs[sample.rec_id].samples.append(sample)
+                dataset.samples.append(sample)
+
+
 def main():
     init_logging()
     args = parse_args()
@@ -471,15 +590,39 @@ def main():
     # dataset.load_meta()
     # return
     dataset.print_counts()
-    datasets = split_randomly(dataset, no_test=args.no_test)
+    if args.split_file:
+        logging.info("Splitting by %s", args.split_file)
+        with open(args.split_file, "r") as t:
+            # add in some metadata stats
+            meta = json.load(t)
+        datasets = split_by_file(dataset, meta)
+    else:
+        datasets = split_randomly(dataset, no_test=args.no_test)
     dataset.print_counts()
+
     all_labels = set()
-    for d in datasets:
+    for d in datasets[:1]:
         logging.info("")
         logging.info("%s Dataset", d.name)
         d.print_sample_counts()
 
         all_labels.update(d.labels)
+
+    # for rec in dataset.recs.values():
+    #     for s in rec.samples:
+    #         logging.info("USed samples are %s", s)
+
+    #     for unused in rec.unused_samples:
+    #         logging.info("Not Used samples are %s", unused)
+    balance_ds(dataset, datasets[0])
+    for d in datasets[:1]:
+        logging.info("")
+        logging.info("%s Dataset", d.name)
+        d.print_sample_counts()
+
+        all_labels.update(d.labels)
+    return
+
     all_labels = list(all_labels)
     all_labels.sort()
     for d in datasets:
@@ -662,6 +805,12 @@ def parse_args():
         default=True,
         action="count",
         help="Filter frequency of tracks",
+    )
+
+    parser.add_argument(
+        "--split-file",
+        default=None,
+        help="Split the dataset using clip ids specified in this file",
     )
     args = parser.parse_args()
     return args
