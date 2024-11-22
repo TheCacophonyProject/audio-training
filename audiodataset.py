@@ -897,7 +897,12 @@ def load_data(
     break_freq = config.break_freq
 
     if n_fft is None:
-        n_fft = sr // 10
+        n_fft = 4096  # power of 2 is best, otherwise need to know
+
+        # i think we want to keep this the same
+        # base2 = round(math.log2(sr // 10))
+        # n_fft = int(math.pow(2, base2))
+        # n_fft = sr // 10
     start = start_s * sr
     start = round(start)
     if end is None:

@@ -17,7 +17,6 @@ import tensorflow_io as tfio
 from audiomentations import AddBackgroundNoise, PolarityInversion, Compose
 import soundfile as sf
 
-NFFT = 2048
 BIRD_PATH = []
 NOISE_PATH = []
 NZ_BOX = [166.509144322, -34.4506617165, 178.517093541, -46.641235447]
@@ -174,6 +173,8 @@ HOP_LENGTH = 281
 N_MELS = 160
 SR = 48000
 BREAK_FREQ = 1000
+NFFT = 4096
+
 MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, NFFT, BREAK_FREQ)
 MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 # MEL_WEIGHTS = tf.expand_dims(MEL_WEIGHTS, 0)

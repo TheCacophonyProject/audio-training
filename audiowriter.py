@@ -360,11 +360,12 @@ def save_data(
             # load_features(t, frames, sr)
         # rec.tracks[0].end = len0(frames) / sr
         rec.duration = len(frames) / sr
-        rec.load_samples(
-            config.segment_length,
-            config.segment_stride,
-            # do_overlap=not config.filter_frequency,
-        )
+        # logging.info("Loadeding sample but already have %s", len(rec.samples))
+        # rec.load_samples(
+        #     config.segment_length,
+        #     config.segment_stride,
+        #     # do_overlap=not config.filter_frequency,
+        # )
         samples = rec.samples
         rec.sample_rate = resample
         for i, sample in enumerate(samples):
@@ -393,8 +394,7 @@ def save_data(
                     sample.logits = logits.numpy()[0]
                     sample.embeddings = embeddings.numpy()[0]
                 logging.info("Mem %s", psutil.virtual_memory()[2])
-                # print("mel is", mel.shape)
-                # print("adjusted start is", sample.start, " becomes", sample.start - start)
+
                 if spec is None:
                     logging.warn("error loading spec for %s", rec.id)
                     continue
@@ -419,11 +419,10 @@ def save_data(
         del orig_frames
     except:
         logging.error("Got error %s", rec.filename, exc_info=True)
-        print("ERRR return None")
         return 0
     del rec
 
-    logging.info("Total Saved %s", saved)
+    # logging.info("Total Saved %s", saved)
     return saved
 
 
@@ -498,9 +497,9 @@ def save_embeddings(rec):
         print("ERRR return None")
         return None
 
-    logging.info("Total Saved %s", saved)
-    if saved > 200:
-        assign_writer()
+    # logging.info("Total Saved %s", saved)
+    # if saved > 200:
+    #     assign_writer()
 
 
 def get_embeddings(samples):
