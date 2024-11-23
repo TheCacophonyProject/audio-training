@@ -472,14 +472,14 @@ def balance_ds(original_ds, dataset):
     counts = list(lbl_counts.values())
     counts.sort(reverse=True)
     target_count = counts[2]
-
+    target_count = 1000
     # median = np.mean(counts)
 
     logging.info("COunts are %s", counts)
     extra_samples = {}
     low_samples = []
     for lbl, count in lbl_counts.items():
-        extra_samples[lbl] = 0
+        extra_samples[lbl] = 1000
         if count < target_count:
             extra_samples[lbl] = target_count - count
             low_samples.append(lbl)
@@ -547,18 +547,52 @@ def balance_ds(original_ds, dataset):
         extra_samples[lbl] -= len(selected_samples)
 
         if extra_samples[lbl] > target_count / 2:
-            selected_samples = np.random.choice(
-                list(used_samples.values()),
-                int(min(len(used_samples), extra_samples[lbl])),
-                replace=False,
-            )
-            logging.info("Cloning %s", len(selected_samples))
+            repeat_samples = []
+            repeat_small_strides = []
+            repeat_unused_samples = []
+            for rec in dataset.recs.values():
+                if lbl not in rec.human_tags:
+                    continue
+                (samples, small_strides, unused_samples) = rec.get_samples(
+                    dataset.config.segment_length,
+                    dataset.config.segment_stride,
+                    for_label=lbl,
+                )
+                repeat_samples.extend(samples)
+                repeat_unused_samples.extend(unused_samples)
+                repeat_small_strides.extend(small_strides)
+                logging.info(
+                    "Loaded extra sets for %s got %s and %s and %s",
+                    lbl,
+                    len(samples),
+                    len(small_strides),
+                    len(unused_samples),
+                )
+            sample_index = 0
 
-            for sample in selected_samples:
-                cloned = sample.clone()
-                cloned.low_sample = True
-                dataset.recs[sample.rec_id].samples.append(sample)
-                dataset.samples.append(sample)
+            sample_sets = [repeat_samples, repeat_small_strides, repeat_unused_samples]
+
+            while extra_samples[lbl] > target_count / 2 and sample_index < len(
+                sample_sets
+            ):
+                sample_set = sample_sets[sample_index]
+                sample_index += 1
+                selected_samples = np.random.choice(
+                    list(sample_set),
+                    int(min(len(sample_set), extra_samples[lbl])),
+                    replace=False,
+                )
+                extra_samples[lbl] -= len(selected_samples)
+                logging.info(
+                    "Adding %s for %s from sample index set %s",
+                    len(selected_samples),
+                    lbl,
+                    sample_index - 1,
+                )
+                for sample in selected_samples:
+                    sample.low_sample = True
+                    dataset.recs[sample.rec_id].samples.append(sample)
+                    dataset.samples.append(sample)
 
 
 def main():

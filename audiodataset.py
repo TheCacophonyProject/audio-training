@@ -403,7 +403,9 @@ class Recording:
         self.small_strides = []
         if load_samples:
             self.signal_percent()
-            self.load_samples(config.segment_length, config.segment_stride)
+            (self.samples, self.small_strides, self.unused_samples) = self.get_samples(
+                config.segment_length, config.segment_stride
+            )
 
     def add_tracks(self, tracks):
         for t in tracks:
@@ -458,15 +460,21 @@ class Recording:
     def space_signals(self, spacing=0.1):
         self.signals = space_signals(signals, spacing)
 
-    def load_samples(
+    def get_samples(
         self,
         segment_length,
         segment_stride,
         do_overlap=False,
+        for_label=None,
+        extra_samples=True,
     ):
-        max_samples = MAX_TRACK_SAMPLES
+        samples = []
+        extra_small_strides = []
+        unused_samples = []
 
-        self.samples = []
+        max_samples = MAX_TRACK_SAMPLES
+        if len(self.samples) > 0:
+            logging.warn("Loading samples when we already have samples")
         global SAMPLE_GROUP_ID
         SAMPLE_GROUP_ID += 1
         sorted_tracks = sorted(
@@ -482,8 +490,12 @@ class Recording:
         min_sample_length = segment_length - SEG_LEEWAY
         # low_sample_rec = any([True for l in self.human_tags if l in LOW_SAMPLES_LABELS])
         # can be used to seperate among train/val/test
+        if for_label is None:
+            tracks = self.tracks
+        else:
+            tracks = [t for t in self.tracks if for_label in t.human_tags]
         bin_id = f"{self.id}-0"
-        for track in self.tracks:
+        for track in tracks:
             start_stride = segment_stride
             max_samples = (track.length - segment_length) / segment_stride
             if track.length > 3:
@@ -531,15 +543,15 @@ class Recording:
             # adjust start times by a random float this way we can incorporate
             # end sometimes and start othertimes
 
-            small_stirdes = (
+            small_strides = (
                 np.arange(track_samples, step=start_stride, dtype=np.float32)
                 + track.start
                 + start_stride / 2
             )
 
             if track_samples > 1:
-                small_stirdes = (
-                    small_stirdes + np.random.rand(len(small_stirdes)) / 2 - 0.25
+                small_strides = (
+                    small_strides + np.random.rand(len(small_strides)) / 2 - 0.25
                 )
             # logging.info(
             #     "%s  Track times are %s-%s samples are %s num samples %s small strides %s",
@@ -548,7 +560,7 @@ class Recording:
             #     track.end,
             #     sample_starts,
             #     track_samples,
-            #     small_stirdes,
+            #     small_strides,
             # )
             # if a track has a little bit that will be cut off at the end
             # adjust tsample to be random start
@@ -561,9 +573,18 @@ class Recording:
                 [True for l in track.human_tags if l in LOW_SAMPLES_LABELS]
             )
             small_stride = False
-            for starts in [sample_starts, small_stirdes]:
+            if extra_samples:
+                all_starts = [sample_starts, small_strides]
+            else:
+                all_starts = [sample_starts]
+
+            for starts in all_starts:
+                # logging.info(
+                #     "Loading from starts %s msmalll stride %s", starts, small_stride
+                # )
+                sample_i = 0
                 for start in starts:
-                    used_sample = start in selected_samples
+                    used_sample = start in selected_samples and not small_stride
                     end = start + segment_length
                     end = min(end, track.end)
 
@@ -645,11 +666,11 @@ class Recording:
                         low_sample=low_sample_track,
                     )
                     if used_sample:
-                        self.samples.append(sample)
-                    elif small_stride:
-                        self.small_strides.append(sample)
-                    else:
-                        self.unused_samples.append(sample)
+                        samples.append(sample)
+                    elif small_stride and extra_samples:
+                        extra_small_strides.append(sample)
+                    elif extra_samples:
+                        unused_samples.append(sample)
 
                     if start > track.end or (end - start) < min_sample_length:
                         break
@@ -664,6 +685,8 @@ class Recording:
             # for unused in self.small_strides:
             #     if track.id in unused.track_ids:
             #         logging.info("SMall stride samples are %s", unused)
+        logging.info("Returning samples %s", len(samples))
+        return (samples, extra_small_strides, unused_samples)
 
     @property
     def bin_id(self):
