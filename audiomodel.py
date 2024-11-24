@@ -104,7 +104,8 @@ class AudioModel:
         self.input_shape = DIMENSIONS
         if model_name == "embeddings":
             self.input_shape = EMBEDDING_SHAPE
-
+        elif model_name == "efficientnetb0":
+            self.input_shape = (self.input_shape[0], self.input_shape[1], 3)
         self.preprocess_fn = None
         self.learning_rate = 0.01
         self.mean_sub = False
@@ -593,15 +594,14 @@ class AudioModel:
         else:
             norm_layer = tf.keras.layers.Normalization()
             norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
-            input = tf.keras.Input(shape=(*self.input_shape, 1), name="input")
+            input = tf.keras.Input(shape=self.input_shape, name="input")
 
-            base_model, self.preprocess_fn = self.get_base_model((*self.input_shape, 1))
+            base_model, self.preprocess_fn = self.get_base_model(self.input_shape)
             x = norm_layer(input)
             x = base_model(x)
             # , training=True)
-            base_model.summary()
 
-            # x = tf.keras.layers.GlobalAveragePooling2D()(x)
+            x = tf.keras.layers.GlobalAveragePooling2D()(x)
             activation = "softmax"
             if multi_label:
                 activation = "sigmoid"
@@ -610,7 +610,7 @@ class AudioModel:
                 num_labels, activation=activation, name="prediction"
             )(x)
 
-            output = [birds]
+            outputs = [birds]
             self.model = tf.keras.models.Model(input, outputs=outputs)
 
         if multi_label:
@@ -1548,6 +1548,10 @@ def parse_args():
 
     parser.add_argument("-w", "--weights", help="Weights to use")
     parser.add_argument("--cross", action="count", help="Cross fold val")
+    parser.add_argument(
+        "--no-low-samples", action="count", help="Don't use over sampled samples"
+    )
+
     parser.add_argument(
         "--lme", action="count", help="Use log mean expo instead of global avg"
     )

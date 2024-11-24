@@ -299,6 +299,7 @@ def load_dataset(filenames, num_labels, labels, args):
             features=args.get("features", False),
             multi=args.get("multi_label", True),
             load_raw=args.get("load_raw", True),
+            model_name=args.get("model_name", "badwinner2"),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -573,10 +574,13 @@ def get_a_dataset(dir, labels, args):
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
 
-    no_low_samples_filter = lambda x, y: tf.math.equal(
-        y[6], tf.constant(0, dtype=tf.int64)
-    )
-    dataset = dataset.filter(no_low_samples_filter)
+    if args.get("no_low_samples", False):
+        logging.info("Filtering out low samples")
+        no_low_samples_filter = lambda x, y: tf.math.equal(
+            y[6], tf.constant(0, dtype=tf.int64)
+        )
+        dataset = dataset.filter(no_low_samples_filter)
+
     if not args.get("one_hot", True):
         bird_mask = tf.constant(bird_i, dtype=tf.float32)
         bird_filter = lambda x, y: tf.math.equal(y[0], bird_mask)
@@ -666,6 +670,7 @@ def get_a_dataset(dir, labels, args):
                 x, y, num_labels, weighting, specific_mask, rest_weighting
             )
         )
+
     return dataset, remapped, epoch_size, labels, extra_label_dic
 
 
@@ -741,6 +746,7 @@ def read_tfrecord(
     features=False,
     multi=True,
     load_raw=True,
+    model_name="badwinner2",
 ):
     tfrecord_format = {"audio/class/text": tf.io.FixedLenFeature((), tf.string)}
     tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
@@ -814,6 +820,9 @@ def read_tfrecord(
         spectogram = tf.reshape(spectogram, (2049, 513))
         spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
         spectogram = tf.expand_dims(spectogram, axis=-1)
+        if model_name == "efficientnetb0":
+            spectogram = tf.repeat(spectogram, 3, 2)
+
         print("Loaded spect ", spectogram.shape)
     if features or only_features:
         short_f = example["audio/short_f"]
