@@ -685,7 +685,6 @@ class Recording:
             # for unused in self.small_strides:
             #     if track.id in unused.track_ids:
             #         logging.info("SMall stride samples are %s", unused)
-        logging.info("Returning samples %s", len(samples))
         return (samples, extra_small_strides, unused_samples)
 
     @property

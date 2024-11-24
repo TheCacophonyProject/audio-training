@@ -182,7 +182,7 @@ MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 DIMENSIONS = (160, 188)
 
 mel_s = (N_MELS, 513)
-sftf_s = (2401, 188)
+sftf_s = (2049, 188)
 mfcc_s = (20, 188)
 DIMENSIONS = (*mel_s, 1)
 YAMNET_EMBEDDING_SHAPE = (6, 1024)
@@ -572,6 +572,11 @@ def get_a_dataset(dir, labels, args):
             ),
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
+
+    no_low_samples_filter = lambda x, y: tf.math.equal(
+        y[6], tf.constant(0, dtype=tf.int64)
+    )
+    dataset = dataset.filter(no_low_samples_filter)
     if not args.get("one_hot", True):
         bird_mask = tf.constant(bird_i, dtype=tf.float32)
         bird_filter = lambda x, y: tf.math.equal(y[0], bird_mask)
@@ -740,6 +745,8 @@ def read_tfrecord(
     tfrecord_format = {"audio/class/text": tf.io.FixedLenFeature((), tf.string)}
     tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
     tfrecord_format["audio/track_id"] = tf.io.FixedLenFeature((), tf.string)
+    tfrecord_format["audio/low_sample"] = tf.io.FixedLenFeature((), tf.int64)
+
     if embeddings:
         logging.info("Loading embeddings")
 
@@ -756,10 +763,10 @@ def read_tfrecord(
             tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((144000), tf.float32)
         else:
             tfrecord_format["audio/spectogram"] = tf.io.FixedLenFeature(
-                (2401 * 513), tf.float32
+                (2049 * 513), tf.float32
             )
         tfrecord_format["audio/buttered"] = tf.io.FixedLenFeature(
-            (2401 * 513), tf.float32, default_value=tf.zeros((2401 * 513))
+            (2049 * 513), tf.float32, default_value=tf.zeros((2049 * 513))
         )
 
     if features or only_features:
@@ -769,6 +776,7 @@ def read_tfrecord(
     tfrecord_format["audio/signal_percent"] = tf.io.FixedLenFeature((), tf.float32)
 
     example = tf.io.parse_single_example(example, tfrecord_format)
+    low_sample = tf.cast(example["audio/low_sample"], tf.int64)
 
     label = tf.cast(example["audio/class/text"], tf.string)
     split_labels = tf.strings.split(label, sep="\n")
@@ -803,7 +811,7 @@ def read_tfrecord(
         else:
 
             spectogram = example["audio/spectogram"]
-        spectogram = tf.reshape(spectogram, (2401, 513))
+        spectogram = tf.reshape(spectogram, (2049, 513))
         spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
         spectogram = tf.expand_dims(spectogram, axis=-1)
         print("Loaded spect ", spectogram.shape)
@@ -897,6 +905,7 @@ def read_tfrecord(
             example["audio/rec_id"],
             example["audio/track_id"],
             possible_labels,
+            low_sample,
         )
 
     return image
@@ -1270,7 +1279,7 @@ def butter_bandpass(lowcut, highcut, fs, order=2):
 #     )
 #     stft = tf.transpose(stft, [1, 0])
 #     stft = tf.math.abs(stft)
-#     # stft = tf.reshape(stft, [2401, mel_s[1]])
+#     # stft = tf.reshape(stft, [2049, mel_s[1]])
 #     image = tf.tensordot(MEL_WEIGHTS, stft, 1)
 #     image = tf.expand_dims(image, axis=2)
 #     if features:
