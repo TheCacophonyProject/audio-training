@@ -471,15 +471,15 @@ def balance_ds(original_ds, dataset):
         del lbl_counts["noise"]
     counts = list(lbl_counts.values())
     counts.sort(reverse=True)
-    target_count = counts[2]
-    target_count = 1000
+    # target_count = counts[4]
+    target_count = np.mean(counts)
     # median = np.mean(counts)
 
     logging.info("COunts are %s", counts)
     extra_samples = {}
     low_samples = []
     for lbl, count in lbl_counts.items():
-        extra_samples[lbl] = 1000
+        extra_samples[lbl] = 0
         if count < target_count:
             extra_samples[lbl] = target_count - count
             low_samples.append(lbl)
@@ -649,6 +649,8 @@ def main():
     #     for unused in rec.unused_samples:
     #         logging.info("Not Used samples are %s", unused)
     balance_ds(dataset, datasets[0])
+    balance_ds(dataset, datasets[1])
+
     logging.info("After balance")
     for d in datasets[:1]:
         logging.info("")

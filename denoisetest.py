@@ -482,7 +482,7 @@ def main():
     signal, noise, spectogram, frames = signal_noise(args.file)
     for s in signal:
         print(s)
-    1 / 0
+    # 1 / 0
     tracks = signals_to_tracks(signal)
     for t in tracks:
         print(t)

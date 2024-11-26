@@ -582,7 +582,7 @@ class Recording:
                 # logging.info(
                 #     "Loading from starts %s msmalll stride %s", starts, small_stride
                 # )
-                sample_i = 0
+                # sample_i = 0
                 for start in starts:
                     used_sample = start in selected_samples and not small_stride
                     end = start + segment_length
@@ -672,9 +672,13 @@ class Recording:
                     elif extra_samples:
                         unused_samples.append(sample)
 
+                    min_sample_length = segment_length - SEG_LEEWAY
+
                     if start > track.end or (end - start) < min_sample_length:
                         break
                 small_stride = True
+                # just for first segment
+                min_sample_length = 1.5
             # for s in self.samples:
             #     if track.id in s.track_ids:
             #         logging.info("USed samples are %s", s)
