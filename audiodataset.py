@@ -474,7 +474,7 @@ class Recording:
 
         max_samples = MAX_TRACK_SAMPLES
         if len(self.samples) > 0:
-            logging.warn("Loading samples when we already have samples")
+            logging.debug("Loading samples when we already have samples")
         global SAMPLE_GROUP_ID
         SAMPLE_GROUP_ID += 1
         sorted_tracks = sorted(

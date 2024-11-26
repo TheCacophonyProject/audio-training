@@ -463,7 +463,7 @@ def trim_noise(dataset):
 # And by allowing samples that start at strides of 0.5 seconds instead of just
 # one second
 # If still very low will repeat samples
-def balance_ds(original_ds, dataset):
+def balance_ds(original_ds, dataset, max_repeats=1):
     lbl_counts = dataset.get_counts()
     if "bird" in lbl_counts:
         del lbl_counts["bird"]
@@ -471,8 +471,7 @@ def balance_ds(original_ds, dataset):
         del lbl_counts["noise"]
     counts = list(lbl_counts.values())
     counts.sort(reverse=True)
-    # target_count = counts[4]
-    target_count = np.mean(counts)
+    target_count = counts[8]
     # median = np.mean(counts)
 
     logging.info("COunts are %s", counts)
@@ -561,22 +560,26 @@ def balance_ds(original_ds, dataset):
                 repeat_samples.extend(samples)
                 repeat_unused_samples.extend(unused_samples)
                 repeat_small_strides.extend(small_strides)
-                logging.info(
-                    "Loaded extra sets for %s got %s and %s and %s",
-                    lbl,
-                    len(samples),
-                    len(small_strides),
-                    len(unused_samples),
-                )
+                # logging.info(
+                #     "Loaded extra sets for %s got %s and %s and %s",
+                #     lbl,
+                #     len(samples),
+                #     len(small_strides),
+                #     len(unused_samples),
+                # )
             sample_index = 0
 
             sample_sets = [repeat_samples, repeat_small_strides, repeat_unused_samples]
-
-            while extra_samples[lbl] > target_count / 2 and sample_index < len(
-                sample_sets
+            repeat = 0
+            if len(repeat_samples) == 0:
+                continue
+            while extra_samples[lbl] >= 1 and (
+                max_repeats is None or repeat / 3 < max_repeats
             ):
+                logging.info("Running on %s repeat %s", lbl, repeat)
+                sample_index = repeat % 3
                 sample_set = sample_sets[sample_index]
-                sample_index += 1
+                repeat += 1
                 selected_samples = np.random.choice(
                     list(sample_set),
                     int(min(len(sample_set), extra_samples[lbl])),
@@ -584,10 +587,11 @@ def balance_ds(original_ds, dataset):
                 )
                 extra_samples[lbl] -= len(selected_samples)
                 logging.info(
-                    "Adding %s for %s from sample index set %s",
+                    "Adding %s for %s from sample index set %s missing %s",
                     len(selected_samples),
                     lbl,
-                    sample_index - 1,
+                    sample_index,
+                    extra_samples[lbl],
                 )
                 for sample in selected_samples:
                     sample.low_sample = True
@@ -648,16 +652,17 @@ def main():
 
     #     for unused in rec.unused_samples:
     #         logging.info("Not Used samples are %s", unused)
-    balance_ds(dataset, datasets[0])
+    balance_ds(dataset, datasets[0], max_repeats=5)
     balance_ds(dataset, datasets[1])
 
     logging.info("After balance")
-    for d in datasets[:1]:
+    for d in datasets[:2]:
         logging.info("")
         logging.info("%s Dataset", d.name)
         d.print_sample_counts()
 
         all_labels.update(d.labels)
+    return
 
     all_labels = list(all_labels)
     all_labels.sort()
