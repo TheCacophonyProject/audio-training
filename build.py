@@ -662,7 +662,6 @@ def main():
         d.print_sample_counts()
 
         all_labels.update(d.labels)
-    return
 
     all_labels = list(all_labels)
     all_labels.sort()
