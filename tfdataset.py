@@ -11,7 +11,7 @@ import json
 import logging
 import librosa
 import librosa.display
-from custommels import mel_f
+from custommel import mel_f
 from pathlib import Path
 import tensorflow_io as tfio
 from audiomentations import AddBackgroundNoise, PolarityInversion, Compose

@@ -16,7 +16,7 @@ import math
 import librosa.display
 
 import audioread.ffdec  # Use ffmpeg decoder
-from custommels import mel_spec
+from custommel import mel_spec
 import sys
 
 sys.path.append("../pyAudioAnalysis")

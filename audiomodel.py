@@ -460,10 +460,15 @@ class AudioModel:
                 else "val_acc.weights.h5"
             )
             self.model.load_weights(os.path.join(self.checkpoint_folder, run_name, acc))
+            confusion_file = (
+                self.checkpoint_folder / run_name / "confusion-val_binary_accuracy"
+            )
             if args.get("multi_label"):
-                multi_confusion_single(self.model, self.labels, self.test, run_name)
+                multi_confusion_single(
+                    self.model, self.labels, self.test, confusion_file
+                )
             else:
-                confusion(self.model, self.labels, self.test, run_name)
+                confusion(self.model, self.labels, self.test, confusion_file)
 
     def save_metadata(self, run_name, history, test_results, **args):
         #  save metadata
@@ -733,6 +738,23 @@ class AudioModel:
         self.labels.sort()
         logging.info("Loading train")
         excluded_labels = get_excluded_labels(self.labels)
+
+        test_brds = [
+            "bird",
+            "fantail",
+            "morepork",
+            # "noise",
+            # "human",
+            "grey warbler",
+            "insect",
+            "kiwi",
+            "magpie",
+            "tui",
+        ]
+        for l in self.labels:
+            if l not in excluded_labels and l not in test_brds:
+                excluded_labels.append(l)
+
         logging.info("labels are %s Excluding %s", self.labels, excluded_labels)
         self.train, remapped, epoch_size, new_labels, extra_label_map = get_dataset(
             training_files_dir,
@@ -745,7 +767,6 @@ class AudioModel:
             embeddings=self.model_name == "embeddings",
             **args,
         )
-
         self.num_train_instance = epoch_size
         if self.second_data_dir is not None:
             second_filenames = tf.io.gfile.glob(

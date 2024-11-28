@@ -2,6 +2,7 @@ import requests
 from pathlib import Path
 import datetime
 import json
+import argparse
 
 
 def download_file(url, local_filename):
@@ -17,9 +18,20 @@ def download_file(url, local_filename):
     return local_filename
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("bird", help="Bird data to download")
+    parser.add_argument("dir", help="Directory to download into")
+
+    args = parser.parse_args()
+    args.dir = Path(args.dir)
+    return args
+
+
 base_url = "https://www.xeno-canto.org/api/2/recordings"
-bird = "Australasian%Bittern"
-dl_path = Path(f"./bittern")
+args = parse_args()
+bird = args.bird
+dl_path = Path(args.dir)
 url = f"{base_url}?query={bird}"
 print("getting", url)
 r = requests.get(url)

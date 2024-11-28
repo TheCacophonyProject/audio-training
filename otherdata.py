@@ -13,25 +13,24 @@ import random
 import audioread.ffdec  # Use ffmpeg decoder
 import numpy as np
 from multiprocessing import Pool
+from identifytracks import signal_noise, get_tracks_from_signals, get_end
+import argparse
 
 
 def load_recording(file, resample=48000):
-    aro = None
     try:
+        # librosa.load(file) giving strange results
         aro = audioread.ffdec.FFmpegAudioFile(file)
-        frames, sr = librosa.load(aro)
+        frames, sr = librosa.load(aro, sr=None)
         aro.close()
         if resample is not None and resample != sr:
             frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
             sr = resample
+        return frames, sr
     except:
-        try:
-            aro.close()
-        except:
-            pass
         logging.error("Could not load %s", file, exc_info=True)
-        return None, None
-    return frames, sr
+        # for some reason the original exception causes docker to hang
+        raise Exception(f"Could not load {file}")
 
 
 # csv_files = ["./ff10/ff1010bird_metadata.csv"]
@@ -175,6 +174,112 @@ def mix_noise(w):
     count += 1
     if count % 50 == 0:
         logging.info("Saved %s", count)
+
+
+def generate_tracks(args):
+
+    min_freq = lbl_meta.get("min-freq")
+    max_freq = lbl_meta.get("max-freq")
+
+    wav_file = args[0]
+    clip_id = args[1]
+    print("arg is ", wav_file, " min ", min_freq, " max ", max_freq)
+    meta_f = wav_file.with_suffix(".txt")
+    metadata = {}
+    if meta_f.exists():
+        with meta_f.open("r") as f:
+            metadata = json.load(f)
+
+    if "Tracks" in metadata:
+        return
+    frames, sr = load_recording(wav_file, None)
+
+    length = get_end(frames, sr)
+    signals = signal_noise(frames[: int(sr * length)], sr, 281)
+    signals = [
+        s
+        for s in signals
+        if (min_freq is None or s.freq_start > min_freq)
+        and (max_freq is None or s.freq_start < max_freq)
+    ]
+    tracks = get_tracks_from_signals(signals, length, min_freq, max_freq)
+    tracks_meta = []
+    for i, t in enumerate(tracks):
+
+        track_meta = t.get_meta()
+        track_meta["id"] = f"{wav_file.name}-{i}"
+        tag = {"automatic": False, "what": wav_file.parent.name}
+        track_meta["tags"] = [tag]
+        tracks_meta.append(track_meta)
+    metadata["Tracks"] = tracks_meta
+    metadata["id"] = int(clip_id)
+    metadata["duration"] = length
+    # metadata["location"] =
+    # could get some metadata  from xeno canto
+
+    with meta_f.open("w") as f:
+        json.dump(metadata, f, indent=4)
+
+
+lbl_meta = None
+
+
+def xeno_init(metadata):
+    global lbl_meta
+    lbl_meta = metadata
+
+
+def weakly_lbled_data(base_dir):
+    logging.info("Weakly labeled xeno data %s", base_dir)
+    config = Config()
+    dataset = AudioDataset("Xeno", config)
+    base_dir = Path(base_dir)
+    child_dirs = [f for f in base_dir.iterdir() if f.is_dir()]
+    for lbl_dir in child_dirs:
+        logging.info("Loading from %s", lbl_dir.name)
+
+        meta_f = lbl_dir / f"{lbl_dir.name}.txt"
+        metadata = {}
+        if meta_f.exists():
+            with meta_f.open("r") as f:
+                metadata = json.load(f)
+
+        wav_files = list(lbl_dir.glob("*.wav"))
+        clip_ids = np.arange(len(wav_files))
+        with Pool(processes=8, initializer=xeno_init, initargs=(metadata,)) as pool:
+            [
+                0
+                for x in pool.imap_unordered(
+                    generate_tracks, zip(wav_files, clip_ids), chunksize=8
+                )
+            ]
+    dataset.load_meta(base_dir)
+    dataset.print_counts()
+
+    record_dir = base_dir / "xeno-training-data/"
+    print("saving to", record_dir)
+
+    dataset_counts = {}
+    dataset.name = "train"
+    datasets = [dataset]
+    for dataset in datasets:
+        dir = record_dir / dataset.name
+        print("saving to ", dir)
+        create_tf_records(dataset, dir, datasets[0].labels, num_shards=100)
+        dataset_counts[dataset.name] = dataset.get_counts()
+        # dataset.saveto_numpy(os.path.join(base_dir))
+    # dont need dataset anymore just need some meta
+    meta_filename = record_dir / "training-meta.json"
+    meta_data = {
+        "labels": datasets[0].labels,
+        "type": "audio",
+        "counts": dataset_counts,
+        "by_label": False,
+        "relabbled": RELABEL,
+    }
+    meta_data.update(config.__dict__)
+    with open(meta_filename, "w") as f:
+        json.dump(meta_data, f, indent=4)
 
 
 def flickr_data():
@@ -402,6 +507,9 @@ def chime_data():
 
 def main():
     init_logging()
+    args = parse_args()
+    weakly_lbled_data(args.dir)
+    return
     # process_noise()
     # return
     flickr_data()
@@ -492,7 +600,10 @@ def main():
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument("-d", "--dir", help="Dir to load")
+
     args = parser.parse_args()
+    args.dir = Path(args.dir)
     return args
 
 

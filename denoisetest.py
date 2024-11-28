@@ -13,7 +13,7 @@ import json
 import audioread.ffdec  # Use ffmpeg decoder
 import math
 from plot_utils import plot_spec, plot_mel_signals
-from custommels import mel_spec
+from custommel import mel_spec
 
 # from dateutil.parser import parse as parse_date
 import sys
@@ -78,8 +78,9 @@ def signal_noise(file, hop_length=281):
     frames, sr = load_recording(file)
     end = get_end(frames, sr)
     frames = frames[: int(sr * end)]
-    frames = frames[: sr * 4]
-    n_fft = sr // 10
+    # frames = frames[: sr * 4]
+    # n_fft = sr // 10
+    n_fft = 4096
     spectogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
     # plot_spec(spectogram)
     signals, noise = signal_noise_data(
@@ -480,8 +481,8 @@ def main():
 
     # mix_file(args.file, args.mix)
     signal, noise, spectogram, frames = signal_noise(args.file)
-    for s in signal:
-        print(s)
+    # for s in signal:
+    # print(s)
     # 1 / 0
     tracks = signals_to_tracks(signal)
     for t in tracks:
