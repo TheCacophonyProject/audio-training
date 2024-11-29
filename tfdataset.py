@@ -603,7 +603,7 @@ def get_a_dataset(dir, labels, args):
     # if args.get("filter_signal") is not None:
     #     logging.info("Filtering signal by percent 0.1")
     #     bird_dataset = bird_dataset.filter(filter_signal)
-
+    dataset = dataset.cache()
     if args.get("shuffle", True):
         dataset = dataset.shuffle(
             4096, reshuffle_each_iteration=args.get("reshuffle", True)
