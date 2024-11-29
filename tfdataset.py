@@ -304,6 +304,7 @@ def load_dataset(filenames, num_labels, labels, args):
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
+    
     if args.get("filter_bad", False):
         logging.info("Filtering bad")
         dataset = dataset.filter(lambda x, y: not filter_bad_tracks(x, y, labels))
@@ -428,7 +429,7 @@ def get_dataset(dir, labels, **args):
         dir, labels, args
     )
     args["epoch_size"] = epoch_size
-
+    deterministic = args.get("deterministic",False)
     if args.get("load_raw", True):
         logging.info("Mapping raw to mel")
         if args.get("augment", False):
@@ -448,14 +449,14 @@ def get_dataset(dir, labels, **args):
             train_ds = tf.data.Dataset.zip((ds_first, ds_second))
 
             dataset = train_ds.map(
-                lambda ds_one, ds_two: mix_up(ds_one, ds_two, alpha=0.5)
-            )
+                lambda ds_one, ds_two: mix_up(ds_one, ds_two, alpha=0.5),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
+            
             # dataset = dataset.map(lambda x, y: mix_up(x, y, dataset2))
 
             # doing mix up
         else:
             dataset = ds_first
-        dataset = dataset.map(lambda x, y: raw_to_mel(x, y))
+        dataset = dataset.map(lambda x, y: raw_to_mel(x, y),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
     else:
         dataset = ds_first
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
@@ -616,11 +617,13 @@ def get_a_dataset(dir, labels, args):
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
     logging.info("Loss fn is %s", args.get("loss_fn"))
+    deterministic = args.get("deterministic", False)
+
     if args.get("loss_fn") == "WeightedCrossEntropy":
         logging.info("Mapping possiblebirds")
-        dataset = dataset.map(lambda x, y: (x, (y[0], y[5])))
+        dataset = dataset.map(lambda x, y: (x, (y[0], y[5])),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
     else:
-        dataset = dataset.map(lambda x, y: (x, y[0]))
+        dataset = dataset.map(lambda x, y: (x, y[0]),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
     epoch_size = args.get("epoch_size")
     dist = None
     if epoch_size is None:
@@ -1007,7 +1010,7 @@ def main():
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
 
-        resampled_ds, remapped, _, labels = get_dataset(
+        resampled_ds, remapped, _, labels,_ = get_dataset(
             tf_dir / "test",
             # filenames,
             labels,
@@ -1060,6 +1063,13 @@ def main():
     #         )
     #         print("")
     # return
+    for e in range(2):
+        start = time.time()
+
+        for x, y in resampled_ds:
+            pass
+        print("Epoch took ",time.time() - start)
+    return
     for e in range(1):
         for x, y in resampled_ds:
             print(x.shape)

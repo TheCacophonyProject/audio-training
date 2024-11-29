@@ -536,6 +536,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     num_labels = len(labels)
     logging.info("writing to output path: %s for %s samples", output_path, len(samples))
     logging.info("labels are %s", labels)
+    
     num_processes = 8
     total_recs = len(samples)
     writer_i = 0

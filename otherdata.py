@@ -177,13 +177,11 @@ def mix_noise(w):
 
 
 def generate_tracks(args):
-
-    min_freq = lbl_meta.get("min-freq")
-    max_freq = lbl_meta.get("max-freq")
+    min_freq = lbl_meta.get("min_freq")
+    max_freq = lbl_meta.get("max_freq")
 
     wav_file = args[0]
     clip_id = args[1]
-    print("arg is ", wav_file, " min ", min_freq, " max ", max_freq)
     meta_f = wav_file.with_suffix(".txt")
     metadata = {}
     if meta_f.exists():
@@ -202,7 +200,8 @@ def generate_tracks(args):
         if (min_freq is None or s.freq_start > min_freq)
         and (max_freq is None or s.freq_start < max_freq)
     ]
-    tracks = get_tracks_from_signals(signals, length, min_freq, max_freq)
+
+    tracks = get_tracks_from_signals(signals, length)
     tracks_meta = []
     for i, t in enumerate(tracks):
 
@@ -228,7 +227,6 @@ def xeno_init(metadata):
     global lbl_meta
     lbl_meta = metadata
 
-
 def weakly_lbled_data(base_dir):
     logging.info("Weakly labeled xeno data %s", base_dir)
     config = Config()
@@ -243,7 +241,6 @@ def weakly_lbled_data(base_dir):
         if meta_f.exists():
             with meta_f.open("r") as f:
                 metadata = json.load(f)
-
         wav_files = list(lbl_dir.glob("*.wav"))
         clip_ids = np.arange(len(wav_files))
         with Pool(processes=8, initializer=xeno_init, initargs=(metadata,)) as pool:
@@ -253,25 +250,42 @@ def weakly_lbled_data(base_dir):
                     generate_tracks, zip(wav_files, clip_ids), chunksize=8
                 )
             ]
+    FIRST_SECONDS = 5
     dataset.load_meta(base_dir)
     dataset.print_counts()
 
+    dataset.samples = []
+    for k,r in dataset.recs.items():
+        r.samples = [s for s in r.samples if s.start< FIRST_SECONDS]
+        dataset.samples.extend(r.samples)
+    dataset.print_counts()
+
+
+    train,validation,_ = split_randomly(dataset, no_test=True)
+    validation.name = "test"
+
+    all_labels = set()
+    for d in [train,validation]:
+        logging.info("")
+        logging.info("%s Dataset", d.name)
+        d.print_sample_counts()
+
+        all_labels.update(d.labels)
+    all_labels = list(all_labels)
     record_dir = base_dir / "xeno-training-data/"
     print("saving to", record_dir)
 
     dataset_counts = {}
-    dataset.name = "train"
-    datasets = [dataset]
-    for dataset in datasets:
+    for dataset in [train,validation]:
         dir = record_dir / dataset.name
         print("saving to ", dir)
-        create_tf_records(dataset, dir, datasets[0].labels, num_shards=100)
+        create_tf_records(dataset, dir, all_labels, num_shards=100)
         dataset_counts[dataset.name] = dataset.get_counts()
         # dataset.saveto_numpy(os.path.join(base_dir))
     # dont need dataset anymore just need some meta
     meta_filename = record_dir / "training-meta.json"
     meta_data = {
-        "labels": datasets[0].labels,
+        "labels": list(all_labels),
         "type": "audio",
         "counts": dataset_counts,
         "by_label": False,
