@@ -86,6 +86,7 @@ class AudioDataset:
     def load_meta(self, base_path):
         meta_files = Path(base_path).glob("**/*.txt")
         for f in meta_files:
+            print("Loading ",f)
             try:
                 meta = load_metadata(f)
                 audio_f = f.with_suffix(".m4a")
@@ -177,7 +178,6 @@ class AudioDataset:
             logging.info(
                 "%s: %s used as %s ( %s )", k, v, RELABEL[k], len(rec_counts[k])
             )
-
     def print_sample_counts(self):
         counts = {}
         original_c = {}

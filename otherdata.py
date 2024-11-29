@@ -242,6 +242,8 @@ def weakly_lbled_data(base_dir):
             with meta_f.open("r") as f:
                 metadata = json.load(f)
         wav_files = list(lbl_dir.glob("*.wav"))
+        wav_files.extend(list(lbl_dir.glob("*.mp3")))
+
         clip_ids = np.arange(len(wav_files))
         with Pool(processes=8, initializer=xeno_init, initargs=(metadata,)) as pool:
             [
@@ -251,12 +253,16 @@ def weakly_lbled_data(base_dir):
                 )
             ]
     FIRST_SECONDS = 5
+
     dataset.load_meta(base_dir)
     dataset.print_counts()
 
     dataset.samples = []
     for k,r in dataset.recs.items():
-        r.samples = [s for s in r.samples if s.start< FIRST_SECONDS]
+        acceptable_tracks = [t.id for t in r.tracks if t.start < FIRST_SECONDS]
+        r.samples = [s for s in r.samples if s.track_ids[0] in acceptable_tracks and s.length> 2]
+        if len(r.samples)==0:
+            print("No sample is first seconds for ", r.filename)
         dataset.samples.extend(r.samples)
     dataset.print_counts()
 
@@ -271,6 +277,7 @@ def weakly_lbled_data(base_dir):
         d.print_sample_counts()
 
         all_labels.update(d.labels)
+    return
     all_labels = list(all_labels)
     record_dir = base_dir / "xeno-training-data/"
     print("saving to", record_dir)
