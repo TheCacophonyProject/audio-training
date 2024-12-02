@@ -700,9 +700,10 @@ def mix_up(ds_one, ds_two, alpha=0.5):
     y_l = tf.keras.ops.reshape(l, (batch_size, 1))
 
     images = images_one * x_l + images_two * (1 - x_l)
-    labels = labels_one[0] * y_l + labels_two[0] * (1 - y_l)
-    possible_labels = tf.clip_by_value(labels_one[1] + labels_two[1], 0, 1)
-    return (images, (labels, possible_labels))
+    labels = labels_one * y_l + labels_two * (1 - y_l)
+    # possible_labels = tf.clip_by_value(labels_one[1] + labels_two[1], 0, 1)
+    return (images, labels)
+# (labels, possible_labels))
 
 
 # @tf.function
@@ -794,8 +795,10 @@ def read_tfrecord(
     if multi:
         extra = extra_label_map.lookup(split_labels)
         labels = tf.concat([labels, extra], axis=0)
-    else:
-        labels = tf.reduce_max(labels)
+    # else:
+    #     print("Labels was ",labels)
+    #     labels = tf.reduce_max(labels)
+    #     print("Labels becomes ",labels)
     embed_preds = None
     if load_raw:
         spectogram = example["audio/raw"]
@@ -857,11 +860,17 @@ def read_tfrecord(
             label = tf.reduce_max(
                 tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
             )
+            if not multi:
+                logging.info("Choosing only one label as not multi")
+                max_l = tf.argmax(label)
+                label = tf.one_hot(max_l, num_labels, dtype=tf.int32)
+
             if embed_preds is not None:
                 embed_preds = tf.reduce_max(
                     tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
                 )
         else:
+            # pretty sure this is wrong but never used
             label = labels
         signal_percent = 0.0
         if no_bird:
@@ -1017,19 +1026,21 @@ def main():
             # use_generic_bird=False,
             batch_size=32,
             image_size=DIMENSIONS,
-            augment=True,
+            augment=False,
             resample=False,
             excluded_labels=excluded_labels,
             # stop_on_empty=True,
             filter_freq=False,
             random_butter=0.9,
             only_features=False,
-            multi_label=True,
+            multi_label=False,
             load_raw=False,
-            use_bird_tags=True,
+            use_bird_tags=False,
             # filenames_2=filenames_2
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
+        for x , y in resampled_ds:
+            print("Y is ",y)
         break
         # filenames.extend(tf.io.gfile.glob(f"{d}/test/**/*.tfrecord"))
     print("labels are ", labels)
@@ -1063,13 +1074,13 @@ def main():
     #         )
     #         print("")
     # return
-    for e in range(2):
-        start = time.time()
+    # for e in range(2):
+    #     start = time.time()
 
-        for x, y in resampled_ds:
-            pass
-        print("Epoch took ",time.time() - start)
-    return
+    #     for x, y in resampled_ds:
+    #         pass
+    #     print("Epoch took ",time.time() - start)
+    # return
     for e in range(1):
         for x, y in resampled_ds:
             print(x.shape)
@@ -1113,12 +1124,12 @@ def show_batch(image_batch, label_batch, labels):
     # min_freq = label_batch[3]
     # max_freq = label_batch[4]
     # recs = label_batch[3]
-    tracks = label_batch[4]
-    label_batch = label_batch[0]
+    # tracks = label_batch[4]
+    # label_batch = label_batch[0]
     fig = plt.figure(figsize=(20, 20))
     print("images in batch", len(image_batch), len(label_batch))
     num_images = len(image_batch)
-    print("labl batch", label_batch)
+    print("labl batch", label_batch[0])
     i = 0
     for n in range(num_images):
         # print("Y is ", label_batch[n])
@@ -1341,7 +1352,7 @@ def raw_to_mel(x, y, features=False):
     image = tf.keras.backend.batch_dot(weights, stft)
     image = tf.expand_dims(image, axis=3)
 
-    print("Applied weights shape is ", image.shape)
+    print("Applied weights shape is ", image.shape,y.shape)
 
     if features:
         x = (x[0], x[1], image)

@@ -54,9 +54,13 @@ for r in results.get("recordings"):
     meta_file = filename.with_suffix(".txt")
     print("Saving meta", meta_file, meta_file.exists())
     if not meta_file.exists():
+        if r.get("lat") is None or  r.get("lng") is None:
+            location = {}
+        else:
+            location = {"lat": float(r.get("lat")), "lng": float(r.get("lng"))},
         meta_data = {
             "recordingDateTime": date_time.isoformat(),
-            "location": {"lat": float(r.get("lat")), "lng": float(r.get("lng"))},
+            "location": location,
             "additionalMetadata": {
                 "source": "xeno",
                 "url": r.get("url"),
