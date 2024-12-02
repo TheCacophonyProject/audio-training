@@ -277,7 +277,7 @@ def weakly_lbled_data(base_dir):
         d.print_sample_counts()
 
         all_labels.update(d.labels)
-    return
+
     all_labels = list(all_labels)
     record_dir = base_dir / "xeno-training-data/"
     print("saving to", record_dir)
