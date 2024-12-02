@@ -491,6 +491,7 @@ def get_a_dataset(dir, labels, args):
             remapped,
             excluded_labels,
         )
+    
     remapped_y = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(list(remapped.keys())),
@@ -519,6 +520,9 @@ def get_a_dataset(dir, labels, args):
     # extra tags, since we have multi label problem, morepork is a bird and morepork
     # cat is a cat but also "noise"
     # extra_label_map["-10"] = -10
+    if len(extra_label_dic)== 0:
+        # seems to need something
+        extra_label_dic["nonsense"]=1
     extra_label_map = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(list(extra_label_dic.keys())),
