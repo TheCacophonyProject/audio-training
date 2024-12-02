@@ -533,6 +533,14 @@ def get_a_dataset(dir, labels, args):
     logging.info("Loading tf records from %s", dir)
     filenames = tf.io.gfile.glob(str(dir / "*.tfrecord"))
 
+    xeno_files = Path("/data/audio-data/xenocanto/xeno-training-data/")
+    xeno_files = xeno_files / dir.name
+    if xeno_files.exists():
+        logging.info("Xeno files %s",xeno_files)
+        xeno_files = tf.io.gfile.glob(str(xeno_files / "*.tfrecord"))
+        logging.info("Loading xeno files %s",xeno_files)
+        filenames.extend(xeno_files)
+
     lbl_dataset = load_dataset(filenames, num_labels, labels, args)
     logging.info("Loading %s files from %s", len(filenames), dir)
     datasets.append(lbl_dataset)
