@@ -653,6 +653,7 @@ class AudioModel:
         metrics = [
             "val_loss",
             "val_binary_accuracy",
+            "val_categorical_accuracy"
             "val_precision",
             "val_auc",
             "val_recall",
@@ -1485,7 +1486,7 @@ def main():
                 weight_files = [
                     "val_loss.weights.h5",
                     # "val_precK.weights.h5",
-                    "val_binary_accuracy.weights.h5" if multi else "val_acc.weights.h5",
+                    "val_binary_accuracy.weights.h5" if multi else "val_categorical_accuracy.weights.h5",
                 ]
 
             for w in weight_files:
