@@ -190,7 +190,7 @@ class AudioModel:
                 og_labels,
                 batch_size=self.batch_size,
                 image_size=self.input_shape,
-                augment=False,
+                augment=True,
                 resample=False,
                 excluded_labels=excluded_labels,
                 mean_sub=self.mean_sub,
@@ -653,7 +653,7 @@ class AudioModel:
         metrics = [
             "val_loss",
             "val_binary_accuracy",
-            "val_categorical_accuracy"
+            "val_categorical_accuracy",
             "val_precision",
             "val_auc",
             "val_recall",
