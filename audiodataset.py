@@ -62,7 +62,7 @@ logging.info("Allow %s to have a recording over multiple datasets", LOW_SAMPLES_
 
 class Config:
     def __init__(self, **args):
-        self.segment_length = args.get("seg_length", 3)
+        self.segment_length = args.get("seg_length",3)
         self.segment_stride = args.get("stride", 1)
         self.hop_length = args.get("hop_length", 281)
         self.break_freq = args.get("break_freq", 1000)
@@ -471,7 +471,6 @@ class Recording:
         samples = []
         extra_small_strides = []
         unused_samples = []
-
         max_samples = MAX_TRACK_SAMPLES
         if len(self.samples) > 0:
             logging.debug("Loading samples when we already have samples")

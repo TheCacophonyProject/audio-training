@@ -782,14 +782,15 @@ def read_tfrecord(
         tfrecord_format["audio/lng"] = tf.io.FixedLenFeature((), tf.float32)
 
         if load_raw:
-            tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((144000), tf.float32)
+            tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((48000 * 5), tf.float32)
         else:
             tfrecord_format["audio/spectogram"] = tf.io.FixedLenFeature(
-                (2049 * 513), tf.float32
+                (2049 * 855), tf.float32
             )
-        tfrecord_format["audio/buttered"] = tf.io.FixedLenFeature(
-            (2049 * 513), tf.float32, default_value=tf.zeros((2049 * 513))
-        )
+        if filter_freq:
+            tfrecord_format["audio/buttered"] = tf.io.FixedLenFeature(
+                (2049 * 513), tf.float32, default_value=tf.zeros((2049 * 513))
+            )
 
     if features or only_features:
         tfrecord_format["audio/short_f"] = tf.io.FixedLenFeature((68 * 60), tf.float32)
@@ -835,7 +836,7 @@ def read_tfrecord(
         else:
 
             spectogram = example["audio/spectogram"]
-        spectogram = tf.reshape(spectogram, (2049, 513))
+        spectogram = tf.reshape(spectogram, (2049, 855))
         spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
         spectogram = tf.expand_dims(spectogram, axis=-1)
         if model_name == "efficientnetb0":

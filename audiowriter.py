@@ -48,9 +48,20 @@ import librosa
 from audiodataset import load_data, SpectrogramData
 from multiprocessing import Pool
 
-# import tensorflow_hub as hub
+import tensorflow_hub as hub
 from audiodataset import load_features
 import psutil
+
+
+# stuff to print out label
+# with open('perchlabels.csv') as f:
+#     df = f.read().splitlines() 
+# ebird_map ={}
+# with open('eBird_taxonomy_v2024.csv') as f:
+#     for line in f:
+#         split_l = line.split(",")
+
+#         ebird_map[split_l[2]] = line
 
 
 def create_tf_example(sample):
@@ -196,7 +207,7 @@ model = None
 embedding_model = None
 embedding_labels = None
 
-DO_EMBEDDING = False
+DO_EMBEDDING = True
 
 #
 # def worker_init(c, l, d):
@@ -233,7 +244,9 @@ def process_job(queue, labels, config, base_dir, writer_i):
     embedding_model = None
     embedding_labels = None
     if DO_EMBEDDING:
-        model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
+        model = hub.load('https://www.kaggle.com/models/google/bird-vocalization-classifier/TensorFlow2/bird-vocalization-classifier/8')
+
+        # model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
 
     pid = os.getpid()
 
@@ -390,9 +403,13 @@ def save_data(
                         end = start + 32000 * config.segment_length
                     data = frames32[start:end]
                     data = np.pad(data, (0, 32000 * 5 - len(data)))
-                    logits, embeddings = model.infer_tf(data[np.newaxis, :])
+                    model_outputs  = model.infer_tf(data[np.newaxis, :])
+                    logits = model_outputs["label"]
+                    embeddings = model_outputs["embedding"]
                     sample.logits = logits.numpy()[0]
                     sample.embeddings = embeddings.numpy()[0]
+                    max_l =  np.argmax(sample.logits)
+                    # logging.info("For label %s got %s with score %s ebird %s",sample.tags,df[max_l],sample.logits[max_l],ebird_map[df[max_l]])
                 logging.info("Mem %s", psutil.virtual_memory()[2])
 
                 if spec is None:

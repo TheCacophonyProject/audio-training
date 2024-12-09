@@ -835,7 +835,7 @@ def parse_args():
     parser.add_argument("--hop-length", default=281, help="Number of hops to use")
     parser.add_argument("--fmin", default=50, help="Min freq")
     parser.add_argument("--fmax", default=11000, help="Max Freq")
-    parser.add_argument("--seg-length", default=3, help="Segment length in seconds")
+    parser.add_argument("--seg-length", default=3,type=int, help="Segment length in seconds")
     parser.add_argument("--stride", default=1, help="Segment stride")
     parser.add_argument(
         "out_dir", default="/data/audio-data", help="Directory to place files in"
