@@ -186,7 +186,7 @@ sftf_s = (2049, 188)
 mfcc_s = (20, 188)
 DIMENSIONS = (*mel_s, 1)
 YAMNET_EMBEDDING_SHAPE = (6, 1024)
-EMBEDDING_SHAPE = 1280
+EMBEDDING_SHAPE = (1280,)
 # TEST STUFF to blockout frequencies
 # mel_bins = librosa.mel_frequencies(128, fmax=48000 / 2)
 # human_lowest = np.where(mel_bins < 60)[-1][-1]
@@ -768,6 +768,8 @@ def read_tfrecord(
     tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
     tfrecord_format["audio/track_id"] = tf.io.FixedLenFeature((), tf.string)
     tfrecord_format["audio/low_sample"] = tf.io.FixedLenFeature((), tf.int64)
+    tfrecord_format["audio/lat"] = tf.io.FixedLenFeature((), tf.float32)
+    tfrecord_format["audio/lng"] = tf.io.FixedLenFeature((), tf.float32)
 
     if embeddings:
         logging.info("Loading embeddings")
@@ -778,9 +780,7 @@ def read_tfrecord(
 
     elif not only_features:
         logging.info("Loading sft audio")
-        tfrecord_format["audio/lat"] = tf.io.FixedLenFeature((), tf.float32)
-        tfrecord_format["audio/lng"] = tf.io.FixedLenFeature((), tf.float32)
-
+      
         if load_raw:
             tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((48000 * 5), tf.float32)
         else:
@@ -817,7 +817,7 @@ def read_tfrecord(
         spectogram = example["audio/raw"]
 
     elif embeddings:
-        image = example["embedding"]
+        spectogram = example["embedding"]
 
     elif not only_features:
         buttered = example["audio/buttered"] if filter_freq else None

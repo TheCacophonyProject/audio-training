@@ -167,7 +167,6 @@ def create_tf_example(sample):
             ),
         }
         feature_dict.update(pred_dic)
-        print("Adding embeddings", sample.embeddings.shape)
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
     return example, 0
 

@@ -1134,7 +1134,9 @@ def confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
             predicted_categories.append(len(labels) - 1)
     cm = confusion_matrix(y_true, predicted_categories, labels=np.arange(len(labels)))
     figure = plot_confusion_matrix(cm, class_names=labels)
-    plt.savefig(f"./confusions/{filename}", format="png")
+    plt.savefig(filename.with_suffix(".png"), format="png")
+
+    # plt.savefig(f"./confusions/{filename}", format="png")
 
 
 def multi_confusion_single(
