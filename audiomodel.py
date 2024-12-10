@@ -808,6 +808,7 @@ class AudioModel:
             mean_sub=self.mean_sub,
             filenames_2=second_filenames,
             embeddings=self.model_name == "embeddings",
+            deterministic=True,
             **test_args,
         )
 
