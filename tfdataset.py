@@ -181,7 +181,7 @@ MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 
 DIMENSIONS = (160, 188)
 
-mel_s = (N_MELS, 513)
+mel_s = (N_MELS, 855)
 sftf_s = (2049, 188)
 mfcc_s = (20, 188)
 DIMENSIONS = (*mel_s, 1)
