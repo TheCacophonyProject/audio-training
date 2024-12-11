@@ -78,7 +78,7 @@ def signal_noise(file, hop_length=281):
     frames, sr = load_recording(file)
     end = get_end(frames, sr)
     frames = frames[: int(sr * end)]
-    # frames = frames[: sr * 4]
+    # frames = frames[: sr * 120]
     # n_fft = sr // 10
     n_fft = 4096
     spectogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
@@ -475,12 +475,52 @@ def tracks_to_audio(tracks, spectogram, frames, sr=48000, hop_length=281):
         # 1 / 0
 
 
+def means_merge(spectogram,signals):
+    features = np.float32([s.to_features() for s in signals])
+    from sklearn.cluster import KMeans,AgglomerativeClustering,DBSCAN,OPTICS
+    n_clusters = 2
+
+    # model = KMeans(n_clusters).fit(features)
+    model = AgglomerativeClustering(None,distance_threshold=40).fit(features)
+    # model = OPTICS(min_samples = 2).fit(features)
+    # n_clusters = model.n_clusters_
+    labels = model.labels_
+    import matplotlib.colors as mcolors
+    possible_colours = list(mcolors.CSS4_COLORS.keys())
+    rect_colours = []
+    # print("Clusters are ",n_clusters)
+    print(possible_colours)
+    merged = {}
+    index = 0
+    for l in labels:
+        if l== -1:
+            print("Ignored" , signals[index])
+        elif l in merged:
+            print("Merging l",l)
+            signal = merged[l]
+            rect_colours.append(possible_colours[l])
+            signal.merge(signals[index])
+        else:
+            merged[l] = signals[index]
+        # print("Possible colours at ",l,possible_colours[l*10])
+        # rect_colours.append(possible_colours[l*4])
+        index +=1
+    
+    signals = []
+    n_clusters = len(merged)
+    for l in range(n_clusters):
+        signals.append(merged[l])
+    print("Signals are ",len(signals))
+    plot_mel_signals(np.abs(spectogram), signals,colours = rect_colours)
+
 def main():
     init_logging()
     args = parse_args()
 
     # mix_file(args.file, args.mix)
     signal, noise, spectogram, frames = signal_noise(args.file)
+    means_merge(spectogram,signal)
+    return
     # for s in signal:
     # print(s)
     # 1 / 0
@@ -624,6 +664,10 @@ class Signal:
         self.mel_freq_end = mel_freq(freq_end)
         self.predictions = []
 
+    def to_features(self):
+        # should 1 second be the same diff as 1000 hz? so scale a 1000 to 1
+        return np.float32([self.start,self.end,self.mel_freq_start/500,self.mel_freq_end/500])
+   
     def time_overlap(self, other):
         return segment_overlap(
             (self.start, self.end),
@@ -685,7 +729,7 @@ class Signal:
 
     def __str__(self):
         return (
-            f"Signal: {self.start}-{self.end}  mel: {self.freq_start} {self.freq_end}"
+            f"Signal: {self.start}-{self.end}  mel: {self.mel_freq_start} {self.mel_freq_end}"
         )
 
 

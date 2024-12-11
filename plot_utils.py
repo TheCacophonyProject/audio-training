@@ -20,7 +20,7 @@ def plot_mfcc(mfcc):
 import matplotlib.patches as patches
 
 
-def plot_mel_signals(mel, signals, signals2=[], i=0):
+def plot_mel_signals(mel, signals, signals2=[], i=0,colours = None):
     fig = plt.figure(figsize=(10, 10))
     ax = plt.subplot(1, 1, 1)
     img = librosa.display.specshow(
@@ -34,22 +34,27 @@ def plot_mel_signals(mel, signals, signals2=[], i=0):
         hop_length=281,
     )
     fig.colorbar(img, ax=ax, format="%+2.f dB")
+    signal_i = 0
     for s in signals:
         start_x = s.start
         end_x = s.end
         # start_x = int(start_x)
         # end_x = int(end_x)
+        edge_color = "r"
+        if colours is not None:
+            edge_color = colours[signal_i]
         rect = patches.Rectangle(
             (start_x, s.freq_start),
             end_x - start_x,
             s.freq_range,
             linewidth=1,
-            edgecolor="r",
+            edgecolor=edge_color,
             facecolor="none",
         )
         ax.add_patch(rect)
         # print("Added rect", start_x, end_x)
         # break
+        signal_i+=1
     for s in signals2:
         start_x = s[0]
         end_x = s[1]

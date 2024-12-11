@@ -1068,7 +1068,9 @@ def log_confusion_matrix(epoch, logs, model, dataset, writer, labels):
     from sklearn.preprocessing import MultiLabelBinarizer
 
     mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
-    true_categories = [y for x, y in dataset]
+    dataset_data = [(x,y) for x, y in dataset]
+    
+    true_categories = [y for x, y in dataset_data]
     true_categories = tf.concat(true_categories, axis=0)
     y_true = []
     for y in true_categories:
@@ -1077,7 +1079,9 @@ def log_confusion_matrix(epoch, logs, model, dataset, writer, labels):
     y_true = y_true
 
     true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    y_pred = model.predict(dataset)
+    data =  [x for x, y in dataset_data]
+    data = tf.concat(data, axis=0)
+    y_pred = model.predict(data)
 
     predicted_categories = []
     for pred in y_pred:

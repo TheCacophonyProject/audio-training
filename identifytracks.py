@@ -254,6 +254,9 @@ class Signal:
         # self.raw_tag = None
         # self.raw_confidence = None
 
+    def to_features(self):
+        return np.float32([self.start,self.end,self.freq_start,self.freq_end,self.mel_freq_start,self.mel_freq_end])
+   
     def to_array(self, decimals=1):
         a = [self.start, self.end, self.freq_start, self.freq_end]
         if decimals is not None:
