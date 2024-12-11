@@ -692,6 +692,7 @@ class AudioModel:
                 epoch, logs, self.model, self.validation, file_writer_cm, self.labels
             )
         )
+        checks.append(cm_callback)
         hist_callback = tf.keras.callbacks.LambdaCallback(
             on_epoch_end=log_hist_weights(self.model, file_writer_cm)
         )
