@@ -206,7 +206,7 @@ model = None
 embedding_model = None
 embedding_labels = None
 
-DO_EMBEDDING = True
+DO_EMBEDDING = False
 
 #
 # def worker_init(c, l, d):
