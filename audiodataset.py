@@ -375,6 +375,8 @@ class Recording:
         country_code = None
         if location is not None:
             try:
+                if isinstance(location,list):
+                    location = location[0]
                 lat = location.get("lat")
                 lng = location.get("lng")
                 self.location = (lat, lng)
