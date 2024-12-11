@@ -181,7 +181,7 @@ MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 
 DIMENSIONS = (160, 188)
 
-mel_s = (N_MELS, 855)
+mel_s = (N_MELS, 513)
 sftf_s = (2049, 188)
 mfcc_s = (20, 188)
 DIMENSIONS = (*mel_s, 1)
@@ -782,10 +782,10 @@ def read_tfrecord(
         logging.info("Loading sft audio")
       
         if load_raw:
-            tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((48000 * 5), tf.float32)
+            tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((48000 * 3), tf.float32)
         else:
             tfrecord_format["audio/spectogram"] = tf.io.FixedLenFeature(
-                (2049 * 855), tf.float32
+                (2049 * 513), tf.float32
             )
         if filter_freq:
             tfrecord_format["audio/buttered"] = tf.io.FixedLenFeature(
@@ -836,7 +836,7 @@ def read_tfrecord(
         else:
 
             spectogram = example["audio/spectogram"]
-        spectogram = tf.reshape(spectogram, (2049, 855))
+        spectogram = tf.reshape(spectogram, (2049, 513))
         spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
         spectogram = tf.expand_dims(spectogram, axis=-1)
         if model_name == "efficientnetb0":
