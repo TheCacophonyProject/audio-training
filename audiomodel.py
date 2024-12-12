@@ -106,6 +106,9 @@ class AudioModel:
             self.input_shape = EMBEDDING_SHAPE
         elif model_name == "efficientnetb0":
             self.input_shape = (self.input_shape[0], self.input_shape[1], 3)
+        elif model_name == "dual-badwinner2":
+            self.input_shape = (96,511,1)
+        
         self.preprocess_fn = None
         self.learning_rate = 0.01
         self.mean_sub = False
@@ -559,6 +562,37 @@ class AudioModel:
 
             self.model = tf.keras.models.Model(inputs, outputs=output)
             self.model.summary()
+        elif self.model_name=="dual-badwinner2":
+            model = badwinner2.build_model(
+                self.input_shape,
+                None,
+                num_labels,
+                multi_label=multi_label,
+                lme=self.lme,
+                n_mels=96
+            )
+            model_2 = badwinner2.build_model(
+                self.input_shape,
+                None,
+                num_labels,
+                multi_label=multi_label,
+                lme=self.lme,
+                input_name = "input2",
+                n_mels=96
+            )
+            inputs = []
+            model_2.input.name="input2"
+            inputs.append(model.input)
+            inputs.append(model_2.input)
+            output = tf.keras.layers.Concatenate()([model.output, model_2.output])
+
+            #  i think this should learn it the same but allow for more complex patterns
+            output = layers.Dense(num_labels)(output)
+            output = tf.keras.activations.sigmoid(output)
+            
+            self.model = tf.keras.models.Model(inputs, outputs=output)
+            self.model.summary()
+            print("MODEL MADE")
         elif self.model_name == "badwinner2":
             logging.info("Building bad winner2")
             self.model = badwinner2.build_model(
@@ -692,7 +726,7 @@ class AudioModel:
                 epoch, logs, self.model, self.validation, file_writer_cm, self.labels
             )
         )
-        checks.append(cm_callback)
+        # checks.append(cm_callback)
         hist_callback = tf.keras.callbacks.LambdaCallback(
             on_epoch_end=log_hist_weights(self.model, file_writer_cm)
         )

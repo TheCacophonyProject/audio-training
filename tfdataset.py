@@ -177,6 +177,17 @@ NFFT = 4096
 
 MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, NFFT, BREAK_FREQ)
 MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
+
+# ALTERNATIVE WEIGHTS FOR DUAL MODEL
+N_MELS = 96
+
+MEL_WEIGHTS = mel_f(48000, N_MELS, 0, 3000, 2048, BREAK_FREQ)
+MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
+
+MEL_WEIGHTS_2 = mel_f(48000, N_MELS, 500, 15000, 1024, BREAK_FREQ)
+MEL_WEIGHTS_2 = tf.constant(MEL_WEIGHTS_2)
+# MEL_WEIGHTS = tf.expand_dims(MEL_WEIGHTS, 0)
+
 # MEL_WEIGHTS = tf.expand_dims(MEL_WEIGHTS, 0)
 
 DIMENSIONS = (160, 188)
@@ -456,7 +467,7 @@ def get_dataset(dir, labels, **args):
             # doing mix up
         else:
             dataset = ds_first
-        dataset = dataset.map(lambda x, y: raw_to_mel(x, y),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
+        dataset = dataset.map(lambda x, y: raw_to_mel_dual(x, y),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
     else:
         dataset = ds_first
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
@@ -1248,7 +1259,7 @@ def get_weighting(dataset, labels):
     # excluded_labels = []
     dont_weigh = []
     # for l in labels:
-    #     if l in ["human", "bird", "noise", "whistler", "morepork", "kiwi"]:
+#     if l in ["human", "bird", "noise", "whistler", "morepork", "kiwi"]:
     #         continue
     #     dont_weigh.append(l)
     num_labels = len(labels)
@@ -1332,12 +1343,66 @@ def butter_bandpass(lowcut, highcut, fs, order=2):
 #     return x, y
 
 
+
+@tf.function
+def raw_to_mel_dual(x, y, features=False):
+
+    raw = x
+    raw_2 = tf.compat.v1.identity(raw)
+    raw =  butter_function(raw,0,3000)
+    stft = tf.signal.stft(
+        raw,
+        2048,
+        278,
+        fft_length=2048,
+        window_fn=tf.signal.hann_window,
+        # pad_end=True,
+        name=None,
+    )
+   
+    stft = tf.transpose(stft, [0, 2, 1])
+    stft = tf.math.abs(stft)
+    print("STFT becomes ",stft.shape)
+    batch_size = tf.keras.ops.shape(x)[0]
+
+    weights = tf.expand_dims(MEL_WEIGHTS, 0)
+    weights = tf.repeat(weights, batch_size, 0)
+    image = tf.keras.backend.batch_dot(weights, stft)
+    image = tf.expand_dims(image, axis=3)
+
+    raw2 = butter_function(raw_2,500,15000)
+
+    stft = tf.signal.stft(
+        raw,
+        1024,
+        280,
+        fft_length=1024,
+        window_fn=tf.signal.hann_window,
+        # pad_end=True,
+        name=None,
+    )
+   
+    stft = tf.transpose(stft, [0, 2, 1])
+    stft = tf.math.abs(stft)
+    batch_size = tf.keras.ops.shape(x)[0]
+
+    weights = tf.expand_dims(MEL_WEIGHTS_2, 0)
+    weights = tf.repeat(weights, batch_size, 0)
+    image_2 = tf.keras.backend.batch_dot(weights, stft)
+    image_2 = tf.expand_dims(image_2, axis=3)
+
+
+    # x =  tf.keras.layers.Concatenate()([image,image_2])
+    return (image,image_2), y
+
+
 @tf.function
 def raw_to_mel(x, y, features=False):
     if features:
         raw = x[2]
     else:
         raw = x
+        
     stft = tf.signal.stft(
         raw,
         NFFT,

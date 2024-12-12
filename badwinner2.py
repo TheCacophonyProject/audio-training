@@ -198,8 +198,10 @@ def build_model(
     lme=False,
     add_dense=True,
     big_condense=True,
+    input_name = "input",
+    n_mels= 160
 ):
-    input = tf.keras.Input(shape=input_shape, name="input")
+    input = tf.keras.Input(shape=input_shape, name=input_name)
     # x = norm_layer(input)
     # if multi_label:
     filters = 256
@@ -232,7 +234,12 @@ def build_model(
     # At this point we have 48 mel bands remaining if we started with 160
     # Squish the information into smaller features essentially combining mel bands
     if big_condense:
-        x = tf.keras.layers.Conv2D(128, (44, 3))(x)
+        if n_mels == 160:
+            x = tf.keras.layers.Conv2D(128, (44, 3))(x)
+        elif n_mels== 96:
+            x = tf.keras.layers.Conv2D(128, (22, 3))(x)
+        else:
+            raise "Unhandle mel channels " + n_mels
         x = tf.keras.layers.LeakyReLU()(x)
         x = tf.keras.layers.BatchNormalization()(x)
     else:
