@@ -179,13 +179,14 @@ MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, NFFT, BREAK_FREQ)
 MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 
 # ALTERNATIVE WEIGHTS FOR DUAL MODEL
-N_MELS = 96
+# N_MELS = 96
 
-MEL_WEIGHTS = mel_f(48000, N_MELS, 0, 3000, 2048, BREAK_FREQ)
-MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
+# MEL_WEIGHTS = mel_f(48000, N_MELS, 0, 3000, 2048, BREAK_FREQ)
+# MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 
-MEL_WEIGHTS_2 = mel_f(48000, N_MELS, 500, 15000, 1024, BREAK_FREQ)
-MEL_WEIGHTS_2 = tf.constant(MEL_WEIGHTS_2)
+# MEL_WEIGHTS_2 = mel_f(48000, N_MELS, 500, 15000, 1024, BREAK_FREQ)
+# MEL_WEIGHTS_2 = tf.constant(MEL_WEIGHTS_2)
+
 # MEL_WEIGHTS = tf.expand_dims(MEL_WEIGHTS, 0)
 
 # MEL_WEIGHTS = tf.expand_dims(MEL_WEIGHTS, 0)
@@ -467,7 +468,11 @@ def get_dataset(dir, labels, **args):
             # doing mix up
         else:
             dataset = ds_first
-        dataset = dataset.map(lambda x, y: raw_to_mel_dual(x, y),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
+        if args.get("model_name") == "dual-badwinner2":
+            dataset = dataset.map(lambda x, y: raw_to_mel_dual(x, y),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
+        else:
+            dataset = dataset.map(lambda x, y: raw_to_mel(x, y),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
+
     else:
         dataset = ds_first
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
