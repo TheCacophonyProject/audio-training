@@ -1687,6 +1687,30 @@ def parse_args():
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("name", help="Run name")
 
+    parser.add_argument(
+        "--fmin",
+        default=None,
+        type=int,
+    )
+
+    parser.add_argument(
+        "--fmax",
+        default=None,
+        type=int,
+    )
+
+    parser.add_argument(
+        "--n_fft",
+        default=None,
+        type=int,
+    )
+
+    parser.add_argument(
+        "--break-freq",
+        default=None,
+        type=int,
+    )
+
     args = parser.parse_args()
     # args.multi = args.multi > 0
     args.resample = args.resample > 0

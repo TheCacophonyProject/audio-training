@@ -90,6 +90,19 @@ EXTRA_LABELS = ["rooster", "frog", "insect", "human", "noise"]
 OTHER_LABELS = []
 
 
+
+insect = None
+fp = None
+HOP_LENGTH = 281
+N_MELS = 160
+SR = 48000
+BREAK_FREQ = 1000
+NFFT = 4096
+MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, NFFT, BREAK_FREQ)
+MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
+
+FMIN=50
+FMAX = 11000
 # JUST FOR HUMAN OR NOT MODEL
 # NOISE_LABELS.extend(SPECIFIC_BIRD_LABELS)
 # NOISE_LABELS.extend(GENERIC_BIRD_LABELS)
@@ -167,17 +180,6 @@ def get_excluded_labels(labels):
 # NOISE_PATH = NOISE_PATH[:2]
 # BIRD_PATH = BIRD_PATH[:2]
 # NOISE_LABELS = []
-insect = None
-fp = None
-HOP_LENGTH = 281
-N_MELS = 160
-SR = 48000
-BREAK_FREQ = 1000
-NFFT = 4096
-
-MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, NFFT, BREAK_FREQ)
-MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
-
 # ALTERNATIVE WEIGHTS FOR DUAL MODEL
 # N_MELS = 96
 
@@ -436,7 +438,26 @@ bird_mask = None
 
 
 def get_dataset(dir, labels, **args):
+    global FMAX,MEL_WEIGHTS,FMIN,NFFT,BREAK_FREQ
 
+    if args.get("fmin") is not None:
+        FMIN = args["fmin"]
+        FMAX = args["fmax"]
+        logging.info("Using fmin and fmax %s %s",FMIN,FMAX)
+
+        MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
+        MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)    
+    if args.get("n_fft") is not None:
+        print(NFFT,"IS")
+        NFFT = args.get("n_fft")
+        logging.info("NFFT %s",NFFT)
+        MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
+        MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
+    if args.get("break_freq") is not None:
+        BREAK_FREQ = args.get("break_freq")
+        logging.info("Applied break freq %s",BREAK_FREQ)
+        MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
+        MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)       
     ds_first, remapped, epoch_size, labels, extra_label_dic = get_a_dataset(
         dir, labels, args
     )
@@ -1423,7 +1444,11 @@ def raw_to_mel(x, y, features=False):
     else:
         raw = x
         
-
+    global FMIN,FMAX
+    if FMIN >50:
+        logging.info("Applying butter %s %s",FMIN,FMAX)
+        raw =  butter_function(raw,FMIN,FMAX)
+    
     stft = tf.signal.stft(
         raw,
         NFFT,
