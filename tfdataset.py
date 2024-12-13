@@ -701,6 +701,11 @@ def get_a_dataset(dir, labels, args):
                 x, y, num_labels, weighting, specific_mask, rest_weighting
             )
         )
+    
+    if args.get("load_raw",False):
+        logging.info("Normalizing input")
+        dataset = dataset.map(lambda x, y: normalize(x, y))
+
 
     return dataset, remapped, epoch_size, labels, extra_label_dic
 
@@ -853,6 +858,7 @@ def read_tfrecord(
 
             spectogram = example["audio/spectogram"]
         spectogram = tf.reshape(spectogram, (2049, 513))
+        # spectogram = tf.math.pow(spectogram,2)
         spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
         spectogram = tf.expand_dims(spectogram, axis=-1)
         if model_name == "efficientnetb0":
@@ -1049,7 +1055,7 @@ def main():
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
 
         resampled_ds, remapped, _, labels,_ = get_dataset(
-            tf_dir / "test",
+            tf_dir / "train",
             # filenames,
             labels,
             # use_generic_bird=False,
@@ -1186,7 +1192,7 @@ def plot_mfcc(mfccs, ax):
 def plot_mel(mel, ax):
     # power = librosa.db_to_power(mel.numpy())
     img = librosa.display.specshow(
-        mel.numpy(),
+        librosa.power_to_db(mel.numpy(),ref=np.max),
         x_axis="time",
         y_axis="mel",
         sr=48000,
@@ -1400,6 +1406,15 @@ def raw_to_mel_dual(x, y, features=False):
     # x =  tf.keras.layers.Concatenate()([image,image_2])
     return (image,image_2), y
 
+@tf.function
+def normalize(input,y):
+    min_v  = tf.math.reduce_min(input,-1,keepdims=True)
+    input = tf.math.subtract(input,min_v)
+    max_v = tf.math.reduce_max(input,-1,keepdims=True)
+    input = tf.math.divide(input,max_v) + 0.000001
+    input = tf.math.subtract(input,0.5)
+    input = tf.math.multiply(input,2) 
+    return input,y
 
 @tf.function
 def raw_to_mel(x, y, features=False):
@@ -1408,6 +1423,7 @@ def raw_to_mel(x, y, features=False):
     else:
         raw = x
         
+
     stft = tf.signal.stft(
         raw,
         NFFT,

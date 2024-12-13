@@ -12,8 +12,9 @@ import pickle
 import json
 import audioread.ffdec  # Use ffmpeg decoder
 import math
-from plot_utils import plot_spec, plot_mel_signals
+from plot_utils import plot_spec, plot_mel_signals,plot_mel
 from custommel import mel_spec
+import tensorflow as tf
 
 # from dateutil.parser import parse as parse_date
 import sys
@@ -513,10 +514,99 @@ def means_merge(spectogram,signals):
     print("Signals are ",len(signals))
     plot_mel_signals(np.abs(spectogram), signals,colours = rect_colours)
 
+
+def test_plot(file):
+    frames, sr = load_recording(file)
+    frames = frames[:30*sr]
+    # frames,sr = librosa.load(file)
+    # print("Oriuginal sr ",sr, np.amax(frames),np.amin(frames))
+    # frames = librosa.resample(frames, orig_sr=sr, target_sr=96000)
+    # frames = librosa.util.normalize(frames)
+    # print("New sr ",24000, np.amax(frames),np.amin(frames))
+    # return
+    # end = get_end(frames, sr)
+    # frames = frames[: int(sr * end)]
+    # frames = frames[: sr * 120]
+    # n_fft = sr // 10
+    n_fft = 4096
+    hop_length=281
+
+
+# librosa.power_to_db(S, ref=np.max)
+    # import matplotlib.pyplot as plt
+    # fig, ax = plt.subplots()
+    # S_dB = librosa.power_to_db(mel, ref=np.max)
+    # img = librosa.display.specshow(S_dB, x_axis='time',
+    #                     y_axis='mel', sr=sr,
+    #                     fmax=8000, ax=ax)
+    # fig.colorbar(img, ax=ax, format='%+2.0f dB')
+    # ax.set(title='Mel-frequency spectrogram')
+    # # plt.show()
+    # print("MELLL")
+    # plot_mel(mel,"test.png")
+    frames_2 = butter_bandpass_filter(frames,500,15000,sr)
+    frames_2 = frames
+    frames_2 = normalize(frames_2)
+    print("Max min ",np.amax(frames_2),np.amin(frames_2))
+    mel_2 = librosa.feature.melspectrogram(y=frames_2, sr=sr,power=1,fmin=500,fmax=15000,n_mels=160)
+    plot_mel(mel_2,"default160.png")
+
+
+
+
+
+    spectogram = librosa.stft(frames_2, n_fft=4096, hop_length=281)
+    fmin=500
+    fmax=15000
+    hop_length=281
+    mel = mel_spec(
+        spectogram,
+        sr,
+        4096,
+        hop_length,
+        160,
+        fmin,
+        fmax,
+        1750,
+        power=1,
+    )
+    plot_mel(mel,filename="mel4096")
+
+    spectogram = librosa.stft(frames_2, n_fft=1024, hop_length=281)
+
+    mel = mel_spec(
+        spectogram,
+        sr,
+        1024,
+        hop_length,
+        160,
+        fmin,
+        fmax,
+        1750,
+        power=1,
+    )
+    plot_mel(mel,filename="mel1024")
+
+def normalize(input):
+    min_v  = tf.math.reduce_min(input,-1,keepdims=True)
+    input = tf.math.subtract(input,min_v)
+    max_v = tf.math.reduce_max(input,-1,keepdims=True)
+    input = tf.math.divide(input,max_v) + 0.000001
+    input = tf.math.subtract(input,0.5)
+    input = tf.math.multiply(input,2) 
+    return np.array(input)
+
 def main():
     init_logging()
+    
+    a = np.random.rand(5,4)
+    normed = normalize(a)
+    print(a)
+    print("a norm",normed)
+    return
     args = parse_args()
-
+    test_plot(args.file)
+    return
     # mix_file(args.file, args.mix)
     signal, noise, spectogram, frames = signal_noise(args.file)
     means_merge(spectogram,signal)
@@ -632,17 +722,17 @@ def plot_mfcc(mfcc):
     plt.close()
 
 
-def plot_mel(mel, i=0):
-    plt.figure(figsize=(10, 10))
+# def plot_mel(mel, filename):
+#     plt.figure(figsize=(10, 10))
 
-    ax = plt.subplot(1, 1, 1)
-    img = librosa.display.specshow(
-        mel, x_axis="time", y_axis="mel", sr=48000, fmax=11000, ax=ax
-    )
-    plt.show()
-    # plt.savefig(f"mel-power-{i}.png", format="png")
-    plt.clf()
-    plt.close()
+#     ax = plt.subplot(1, 1, 1)
+#     img = librosa.display.specshow(
+#         mel, x_axis="time", y_axis="mel", sr=48000, fmax=11000, ax=ax,hop_length=281
+#     )
+#     plt.show()
+#     # plt.savefig(f"{filename}.png", format="png")
+#     plt.clf()
+#     plt.close()
 
 
 def segment_overlap(first, second):
@@ -736,7 +826,8 @@ class Signal:
 from scipy.signal import butter, sosfilt, sosfreqz, freqs
 
 
-def butter_bandpass(lowcut, highcut, fs, order=5):
+# NOT USING AN OF THIS
+def butter_bandpass(lowcut, highcut, fs, order=2):
     nyq = 0.5 * fs
     btype = "lowpass"
     freqs = []
@@ -744,16 +835,48 @@ def butter_bandpass(lowcut, highcut, fs, order=5):
         btype = "bandpass"
         low = lowcut / nyq
         freqs.append(low)
-    high = highcut / nyq
-    freqs.append(high)
+    if highcut > 0:
+        high = highcut / nyq
+        if high < 1:
+            freqs.append(high)
+        else:
+            btype = "highpass"
+    else:
+        btype = "highpass"
+    if len(freqs) == 0:
+        return None
     sos = butter(order, freqs, analog=False, btype=btype, output="sos")
     return sos
 
-
-def butter_bandpass_filter(data, lowcut, highcut, fs, order=2):
+def butter_bandpass_filter(data, lowcut, highcut, fs=48000, order=2):
+    if lowcut <= 0 and highcut <= 0:
+        return data
     sos = butter_bandpass(lowcut, highcut, fs, order=order)
+    if sos is None:
+        return data
     filtered = sosfilt(sos, data)
-    return filtered
+    return np.float32(filtered)
+
+
+# def butter_bandpass(lowcut, highcut, fs, order=5):
+#     nyq = 0.5 * fs
+#     btype = "lowpass"
+#     freqs = []
+#     if lowcut > 0:
+#         btype = "bandpass"
+#         low = lowcut / nyq
+#         freqs.append(low)
+#     high = highcut / nyq
+#     freqs.append(high)
+#     print("Freqs are ",freqs, " sr is",fs)
+#     sos = butter(order, freqs, analog=False, btype=btype, output="sos")
+#     return sos
+
+
+# def butter_bandpass_filter(data, lowcut, highcut, fs, order=2):
+#     sos = butter_bandpass(lowcut, highcut, fs, order=order)
+#     filtered = sosfilt(sos, data)
+#     return filtered
 
 
 if __name__ == "__main__":
