@@ -1125,6 +1125,12 @@ def main():
                     # print(x)
                     x = x.numpy()
                     logging.info("Bad data for rec %s track %s less than -1 %s over 1 %s", rec,track, x[np.where(x <-1)], x[np.where(x >1)])
+                
+                a_max = np.amax(x)
+                a_min = np.amin(x)
+                if a_max == a_min:
+                    logging.info("Max = Min for rec %s track %s max %s min %s", rec,track, a_max,a_min)
+
         return
         break
         # filenames.extend(tf.io.gfile.glob(f"{d}/test/**/*.tfrecord"))
