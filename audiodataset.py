@@ -584,6 +584,8 @@ class Recording:
                 # )
                 # sample_i = 0
                 for start in starts:
+                    # no negative starts
+                    start = max(0,start)
                     used_sample = start in selected_samples and not small_stride
                     end = start + segment_length
                     end = min(end, track.end)
@@ -935,6 +937,11 @@ def load_data(
         end = round(segment_l * sr) + start
     else:
         end = round(end * sr)
+    
+    # can make samples with negative start,
+    if start_s < 0:
+        logging.warning("Adjusting start to zero")
+        start = 0
     data_length = segment_l
     spec = None
     try:
@@ -986,6 +993,11 @@ def load_data(
         spec = SpectrogramData(
             s_data, spectogram, data_length, spectogram_buttered, short_f, mid_f
         )
+        a_max = np.amax(s_data)
+        a_min = np.amin(s_data)
+        if a_max == a_min:
+            print("Error max is min ",a_max,a_min, start_s,end)
+            1/0
     except:
         logging.error(
             "Error getting segment  start %s lenght %s",

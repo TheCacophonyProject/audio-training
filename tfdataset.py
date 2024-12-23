@@ -668,10 +668,13 @@ def get_a_dataset(dir, labels, args):
             stop_on_empty_dataset=True,
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
+
     logging.info("Loss fn is %s", args.get("loss_fn"))
     deterministic = args.get("deterministic", False)
 
     if args.get("debug"):
+        specific_track = lambda x, y: tf.math.equal(y[4], tf.constant("2436458"))
+        dataset = dataset.filter(specific_track)
         batch_size = args.get("batch_size", None)
         dataset = dataset.cache()
 
@@ -1064,6 +1067,15 @@ def calc_mean():
 def main():
     init_logging()
 
+
+    # batch_data = []
+    # batch_data.append(np.zeros(5)-1)
+    # batch_data = np.array(batch_data)
+    # normalized = normalize(batch_data,None)
+    # print("Normalized becomes ")
+    # for n in normalized:
+    #     print(n)
+    # return
     # return
     datasets = ["other-training-data", "training-data", "chime-training-data"]
     datasets = ["training-data"]
@@ -1113,17 +1125,21 @@ def main():
             fmax=15000,
             use_bird_tags=False,
             debug=True,
-            shuffle=False
+            shuffle=False,
+            multi=True,
             # filenames_2=filenames_2
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
         for batch_x , batch_y in resampled_ds:
+            print("data is ", len(batch_x))
             recs = batch_y[3]
             tracks = batch_y[4]
             for x,rec,track in zip(batch_x,recs,tracks):
                 data_ok = np.all(x>=-1) and np.all(x<=1.000002)
                 a_max = np.amax(x)
                 a_min = np.amin(x)
+                rec = rec.numpy().decode("utf8")
+                track = track.numpy().decode("utf8")
                 if not data_ok:
                     # print(x)
                     x = x.numpy()

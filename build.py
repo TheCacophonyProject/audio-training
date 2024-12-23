@@ -465,12 +465,15 @@ def trim_noise(dataset):
 # If still very low will repeat samples
 def balance_ds(original_ds, dataset, max_repeats=1):
     lbl_counts = dataset.get_counts()
+    
     if "bird" in lbl_counts:
         del lbl_counts["bird"]
     if "noise" in lbl_counts:
         del lbl_counts["noise"]
     counts = list(lbl_counts.values())
     counts.sort(reverse=True)
+    if len(counts)<=1:
+        return
     target_i = min(len(counts)-1,8)
     target_count = counts[target_i]
     # median = np.mean(counts)
