@@ -199,14 +199,14 @@ def build_model(
     add_dense=True,
     big_condense=True,
     input_name = "input",
-    n_mels= 160
+    # n_mels= 160
 ):
     input = tf.keras.Input(shape=input_shape, name=input_name)
     # x = norm_layer(input)
     # if multi_label:
     filters = 256
     # y = x σ(a) , where σ(a) = 1/ (1 + exp(−a))
-
+    n_mels = input_shape[0]
     x = MagTransform()(input)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Conv2D(64, (3, 3))(x)

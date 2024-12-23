@@ -438,7 +438,7 @@ bird_mask = None
 
 
 def get_dataset(dir, labels, **args):
-    global FMAX,MEL_WEIGHTS,FMIN,NFFT,BREAK_FREQ
+    global FMAX,MEL_WEIGHTS,FMIN,NFFT,BREAK_FREQ,N_MELS
 
     if args.get("fmin") is not None:
         FMIN = args["fmin"]
@@ -451,6 +451,7 @@ def get_dataset(dir, labels, **args):
         print(NFFT,"IS")
         NFFT = args.get("n_fft")
         logging.info("NFFT %s",NFFT)
+        # N_MELS = 96
         MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
         MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
     if args.get("break_freq") is not None:
@@ -1080,6 +1081,7 @@ def main():
             # filenames,
             labels,
             # use_generic_bird=False,
+            deterministic=True,
             batch_size=32,
             image_size=DIMENSIONS,
             augment=False,
@@ -1090,7 +1092,10 @@ def main():
             random_butter=0.9,
             only_features=False,
             multi_label=False,
-            load_raw=False,
+            load_raw=True,
+            n_fft=4096,
+            fmin=500,
+            fmax=15000,
             use_bird_tags=False,
             # filenames_2=filenames_2
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
@@ -1213,7 +1218,8 @@ def plot_mfcc(mfccs, ax):
 def plot_mel(mel, ax):
     # power = librosa.db_to_power(mel.numpy())
     img = librosa.display.specshow(
-        librosa.power_to_db(mel.numpy(),ref=np.max),
+        mel.numpy(),
+        # librosa.power_to_db(mel.numpy(),ref=np.max),
         x_axis="time",
         y_axis="mel",
         sr=48000,

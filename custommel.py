@@ -23,7 +23,6 @@ def mel_f(sr, n_mels, fmin, fmax, n_fft, break_freq):
 
     # Center freqs of each FFT bin
     fftfreqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
-
     # 'Center freqs' of mel bands - uniformly spaced between limits
     mel_f = mel_frequencies(n_mels + 2, fmin, fmax, break_freq)
 
