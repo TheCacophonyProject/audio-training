@@ -471,7 +471,8 @@ def balance_ds(original_ds, dataset, max_repeats=1):
         del lbl_counts["noise"]
     counts = list(lbl_counts.values())
     counts.sort(reverse=True)
-    target_count = counts[8]
+    target_i = min(len(counts)-1,8)
+    target_count = counts[target_i]
     # median = np.mean(counts)
 
     logging.info("COunts are %s", counts)

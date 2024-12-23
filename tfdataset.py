@@ -490,7 +490,9 @@ def get_dataset(dir, labels, **args):
             # doing mix up
         else:
             dataset = ds_first
-        if args.get("model_name") == "dual-badwinner2":
+        if args.get("debug"):
+            logging.info("Not mapping to mel")
+        elif args.get("model_name") == "dual-badwinner2":
             dataset = dataset.map(lambda x, y: raw_to_mel_dual(x, y),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
         else:
             dataset = dataset.map(lambda x, y: raw_to_mel(x, y),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
@@ -668,6 +670,19 @@ def get_a_dataset(dir, labels, args):
         )
     logging.info("Loss fn is %s", args.get("loss_fn"))
     deterministic = args.get("deterministic", False)
+
+    if args.get("debug"):
+        batch_size = args.get("batch_size", None)
+        dataset = dataset.cache()
+
+        if batch_size is not None:
+            dataset = dataset.batch(batch_size, drop_remainder=False)
+        if args.get("load_raw",False):
+            logging.info("Normalizing input")
+            dataset = dataset.map(lambda x, y: normalize(x, y))
+        logging.info("Returning debug data")
+        return dataset, remapped, None, labels, extra_label_dic
+
 
     if args.get("loss_fn") == "WeightedCrossEntropy":
         logging.info("Mapping possiblebirds")
@@ -1097,11 +1112,20 @@ def main():
             fmin=500,
             fmax=15000,
             use_bird_tags=False,
+            debug=True,
             # filenames_2=filenames_2
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
-        for x , y in resampled_ds:
-            print("Y is ",y)
+        for batch_x , batch_y in resampled_ds:
+            recs = batch_y[3]
+            tracks = batch_y[4]
+            for x,rec,track in zip(batch_x,recs,tracks):
+                data_ok = np.all(x>-1) and np.all(x<1)
+                if not data_ok:
+                    # print(x)
+                    x = x.numpy()
+                    logging.info("Bad data for rec %s track %s less than -1 %s over 1 %s", rec,track, x[np.where(x <-1)], x[np.where(x >1)])
+        return
         break
         # filenames.extend(tf.io.gfile.glob(f"{d}/test/**/*.tfrecord"))
     print("labels are ", labels)
@@ -1482,7 +1506,6 @@ def raw_to_mel(x, y, features=False):
     image = tf.keras.backend.batch_dot(weights, stft)
     image = tf.expand_dims(image, axis=3)
 
-    print("Applied weights shape is ", image.shape,y.shape)
 
     if features:
         x = (x[0], x[1], image)
