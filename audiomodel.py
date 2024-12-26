@@ -478,8 +478,8 @@ class AudioModel:
         if run_name is None:
             run_name = self.params.model_name
         model_stats = {}
-        model_stats.update(args)
         model_stats.update(self.training_data_meta)
+        model_stats.update(args)
         model_stats["name"] = self.model_name
         # model_stats["use_generic_bird"] = args.get("use_generic_bird", False)
         # model_stats["filter_freq"] = args.get("filter_freq", False)
@@ -491,8 +491,10 @@ class AudioModel:
         model_stats["noise_labels"] = NOISE_LABELS
         model_stats["extra_labels"] = EXTRA_LABELS
         model_stats["other_labels"] = OTHER_LABELS
-        model_stats["n_mels"] = N_MELS
-        model_stats["break_freq"] = BREAK_FREQ
+        if model_stats.get("n_mels") is None:
+            model_stats["n_mels"] = N_MELS
+        if model_stats.get("break_freq") is None:
+            model_stats["break_freq"] = BREAK_FREQ
         model_stats["power"] = 1
         model_stats["lme"] = self.lme
         model_stats["db_scale"] = False

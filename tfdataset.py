@@ -579,7 +579,7 @@ def get_a_dataset(dir, labels, args):
 
     xeno_files = Path("/data/audio-data/xenocanto/xeno-training-data/")
     xeno_files = xeno_files / dir.name
-    if xeno_files.exists():
+    if xeno_files.exists() and dir.name!="test":
         logging.info("Xeno files %s",xeno_files)
         xeno_files = tf.io.gfile.glob(str(xeno_files / "*.tfrecord"))
         logging.info("Loading xeno files %s",xeno_files)

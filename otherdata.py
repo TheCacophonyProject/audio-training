@@ -261,7 +261,7 @@ def weakly_lbled_data(base_dir):
     for k,r in dataset.recs.items():
         # acceptable_tracks = [t.id for t in r.tracks if t.start < FIRST_SECONDS]
         # could filter some tracks by small freq bands
-        r.samples = [s for s in r.samples if s.track_ids[0] in r.tracks and s.length> 2]
+        r.samples = [s for s in r.samples if  s.length> 2]
         if len(r.samples)==0:
             print("No sample is first seconds for ", r.filename)
         dataset.samples.extend(r.samples)
