@@ -809,7 +809,7 @@ class AudioModel:
             self.labels,
             batch_size=self.batch_size,
             image_size=self.input_shape,
-            augment=False,
+            augment=True,
             excluded_labels=excluded_labels,
             filenames_2=second_filenames,
             embeddings=self.model_name == "embeddings",
