@@ -367,6 +367,16 @@ class AudioModel:
             self.labels,
             **args,
         )
+        from tfdataset import DIMENSIONS
+        logging.info("DIMENSIONS is now %s",DIMENSIONS)
+        self.input_shape = DIMENSIONS
+        if self.model_name == "embeddings":
+            self.input_shape = EMBEDDING_SHAPE
+        elif self.model_name == "efficientnetb0":
+            self.input_shape = (self.input_shape[0], self.input_shape[1], 3)
+        elif self.model_name == "dual-badwinner2":
+            self.input_shape = (96,511,1)
+
         args["excluded_labels"] = excluded_labels
         args["remapped_labels"] = remapped
         args["extra_label_map"] = extra_label_map

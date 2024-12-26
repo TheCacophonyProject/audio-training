@@ -451,7 +451,12 @@ def get_dataset(dir, labels, **args):
         print(NFFT,"IS")
         NFFT = args.get("n_fft")
         logging.info("NFFT %s",NFFT)
-        # N_MELS = 96
+        if NFFT  < 2048:
+            N_MELS = 96
+            global DIMENSIONS
+            mel_s = (N_MELS, 513)
+            DIMENSIONS = (N_MELS, 513, 1)
+            logging.info("Lower mels as nfft is to low %s",N_MELS)
         MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
         MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
     if args.get("break_freq") is not None:
