@@ -20,6 +20,8 @@ def download_file(url, local_filename):
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--limit",default=None,type=int, help="Limit number of files")
+
     parser.add_argument("bird", help="Bird data to download")
     parser.add_argument("dir", help="Directory to download into")
 
@@ -31,12 +33,15 @@ def parse_args():
 base_url = "https://www.xeno-canto.org/api/2/recordings"
 args = parse_args()
 bird = args.bird
+import urllib
+bird = urllib.parse.quote(bird)
 dl_path = Path(args.dir)
 url = f"{base_url}?query={bird}"
 print("getting", url)
 r = requests.get(url)
 r.raise_for_status()
 results = r.json()
+downloaded = 0
 for r in results.get("recordings"):
     dl = r.get("file")
     date = r.get("date")
@@ -78,5 +83,9 @@ for r in results.get("recordings"):
         print("already exists", filename)
     else:
         download_file(dl, filename)
+        downloaded+=1
 
+    if args.limit is not None and downloaded >= args.limit:
+        print("Reached limit of ", args.limit)
+        break
 # print("got results", results)
