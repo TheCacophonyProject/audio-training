@@ -598,19 +598,14 @@ def normalize(input):
 
 def main():
     init_logging()
-    
-    a = np.random.rand(5,4)
-    normed = normalize(a)
-    print(a)
-    print("a norm",normed)
-    return
+
     args = parse_args()
-    test_plot(args.file)
-    return
+    # test_plot(args.file)
+    # return
     # mix_file(args.file, args.mix)
     signal, noise, spectogram, frames = signal_noise(args.file)
-    means_merge(spectogram,signal)
-    return
+    # means_merge(spectogram,signal)
+    # return
     # for s in signal:
     # print(s)
     # 1 / 0
@@ -819,7 +814,7 @@ class Signal:
 
     def __str__(self):
         return (
-            f"Signal: {self.start}-{self.end}  mel: {self.mel_freq_start} {self.mel_freq_end}"
+            f"Signal: {self.start}-{self.end}  mel: {self.mel_freq_start} {self.mel_freq_end} hz:{self.freq_start} {self.freq_end}"
         )
 
 

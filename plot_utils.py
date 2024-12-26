@@ -40,7 +40,9 @@ def plot_mel_signals(mel, signals, signals2=[], i=0,colours = None):
         end_x = s.end
         # start_x = int(start_x)
         # end_x = int(end_x)
-        edge_color = "r"
+        edge_color = "g"
+        if s.mel_freq_range < 50:
+            edge_color = "r"
         if colours is not None:
             edge_color = colours[signal_i]
         rect = patches.Rectangle(
