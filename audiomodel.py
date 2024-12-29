@@ -1512,7 +1512,11 @@ def main():
             features=meta_data.get("features", False),
             multi_label=meta_data.get("multi_label", True),
             loss_fn=meta_data.get("loss_fn"),
-            load_raw=args.load_raw,
+            load_raw=meta_data.get("load_raw"),
+            fmin=meta_data.get("fmin"),
+            fmax=meta_data.get("fmax"),
+            break_freq=meta_data.get("break_freq"),
+            n_fft=meta_data.get("n_fft"),
         )
         # acc = tf.metrics.binary_accuracy
         acc = tf.keras.metrics.BinaryAccuracy(threshold=0.5)
