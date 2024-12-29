@@ -766,22 +766,26 @@ def sample_beta_distribution(size, concentration_0=0.2, concentration_1=0.2):
 
 
 @tf.function
-def mix_up(ds_one, ds_two, alpha=0.5):
+def mix_up(ds_one, ds_two, alpha=0.2,chance = 0.25):
     # Unpack two datasets
     images_one, labels_one = ds_one
     images_two, labels_two = ds_two
+
+    y,r,t = labels_one
+    y_2,r_2,t_2 = labels_two
     # batch_size = 32
     batch_size = tf.keras.ops.shape(images_one)[0]
-
     l = sample_beta_distribution(batch_size, alpha, alpha)
+    aug_chance = tf.random.uniform((batch_size,))
+    aug_chance = tf.cast(aug_chance < chance,tf.float32)
+    l = l * aug_chance
     x_l = tf.keras.ops.reshape(l, (batch_size, 1))
     y_l = tf.keras.ops.reshape(l, (batch_size, 1))
 
     images = images_one * x_l + images_two * (1 - x_l)
-    labels = labels_one * y_l + labels_two * (1 - y_l)
+    labels = y * y_l + y_2 * (1 - y_l)
     # possible_labels = tf.clip_by_value(labels_one[1] + labels_two[1], 0, 1)
-    return (images, labels)
-# (labels, possible_labels))
+    return (images, (labels,r,t))
 
 
 # @tf.function
