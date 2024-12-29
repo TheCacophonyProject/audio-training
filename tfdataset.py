@@ -783,7 +783,7 @@ def mix_up(ds_one, ds_two, alpha=0.2,chance = 0.25):
     images = images_one * x_l + images_two * (1 - x_l)
     labels = labels_one * y_l + labels_two * (1 - y_l)
     # possible_labels = tf.clip_by_value(labels_one[1] + labels_two[1], 0, 1)
-    return (images, (labels,r,t))
+    return (images, labels)
 
 
 # @tf.function
