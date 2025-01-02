@@ -226,7 +226,7 @@ def get_tracks_from_signals(signals, end):
             range *= 0.7
             if f_overlap > range and engulfed:
                 to_delete.append(s2)
-    for s in singals:
+    for s in signals:
         if s.mel_freq_range < min_mel_range:
             to_delete.append(s)
     for s in to_delete:
