@@ -441,8 +441,8 @@ def get_dataset(dir, labels, **args):
     global FMAX,MEL_WEIGHTS,FMIN,NFFT,BREAK_FREQ,N_MELS
 
     if args.get("fmin") is not None:
-        FMIN = args["fmin"]
-        FMAX = args["fmax"]
+        FMIN = args.get("fmin",FMIN)
+        FMAX = args.get("fmax",FMAX)
         logging.info("Using fmin and fmax %s %s",FMIN,FMAX)
 
         MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
@@ -1129,9 +1129,9 @@ def main():
             load_raw=True,
             n_fft=4096,
             fmin=500,
-            fmax=15000,
+            # fmax=11000,
             use_bird_tags=False,
-            debug=True,
+            debug=False,
             shuffle=False,
             multi=True,
             # filenames_2=filenames_2
@@ -1506,9 +1506,16 @@ def raw_to_mel(x, y, features=False):
         raw = x
         
     global FMIN,FMAX
-    if FMIN >50:
-        logging.info("Applying butter %s %s",FMIN,FMAX)
-        raw =  butter_function(raw,FMIN,FMAX)
+    # if FMIN >50:
+    fmin = 0
+    fmax = 0
+    if FMIN != 50:
+        fmin = FMIN
+    if FMAX !=11000:
+        fmax = FMAX
+    logging.info("Applying butter %s %s",fmin,fmax)
+
+    raw =  butter_function(raw,fmin,fmax)
     
     stft = tf.signal.stft(
         raw,

@@ -86,7 +86,7 @@ def plot_spec(S, filename="spec"):
         # S,
         librosa.amplitude_to_db(S, ref=np.max),
         x_axis="time",
-        y_axis="log",
+        y_axis="linear",
         sr=48000,
         fmax=30000,
         fmin=0,
@@ -107,16 +107,16 @@ def plot_mel(mel, filename="mel"):
     img = librosa.display.specshow(
         mel,
         x_axis="time",
-        y_axis="mel",
+        y_axis="linear",
         sr=48000,
-        fmax=16000,
+        fmax=24000,
         fmin=50,
         ax=ax,
         hop_length=281,
     )
     fig.colorbar(img, ax=ax, format="%+2.f dB")
 
-    # plt.show()
-    plt.savefig(f"{filename}.png", format="png")
+    plt.show()
+    # plt.savefig(f"{filename}.png", format="png")
     plt.clf()
     plt.close()

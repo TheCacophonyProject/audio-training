@@ -544,48 +544,51 @@ def test_plot(file):
     # # plt.show()
     # print("MELLL")
     # plot_mel(mel,"test.png")
-    frames_2 = butter_bandpass_filter(frames,500,15000,sr)
-    frames_2 = frames
+    frames_2 = butter_bandpass_filter(frames,150,15000,sr)
+    # frames_2 = frames
     frames_2 = normalize(frames_2)
-    print("Max min ",np.amax(frames_2),np.amin(frames_2))
-    mel_2 = librosa.feature.melspectrogram(y=frames_2, sr=sr,power=1,fmin=500,fmax=15000,n_mels=160)
-    plot_mel(mel_2,"default160.png")
-
+    # print("Max min ",np.amax(frames_2),np.amin(frames_2))
+    # mel_2 = librosa.feature.melspectrogram(y=frames_2, sr=sr,power=1,fmin=50,fmax=20000,n_mels=160,hop_length=281)
+    # plot_mel(mel_2,"default160.png")
 
 
 
 
     spectogram = librosa.stft(frames_2, n_fft=4096, hop_length=281)
-    fmin=500
-    fmax=15000
-    hop_length=281
-    mel = mel_spec(
-        spectogram,
-        sr,
-        4096,
-        hop_length,
-        160,
-        fmin,
-        fmax,
-        1750,
-        power=1,
-    )
-    plot_mel(mel,filename="mel4096")
+    plot_spec(spectogram)
 
-    spectogram = librosa.stft(frames_2, n_fft=1024, hop_length=281)
+    spectogram = librosa.stft(frames, n_fft=4096, hop_length=281)
+    plot_spec(spectogram)
+    # fmin=500
+    # fmax=15000
+    # hop_length=281
+    # mel = mel_spec(
+    #     spectogram,
+    #     sr,
+    #     4096,
+    #     hop_length,
+    #     160,
+    #     fmin,
+    #     fmax,
+    #     1750,
+    #     power=1,
+    # )
+    # plot_mel(mel,filename="mel4096")
 
-    mel = mel_spec(
-        spectogram,
-        sr,
-        1024,
-        hop_length,
-        160,
-        fmin,
-        fmax,
-        1750,
-        power=1,
-    )
-    plot_mel(mel,filename="mel1024")
+    # spectogram = librosa.stft(frames_2, n_fft=1024, hop_length=281)
+
+    # mel = mel_spec(
+    #     spectogram,
+    #     sr,
+    #     1024,
+    #     hop_length,
+    #     160,
+    #     fmin,
+    #     fmax,
+    #     1750,
+    #     power=1,
+    # )
+    # plot_mel(mel,filename="mel1024")
 
 def normalize(input):
     min_v  = tf.math.reduce_min(input,-1,keepdims=True)
@@ -600,7 +603,7 @@ def main():
     init_logging()
 
     args = parse_args()
-    # test_plot(args.file)
+    test_plot(args.file)
     # return
     # mix_file(args.file, args.mix)
     signal, noise, spectogram, frames = signal_noise(args.file)
