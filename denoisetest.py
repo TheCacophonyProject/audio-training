@@ -600,6 +600,44 @@ def normalize(input):
     input = tf.math.multiply(input,2) 
     return np.array(input)
 
+
+def merge_again(tracks):
+    post_filter = []
+    tracks_sorted = sorted(tracks, key=lambda track: track.start)
+    current_track = None
+    for t in tracks_sorted:
+        if current_track is None:
+            current_track = t
+            post_filter.append(current_track)
+
+            continue
+        overlap = current_track.time_overlap(t)
+        percent_overlap = overlap / t.length
+        percent_overlap_2 = overlap/ current_track.length
+
+        f_overlap = current_track.mel_freq_overlap(t)
+        f_percent_overlap = f_overlap / t.mel_freq_range
+        
+        if percent_overlap_2 > 0.5:
+            post_filter = post_filter[:len(post_filter)-1]
+            post_filter.append(t)
+            current_track = t
+        elif percent_overlap > 0.5 or (percent_overlap > 0 and f_percent_overlap > 0.5):
+            if f_percent_overlap> 0.5:
+                current_track.end = max(current_track.end,t.end)
+        else:
+            # encountered another big track shall we just make this current track and allow some small overlap???
+            current_track = t
+            post_filter.append(current_track)
+
+        # if  percent_overlap>0.5 or percent_overlap_2> 0.5:
+        #     print("Current track ", current_track, " over laps ", t, " with ", overlap)
+        #     print("Track 1 over lap is ",percent_overlap, " track 2 overlap is ",percent_overlap_2)
+        # el
+        if overlap <= 0:
+            current_track = t
+            post_filter.append(current_track)
+    return post_filter
 def main():
     init_logging()
 
@@ -616,58 +654,51 @@ def main():
     # for s in signals:
     #     print(s)
     tracks = get_tracks_from_signals(signals,end)
+    tracks = merge_again(tracks)
     # ,time_overlap_percent = 0.5, freq_overlap_percent = 0.5)
     for t in tracks:
         print(t)
     
-    post_filter = []
-    tracks_sorted = sorted(tracks, key=lambda track: track.start)
-    current_track = None
-    for t in tracks_sorted:
-        print("Checking", t)
-        if current_track is None:
-            print("Curretn ", t)
+    # post_filter = []
+    # tracks_sorted = sorted(tracks, key=lambda track: track.start)
+    # current_track = None
+    # for t in tracks_sorted:
+    #     if current_track is None:
+    #         current_track = t
+    #         post_filter.append(current_track)
 
-            current_track = t
-            post_filter.append(current_track)
+    #         continue
+    #     overlap = current_track.time_overlap(t)
+    #     percent_overlap = overlap / t.length
+    #     percent_overlap_2 = overlap/ current_track.length
 
-            continue
-        overlap = current_track.time_overlap(t)
-        percent_overlap = overlap / t.length
-        percent_overlap_2 = overlap/ current_track.length
-
-        f_overlap = current_track.mel_freq_overlap(t)
-        f_percent_overlap = f_overlap / t.mel_freq_range
+    #     f_overlap = current_track.mel_freq_overlap(t)
+    #     f_percent_overlap = f_overlap / t.mel_freq_range
         
-        if percent_overlap_2 > 0.5:
-            print("Removing current track for t", current_track, t)
-            post_filter = post_filter[:len(post_filter)-1]
-            post_filter.append(t)
-            current_track = t
-        elif percent_overlap > 0.5 or (percent_overlap > 0 and f_percent_overlap > 0.5):
-            print("removing ", t)
-            if f_percent_overlap> 0.5:
-                print("Merging end", current_track, t)
-                current_track.end = max(current_track.end,t.end)
-        else:
-            # encountered another big track shall we just make this current track and allow some small overlap???
-            print("Curretn ", t)
-            current_track = t
-            post_filter.append(current_track)
+    #     if percent_overlap_2 > 0.5:
+    #         post_filter = post_filter[:len(post_filter)-1]
+    #         post_filter.append(t)
+    #         current_track = t
+    #     elif percent_overlap > 0.5 or (percent_overlap > 0 and f_percent_overlap > 0.5):
+    #         if f_percent_overlap> 0.5:
+    #             current_track.end = max(current_track.end,t.end)
+    #     else:
+    #         # encountered another big track shall we just make this current track and allow some small overlap???
+    #         current_track = t
+    #         post_filter.append(current_track)
 
-        # if  percent_overlap>0.5 or percent_overlap_2> 0.5:
-        #     print("Current track ", current_track, " over laps ", t, " with ", overlap)
-        #     print("Track 1 over lap is ",percent_overlap, " track 2 overlap is ",percent_overlap_2)
-        # el
-        if overlap <= 0:
-            print("Curretn ", t)
-            current_track = t
-            post_filter.append(current_track)
+    #     # if  percent_overlap>0.5 or percent_overlap_2> 0.5:
+    #     #     print("Current track ", current_track, " over laps ", t, " with ", overlap)
+    #     #     print("Track 1 over lap is ",percent_overlap, " track 2 overlap is ",percent_overlap_2)
+    #     # el
+    #     if overlap <= 0:
+    #         current_track = t
+    #         post_filter.append(current_track)
     # return
 
 
     # tracks_to_audio(tracks, spectogram, frames)
-    plot_mel_signals(np.abs(spectogram), post_filter)
+    plot_mel_signals(np.abs(spectogram), tracks)
     return
     # process(args.file)
     process(args.file)
