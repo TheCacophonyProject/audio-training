@@ -15,7 +15,7 @@ import math
 from plot_utils import plot_spec, plot_mel_signals,plot_mel
 from custommel import mel_spec
 import tensorflow as tf
-
+from identifytracks import get_tracks_from_signals, Signal
 # from dateutil.parser import parse as parse_date
 import sys
 import itertools
@@ -87,7 +87,7 @@ def signal_noise(file, hop_length=281):
     signals, noise = signal_noise_data(
         np.abs(spectogram), sr, hop_length=hop_length, n_fft=n_fft
     )
-    return signals, noise, spectogram, frames
+    return signals, noise, spectogram, frames, end
 
 
 def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
@@ -302,136 +302,137 @@ def get_end(frames, sr):
     return file_length
 
 
-def merge_signals(signals):
-    unique_signals = []
-    to_delete = []
-    something_merged = False
-    i = 0
+# def merge_signals(signals, time_overlap_percent = 0.75, freq_overlap_percent = 0.75):
+#     unique_signals = []
+#     to_delete = []
+#     something_merged = False
+#     i = 0
 
-    signals = sorted(signals, key=lambda s: s.mel_freq_end, reverse=True)
-    signals = sorted(signals, key=lambda s: s.start)
+#     signals = sorted(signals, key=lambda s: s.mel_freq_end, reverse=True)
+#     signals = sorted(signals, key=lambda s: s.start)
 
-    for s in signals:
-        if s in to_delete:
-            continue
-        merged = False
-        for u_i, u in enumerate(signals):
-            if u in to_delete:
-                continue
-            if u == s:
-                continue
-            in_freq = u.mel_freq_end < 1500 and s.mel_freq_end < 1500
-            in_freq = in_freq or u.mel_freq_start > 1500 and s.mel_freq_start > 1500
-            if not in_freq:
-                # print("Skipping", s, " with ", u, " as freqs differ")
-                continue
-            overlap = s.time_overlap(u)
-            if s.mel_freq_start > 1000 and u.mel_freq_start > 1000:
-                freq_overlap = 0.1
-                freq_overlap_time = 0.5
-            else:
-                freq_overlap = 0.5
-                freq_overlap_time = 0.75
-            if s.start > u.end:
-                time_diff = s.start - u.end
-            else:
-                time_diff = u.start - s.end
-            mel_overlap = s.mel_freq_overlap(u)
-            # print("Checking over lap for", s, " with ", u, overlap, mel_overlap)
-            # ensure both are either below 1500 or abov
-            if overlap > u.length * 0.75 and mel_overlap > -20:
-                #  (
-                #     mel_overlap > u.mel_freq_range * freq_overlap
-                # ):
-                # times overlap a lot be more leninant on freq
-                # s.merge(u)
-                s.merge(u)
+#     for s in signals:
+#         if s in to_delete:
+#             continue
+#         merged = False
+#         for u_i, u in enumerate(signals):
+#             if u in to_delete:
+#                 continue
+#             if u == s:
+#                 continue
+#             in_freq = u.mel_freq_end < 1500 and s.mel_freq_end < 1500
+#             in_freq = in_freq or u.mel_freq_start > 1500 and s.mel_freq_start > 1500
+#             if not in_freq:
+#                 # print("Skipping", s, " with ", u, " as freqs differ")
+#                 continue
+#             overlap = s.time_overlap(u)
+#             if s.mel_freq_start > 1000 and u.mel_freq_start > 1000:
 
-                merged = True
+#                 freq_overlap_time = 0.5
+#             else:
+#                 freq_overlap_time = freq_overlap_percent
+#             if s.start > u.end:
+#                 time_diff = s.start - u.end
+#             else:
+#                 time_diff = u.start - s.end
+#             mel_overlap = s.mel_freq_overlap(u)
+#             # print("Checking over lap for", s, " with ", u, overlap, mel_overlap)
+#             # ensure both are either below 1500 or abov
+#             if overlap > u.length * time_overlap_percent and mel_overlap > -20:
+#                 #  (
+#                 #     mel_overlap > u.mel_freq_range * freq_overlap
+#                 # ):
+#                 # times overlap a lot be more leninant on freq
+#                 # s.merge(u)
+#                 s.merge(u)
 
-                break
-            elif overlap > 0 and mel_overlap > u.mel_freq_range * freq_overlap_time:
-                # time overlaps at all with more freq overlap
-                s.merge(u)
+#                 merged = True
 
-                merged = True
+#                 break
+#             elif (time_diff <=2 or overlap > 0) and mel_overlap > u.mel_freq_range * freq_overlap_time:
+#                 # time overlaps at all with more freq overlap
+#                 s.merge(u)
 
-                break
+#                 merged = True
 
-            elif mel_overlap > u.mel_freq_range * freq_overlap_time and time_diff <= 2:
-                if u.mel_freq_end > s.mel_freq_range:
-                    range_overlap = s.mel_freq_range / u.mel_freq_range
-                else:
-                    range_overlap = u.mel_freq_range / s.mel_freq_range
-                if range_overlap < 0.75:
-                    continue
-                # freq range similar
+#                 break
 
-                s.merge(u)
-                merged = True
+#             # elif mel_overlap > u.mel_freq_range * freq_overlap_time and time_diff <= 2:
+#             #     if u.mel_freq_end > s.mel_freq_range:
+#             #         range_overlap = s.mel_freq_range / u.mel_freq_range
+#             #     else:
+#             #         range_overlap = u.mel_freq_range / s.mel_freq_range
 
-                break
+#             #         # atleast 75% overlap
+#             #     if range_overlap < 0.75:
+#             #         continue
+#             #     # freq range similar
 
-        if merged:
-            something_merged = True
-            to_delete.append(u)
+#             #     s.merge(u)
+#             #     merged = True
 
-    for s in to_delete:
-        signals.remove(s)
+#             #     break
 
-    return signals, something_merged
+#         if merged:
+#             something_merged = True
+#             to_delete.append(u)
+
+#     for s in to_delete:
+#         signals.remove(s)
+
+#     return signals, something_merged
 
 
-def signals_to_tracks(unique_signals):
-    count = 0
+# def signals_to_tracks(unique_signals):
+#     count = 0
 
-    # return
-    merged = True
-    while merged:
-        count += 1
-        unique_signals, merged = merge_signals(unique_signals)
+#     # return
+#     merged = True
+#     while merged:
+#         count += 1
+#         unique_signals, merged = merge_signals(unique_signals)
 
-    min_length = 0.35
-    to_delete = []
-    # print("Enlarged are", s)
-    for s in unique_signals:
-        # continue
-        if s in to_delete:
-            continue
-        if s.length < min_length:
-            to_delete.append(s)
-            continue
-        s.enlarge(1.4)
-        for s2 in unique_signals:
-            if s2 in to_delete:
-                continue
-            if s == s2:
-                continue
-            overlap = s.time_overlap(s2)
-            # print("time over lap for", s, s2, overlap, s2.length)
-            engulfed = overlap >= 0.9 * s2.length
-            f_overlap = s.mel_freq_overlap(s2)
-            range = s2.mel_freq_range
-            range *= 0.7
-            # print(
-            #     "Comparing",
-            #     s,
-            #     " and ",
-            #     s2,
-            #     " f overlap",
-            #     f_overlap,
-            #     range,
-            #     " engulfed",
-            #     engulfed,
-            # )
-            if f_overlap > range and engulfed:
-                to_delete.append(s2)
-            # elif engulfed and s2.freq_start > s.freq_start and s2.freq_end < s.freq_end:
-            # print("s2", s2, " is inside ", s)
-            # to_delete.append(s2)
-    for s in to_delete:
-        unique_signals.remove(s)
-    return unique_signals
+#     min_length = 0.35
+#     to_delete = []
+#     # print("Enlarged are", s)
+#     for s in unique_signals:
+#         # continue
+#         if s in to_delete:
+#             continue
+#         if s.length < min_length:
+#             to_delete.append(s)
+#             continue
+#         s.enlarge(1.4)
+#         for s2 in unique_signals:
+#             if s2 in to_delete:
+#                 continue
+#             if s == s2:
+#                 continue
+#             overlap = s.time_overlap(s2)
+#             # print("time over lap for", s, s2, overlap, s2.length)
+#             engulfed = overlap >= 0.9 * s2.length
+#             f_overlap = s.mel_freq_overlap(s2)
+#             range = s2.mel_freq_range
+#             range *= 0.7
+#             # print(
+#             #     "Comparing",
+#             #     s,
+#             #     " and ",
+#             #     s2,
+#             #     " f overlap",
+#             #     f_overlap,
+#             #     range,
+#             #     " engulfed",
+#             #     engulfed,
+#             # )
+#             if f_overlap > range and engulfed:
+#                 to_delete.append(s2)
+#             # elif engulfed and s2.freq_start > s.freq_start and s2.freq_end < s.freq_end:
+#             # print("s2", s2, " is inside ", s)
+#             # to_delete.append(s2)
+#     for s in to_delete:
+#         unique_signals.remove(s)
+#     return unique_signals
 
 
 def tracks_to_audio(tracks, spectogram, frames, sr=48000, hop_length=281):
@@ -603,20 +604,70 @@ def main():
     init_logging()
 
     args = parse_args()
-    test_plot(args.file)
+    # test_plot(args.file)
     # return
     # mix_file(args.file, args.mix)
-    signal, noise, spectogram, frames = signal_noise(args.file)
+    signals, noise, spectogram, frames, end = signal_noise(args.file)
     # means_merge(spectogram,signal)
     # return
     # for s in signal:
     # print(s)
     # 1 / 0
-    tracks = signals_to_tracks(signal)
+    # for s in signals:
+    #     print(s)
+    tracks = get_tracks_from_signals(signals,end)
+    # ,time_overlap_percent = 0.5, freq_overlap_percent = 0.5)
     for t in tracks:
         print(t)
+    
+    post_filter = []
+    tracks_sorted = sorted(tracks, key=lambda track: track.start)
+    current_track = None
+    for t in tracks_sorted:
+        print("Checking", t)
+        if current_track is None:
+            print("Curretn ", t)
+
+            current_track = t
+            post_filter.append(current_track)
+
+            continue
+        overlap = current_track.time_overlap(t)
+        percent_overlap = overlap / t.length
+        percent_overlap_2 = overlap/ current_track.length
+
+        f_overlap = current_track.mel_freq_overlap(t)
+        f_percent_overlap = f_overlap / t.mel_freq_range
+        
+        if percent_overlap_2 > 0.5:
+            print("Removing current track for t", current_track, t)
+            post_filter = post_filter[:len(post_filter)-1]
+            post_filter.append(t)
+            current_track = t
+        elif percent_overlap > 0.5 or (percent_overlap > 0 and f_percent_overlap > 0.5):
+            print("removing ", t)
+            if f_percent_overlap> 0.5:
+                print("Merging end", current_track, t)
+                current_track.end = max(current_track.end,t.end)
+        else:
+            # encountered another big track shall we just make this current track and allow some small overlap???
+            print("Curretn ", t)
+            current_track = t
+            post_filter.append(current_track)
+
+        # if  percent_overlap>0.5 or percent_overlap_2> 0.5:
+        #     print("Current track ", current_track, " over laps ", t, " with ", overlap)
+        #     print("Track 1 over lap is ",percent_overlap, " track 2 overlap is ",percent_overlap_2)
+        # el
+        if overlap <= 0:
+            print("Curretn ", t)
+            current_track = t
+            post_filter.append(current_track)
+    # return
+
+
     # tracks_to_audio(tracks, spectogram, frames)
-    plot_mel_signals(np.abs(spectogram), tracks)
+    plot_mel_signals(np.abs(spectogram), post_filter)
     return
     # process(args.file)
     process(args.file)
@@ -733,92 +784,92 @@ def plot_mfcc(mfcc):
 #     plt.close()
 
 
-def segment_overlap(first, second):
-    return (
-        (first[1] - first[0])
-        + (second[1] - second[0])
-        - (max(first[1], second[1]) - min(first[0], second[0]))
-    )
+# def segment_overlap(first, second):
+#     return (
+#         (first[1] - first[0])
+#         + (second[1] - second[0])
+#         - (max(first[1], second[1]) - min(first[0], second[0]))
+#     )
 
 
-class Signal:
-    def __init__(self, start, end, freq_start, freq_end):
-        self.start = start
-        self.end = end
-        self.freq_start = freq_start
-        self.freq_end = freq_end
+# class Signal:
+#     def __init__(self, start, end, freq_start, freq_end):
+#         self.start = start
+#         self.end = end
+#         self.freq_start = freq_start
+#         self.freq_end = freq_end
 
-        self.mel_freq_start = mel_freq(freq_start)
-        self.mel_freq_end = mel_freq(freq_end)
-        self.predictions = []
+#         self.mel_freq_start = mel_freq(freq_start)
+#         self.mel_freq_end = mel_freq(freq_end)
+#         self.predictions = []
 
-    def to_features(self):
-        # should 1 second be the same diff as 1000 hz? so scale a 1000 to 1
-        return np.float32([self.start,self.end,self.mel_freq_start/500,self.mel_freq_end/500])
+#     def to_features(self):
+#         # should 1 second be the same diff as 1000 hz? so scale a 1000 to 1
+#         return np.float32([self.start,self.end,self.mel_freq_start/500,self.mel_freq_end/500])
    
-    def time_overlap(self, other):
-        return segment_overlap(
-            (self.start, self.end),
-            (other.start, other.end),
-        )
+#     def time_overlap(self, other):
+#         return segment_overlap(
+#             (self.start, self.end),
+#             (other.start, other.end),
+#         )
 
-    def mel_freq_overlap(self, other):
-        return segment_overlap(
-            (self.mel_freq_start, self.mel_freq_end),
-            (other.mel_freq_start, other.mel_freq_end),
-        )
+#     def mel_freq_overlap(self, other):
+#         return segment_overlap(
+#             (self.mel_freq_start, self.mel_freq_end),
+#             (other.mel_freq_start, other.mel_freq_end),
+#         )
 
-    def freq_overlap(s, s2):
-        return segment_overlap(
-            (self.mel_freq_start, self.mel_freq_end),
-            (other.mel_freq_start, other.mel_freq_end),
-        )
+#     def freq_overlap(s, s2):
+#         return segment_overlap(
+#             (self.mel_freq_start, self.mel_freq_end),
+#             (other.mel_freq_start, other.mel_freq_end),
+#         )
 
-    def to_array(self):
-        return [self.start, self.end, self.freq_start, self.freq_end]
+#     def to_array(self):
+#         return [self.start, self.end, self.freq_start, self.freq_end]
 
-    @property
-    def mel_freq_range(self):
-        return self.mel_freq_end - self.mel_freq_start
+#     @property
+#     def mel_freq_range(self):
+#         return self.mel_freq_end - self.mel_freq_start
 
-    @property
-    def freq_range(self):
-        return self.freq_end - self.freq_start
+#     @property
+#     def freq_range(self):
+#         return self.freq_end - self.freq_start
 
-    @property
-    def length(self):
-        return self.end - self.start
+#     @property
+#     def length(self):
+#         return self.end - self.start
 
-    def enlarge(self, scale, min_track_length=0.7):
-        new_length = self.length * scale
-        if new_length < min_track_length:
-            new_length = min_track_length
+#     def enlarge(self, scale, min_track_length=0.7):
+#         new_length = self.length * scale
+#         if new_length < min_track_length:
+#             new_length = min_track_length
 
-        extension = (new_length - self.length) / 2
-        self.start = self.start - extension
-        self.end = self.end + extension
-        self.start = max(self.start, 0)
+#         extension = (new_length - self.length) / 2
+#         self.start = self.start - extension
+#         self.end = self.end + extension
+#         self.start = max(self.start, 0)
 
-        new_length = (self.freq_end - self.freq_start) * scale
-        extension = (new_length - (self.freq_end - self.freq_start)) / 2
-        self.freq_start = self.freq_start - extension
-        self.freq_end = self.freq_end + extension
-        self.freq_start = max(self.freq_start, 0)
-        self.mel_freq_start = mel_freq(self.freq_start)
-        self.mel_freq_end = mel_freq(self.freq_end)
+#         new_length = (self.freq_end - self.freq_start) * scale
+#         extension = (new_length - (self.freq_end - self.freq_start)) / 2
+#         self.freq_start = self.freq_start - extension
+#         self.freq_end = self.freq_end + extension
+#         self.freq_start = max(self.freq_start, 0)
+#         self.mel_freq_start = mel_freq(self.freq_start)
+#         self.mel_freq_end = mel_freq(self.freq_end)
 
-    def merge(self, other):
-        self.start = min(self.start, other.start)
-        self.end = max(self.end, other.end)
-        self.freq_start = min(self.freq_start, other.freq_start)
-        self.freq_end = max(self.freq_end, other.freq_end)
-        self.mel_freq_start = mel_freq(self.freq_start)
-        self.mel_freq_end = mel_freq(self.freq_end)
+#     def merge(self, other):
+#         self.start = min(self.start, other.start)
+#         self.end = max(self.end, other.end)
+#         self.freq_start = min(self.freq_start, other.freq_start)
+#         self.freq_end = max(self.freq_end, other.freq_end)
+#         self.mel_freq_start = mel_freq(self.freq_start)
+#         self.mel_freq_end = mel_freq(self.freq_end)
 
-    def __str__(self):
-        return (
-            f"Signal: {self.start}-{self.end}  mel: {self.mel_freq_start} {self.mel_freq_end} hz:{self.freq_start} {self.freq_end}"
-        )
+#     def __str__(self):
+#         return (
+#             f"Signal: {self.start}-{self.end}  mel: {self.mel_freq_start} {self.mel_freq_end} hz:{self.freq_start} {self.freq_end}"
+#         )
 
 
 from scipy.signal import butter, sosfilt, sosfreqz, freqs

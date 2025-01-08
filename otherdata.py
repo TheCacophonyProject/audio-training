@@ -175,7 +175,45 @@ def mix_noise(w):
     if count % 50 == 0:
         logging.info("Saved %s", count)
 
+# more aggressive track merging
+# since we are only looking for one bird in these clips try reduce to one concurrent track
+def merge_again(tracks):
+    post_filter = []
+    tracks_sorted = sorted(tracks, key=lambda track: track.start)
+    current_track = None
+    for t in tracks_sorted:
+        if current_track is None:
+            current_track = t
+            post_filter.append(current_track)
 
+            continue
+        overlap = current_track.time_overlap(t)
+        percent_overlap = overlap / t.length
+        percent_overlap_2 = overlap/ current_track.length
+
+        f_overlap = current_track.mel_freq_overlap(t)
+        f_percent_overlap = f_overlap / t.mel_freq_range
+
+        if percent_overlap_2 > 0.5:
+            post_filter = post_filter[:len(post_filter)-1]
+            post_filter.append(t)
+            current_track = t
+        elif percent_overlap > 0.5 or (percent_overlap > 0 and f_percent_overlap > 0.5):
+            if f_percent_overlap> 0.5:
+                current_track.end = max(current_track.end,t.end)
+        else:
+            # encountered another big track shall we just make this current track and allow some small overlap???
+            current_track = t
+            post_filter.append(current_track)
+
+        # if  percent_overlap>0.5 or percent_overlap_2> 0.5:
+        #     print("Current track ", current_track, " over laps ", t, " with ", overlap)
+        #     print("Track 1 over lap is ",percent_overlap, " track 2 overlap is ",percent_overlap_2)
+        # el
+        if overlap <= 0:
+            current_track = t
+            post_filter.append(current_track)
+    return post_filter
 def generate_tracks(args):
     min_freq = lbl_meta.get("min_freq")
     max_freq = lbl_meta.get("max_freq")
@@ -202,6 +240,7 @@ def generate_tracks(args):
     ]
 
     tracks = get_tracks_from_signals(signals, length)
+    tracks = merge_again(tracks)
     tracks_meta = []
     for i, t in enumerate(tracks):
 
@@ -259,6 +298,7 @@ def weakly_lbled_data(base_dir):
 
     dataset.samples = []
     for k,r in dataset.recs.items():
+        
         # acceptable_tracks = [t.id for t in r.tracks if t.start < FIRST_SECONDS]
         # could filter some tracks by small freq bands
         r.samples = [s for s in r.samples if  s.length> 2]

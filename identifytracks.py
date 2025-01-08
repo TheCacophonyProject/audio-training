@@ -124,7 +124,7 @@ def mel_freq(f):
 # try and merge signals that are close together in time and frequency
 
 
-def merge_signals(signals):
+def merge_signals(signals, freq_overlap_percent = 0.75, time_overlap_percent=0.75):
     unique_signals = []
     to_delete = []
     something_merged = False
@@ -150,16 +150,16 @@ def merge_signals(signals):
             overlap = s.time_overlap(u)
             if s.mel_freq_start > 1000 and u.mel_freq_start > 1000:
                 freq_overlap = 0.1
-                freq_overlap_time = 0.5
+                freq_overlap_time = freq_overlap_percent -0.25
             else:
                 freq_overlap = 0.5
-                freq_overlap_time = 0.75
+                freq_overlap_time = freq_overlap_percent
             if s.start > u.end:
                 time_diff = s.start - u.end
             else:
                 time_diff = u.start - s.end
             mel_overlap = s.mel_freq_overlap(u)
-            if overlap > u.length * 0.75 and mel_overlap > -20:
+            if overlap > u.length * time_overlap_percent and mel_overlap > -20:
                 s.merge(u)
                 merged = True
 
@@ -226,6 +226,10 @@ def get_tracks_from_signals(signals, end):
             range *= 0.7
             if f_overlap > range and engulfed:
                 to_delete.append(s2)
+
+    for s in to_delete:
+        signals.remove(s)
+    to_delete=[]
     for s in signals:
         if s.mel_freq_range < min_mel_range:
             to_delete.append(s)
