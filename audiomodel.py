@@ -798,6 +798,11 @@ class AudioModel:
             "kiwi",
             "magpie",
             "tui",
+            "house sparrow",
+            "blackbird",
+            "sparrow",
+            "song thrush",
+            # "thrush"
         ]
         for l in self.labels:
             if l not in excluded_labels and l not in test_brds:
