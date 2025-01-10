@@ -87,6 +87,8 @@ def signal_noise(file, hop_length=281):
     signals, noise = signal_noise_data(
         np.abs(spectogram), sr, hop_length=hop_length, n_fft=n_fft
     )
+
+    
     return signals, noise, spectogram, frames, end
 
 
@@ -518,7 +520,7 @@ def means_merge(spectogram,signals):
 
 def test_plot(file):
     frames, sr = load_recording(file)
-    frames = frames[:30*sr]
+    frames = frames[:5*sr]
     # frames,sr = librosa.load(file)
     # print("Oriuginal sr ",sr, np.amax(frames),np.amin(frames))
     # frames = librosa.resample(frames, orig_sr=sr, target_sr=96000)
@@ -545,36 +547,36 @@ def test_plot(file):
     # # plt.show()
     # print("MELLL")
     # plot_mel(mel,"test.png")
-    frames_2 = butter_bandpass_filter(frames,150,15000,sr)
+    # frames_2 = butter_bandpass_filter(frames,150,15000,sr)
     # frames_2 = frames
-    frames_2 = normalize(frames_2)
-    # print("Max min ",np.amax(frames_2),np.amin(frames_2))
-    # mel_2 = librosa.feature.melspectrogram(y=frames_2, sr=sr,power=1,fmin=50,fmax=20000,n_mels=160,hop_length=281)
+    # frames_2 = normalize(frames_2)
+    # # print("Max min ",np.amax(frames_2),np.amin(frames_2))
+    # mel_2 = librosa.feature.melspectrogram(y=frames_2, sr=sr,power=1,fmin=50,fmax=11000,n_mels=160,hop_length=281)
     # plot_mel(mel_2,"default160.png")
 
 
 
 
-    spectogram = librosa.stft(frames_2, n_fft=4096, hop_length=281)
-    plot_spec(spectogram)
-
-    spectogram = librosa.stft(frames, n_fft=4096, hop_length=281)
-    plot_spec(spectogram)
-    # fmin=500
-    # fmax=15000
+    # spectogram = librosa.stft(frames_2, n_fft=4096, hop_length=281)
+    # plot_spec(spectogram)
+    n_fft = 4096
+    spectogram = librosa.stft(normalize(frames), n_fft=n_fft, hop_length=281)
+    # plot_spec(spectogram)
+    fmin=2000
+    fmax=4000
     # hop_length=281
-    # mel = mel_spec(
-    #     spectogram,
-    #     sr,
-    #     4096,
-    #     hop_length,
-    #     160,
-    #     fmin,
-    #     fmax,
-    #     1750,
-    #     power=1,
-    # )
-    # plot_mel(mel,filename="mel4096")
+    mel = mel_spec(
+        spectogram,
+        sr,
+        n_fft,
+        hop_length,
+        96,
+        fmin,
+        fmax,
+        1750,
+        power=1,
+    )
+    plot_mel(mel,filename="mel4096")
 
     # spectogram = librosa.stft(frames_2, n_fft=1024, hop_length=281)
 
@@ -642,8 +644,8 @@ def main():
     init_logging()
 
     args = parse_args()
-    # test_plot(args.file)
-    # return
+    test_plot(args.file)
+    return
     # mix_file(args.file, args.mix)
     signals, noise, spectogram, frames, end = signal_noise(args.file)
     # means_merge(spectogram,signal)
@@ -654,7 +656,7 @@ def main():
     # for s in signals:
     #     print(s)
     tracks = get_tracks_from_signals(signals,end)
-    tracks = merge_again(tracks)
+    # tracks = merge_again(tracks)
     # ,time_overlap_percent = 0.5, freq_overlap_percent = 0.5)
     for t in tracks:
         print(t)
@@ -698,7 +700,7 @@ def main():
 
 
     # tracks_to_audio(tracks, spectogram, frames)
-    plot_mel_signals(np.abs(spectogram), tracks)
+    plot_mel_signals(np.abs(spectogram), tracks,noise)
     return
     # process(args.file)
     process(args.file)

@@ -1,6 +1,6 @@
 import sys
 import math
-
+import argparse
 import matplotlib.pyplot as plt
 
 import tensorflow as tf
@@ -1074,9 +1074,20 @@ def calc_mean():
         json.dump(zvals, f, indent=4)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Model to load and do preds",
+    )
+
+    args = parser.parse_args()
+    return args
 # test stuff
 def main():
     init_logging()
+    args = parse_args()
 
 
     # batch_data = []
@@ -1090,7 +1101,7 @@ def main():
     # return
     datasets = ["other-training-data", "training-data", "chime-training-data"]
     datasets = ["training-data"]
-    dataset_dirs = ["/data2/audio-training/training-data"]
+    dataset_dirs = ["./audio-training/training-data"]
     # dataset_dirs = ["./augmented-training"]
 
     filenames = []
@@ -1134,7 +1145,7 @@ def main():
             if l not in excluded_labels and l not in test_brds:
                 excluded_labels.append(l)
 
-        resampled_ds, remapped, _, labels,_ = get_dataset(
+        dataset, remapped, _, labels,_ = get_dataset(
             tf_dir / "test",
             # filenames,
             labels,
@@ -1152,31 +1163,47 @@ def main():
             multi_label=True,
             load_raw=True,
             n_fft=4096,
-            fmin=50,
-            fmax=20000,
+            fmin=0,
+            fmax=11000,
+            break_freq=3000,
             use_bird_tags=False,
-            load_all_y = True
+            load_all_y = True,
+            shuffle = False
 
             # filenames_2=filenames_2
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
-       
+    
+    if args.model is not None:
+        model_path = Path(args.model)
+        if model_path.is_dir():
+            model_path = model_path / f"{model_path.stem}.keras"
+        model = tf.keras.models.load_model(
+            str(model_path),
+            compile=False,
+        )
+        model.load_weights(model_path.parent/"val_binary_accuracy.weights.h5")
+        logging.info("LOading model with val acc %s", args.model)
+        true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
+        true_categories = tf.concat(true_categories, axis=0)
+        preds = model.predict(dataset)
+
         # filenames.extend(tf.io.gfile.glob(f"{d}/test/**/*.tfrecord"))
     print("labels are ", labels)
     global NZ_BIRD_LOSS_WEIGHTING, BIRD_WEIGHTING, SPECIFIC_BIRD_MASK, GENERIC_BIRD_MASK
     print("GENERIC_BIRD_MASK", GENERIC_BIRD_MASK)
     print("SPECIFIC", SPECIFIC_BIRD_MASK)
-    dist, _ = get_distribution(resampled_ds, len(labels), batched=True, one_hot=True)
+    dist, _ = get_distribution(dataset, len(labels), batched=True, one_hot=True)
     print("Dist is ", dist)
     for l, d in zip(labels, dist):
         print(f"{l} has {d}")
     
     for e in range(1):
         batch = 0
-        for x, y in resampled_ds:
+        for x, y in dataset:
             batch +=1
 
-            show_batch(x, y, labels,batch_i = batch)
+            show_batch(x, y, labels,batch_i = batch,preds = preds[(batch-1) * 32: 32*batch])
 
 import sys
 from types import ModuleType, FunctionType
@@ -1209,10 +1236,11 @@ def getsize(obj):
     return size * 0.000001
 
 
-def show_batch(image_batch, label_batch, labels,batch_i = 0):
+def show_batch(image_batch, label_batch, labels,batch_i = 0,preds = None):
     recs = None
     tracks = None
     starts = None
+    prob_thresh=0.7
     if isinstance(label_batch,tuple):
         recs = label_batch[3]
         tracks = label_batch[4]
@@ -1231,14 +1259,22 @@ def show_batch(image_batch, label_batch, labels,batch_i = 0):
     print("labl batch", label_batch[0])
     i = 0
     for n in range(num_images):
+        predicted = ""
+
+        if preds is not None:
+            pred = preds[n]
+            best_labels = np.argwhere(pred > prob_thresh).ravel()
+            for lbl in best_labels:
+                predicted = f"{predicted} {labels[lbl]}"
         # print("Y is ", label_batch[n])
         lbl = []
         for l_i, l in enumerate(label_batch[n]):
             if l > 0:
                 lbl.append(labels[l_i])
         p = n
-        i += 1
         ax = plt.subplot(num_images // 3 + 1, 3, p + 1)
+
+        i += 1
         # plot_spec(image_batch[n][:, :, 0], ax)
         # # plt.imshow(np.uint8(image_batch[n]))
         plot_title = f"{lbl}"
@@ -1246,13 +1282,12 @@ def show_batch(image_batch, label_batch, labels,batch_i = 0):
             track = tracks[n].numpy().decode("utf8")
             rec = recs[n].numpy().decode("utf8")
             start_s = np.round(starts[n].numpy(),1)
-            print("Start s rounded",start_s)
             plot_title = f"{plot_title} - {rec}:{track} at {start_s:.1f}"
-        plt.title(plot_title)
+        plt.title(f"{plot_title}\n{predicted}")
         img = image_batch[n]
         plot_mel(image_batch[n][:, :, 0], ax)
-    plt.savefig(f"dataset-images/batch-{batch_i}.png")
-    # plt.show()
+    # plt.savefig(f"dataset-images/batch-{batch_i}.png")
+    plt.show()
 
 
 def plot_mfcc(mfccs, ax):
@@ -1267,7 +1302,7 @@ def plot_mel(mel, ax):
         x_axis="time",
         y_axis="mel",
         sr=48000,
-        fmax=11000,
+        fmax=20000,
         fmin=50,
         ax=ax,
         hop_length=HOP_LENGTH,
@@ -1503,7 +1538,7 @@ def raw_to_mel(x, y, features=False):
     if FMAX !=11000:
         fmax = FMAX
     logging.info("Applying butter %s %s",fmin,fmax)
-
+# not needed if using mel freq bin fmin and fmax
     raw =  butter_function(raw,fmin,fmax)
     
     stft = tf.signal.stft(

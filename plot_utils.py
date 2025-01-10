@@ -41,8 +41,8 @@ def plot_mel_signals(mel, signals, signals2=[], i=0,colours = None):
         # start_x = int(start_x)
         # end_x = int(end_x)
         edge_color = "g"
-        if s.mel_freq_range < 50:
-            edge_color = "r"
+        # if s.mel_freq_range < 50:
+        #     edge_color = "r"
         if colours is not None:
             edge_color = colours[signal_i]
         rect = patches.Rectangle(
@@ -67,7 +67,7 @@ def plot_mel_signals(mel, signals, signals2=[], i=0,colours = None):
             end_x - start_x,
             s[3] - s[2],
             linewidth=1,
-            edgecolor="g",
+            edgecolor="r",
             facecolor="none",
         )
         ax.add_patch(rect)
@@ -107,7 +107,7 @@ def plot_mel(mel, filename="mel"):
     img = librosa.display.specshow(
         mel,
         x_axis="time",
-        y_axis="linear",
+        y_axis="mel",
         sr=48000,
         fmax=24000,
         fmin=50,
