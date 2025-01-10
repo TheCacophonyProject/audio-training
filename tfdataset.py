@@ -691,12 +691,12 @@ def get_a_dataset(dir, labels, args):
         logging.info("Returning debug data")
         return dataset, remapped, None, labels, extra_label_dic
 
-
-    if args.get("loss_fn") == "WeightedCrossEntropy":
-        logging.info("Mapping possiblebirds")
-        dataset = dataset.map(lambda x, y: (x, (y[0], y[5])),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
-    else:
-        dataset = dataset.map(lambda x, y: (x, y[0]),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
+    if not args.get("load_all_y",False):
+        if args.get("loss_fn") == "WeightedCrossEntropy":
+            logging.info("Mapping possiblebirds")
+            dataset = dataset.map(lambda x, y: (x, (y[0], y[5])),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
+        else:
+            dataset = dataset.map(lambda x, y: (x, y[0]),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
     epoch_size = args.get("epoch_size")
     dist = None
     if epoch_size is None:
@@ -836,6 +836,8 @@ def read_tfrecord(
     tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
     tfrecord_format["audio/track_id"] = tf.io.FixedLenFeature((), tf.string)
     tfrecord_format["audio/low_sample"] = tf.io.FixedLenFeature((), tf.int64)
+    tfrecord_format["audio/start_s"] = tf.io.FixedLenFeature((), tf.float32)
+
     tfrecord_format["audio/lat"] = tf.io.FixedLenFeature((), tf.float32)
     tfrecord_format["audio/lng"] = tf.io.FixedLenFeature((), tf.float32)
 
@@ -868,6 +870,7 @@ def read_tfrecord(
 
     example = tf.io.parse_single_example(example, tfrecord_format)
     low_sample = tf.cast(example["audio/low_sample"], tf.int64)
+    start_s = tf.cast(example["audio/start_s"], tf.float32)
 
     label = tf.cast(example["audio/class/text"], tf.string)
     split_labels = tf.strings.split(label, sep="\n")
@@ -1009,6 +1012,7 @@ def read_tfrecord(
             example["audio/track_id"],
             possible_labels,
             low_sample,
+            start_s
         )
 
     return image
@@ -1086,7 +1090,7 @@ def main():
     # return
     datasets = ["other-training-data", "training-data", "chime-training-data"]
     datasets = ["training-data"]
-    dataset_dirs = ["./audio-training/training-data"]
+    dataset_dirs = ["/data2/audio-training/training-data"]
     # dataset_dirs = ["./augmented-training"]
 
     filenames = []
@@ -1131,7 +1135,7 @@ def main():
                 excluded_labels.append(l)
 
         resampled_ds, remapped, _, labels,_ = get_dataset(
-            tf_dir / "train",
+            tf_dir / "test",
             # filenames,
             labels,
             # use_generic_bird=False,
@@ -1151,6 +1155,7 @@ def main():
             fmin=50,
             fmax=20000,
             use_bird_tags=False,
+            load_all_y = True
 
             # filenames_2=filenames_2
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
@@ -1205,6 +1210,16 @@ def getsize(obj):
 
 
 def show_batch(image_batch, label_batch, labels,batch_i = 0):
+    recs = None
+    tracks = None
+    starts = None
+    if isinstance(label_batch,tuple):
+        recs = label_batch[3]
+        tracks = label_batch[4]
+        starts = label_batch[7]
+        label_batch = label_batch[0]
+        # print("IS t uple")
+        # 1/0
     # min_freq = label_batch[3]
     # max_freq = label_batch[4]
     # recs = label_batch[3]
@@ -1226,8 +1241,14 @@ def show_batch(image_batch, label_batch, labels,batch_i = 0):
         ax = plt.subplot(num_images // 3 + 1, 3, p + 1)
         # plot_spec(image_batch[n][:, :, 0], ax)
         # # plt.imshow(np.uint8(image_batch[n]))
-        spc = None
-        plt.title(f"{lbl} ({spc}")
+        plot_title = f"{lbl}"
+        if recs is not None:
+            track = tracks[n].numpy().decode("utf8")
+            rec = recs[n].numpy().decode("utf8")
+            start_s = np.round(starts[n].numpy(),1)
+            print("Start s rounded",start_s)
+            plot_title = f"{plot_title} - {rec}:{track} at {start_s:.1f}"
+        plt.title(plot_title)
         img = image_batch[n]
         plot_mel(image_batch[n][:, :, 0], ax)
     plt.savefig(f"dataset-images/batch-{batch_i}.png")
