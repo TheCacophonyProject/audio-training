@@ -1109,6 +1109,26 @@ def main():
         # species_list = ["bird", "human", "rain", "other"]
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
+        test_brds = [
+                    "bird",
+                    "fantail",
+                    "morepork",
+                    # "noise",
+                    # "human",
+                    "grey warbler",
+                    "insect",
+                    "kiwi",
+                    "magpie",
+                    "tui",
+                    "house sparrow",
+                    "blackbird",
+                    "sparrow",
+                    "song thrush",
+                    # "thrush"
+                ]
+        for l in labels:
+            if l not in excluded_labels and l not in test_brds:
+                excluded_labels.append(l)
 
         resampled_ds, remapped, _, labels,_ = get_dataset(
             tf_dir / "train",
@@ -1118,46 +1138,24 @@ def main():
             deterministic=True,
             batch_size=32,
             image_size=DIMENSIONS,
-            augment=False,
-            resample=False,
+            # augment=False,
+            # resample=False,
             excluded_labels=excluded_labels,
             # stop_on_empty=True,
-            filter_freq=False,
-            random_butter=0.9,
+            # filter_freq=False,
+            # random_butter=0.9,
             only_features=False,
-            multi_label=False,
+            multi_label=True,
             load_raw=True,
             n_fft=4096,
-            fmin=500,
-            # fmax=11000,
+            fmin=50,
+            fmax=20000,
             use_bird_tags=False,
-            debug=False,
-            shuffle=False,
-            multi=True,
+
             # filenames_2=filenames_2
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
-        for batch_x , batch_y in resampled_ds:
-            print("data is ", len(batch_x))
-            recs = batch_y[3]
-            tracks = batch_y[4]
-            for x,rec,track in zip(batch_x,recs,tracks):
-                data_ok = np.all(x>=-1) and np.all(x<=1.000002)
-                a_max = np.amax(x)
-                a_min = np.amin(x)
-                rec = rec.numpy().decode("utf8")
-                track = track.numpy().decode("utf8")
-                if not data_ok:
-                    # print(x)
-                    x = x.numpy()
-                    logging.info("Bad data for rec %s track %s less than -1 %s over 1 %s max %s min %s", rec,track, x[np.where(x <-1)], x[np.where(x >1.000002)],a_max,a_min)
-                
-
-                if a_max == a_min:
-                    logging.info("Max = Min for rec %s track %s max %s min %s", rec,track, a_max,a_min)
-
-        return
-        break
+       
         # filenames.extend(tf.io.gfile.glob(f"{d}/test/**/*.tfrecord"))
     print("labels are ", labels)
     global NZ_BIRD_LOSS_WEIGHTING, BIRD_WEIGHTING, SPECIFIC_BIRD_MASK, GENERIC_BIRD_MASK
@@ -1167,43 +1165,13 @@ def main():
     print("Dist is ", dist)
     for l, d in zip(labels, dist):
         print(f"{l} has {d}")
-    # testing loss function results
-    # from audiomodel import WeightedCrossEntropy
-
-    # custom_loss = WeightedCrossEntropy(labels)
-    # for x, y in resampled_ds:
-    #     for y_true, y_possible in zip(y[0], y[1]):
-    #         pred = tf.constant([[1, 0, 0, 1]], dtype=tf.float32)
-    #         y_true = tf.expand_dims(y_true, 0)
-    #         y_possible = tf.expand_dims(y_possible, 0)
-
-    #         loss = custom_loss.call([y_true, y_possible], pred)
-    #         print(
-    #             "for y  ",
-    #             y_true,
-    #             " with pred ",
-    #             pred,
-    #             " loss is ",
-    #             loss,
-    #             " and possible",
-    #             y_possible,
-    #         )
-    #         print("")
-    # return
-    # for e in range(2):
-    #     start = time.time()
-
-    #     for x, y in resampled_ds:
-    #         pass
-    #     print("Epoch took ",time.time() - start)
-    # return
+    
     for e in range(1):
+        batch = 0
         for x, y in resampled_ds:
-            print(x.shape)
+            batch +=1
 
-            show_batch(x, y, labels)
-            print("X batch of ", x.shape, " Has memory of ", getsize(np.array(x)), "MB")
-
+            show_batch(x, y, labels,batch_i = batch)
 
 import sys
 from types import ModuleType, FunctionType
@@ -1236,7 +1204,7 @@ def getsize(obj):
     return size * 0.000001
 
 
-def show_batch(image_batch, label_batch, labels):
+def show_batch(image_batch, label_batch, labels,batch_i = 0):
     # min_freq = label_batch[3]
     # max_freq = label_batch[4]
     # recs = label_batch[3]
@@ -1262,8 +1230,8 @@ def show_batch(image_batch, label_batch, labels):
         plt.title(f"{lbl} ({spc}")
         img = image_batch[n]
         plot_mel(image_batch[n][:, :, 0], ax)
-
-    plt.show()
+    plt.savefig(f"dataset-images/batch-{batch_i}.png")
+    # plt.show()
 
 
 def plot_mfcc(mfccs, ax):
