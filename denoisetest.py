@@ -520,7 +520,7 @@ def means_merge(spectogram,signals):
 
 def test_plot(file):
     frames, sr = load_recording(file)
-    frames = frames[:5*sr]
+    frames = frames[18*sr:22*sr]
     # frames,sr = librosa.load(file)
     # print("Oriuginal sr ",sr, np.amax(frames),np.amin(frames))
     # frames = librosa.resample(frames, orig_sr=sr, target_sr=96000)
@@ -562,18 +562,18 @@ def test_plot(file):
     n_fft = 4096
     spectogram = librosa.stft(normalize(frames), n_fft=n_fft, hop_length=281)
     # plot_spec(spectogram)
-    fmin=2000
-    fmax=4000
+    fmin=500
+    fmax=11000
     # hop_length=281
     mel = mel_spec(
         spectogram,
         sr,
         n_fft,
         hop_length,
-        96,
+        160,
         fmin,
         fmax,
-        1750,
+        1000,
         power=1,
     )
     plot_mel(mel,filename="mel4096")

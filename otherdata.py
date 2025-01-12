@@ -214,12 +214,12 @@ def merge_again(tracks):
             current_track = t
             post_filter.append(current_track)
     return post_filter
-def generate_tracks(args):
+def generate_tracks(wav_file):
     min_freq = lbl_meta.get("min_freq")
     max_freq = lbl_meta.get("max_freq")
 
-    wav_file = args[0]
-    clip_id = args[1]
+    # wav_file = args[0]
+    # clip_id = args[1]
     meta_f = wav_file.with_suffix(".txt")
     metadata = {}
     if meta_f.exists():
@@ -250,7 +250,7 @@ def generate_tracks(args):
         track_meta["tags"] = [tag]
         tracks_meta.append(track_meta)
     metadata["Tracks"] = tracks_meta
-    metadata["id"] = int(clip_id)
+    metadata["id"] = metadata["additionalMetadata"]["xeno-id"]
     metadata["duration"] = length
     # metadata["location"] =
     # could get some metadata  from xeno canto
@@ -283,12 +283,11 @@ def weakly_lbled_data(base_dir):
         wav_files = list(lbl_dir.glob("*.wav"))
         wav_files.extend(list(lbl_dir.glob("*.mp3")))
 
-        clip_ids = np.arange(len(wav_files))
         with Pool(processes=8, initializer=xeno_init, initargs=(metadata,)) as pool:
             [
                 0
                 for x in pool.imap_unordered(
-                    generate_tracks, zip(wav_files, clip_ids), chunksize=8
+                    generate_tracks, wav_files, chunksize=8
                 )
             ]
     # FIRST_SECONDS = 5

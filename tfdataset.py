@@ -1124,26 +1124,26 @@ def main():
         # species_list = ["bird", "human", "rain", "other"]
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-        test_brds = [
-                    "bird",
-                    "fantail",
-                    "morepork",
-                    # "noise",
-                    # "human",
-                    "grey warbler",
-                    "insect",
-                    "kiwi",
-                    "magpie",
-                    "tui",
-                    "house sparrow",
-                    "blackbird",
-                    "sparrow",
-                    "song thrush",
-                    # "thrush"
-                ]
-        for l in labels:
-            if l not in excluded_labels and l not in test_brds:
-                excluded_labels.append(l)
+        # test_brds = [
+        #             "bird",
+        #             "fantail",
+        #             "morepork",
+        #             # "noise",
+        #             # "human",
+        #             "grey warbler",
+        #             "insect",
+        #             "kiwi",
+        #             "magpie",
+        #             "tui",
+        #             "house sparrow",
+        #             "blackbird",
+        #             "sparrow",
+        #             "song thrush",
+        #             # "thrush"
+        #         ]
+        # for l in labels:
+        #     if l not in excluded_labels and l not in test_brds:
+        #         excluded_labels.append(l)
 
         dataset, remapped, _, labels,_ = get_dataset(
             tf_dir / "test",
@@ -1163,9 +1163,9 @@ def main():
             multi_label=True,
             load_raw=True,
             n_fft=4096,
-            fmin=0,
+            fmin=1000,
             fmax=11000,
-            break_freq=3000,
+            break_freq=1000,
             use_bird_tags=False,
             load_all_y = True,
             shuffle = False
@@ -1173,7 +1173,7 @@ def main():
             # filenames_2=filenames_2
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
-    
+    preds = None
     if args.model is not None:
         model_path = Path(args.model)
         if model_path.is_dir():
@@ -1203,7 +1203,7 @@ def main():
         for x, y in dataset:
             batch +=1
 
-            show_batch(x, y, labels,batch_i = batch,preds = preds[(batch-1) * 32: 32*batch])
+            show_batch(x, y, labels,batch_i = batch,preds = preds[(batch-1) * 32: 32*batch] if preds is not None else None)
 
 import sys
 from types import ModuleType, FunctionType
@@ -1253,7 +1253,9 @@ def show_batch(image_batch, label_batch, labels,batch_i = 0,preds = None):
     # recs = label_batch[3]
     # tracks = label_batch[4]
     # label_batch = label_batch[0]
-    fig = plt.figure(figsize=(20, 20))
+    fig = plt.figure(figsize=(30, 30))
+    plt.subplots_adjust(hspace=.5)
+
     print("images in batch", len(image_batch), len(label_batch))
     num_images = len(image_batch)
     print("labl batch", label_batch[0])
