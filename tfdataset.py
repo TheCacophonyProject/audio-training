@@ -1186,8 +1186,7 @@ def main():
         logging.info("LOading model with val acc %s", args.model)
         true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
         true_categories = tf.concat(true_categories, axis=0)
-        preds = model.predict(dataset)
-
+        preds = model.predict(dataset.map(lambda x, y: (x, y[0]),num_parallel_calls=tf.data.AUTOTUNE,deterministic=True))
         # filenames.extend(tf.io.gfile.glob(f"{d}/test/**/*.tfrecord"))
     print("labels are ", labels)
     global NZ_BIRD_LOSS_WEIGHTING, BIRD_WEIGHTING, SPECIFIC_BIRD_MASK, GENERIC_BIRD_MASK
