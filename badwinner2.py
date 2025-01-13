@@ -28,7 +28,7 @@ import tensorflow as tf
 # Worth looking into lme pooling as proposed in  https://github.com/f0k/birdclef2018/blob/master/experiments/model.py
 # Research/2018-birdclef.pdf
 
-
+@tf.keras.utils.register_keras_serializable(package="MyLayers", name="MagTransform")
 class MagTransform(tf.keras.layers.Layer):
     def __init__(self, **kwargs):
         super(MagTransform, self).__init__(**kwargs)
@@ -208,6 +208,7 @@ def build_model(
     # y = x σ(a) , where σ(a) = 1/ (1 + exp(−a))
     n_mels = input_shape[0]
     x = MagTransform()(input)
+    
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Conv2D(64, (3, 3))(x)
     x = tf.keras.layers.LeakyReLU()(x)
@@ -329,15 +330,22 @@ def logmeanexp(x, axis=None, keepdims=False, sharpness=5):
 def main():
     init_logging()
     args = parse_args()
+    l = MagTransform()
+    print(l.get_config())
+    l.from_config(l.get_config())
+    model = tf.keras.models.load_model("test-model/test.keras",compile=False)
+
+    # return
     model = build_model(
         (160, 513, 1), None, 21, multi_label=True, lme=False, big_condense=False
     )
     model.summary()
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(),
-        loss=CustomBinaryCrossEntropy,
-        metrics=tf.keras.metrics.AUC(),
-    )
+    # model.compile(
+    #     optimizer=tf.keras.optimizers.Adam(),
+    #     loss=CustomBinaryCrossEntropy,
+    #     metrics=tf.keras.metrics.AUC(),
+    # )
+    model.save("test-model/test.keras")
 
 
 def CustomBinaryCrossEntropy(y_true, y_pred):
