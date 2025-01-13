@@ -1540,7 +1540,7 @@ def raw_to_mel(x, y, features=False):
         fmax = FMAX
     logging.info("Applying butter %s %s",fmin,fmax)
 # not needed if using mel freq bin fmin and fmax
-    raw =  butter_function(raw,fmin,fmax)
+    # raw =  butter_function(raw,fmin,fmax)
     
     stft = tf.signal.stft(
         raw,
