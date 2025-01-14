@@ -631,7 +631,6 @@ def get_a_dataset(dir, labels, args):
             ),
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
-
     if args.get("no_low_samples", False):
         logging.info("Filtering out low samples")
         no_low_samples_filter = lambda x, y: tf.math.equal(
@@ -872,13 +871,7 @@ def read_tfrecord(
     low_sample = tf.cast(example["audio/low_sample"], tf.int64)
     start_s = tf.cast(example["audio/start_s"], tf.float32)
 
-    label = tf.cast(example["audio/class/text"], tf.string)
-    split_labels = tf.strings.split(label, sep="\n")
-    global remapped_y, extra_label_map
-    labels = remapped_y.lookup(split_labels)
-    if multi:
-        extra = extra_label_map.lookup(split_labels)
-        labels = tf.concat([labels, extra], axis=0)
+
     # else:
     #     print("Labels was ",labels)
     #     labels = tf.reduce_max(labels)
@@ -918,16 +911,20 @@ def read_tfrecord(
     if features or only_features:
         short_f = example["audio/short_f"]
         mid_f = example["audio/mid_f"]
-        if only_features:
-            spectogram = tf.concat((short_f, mid_f), axis=0)
-            # mid_f = tf.reshape(mid_f, (136, 3))
-            # short_f = tf.reshape(short_f, (68, 60))
+        # if only_features:
+        # spectogram = tf.concat((short_f, mid_f), axis=0)
+        #     # mid_f = tf.reshape(mid_f, (136, 3))
+        #     # short_f = tf.reshape(short_f, (68, 60))
 
-            # raw = (short_f, mid_f)
-        else:
-            mid_f = tf.reshape(mid_f, (136, 3))
-            short_f = tf.reshape(short_f, (68, 60))
-            spectogram = (short_f, mid_f, spectogram)
+        #     # raw = (short_f, mid_f)
+        # else:
+        mid_f = tf.reshape(mid_f, (136, 3))
+        short_f = tf.reshape(short_f, (68, 60))
+        if only_features:
+            print("ONLY FEATURES")
+            spectogram = (short_f, mid_f)
+        else: 
+            spectogram = (spectogram, short_f, mid_f )
         # raw = tf.expand_dims(raw, axis=0)
     if augment:
         logging.info("Augmenting")
@@ -940,22 +937,34 @@ def read_tfrecord(
         mel = mel - mel_m
     if labeled:
         # label = tf.cast(example["audio/class/label"], tf.int32)
+        label = tf.cast(example["audio/class/text"], tf.string)
+        split_labels = tf.strings.split(label, sep="\n")
+        global remapped_y, extra_label_map
+        labels = remapped_y.lookup(split_labels)
+        extra = extra_label_map.lookup(split_labels)
+        if multi:
 
+            labels = tf.concat([labels, extra], axis=0)
         if one_hot:
             label = tf.reduce_max(
                 tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
             )
             if not multi:
                 logging.info("Choosing only one label as not multi")
+                if tf.math.count_nonzero(label)==0:
+                    # if all normal labels are excluded choose an extra one
+                    label = tf.reduce_max(
+                        tf.one_hot(extra, num_labels, dtype=tf.int32), axis=0
+                    )
                 max_l = tf.argmax(label)
                 label = tf.one_hot(max_l, num_labels, dtype=tf.int32)
-
             if embed_preds is not None:
                 embed_preds = tf.reduce_max(
                     tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
                 )
         else:
             # pretty sure this is wrong but never used
+            logging.error("Don't think non one hot works please check")
             label = labels
         signal_percent = 0.0
         if no_bird:
@@ -1159,13 +1168,13 @@ def main():
             # stop_on_empty=True,
             # filter_freq=False,
             # random_butter=0.9,
-            only_features=False,
-            multi_label=True,
-            load_raw=True,
-            n_fft=4096,
-            fmin=1000,
-            fmax=11000,
-            break_freq=1000,
+            only_features=True,
+            multi_label=False,
+            load_raw=False,
+            # n_fft=4096,
+            # fmin=1000,
+            # fmax=11000,
+            # break_freq=1000,
             use_bird_tags=False,
             load_all_y = True,
             shuffle = False
@@ -1173,6 +1182,15 @@ def main():
             # filenames_2=filenames_2
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
+        for x,y in dataset:
+            for y2 in y[0]:
+                print("Have y ", y2)
+        1/0
+        # for x,y in dataset:
+        #     # print(x[0].shape, x[1].shape)
+        #     for x2 in x:
+        #         print(x2.shape)
+        #         1/0
     preds = None
     if args.model is not None:
         model_path = Path(args.model)

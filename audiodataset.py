@@ -730,7 +730,6 @@ TOP_FREQ = 48000 / 2
 
 def load_features(signal, sr):
     from pyAudioAnalysis import MidTermFeatures as aF
-
     # defaults from the pyAudio wiki
     mw = 1.0
     ms = 1.0
@@ -976,7 +975,7 @@ def load_data(
             assert short_f.shape == (68, 60)
             assert mid_f.shape == (136, 3)
         except:
-            logging.info("Error loading features")
+            logging.info("Error loading features", exc_info=True)
         if len(s_data) < int(segment_l * sr):
             extra_frames = int(segment_l * sr) - len(s_data)
             offset = np.random.randint(0, extra_frames)

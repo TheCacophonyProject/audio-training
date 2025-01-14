@@ -30,7 +30,7 @@ import tensorflow as tf
 
 # import tensorflow_decision_forests as tfdf
 from tensorflow.keras import layers
-
+import ydf
 #
 #
 # physical_devices = tf.config.list_physical_devices("GPU")
@@ -108,7 +108,8 @@ class AudioModel:
             self.input_shape = (self.input_shape[0], self.input_shape[1], 3)
         elif model_name == "dual-badwinner2":
             self.input_shape = (96,511,1)
-        
+        elif model_name =="cnn-features":
+            self.input_shape = [(68,60),(136,3)]
         self.preprocess_fn = None
         self.learning_rate = 0.01
         self.mean_sub = False
@@ -354,6 +355,9 @@ class AudioModel:
                 # else:
                 #     json_history[key] = item
 
+
+        
+
     def train_model(
         self,
         run_name="test",
@@ -368,7 +372,6 @@ class AudioModel:
             **args,
         )
         from tfdataset import DIMENSIONS
-        logging.info("DIMENSIONS is now %s",DIMENSIONS)
         self.input_shape = DIMENSIONS
         if self.model_name == "embeddings":
             self.input_shape = EMBEDDING_SHAPE
@@ -427,19 +430,34 @@ class AudioModel:
                 loss_fn=args.get("loss_fn", "keras"),
             )
             (self.checkpoint_folder / run_name).mkdir(parents=True, exist_ok=True)
-            self.model.save(self.checkpoint_folder / run_name / f"{run_name}.keras")
+            if self.model_name !="rf-features":
+                self.model.save(self.checkpoint_folder / run_name / f"{run_name}.keras")
             self.save_metadata(run_name, None, None, **args)
 
         if weights is not None:
             self.load_weights(weights)
+        
+        
         checkpoints = self.checkpoints(run_name)
-
         class_weights = None
         if args.get("use_weighting", True):
             class_weights = get_weighting(self.train, self.labels)
             logging.info("Weights are %s", class_weights)
-        if self.model_name == "features":
-            history = self.model.fit(self.train, validation_data=self.validation)
+        history = None
+        if self.model_name == "rf-features":
+            ydf_ds = tf_to_ydf(self.train)
+           
+            self.model = self.model.train(ydf_ds)
+            self.model.save(str(self.checkpoint_folder / run_name / "rf"))
+            self.load_test_set(**args)
+            self.train = None
+            ydf_ds = tf_to_ydf(self.test)
+
+            evaluation = self.model.evaluate(ydf_ds)
+            print(evaluation)
+            self.save_metadata(run_name +"/rf", history, test_results=(evaluation.accuracy,evaluation.loss), **args)
+            return
+            # history = self.model.fit(self.train, validation_data=self.validation)
         else:
             history = self.model.fit(
                 self.train,
@@ -455,7 +473,7 @@ class AudioModel:
                 class_weight=class_weights,
             )
 
-        history = history.history
+            history = history.history
         test_accuracy = None
         self.load_test_set(**args)
         self.save(run_name, history=history, test_results=test_accuracy, **args)
@@ -614,7 +632,7 @@ class AudioModel:
                 multi_label=multi_label,
                 lme=self.lme,
             )
-        elif self.model_name == "features-cnn":
+        elif self.model_name == "cnn-features":
             inputs = []
             inputs.append(tf.keras.Input(shape=(68, 60), name="short_f"))
             inputs.append(tf.keras.Input(shape=(136, 3), name="mid_f"))
@@ -626,8 +644,10 @@ class AudioModel:
 
             self.model = tf.keras.models.Model(inputs, outputs=output)
             self.model.summary()
-        elif self.model_name == "features":
-            self.model = tfdf.keras.RandomForestModel()
+        elif self.model_name == "rf-features":
+            self.model = ydf.RandomForestLearner(label="y")
+
+            # self.model = tfdf.keras.RandomForestModel()
             return
         elif self.model_name == "badwinner2-res":
             logging.info("Building bad winner2 res")
@@ -1064,13 +1084,13 @@ def loss(multi_label=False, smoothing=0):
         # return tf.keras.losses.BinaryFocalCrossentropy(
         #     gamma=2.0, from_logits=False, apply_class_balancing=True
         # )
-        logging.info("Using binary")
+        logging.info("Using binary loss")
         loss_fn = tf.keras.losses.BinaryCrossentropy(
             label_smoothing=smoothing,
         )
         # loss_fn = sigmoid_binary_cross
     else:
-        logging.info("Using cross")
+        logging.info("Using cross loss")
         loss_fn = tf.keras.losses.CategoricalCrossentropy(
             label_smoothing=smoothing,
         )
@@ -2102,5 +2122,20 @@ def feature_cnn(short_features, mid_features, num_labels):
     return short_features, mid_features
 
 
+def tf_to_ydf(dataset):
+    ydf_ds = {"f1":[],"f2":[],"y":[]}
+    # not sure if you loose anything by flattening, i.e. time info
+    for x, y in dataset.unbatch():
+        short_f = x[0].numpy().ravel()
+        long_f = x[1].numpy().ravel()
+        ydf_ds["f1"].append(short_f)
+        ydf_ds["f2"].append(long_f)
+        ydf_ds["y"].append(tf.argmax(y).numpy())
+    ydf_ds["f1"] = np.float32(ydf_ds["f1"])
+    ydf_ds["f2"] = np.float32(ydf_ds["f2"])
+    ydf_ds["y"] = np.int16(ydf_ds["y"])
+    return ydf_ds
+
 if __name__ == "__main__":
     main()
+
