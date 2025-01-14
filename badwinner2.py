@@ -121,18 +121,18 @@ def res_block(X, filters, stage, block, stride=1):
 
 
 def build_model_res(
-    input_shape, norm_layer, num_labels, multi_label=False, add_dense=True
+    input_shape, norm_layer, num_labels, multi_label=False, add_dense=True,big_condense=True
 ):
     input = tf.keras.Input(shape=input_shape, name="input")
     # x = norm_layer(input)
     # if multi_label:
     filters = 256
     # y = x σ(a) , where σ(a) = 1/ (1 + exp(−a))
+    n_mels = input_shape[0]
 
     x = MagTransform()(input)
-    # x = tf.keras.layers.BatchNormalization()(x)
-
-    x = tf.keras.layers.Conv2D(64, (3, 3))
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Conv2D(64, (3, 3))(x)
     x = tf.keras.layers.LeakyReLU()(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
@@ -142,12 +142,26 @@ def build_model_res(
     x = res_block(x, 128, 2, "b")
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Activation("relu")(x)
-    x = tf.keras.layers.Conv2D(128, (14, 3))(x)
-    x = tf.keras.layers.LeakyReLU()(x)
 
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Conv2D(128, (22, 3))(x)
-    x = tf.keras.layers.LeakyReLU()(x)
+
+
+    if big_condense:
+        if n_mels == 160:
+            x = tf.keras.layers.Conv2D(128, (48, 3),name="bigcondense")(x)
+        # elif n_mels== 96:
+        #     x = tf.keras.layers.Conv2D(128, (22, 3))(x)
+        else:
+            raise "Unhandle mel channels " + n_mels
+        x = tf.keras.layers.LeakyReLU()(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+    else:
+        x = tf.keras.layers.Conv2D(128, (14, 3))(x)
+        x = tf.keras.layers.LeakyReLU()(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+        x = tf.keras.layers.Conv2D(128, (22, 3))(x)
+        x = tf.keras.layers.LeakyReLU()(x)
+       
+    
 
     x = tf.keras.layers.Dropout(0.5)(x)
 
@@ -201,6 +215,7 @@ def build_model(
     input_name = "input",
     # n_mels= 160
 ):
+    leaky_alpha = 0.01
     input = tf.keras.Input(shape=input_shape, name=input_name)
     # x = norm_layer(input)
     # if multi_label:
@@ -210,23 +225,23 @@ def build_model(
     x = MagTransform()(input)
     
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Conv2D(64, (3, 3))(x)
-    x = tf.keras.layers.LeakyReLU()(x)
 
+    x = tf.keras.layers.Conv2D(64, (3, 3))(x)
+    x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
     x = tf.keras.layers.Conv2D(64, (3, 3))(x)
-    x = tf.keras.layers.LeakyReLU()(x)
-
+    x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
     x = tf.keras.layers.MaxPool2D((3, 3))(x)
 
     x = tf.keras.layers.Conv2D(128, (3, 3))(x)
-    x = tf.keras.layers.LeakyReLU()(x)
+    x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
     x = tf.keras.layers.BatchNormalization()(x)
+    
     x = tf.keras.layers.Conv2D(128, (3, 3))(x)
-    x = tf.keras.layers.LeakyReLU()(x)
+    x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
     # Original is based of 80 mels, which only needs one conv 17x 3
@@ -241,14 +256,14 @@ def build_model(
             x = tf.keras.layers.Conv2D(128, (22, 3))(x)
         else:
             raise "Unhandle mel channels " + n_mels
-        x = tf.keras.layers.LeakyReLU()(x)
+        x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
         x = tf.keras.layers.BatchNormalization()(x)
     else:
         x = tf.keras.layers.Conv2D(128, (28, 3))(x)
-        x = tf.keras.layers.LeakyReLU()(x)
+        x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
         x = tf.keras.layers.BatchNormalization()(x)
         x = tf.keras.layers.Conv2D(128, (17, 3))(x)
-        x = tf.keras.layers.LeakyReLU()(x)
+        x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
         x = tf.keras.layers.BatchNormalization()(x)
 
         # Squish again so that we have 5 condense mel bands
@@ -263,7 +278,7 @@ def build_model(
         (1, 9),
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
-    x = tf.keras.layers.LeakyReLU()(x)
+    x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Dropout(0.5)(x)
 
@@ -272,7 +287,7 @@ def build_model(
         1,
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
-    x = tf.keras.layers.LeakyReLU()(x)
+    x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
     x = tf.keras.layers.Dropout(0.5)(x)
@@ -283,7 +298,7 @@ def build_model(
             1,
             kernel_initializer=tf.keras.initializers.Orthogonal(),
         )(x)
-        x = tf.keras.layers.LeakyReLU()(x)
+        x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
         # Since we have quite specific track information, LME might not be so usefull, as this is more
         #  like an inbetween max and average, higher the sharpness the more like max it becomes
         # haven't found any benefit using LME
@@ -330,14 +345,14 @@ def logmeanexp(x, axis=None, keepdims=False, sharpness=5):
 def main():
     init_logging()
     args = parse_args()
-    l = MagTransform()
-    print(l.get_config())
-    l.from_config(l.get_config())
-    model = tf.keras.models.load_model("test-model/test.keras",compile=False)
+    # l = MagTransform()
+    # print(l.get_config())
+    # l.from_config(l.get_config())
+    # model = tf.keras.models.load_model("test-model/test.keras",compile=False)
 
     # return
-    model = build_model(
-        (160, 513, 1), None, 21, multi_label=True, lme=False, big_condense=False
+    model = build_model_res(
+        (160, 513, 1), None, 21, multi_label=True
     )
     model.summary()
     # model.compile(
@@ -345,7 +360,7 @@ def main():
     #     loss=CustomBinaryCrossEntropy,
     #     metrics=tf.keras.metrics.AUC(),
     # )
-    model.save("test-model/test.keras")
+    # model.save("test-model/test.keras")
 
 
 def CustomBinaryCrossEntropy(y_true, y_pred):
