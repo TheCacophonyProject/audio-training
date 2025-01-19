@@ -1189,7 +1189,7 @@ def log_confusion_matrix(epoch, logs, model, dataset, writer, labels):
             tf.summary.image(f"Confusion Matrix {i}", cm_image, step=epoch)
 
 
-def confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
+def confusion(model, labels, dataset, filename="confusion.png", one_hot=True,model_name = None):
     true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
     true_categories = tf.concat(true_categories, axis=0)
     y_true = []
@@ -1197,6 +1197,9 @@ def confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
         y_true = np.int64(tf.argmax(true_categories, axis=1))
     else:
         y_true = np.array(true_categories)
+
+    if model_name == "rf-features":
+        dataset = tf_to_ydf(dataset)
     y_pred = model.predict(dataset)
     # y_pred = np.int64(tf.argmax(y_pred, axis=1))
 
@@ -1611,7 +1614,7 @@ def main():
                         dataset,
                         confusion_file,
                         one_hot=not meta_data.get("only_features"),
-                                                model_name = model_name
+                        model_name = model_name
 
                     )
 
