@@ -496,7 +496,7 @@ class AudioModel:
             )
             if args.get("multi_label"):
                 multi_confusion_single(
-                    self.model, self.labels, self.test, confusion_file
+                    self.model, self.labels, self.test, confusion_file, model_name= self.model_name
                 )
             else:
                 confusion(self.model, self.labels, self.test, confusion_file)
@@ -1217,7 +1217,7 @@ def confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
 
 
 def multi_confusion_single(
-    model, labels, dataset, filename="confusion.png", one_hot=True, prob_thresh=0.7
+    model, labels, dataset, filename="confusion.png", one_hot=True, prob_thresh=0.7,model_name = None
 ):
     filename = Path(filename)
     from sklearn.preprocessing import MultiLabelBinarizer
@@ -1234,6 +1234,9 @@ def multi_confusion_single(
     # true_categories = np.int64(tf.argmax(true_categories, axis=1))
     # else:
     # y_true = np.array(true_categories)
+    if model_name == "rf-features":
+        dataset = tf_to_ydf(dataset)
+
     y_pred = model.predict(dataset)
 
     labels.append("nothing")
@@ -1317,7 +1320,7 @@ def multi_confusion_single(
     plt.savefig(none_path.with_suffix(".png"), format="png")
 
 
-def multi_confusion(model, labels, dataset, filename="confusion.png", one_hot=True):
+def multi_confusion(model, labels, dataset, filename="confusion.png", one_hot=True,model_name = None):
     from sklearn.preprocessing import MultiLabelBinarizer
 
     mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
@@ -1332,6 +1335,8 @@ def multi_confusion(model, labels, dataset, filename="confusion.png", one_hot=Tr
         # true_categories = np.int64(tf.argmax(true_categories, axis=1))
     else:
         y_true = np.array(true_categories)
+    if model_name == "rf-features":
+        dataset = tf_to_ydf(dataset)
     y_pred = model.predict(dataset)
 
     predicted_categories = []
@@ -1491,24 +1496,29 @@ def main():
     # return
     if args.confusion is not None:
         model_path = Path(args.name)
-        if model_path.is_dir():
-            model_path = model_path / f"{model_path.stem}.keras"
-        logging.info("Loading %s with weights %s", model_path, "val_acc")
-        model = tf.keras.models.load_model(
-            str(model_path),
-            compile=False,
-        )
 
         meta_file = model_path.parent / "metadata.txt"
         print("Meta", meta_file)
         with open(str(meta_file), "r") as f:
             meta_data = json.load(f)
+        model_name = meta_data.get("name")
+
+        if model_name =="rf-features":
+            model = ydf.load_model(str(model_path.parent))
+        else:
+            if model_path.is_dir():
+                model_path = model_path / f"{model_path.stem}.keras"
+            logging.info("Loading %s with weights %s", model_path, "val_acc")
+            model = tf.keras.models.load_model(
+                str(model_path),
+                compile=False,
+            )
+
 
         multi = meta_data.get("multi_label", True)
         labels = meta_data.get("labels")
         print("model labels are", labels)
 
-        model_name = meta_data.get("name")
 
         base_dir = Path(args.dataset_dir)
         meta_f = base_dir / "training-meta.json"
@@ -1544,18 +1554,19 @@ def main():
             n_fft=meta_data.get("n_fft"),
         )
         # acc = tf.metrics.binary_accuracy
-        acc = tf.keras.metrics.BinaryAccuracy(threshold=0.5)
-        model.compile(
-            optimizer=optimizer(lr=1.0),
-            loss=loss(True),
-            metrics=[
-                acc,  #
-                tf.keras.metrics.AUC(),
-                tf.keras.metrics.Recall(),
-                tf.keras.metrics.Precision(),
-            ],
-        )
-        # model.evaluate(dataset)
+        if model_name!="rf-features":
+            acc = tf.keras.metrics.BinaryAccuracy(threshold=0.5)
+            model.compile(
+                optimizer=optimizer(lr=1.0),
+                loss=loss(True),
+                metrics=[
+                    acc,  #
+                    tf.keras.metrics.AUC(),
+                    tf.keras.metrics.Recall(),
+                    tf.keras.metrics.Precision(),
+                ],
+            )
+            # model.evaluate(dataset)
 
         if dataset is not None:
             # best_threshold(model, labels, dataset, args.confusion)
@@ -1591,6 +1602,7 @@ def main():
                         dataset,
                         confusion_file,
                         one_hot=not meta_data.get("only_features"),
+                        model_name = model_name
                     )
                 else:
                     confusion(
@@ -1599,6 +1611,8 @@ def main():
                         dataset,
                         confusion_file,
                         one_hot=not meta_data.get("only_features"),
+                                                model_name = model_name
+
                     )
 
     else:
