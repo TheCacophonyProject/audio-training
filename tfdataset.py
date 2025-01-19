@@ -319,16 +319,18 @@ def load_dataset(filenames, num_labels, labels, args):
         deterministic=deterministic,
     )
     
-    if args.get("filter_bad", False):
-        logging.info("Filtering bad")
-        dataset = dataset.filter(lambda x, y: not filter_bad_tracks(x, y, labels))
-    if not args.get("only_features", False):
+    # if args.get("filter_bad", False):
+    #     logging.info("Filtering bad")
+    #     dataset = dataset.filter(lambda x, y: not filter_bad_tracks(x, y, labels))
+    if args.get("only_features", False):
+            filter_nan = lambda x, y: tf.math.count_nonzero(x[0])>0  and tf.math.count_nonzero(x[1])>0
+    else:
         logging.info("Removing Nan")
         if args.get("features"):
             filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[2]))
         else:
             filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
-        dataset = dataset.filter(filter_nan)
+    dataset = dataset.filter(filter_nan)
     if args.get("one_hot", True):
         filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y[0]), 0)
     else:
@@ -862,8 +864,8 @@ def read_tfrecord(
             )
 
     if features or only_features:
-        tfrecord_format["audio/short_f"] = tf.io.FixedLenFeature((68 * 60), tf.float32)
-        tfrecord_format["audio/mid_f"] = tf.io.FixedLenFeature((136 * 3), tf.float32)
+        tfrecord_format["audio/short_f"] = tf.io.FixedLenFeature((68 * 60), tf.float32, default_value=tf.zeros((68 * 60)))
+        tfrecord_format["audio/mid_f"] = tf.io.FixedLenFeature((136 * 3), tf.float32,default_value=tf.zeros((136 * 3)))
 
     tfrecord_format["audio/signal_percent"] = tf.io.FixedLenFeature((), tf.float32)
 
