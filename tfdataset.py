@@ -327,7 +327,7 @@ def load_dataset(filenames, num_labels, labels, args):
     else:
         logging.info("Removing Nan")
         if args.get("features"):
-            filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[2]))
+            filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[0])) and tf.math.count_nonzero(x[1])>0  and tf.math.count_nonzero(x[2])>0
         else:
             filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
     dataset = dataset.filter(filter_nan)
