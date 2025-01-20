@@ -1483,7 +1483,7 @@ def butter_bandpass(lowcut, highcut, fs, order=2):
 
 
 @tf.function
-def raw_to_mel_dual(x, y, features=False):
+def raw_to_mel_dual(x, y):
 
     raw = x
     raw_2 = tf.compat.v1.identity(raw)
@@ -1535,18 +1535,28 @@ def raw_to_mel_dual(x, y, features=False):
 
 @tf.function
 def normalize(input,y):
-    min_v  = tf.math.reduce_min(input,-1,keepdims=True)
-    input = tf.math.subtract(input,min_v)
-    max_v = tf.math.reduce_max(input,-1,keepdims=True)
-    input = tf.math.divide(input,max_v) + 0.000001
-    input = tf.math.subtract(input,0.5)
-    input = tf.math.multiply(input,2) 
-    return input,y
+
+    if isinstance(input, tuple):
+        x = input[0]
+        print("GOt tuple input")
+    else:
+        x = input
+    min_v  = tf.math.reduce_min(x,-1,keepdims=True)
+    x = tf.math.subtract(x,min_v)
+    max_v = tf.math.reduce_max(x,-1,keepdims=True)
+    x = tf.math.divide(x,max_v) + 0.000001
+    x = tf.math.subtract(x,0.5)
+    x = tf.math.multiply(x,2) 
+    if isinstance(input, tuple):
+        print("Returning tuple")
+        return (x,input[1],input[2]),y
+    else:
+        return x,y
 
 @tf.function
-def raw_to_mel(x, y, features=False):
-    if features:
-        raw = x[2]
+def raw_to_mel(x, y):
+    if isinstance(x, tuple):
+        raw = x[0]
     else:
         raw = x
         
@@ -1582,7 +1592,7 @@ def raw_to_mel(x, y, features=False):
 
     stft = tf.transpose(stft, [0, 2, 1])
     stft = tf.math.abs(stft)
-    batch_size = tf.keras.ops.shape(x)[0]
+    batch_size = tf.keras.ops.shape(raw)[0]
 
     weights = tf.expand_dims(MEL_WEIGHTS, 0)
     weights = tf.repeat(weights, batch_size, 0)
@@ -1590,8 +1600,8 @@ def raw_to_mel(x, y, features=False):
     image = tf.expand_dims(image, axis=3)
 
 
-    if features:
-        x = (x[0], x[1], image)
+    if isinstance(x, tuple):
+        x = (image, x[1], x[2])
     else:
         x = image
     return x, y

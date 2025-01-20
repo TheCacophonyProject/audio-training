@@ -560,21 +560,21 @@ class AudioModel:
         num_labels = len(self.labels)
         if self.model_name == "merge":
             inputs = []
-            inputs.append(tf.keras.Input(shape=(68, 60), name="short_f"))
-            inputs.append(tf.keras.Input(shape=(136, 3), name="mid_f"))
 
-            short, mid = feature_cnn(inputs[0], inputs[1], num_labels)
-            bad_model = badwinner2.build_model(
+            bad_model = self.model = badwinner2.build_model(
                 self.input_shape,
                 None,
                 num_labels,
                 multi_label=multi_label,
                 lme=self.lme,
-                add_dense=True,
             )
-
             inputs.append(bad_model.inputs[0])
-            output = tf.keras.layers.Concatenate()([short, mid, bad_model.output])
+            inputs.append(tf.keras.Input(shape=(68, 60), name="short_f"))
+            inputs.append(tf.keras.Input(shape=(136, 3), name="mid_f"))
+
+            short, mid = feature_cnn(inputs[1], inputs[2], num_labels)
+            output = tf.keras.layers.Concatenate()([bad_model.output, short, mid])
+            # output = tf.keras.layers.Dense(128, activation="relu")(output)
 
             # output = tf.keras.layers.Conv2D(
             #     num_labels,
