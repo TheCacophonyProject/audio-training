@@ -143,7 +143,7 @@ def build_model_res(
     n_mels = input_shape[0]
 
     x = MagTransform()(input)
-    x = tf.keras.layers.BatchNormalization(scale=False,center =False)(x)
+    x = tf.keras.layers.BatchNormalization(axis = 1,scale=False,center =False)(x)
     x = tf.keras.layers.Conv2D(64, (3, 3))(x)
     x = tf.keras.layers.LeakyReLU()(x)
     x = tf.keras.layers.BatchNormalization()(x)
@@ -236,8 +236,8 @@ def build_model(
     n_mels = input_shape[0]
     x = MagTransform()(input)
     
-    # beta and gamma None
-    x = tf.keras.layers.BatchNormalization(scale=False,center =False)(x)
+    # beta and gamma None mean over mel axis
+    x = tf.keras.layers.BatchNormalization(axis=1,scale=False,center =False)(x)
 
     x = tf.keras.layers.Conv2D(64, (3, 3))(x)
     x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
