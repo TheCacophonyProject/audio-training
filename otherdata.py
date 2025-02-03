@@ -175,6 +175,7 @@ def mix_noise(w):
     if count % 50 == 0:
         logging.info("Saved %s", count)
 
+
 # more aggressive track merging
 # since we are only looking for one bird in these clips try reduce to one concurrent track
 def merge_again(tracks):
@@ -189,18 +190,18 @@ def merge_again(tracks):
             continue
         overlap = current_track.time_overlap(t)
         percent_overlap = overlap / t.length
-        percent_overlap_2 = overlap/ current_track.length
+        percent_overlap_2 = overlap / current_track.length
 
         f_overlap = current_track.mel_freq_overlap(t)
         f_percent_overlap = f_overlap / t.mel_freq_range
 
         if percent_overlap_2 > 0.5:
-            post_filter = post_filter[:len(post_filter)-1]
+            post_filter = post_filter[: len(post_filter) - 1]
             post_filter.append(t)
             current_track = t
         elif percent_overlap > 0.5 or (percent_overlap > 0 and f_percent_overlap > 0.5):
-            if f_percent_overlap> 0.5:
-                current_track.end = max(current_track.end,t.end)
+            if f_percent_overlap > 0.5:
+                current_track.end = max(current_track.end, t.end)
         else:
             # encountered another big track shall we just make this current track and allow some small overlap???
             current_track = t
@@ -214,6 +215,8 @@ def merge_again(tracks):
             current_track = t
             post_filter.append(current_track)
     return post_filter
+
+
 def generate_tracks(wav_file):
     min_freq = lbl_meta.get("min_freq")
     max_freq = lbl_meta.get("max_freq")
@@ -266,6 +269,7 @@ def xeno_init(metadata):
     global lbl_meta
     lbl_meta = metadata
 
+
 def weakly_lbled_data(base_dir):
     logging.info("Weakly labeled xeno data %s", base_dir)
     config = Config()
@@ -284,34 +288,28 @@ def weakly_lbled_data(base_dir):
         wav_files.extend(list(lbl_dir.glob("*.mp3")))
 
         with Pool(processes=8, initializer=xeno_init, initargs=(metadata,)) as pool:
-            [
-                0
-                for x in pool.imap_unordered(
-                    generate_tracks, wav_files, chunksize=8
-                )
-            ]
+            [0 for x in pool.imap_unordered(generate_tracks, wav_files, chunksize=8)]
     # FIRST_SECONDS = 5
 
     dataset.load_meta(base_dir)
     dataset.print_counts()
 
     dataset.samples = []
-    for k,r in dataset.recs.items():
-        
+    for k, r in dataset.recs.items():
+
         # acceptable_tracks = [t.id for t in r.tracks if t.start < FIRST_SECONDS]
         # could filter some tracks by small freq bands
-        r.samples = [s for s in r.samples if  s.length> 2]
-        if len(r.samples)==0:
+        r.samples = [s for s in r.samples if s.length > 2]
+        if len(r.samples) == 0:
             print("No sample is first seconds for ", r.filename)
         dataset.samples.extend(r.samples)
     dataset.print_counts()
 
-
-    train,validation,_ = split_randomly(dataset, no_test=True)
+    train, validation, _ = split_randomly(dataset, no_test=True)
     validation.name = "test"
 
     all_labels = set()
-    for d in [train,validation]:
+    for d in [train, validation]:
         logging.info("")
         logging.info("%s Dataset", d.name)
         d.print_sample_counts()
@@ -323,7 +321,7 @@ def weakly_lbled_data(base_dir):
     print("saving to", record_dir)
 
     dataset_counts = {}
-    for dataset in [train,validation]:
+    for dataset in [train, validation]:
         dir = record_dir / dataset.name
         print("saving to ", dir)
         create_tf_records(dataset, dir, all_labels, num_shards=100)

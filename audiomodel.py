@@ -31,6 +31,7 @@ import tensorflow as tf
 # import tensorflow_decision_forests as tfdf
 from tensorflow.keras import layers
 import ydf
+
 #
 #
 # physical_devices = tf.config.list_physical_devices("GPU")
@@ -107,9 +108,9 @@ class AudioModel:
         elif model_name == "efficientnetb0":
             self.input_shape = (self.input_shape[0], self.input_shape[1], 3)
         elif model_name == "dual-badwinner2":
-            self.input_shape = (96,511,1)
-        elif model_name =="cnn-features":
-            self.input_shape = [(68,60),(136,3)]
+            self.input_shape = (96, 511, 1)
+        elif model_name == "cnn-features":
+            self.input_shape = [(68, 60), (136, 3)]
         self.preprocess_fn = None
         self.learning_rate = 0.01
         self.mean_sub = False
@@ -355,9 +356,6 @@ class AudioModel:
                 # else:
                 #     json_history[key] = item
 
-
-        
-
     def train_model(
         self,
         run_name="test",
@@ -372,13 +370,14 @@ class AudioModel:
             **args,
         )
         from tfdataset import DIMENSIONS
+
         self.input_shape = DIMENSIONS
         if self.model_name == "embeddings":
             self.input_shape = EMBEDDING_SHAPE
         elif self.model_name == "efficientnetb0":
             self.input_shape = (self.input_shape[0], self.input_shape[1], 3)
         elif self.model_name == "dual-badwinner2":
-            self.input_shape = (96,511,1)
+            self.input_shape = (96, 511, 1)
 
         args["excluded_labels"] = excluded_labels
         args["remapped_labels"] = remapped
@@ -430,14 +429,13 @@ class AudioModel:
                 loss_fn=args.get("loss_fn", "keras"),
             )
             (self.checkpoint_folder / run_name).mkdir(parents=True, exist_ok=True)
-            if self.model_name !="rf-features":
+            if self.model_name != "rf-features":
                 self.model.save(self.checkpoint_folder / run_name / f"{run_name}.keras")
             self.save_metadata(run_name, None, None, **args)
 
         if weights is not None:
             self.load_weights(weights)
-        
-        
+
         checkpoints = self.checkpoints(run_name)
         class_weights = None
         if args.get("use_weighting", True):
@@ -446,7 +444,7 @@ class AudioModel:
         history = None
         if self.model_name == "rf-features":
             ydf_ds = tf_to_ydf(self.train)
-           
+
             self.model = self.model.train(ydf_ds)
             self.model.save(str(self.checkpoint_folder / run_name / "rf"))
             self.load_test_set(**args)
@@ -455,7 +453,12 @@ class AudioModel:
 
             evaluation = self.model.evaluate(ydf_ds)
             print(evaluation)
-            self.save_metadata(run_name +"/rf", history, test_results=(evaluation.accuracy,evaluation.loss), **args)
+            self.save_metadata(
+                run_name + "/rf",
+                history,
+                test_results=(evaluation.accuracy, evaluation.loss),
+                **args,
+            )
             return
             # history = self.model.fit(self.train, validation_data=self.validation)
         else:
@@ -496,7 +499,11 @@ class AudioModel:
             )
             if args.get("multi_label"):
                 multi_confusion_single(
-                    self.model, self.labels, self.test, confusion_file, model_name= self.model_name
+                    self.model,
+                    self.labels,
+                    self.test,
+                    confusion_file,
+                    model_name=self.model_name,
                 )
             else:
                 confusion(self.model, self.labels, self.test, confusion_file)
@@ -592,14 +599,14 @@ class AudioModel:
 
             self.model = tf.keras.models.Model(inputs, outputs=output)
             self.model.summary()
-        elif self.model_name=="dual-badwinner2":
+        elif self.model_name == "dual-badwinner2":
             model = badwinner2.build_model(
                 self.input_shape,
                 None,
                 num_labels,
                 multi_label=multi_label,
                 lme=self.lme,
-                n_mels=96
+                n_mels=96,
             )
             model_2 = badwinner2.build_model(
                 self.input_shape,
@@ -607,11 +614,11 @@ class AudioModel:
                 num_labels,
                 multi_label=multi_label,
                 lme=self.lme,
-                input_name = "input2",
-                n_mels=96
+                input_name="input2",
+                n_mels=96,
             )
             inputs = []
-            model_2.input.name="input2"
+            model_2.input.name = "input2"
             inputs.append(model.input)
             inputs.append(model_2.input)
             output = tf.keras.layers.Concatenate()([model.output, model_2.output])
@@ -619,7 +626,7 @@ class AudioModel:
             #  i think this should learn it the same but allow for more complex patterns
             output = layers.Dense(num_labels)(output)
             output = tf.keras.activations.sigmoid(output)
-            
+
             self.model = tf.keras.models.Model(inputs, outputs=output)
             self.model.summary()
             print("MODEL MADE")
@@ -824,7 +831,7 @@ class AudioModel:
             "song thrush",
             "whistler",
             "rooster",
-            "silverye"
+            "silverye",
             # "thrush"
         ]
         for l in self.labels:
@@ -837,7 +844,7 @@ class AudioModel:
             self.labels,
             batch_size=self.batch_size,
             image_size=self.input_shape,
-            augment=False,#seems to perform worse
+            augment=False,  # seems to perform worse
             excluded_labels=excluded_labels,
             filenames_2=second_filenames,
             embeddings=self.model_name == "embeddings",
@@ -1142,8 +1149,8 @@ def log_confusion_matrix(epoch, logs, model, dataset, writer, labels):
     from sklearn.preprocessing import MultiLabelBinarizer
 
     mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
-    dataset_data = [(x,y) for x, y in dataset]
-    
+    dataset_data = [(x, y) for x, y in dataset]
+
     true_categories = [y for x, y in dataset_data]
     true_categories = tf.concat(true_categories, axis=0)
     y_true = []
@@ -1153,7 +1160,7 @@ def log_confusion_matrix(epoch, logs, model, dataset, writer, labels):
     y_true = y_true
 
     true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    data =  [x for x, y in dataset_data]
+    data = [x for x, y in dataset_data]
     data = tf.concat(data, axis=0)
     y_pred = model.predict(data)
 
@@ -1192,7 +1199,9 @@ def log_confusion_matrix(epoch, logs, model, dataset, writer, labels):
             tf.summary.image(f"Confusion Matrix {i}", cm_image, step=epoch)
 
 
-def confusion(model, labels, dataset, filename="confusion.png", one_hot=True,model_name = None):
+def confusion(
+    model, labels, dataset, filename="confusion.png", one_hot=True, model_name=None
+):
     true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
     true_categories = tf.concat(true_categories, axis=0)
     y_true = []
@@ -1223,7 +1232,13 @@ def confusion(model, labels, dataset, filename="confusion.png", one_hot=True,mod
 
 
 def multi_confusion_single(
-    model, labels, dataset, filename="confusion.png", one_hot=True, prob_thresh=0.7,model_name = None
+    model,
+    labels,
+    dataset,
+    filename="confusion.png",
+    one_hot=True,
+    prob_thresh=0.7,
+    model_name=None,
 ):
     filename = Path(filename)
     from sklearn.preprocessing import MultiLabelBinarizer
@@ -1326,7 +1341,9 @@ def multi_confusion_single(
     plt.savefig(none_path.with_suffix(".png"), format="png")
 
 
-def multi_confusion(model, labels, dataset, filename="confusion.png", one_hot=True,model_name = None):
+def multi_confusion(
+    model, labels, dataset, filename="confusion.png", one_hot=True, model_name=None
+):
     from sklearn.preprocessing import MultiLabelBinarizer
 
     mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
@@ -1509,7 +1526,7 @@ def main():
             meta_data = json.load(f)
         model_name = meta_data.get("name")
 
-        if model_name =="rf-features":
+        if model_name == "rf-features":
             model = ydf.load_model(str(model_path.parent))
         else:
             if model_path.is_dir():
@@ -1520,11 +1537,9 @@ def main():
                 compile=False,
             )
 
-
         multi = meta_data.get("multi_label", True)
         labels = meta_data.get("labels")
         print("model labels are", labels)
-
 
         base_dir = Path(args.dataset_dir)
         meta_f = base_dir / "training-meta.json"
@@ -1560,7 +1575,7 @@ def main():
             n_fft=meta_data.get("n_fft"),
         )
         # acc = tf.metrics.binary_accuracy
-        if model_name!="rf-features":
+        if model_name != "rf-features":
             acc = tf.keras.metrics.BinaryAccuracy(threshold=0.5)
             model.compile(
                 optimizer=optimizer(lr=1.0),
@@ -1586,7 +1601,11 @@ def main():
                 weight_files = [
                     "val_loss.weights.h5",
                     # "val_precK.weights.h5",
-                    "val_binary_accuracy.weights.h5" if multi else "val_categorical_accuracy.weights.h5",
+                    (
+                        "val_binary_accuracy.weights.h5"
+                        if multi
+                        else "val_categorical_accuracy.weights.h5"
+                    ),
                 ]
 
             for w in weight_files:
@@ -1608,7 +1627,7 @@ def main():
                         dataset,
                         confusion_file,
                         one_hot=not meta_data.get("only_features"),
-                        model_name = model_name
+                        model_name=model_name,
                     )
                 else:
                     confusion(
@@ -1617,8 +1636,7 @@ def main():
                         dataset,
                         confusion_file,
                         one_hot=not meta_data.get("only_features"),
-                        model_name = model_name
-
+                        model_name=model_name,
                     )
 
     else:
@@ -2143,7 +2161,7 @@ def feature_cnn(short_features, mid_features, num_labels):
 
 
 def tf_to_ydf(dataset):
-    ydf_ds = {"f1":[],"f2":[],"y":[]}
+    ydf_ds = {"f1": [], "f2": [], "y": []}
     # not sure if you loose anything by flattening, i.e. time info
     for x, y in dataset.unbatch():
         short_f = x[0].numpy().ravel()
@@ -2156,6 +2174,6 @@ def tf_to_ydf(dataset):
     ydf_ds["y"] = np.int16(ydf_ds["y"])
     return ydf_ds
 
+
 if __name__ == "__main__":
     main()
-

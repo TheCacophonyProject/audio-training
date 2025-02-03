@@ -20,7 +20,7 @@ def download_file(url, local_filename):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--limit",default=None,type=int, help="Limit number of files")
+    parser.add_argument("--limit", default=None, type=int, help="Limit number of files")
 
     parser.add_argument("bird", help="Bird data to download")
     parser.add_argument("dir", help="Directory to download into")
@@ -34,6 +34,7 @@ base_url = "https://www.xeno-canto.org/api/2/recordings"
 args = parse_args()
 bird = args.bird
 import urllib
+
 bird = urllib.parse.quote(bird)
 dl_path = Path(args.dir)
 url = f"{base_url}?query={bird}"
@@ -59,10 +60,10 @@ for r in results.get("recordings"):
     meta_file = filename.with_suffix(".txt")
     print("Saving meta", meta_file, meta_file.exists())
     if not meta_file.exists():
-        if r.get("lat") is None or  r.get("lng") is None:
+        if r.get("lat") is None or r.get("lng") is None:
             location = {}
         else:
-            location = {"lat": float(r.get("lat")), "lng": float(r.get("lng"))},
+            location = ({"lat": float(r.get("lat")), "lng": float(r.get("lng"))},)
         meta_data = {
             "recordingDateTime": date_time.isoformat(),
             "location": location,
@@ -83,7 +84,7 @@ for r in results.get("recordings"):
         print("already exists", filename)
     else:
         download_file(dl, filename)
-        downloaded+=1
+        downloaded += 1
 
     if args.limit is not None and downloaded >= args.limit:
         print("Reached limit of ", args.limit)

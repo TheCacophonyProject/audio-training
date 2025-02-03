@@ -205,7 +205,6 @@ def load_dataset(filenames, num_labels, labels, args):
         deterministic=deterministic,
     )
 
-
     filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
     dataset = dataset.filter(filter_nan)
 
@@ -309,7 +308,7 @@ noise_i = None
 bird_mask = None
 
 
-def get_only(dataset,labels,label):
+def get_only(dataset, labels, label):
     label_i = labels.index(label)
     mask = np.zeros(len(labels), dtype=bool)
     mask[label_i] = 1
@@ -318,6 +317,7 @@ def get_only(dataset,labels,label):
         tf.math.logical_and(tf.cast(y[0], tf.bool), mask)
     )
     return dataset.filter(filter)
+
 
 def get_dataset(filenames, labels, **args):
     excluded_labels = args.get("excluded_labels", [])
@@ -338,7 +338,6 @@ def get_dataset(filenames, labels, **args):
         "Remapped %s extra mapping %s new labels %s", remapped, extra_label_map, labels
     )
 
-
     # extra tags, since we have multi label problem, morepork is a bird and morepork
     # cat is a cat but also "noise"
     # extra_label_map["-10"] = -10
@@ -355,9 +354,9 @@ def get_dataset(filenames, labels, **args):
     # 1 / 0
     num_labels = len(labels)
     dataset = load_dataset(filenames, num_labels, labels, args)
-    if args.get("only",None) is not None:
-        logging.info("Filtering only %s",args.get("only") )
-        dataset = get_only(dataset,labels,args.get("only"))
+    if args.get("only", None) is not None:
+        logging.info("Filtering only %s", args.get("only"))
+        dataset = get_only(dataset, labels, args.get("only"))
     dist = get_distribution(dataset, num_labels, batched=False)
     for i, d in enumerate(dist):
         logging.info("Have %s for %s", d, labels[i])
@@ -380,7 +379,6 @@ def get_dataset(filenames, labels, **args):
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
 
     return dataset, remapped, 0
-
 
 
 @tf.function
@@ -449,7 +447,6 @@ def read_tfrecord(
     rec_id = tf.cast(example["audio/rec_id"], tf.string)
     start_s = tf.cast(example["audio/start_s"], tf.float32)
 
-
     label = tf.cast(example["audio/class/text"], tf.string)
     labels = tf.strings.split(label, sep="\n")
     global remapped_y, extra_label_map
@@ -501,10 +498,9 @@ def read_tfrecord(
                     tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
                 )
 
-
         label = tf.cast(label, tf.float32)
 
-        return image, (label, embed_preds,rec_id,track_id,start_s)
+        return image, (label, embed_preds, rec_id, track_id, start_s)
 
     return image
 
@@ -559,9 +555,11 @@ def main():
         for x, y in resampled_ds:
             y_true = y[0]
             rec_ids = y[2]
-            track_ids=y[3]
-            starts= y[4]
-            for mel,y_t,rec,track,start in zip(x,y_true,rec_ids,track_ids,starts):
+            track_ids = y[3]
+            starts = y[4]
+            for mel, y_t, rec, track, start in zip(
+                x, y_true, rec_ids, track_ids, starts
+            ):
                 rec = rec.numpy().decode("utf-8")
                 track = track.numpy().decode("utf-8")
                 lbl = []
@@ -570,9 +568,17 @@ def main():
                         lbl.append(labels[l_i])
                 samples_lbls = "-".join(lbl)
                 file = f"./mels/{samples_lbls}-{rec}-{track}-{start}"
-                print(f"Have", samples_lbls,"R:" ,rec, " T: ",track, "START: ",start.numpy())
-                plot_mel(mel.numpy()[:,:,0],file)
-
+                print(
+                    f"Have",
+                    samples_lbls,
+                    "R:",
+                    rec,
+                    " T: ",
+                    track,
+                    "START: ",
+                    start.numpy(),
+                )
+                plot_mel(mel.numpy()[:, :, 0], file)
 
 
 def show_batch(image_batch, label_batch, species_batch, labels, species):
@@ -642,6 +648,8 @@ def show_batch(image_batch, label_batch, species_batch, labels, species):
 
 def plot_mfcc(mfccs, ax):
     img = librosa.display.specshow(mfccs.numpy(), x_axis="time", ax=ax)
+
+
 #
 #
 # def plot_mel(mel, ax):

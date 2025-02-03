@@ -28,6 +28,7 @@ import tensorflow as tf
 # Worth looking into lme pooling as proposed in  https://github.com/f0k/birdclef2018/blob/master/experiments/model.py
 # Research/2018-birdclef.pdf
 
+
 @tf.keras.utils.register_keras_serializable(package="MyLayers", name="MagTransform")
 class MagTransform(tf.keras.layers.Layer):
     def __init__(self, **kwargs):
@@ -120,9 +121,13 @@ def res_block(X, filters, stage, block, stride=1):
     return X
 
 
-
 def build_model_res(
-    input_shape, norm_layer, num_labels, multi_label=False, add_dense=True,big_condense=True
+    input_shape,
+    norm_layer,
+    num_labels,
+    multi_label=False,
+    add_dense=True,
+    big_condense=True,
 ):
     input = tf.keras.Input(shape=input_shape, name="input")
     # x = norm_layer(input)
@@ -132,7 +137,7 @@ def build_model_res(
     n_mels = input_shape[0]
 
     x = MagTransform()(input)
-    x = tf.keras.layers.BatchNormalization(axis = 1,scale=False,center =False)(x)
+    x = tf.keras.layers.BatchNormalization(axis=1, scale=False, center=False)(x)
     x = tf.keras.layers.Conv2D(64, (3, 3))(x)
     x = tf.keras.layers.LeakyReLU()(x)
     x = tf.keras.layers.BatchNormalization()(x)
@@ -144,11 +149,9 @@ def build_model_res(
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Activation("relu")(x)
 
-
-
     if big_condense:
         if n_mels == 160:
-            x = tf.keras.layers.Conv2D(128, (48, 3),name="bigcondense")(x)
+            x = tf.keras.layers.Conv2D(128, (48, 3), name="bigcondense")(x)
         # elif n_mels== 96:
         #     x = tf.keras.layers.Conv2D(128, (22, 3))(x)
         else:
@@ -161,8 +164,6 @@ def build_model_res(
         x = tf.keras.layers.BatchNormalization()(x)
         x = tf.keras.layers.Conv2D(128, (22, 3))(x)
         x = tf.keras.layers.LeakyReLU()(x)
-       
-    
 
     x = tf.keras.layers.Dropout(0.5)(x)
 
@@ -213,7 +214,7 @@ def build_model(
     lme=False,
     add_dense=True,
     big_condense=True,
-    input_name = "input",
+    input_name="input",
     # n_mels= 160
 ):
     leaky_alpha = 0.01
@@ -224,9 +225,9 @@ def build_model(
     # y = x σ(a) , where σ(a) = 1/ (1 + exp(−a))
     n_mels = input_shape[0]
     x = MagTransform()(input)
-    
+
     # beta and gamma None mean over mel axis
-    x = tf.keras.layers.BatchNormalization(axis=1,scale=False,center =False)(x)
+    x = tf.keras.layers.BatchNormalization(axis=1, scale=False, center=False)(x)
 
     x = tf.keras.layers.Conv2D(64, (3, 3))(x)
     x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
@@ -254,7 +255,7 @@ def build_model(
     if big_condense:
         if n_mels == 160:
             x = tf.keras.layers.Conv2D(128, (44, 3))(x)
-        elif n_mels== 96:
+        elif n_mels == 96:
             x = tf.keras.layers.Conv2D(128, (22, 3))(x)
         else:
             raise "Unhandle mel channels " + n_mels
@@ -353,9 +354,7 @@ def main():
     # model = tf.keras.models.load_model("test-model/test.keras",compile=False)
 
     # return
-    model = build_model_res(
-        (160, 513, 1), None, 21, multi_label=True
-    )
+    model = build_model_res((160, 513, 1), None, 21, multi_label=True)
     model.summary()
     # model.compile(
     #     optimizer=tf.keras.optimizers.Adam(),

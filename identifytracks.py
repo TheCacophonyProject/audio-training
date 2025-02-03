@@ -124,7 +124,7 @@ def mel_freq(f):
 # try and merge signals that are close together in time and frequency
 
 
-def merge_signals(signals, freq_overlap_percent = 0.75, time_overlap_percent=0.75):
+def merge_signals(signals, freq_overlap_percent=0.75, time_overlap_percent=0.75):
     unique_signals = []
     to_delete = []
     something_merged = False
@@ -150,7 +150,7 @@ def merge_signals(signals, freq_overlap_percent = 0.75, time_overlap_percent=0.7
             overlap = s.time_overlap(u)
             if s.mel_freq_start > 1000 and u.mel_freq_start > 1000:
                 freq_overlap = 0.1
-                freq_overlap_time = freq_overlap_percent -0.25
+                freq_overlap_time = freq_overlap_percent - 0.25
             else:
                 freq_overlap = 0.5
                 freq_overlap_time = freq_overlap_percent
@@ -229,7 +229,7 @@ def get_tracks_from_signals(signals, end):
 
     for s in to_delete:
         signals.remove(s)
-    to_delete=[]
+    to_delete = []
     for s in signals:
         if s.mel_freq_range < min_mel_range:
             to_delete.append(s)
@@ -262,8 +262,17 @@ class Signal:
         # self.raw_confidence = None
 
     def to_features(self):
-        return np.float32([self.start,self.end,self.freq_start,self.freq_end,self.mel_freq_start,self.mel_freq_end])
-   
+        return np.float32(
+            [
+                self.start,
+                self.end,
+                self.freq_start,
+                self.freq_end,
+                self.mel_freq_start,
+                self.mel_freq_end,
+            ]
+        )
+
     def to_array(self, decimals=1):
         a = [self.start, self.end, self.freq_start, self.freq_end]
         if decimals is not None:

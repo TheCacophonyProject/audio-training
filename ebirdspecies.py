@@ -18,8 +18,8 @@ api_url = "https://api.ebird.org/v2/product/spplist/{}"
 #     f.write(r.text)
 
 regions_url = "https://api.ebird.org/v2/ref/region/list/subnational1/NZ"
-headers = {'x-ebirdapitoken': key}
-r = requests.get(regions_url,headers=headers)
+headers = {"x-ebirdapitoken": key}
+r = requests.get(regions_url, headers=headers)
 r.raise_for_status()
 regions = r.json()
 
@@ -29,19 +29,23 @@ nz_birds = {}
 region_info_url = "https://api.ebird.org/v2/ref/region/info/{}"
 for region in regions:
     country_code = region.get("code")
-    
+
     url = region_info_url.format(country_code)
-    r = requests.get(url,headers=headers)
+    r = requests.get(url, headers=headers)
     r.raise_for_status()
     region_info = r.json()
     print(region_info)
-    region["info"] =region_info
+    region["info"] = region_info
     url = api_url.format(country_code)
-    r = requests.get(url,headers=headers)
+    r = requests.get(url, headers=headers)
     r.raise_for_status()
 
     species = r.json()
-    nz_birds[country_code] = {"region": region, "species":species, "updatedAt": time.time() }
+    nz_birds[country_code] = {
+        "region": region,
+        "species": species,
+        "updatedAt": time.time(),
+    }
     # break
 out_file = "ebird_species.json"
 with open(out_file, "w") as f:

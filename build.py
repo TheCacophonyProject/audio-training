@@ -465,16 +465,16 @@ def trim_noise(dataset):
 # If still very low will repeat samples
 def balance_ds(original_ds, dataset, max_repeats=1):
     lbl_counts = dataset.get_counts()
-    
+
     if "bird" in lbl_counts:
         del lbl_counts["bird"]
     if "noise" in lbl_counts:
         del lbl_counts["noise"]
     counts = list(lbl_counts.values())
     counts.sort(reverse=True)
-    if len(counts)<=1:
+    if len(counts) <= 1:
         return
-    target_i = min(len(counts)-1,8)
+    target_i = min(len(counts) - 1, 8)
     target_count = counts[target_i]
     # median = np.mean(counts)
 
@@ -839,7 +839,9 @@ def parse_args():
     parser.add_argument("--hop-length", default=281, help="Number of hops to use")
     parser.add_argument("--fmin", default=50, help="Min freq")
     parser.add_argument("--fmax", default=11000, help="Max Freq")
-    parser.add_argument("--seg-length", default=3,type=int, help="Segment length in seconds")
+    parser.add_argument(
+        "--seg-length", default=3, type=int, help="Segment length in seconds"
+    )
     parser.add_argument("--stride", default=1, help="Segment stride")
     parser.add_argument(
         "out_dir", default="/data/audio-data", help="Directory to place files in"

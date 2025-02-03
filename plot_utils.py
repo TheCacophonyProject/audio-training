@@ -20,7 +20,7 @@ def plot_mfcc(mfcc):
 import matplotlib.patches as patches
 
 
-def plot_mel_signals(mel, signals, signals2=[], i=0,colours = None):
+def plot_mel_signals(mel, signals, signals2=[], i=0, colours=None):
     fig = plt.figure(figsize=(10, 10))
     ax = plt.subplot(1, 1, 1)
     img = librosa.display.specshow(
@@ -56,7 +56,7 @@ def plot_mel_signals(mel, signals, signals2=[], i=0,colours = None):
         ax.add_patch(rect)
         # print("Added rect", start_x, end_x)
         # break
-        signal_i+=1
+        signal_i += 1
     for s in signals2:
         start_x = s[0]
         end_x = s[1]

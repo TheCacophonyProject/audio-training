@@ -12,10 +12,11 @@ import pickle
 import json
 import audioread.ffdec  # Use ffmpeg decoder
 import math
-from plot_utils import plot_spec, plot_mel_signals,plot_mel
+from plot_utils import plot_spec, plot_mel_signals, plot_mel
 from custommel import mel_spec
 import tensorflow as tf
 from identifytracks import get_tracks_from_signals, Signal
+
 # from dateutil.parser import parse as parse_date
 import sys
 import itertools
@@ -88,7 +89,6 @@ def signal_noise(file, hop_length=281):
         np.abs(spectogram), sr, hop_length=hop_length, n_fft=n_fft
     )
 
-    
     return signals, noise, spectogram, frames, end
 
 
@@ -479,17 +479,19 @@ def tracks_to_audio(tracks, spectogram, frames, sr=48000, hop_length=281):
         # 1 / 0
 
 
-def means_merge(spectogram,signals):
+def means_merge(spectogram, signals):
     features = np.float32([s.to_features() for s in signals])
-    from sklearn.cluster import KMeans,AgglomerativeClustering,DBSCAN,OPTICS
+    from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN, OPTICS
+
     n_clusters = 2
 
     # model = KMeans(n_clusters).fit(features)
-    model = AgglomerativeClustering(None,distance_threshold=40).fit(features)
+    model = AgglomerativeClustering(None, distance_threshold=40).fit(features)
     # model = OPTICS(min_samples = 2).fit(features)
     # n_clusters = model.n_clusters_
     labels = model.labels_
     import matplotlib.colors as mcolors
+
     possible_colours = list(mcolors.CSS4_COLORS.keys())
     rect_colours = []
     # print("Clusters are ",n_clusters)
@@ -497,10 +499,10 @@ def means_merge(spectogram,signals):
     merged = {}
     index = 0
     for l in labels:
-        if l== -1:
-            print("Ignored" , signals[index])
+        if l == -1:
+            print("Ignored", signals[index])
         elif l in merged:
-            print("Merging l",l)
+            print("Merging l", l)
             signal = merged[l]
             rect_colours.append(possible_colours[l])
             signal.merge(signals[index])
@@ -508,19 +510,19 @@ def means_merge(spectogram,signals):
             merged[l] = signals[index]
         # print("Possible colours at ",l,possible_colours[l*10])
         # rect_colours.append(possible_colours[l*4])
-        index +=1
-    
+        index += 1
+
     signals = []
     n_clusters = len(merged)
     for l in range(n_clusters):
         signals.append(merged[l])
-    print("Signals are ",len(signals))
-    plot_mel_signals(np.abs(spectogram), signals,colours = rect_colours)
+    print("Signals are ", len(signals))
+    plot_mel_signals(np.abs(spectogram), signals, colours=rect_colours)
 
 
 def test_plot(file):
     frames, sr = load_recording(file)
-    frames = frames[18*sr:22*sr]
+    frames = frames[18 * sr : 22 * sr]
     # frames,sr = librosa.load(file)
     # print("Oriuginal sr ",sr, np.amax(frames),np.amin(frames))
     # frames = librosa.resample(frames, orig_sr=sr, target_sr=96000)
@@ -532,10 +534,9 @@ def test_plot(file):
     # frames = frames[: sr * 120]
     # n_fft = sr // 10
     n_fft = 4096
-    hop_length=281
+    hop_length = 281
 
-
-# librosa.power_to_db(S, ref=np.max)
+    # librosa.power_to_db(S, ref=np.max)
     # import matplotlib.pyplot as plt
     # fig, ax = plt.subplots()
     # S_dB = librosa.power_to_db(mel, ref=np.max)
@@ -554,16 +555,13 @@ def test_plot(file):
     # mel_2 = librosa.feature.melspectrogram(y=frames_2, sr=sr,power=1,fmin=50,fmax=11000,n_mels=160,hop_length=281)
     # plot_mel(mel_2,"default160.png")
 
-
-
-
     # spectogram = librosa.stft(frames_2, n_fft=4096, hop_length=281)
     # plot_spec(spectogram)
     n_fft = 4096
     spectogram = librosa.stft(normalize(frames), n_fft=n_fft, hop_length=281)
     # plot_spec(spectogram)
-    fmin=500
-    fmax=11000
+    fmin = 500
+    fmax = 11000
     # hop_length=281
     mel = mel_spec(
         spectogram,
@@ -576,7 +574,7 @@ def test_plot(file):
         1000,
         power=1,
     )
-    plot_mel(mel,filename="mel4096")
+    plot_mel(mel, filename="mel4096")
 
     # spectogram = librosa.stft(frames_2, n_fft=1024, hop_length=281)
 
@@ -593,13 +591,14 @@ def test_plot(file):
     # )
     # plot_mel(mel,filename="mel1024")
 
+
 def normalize(input):
-    min_v  = tf.math.reduce_min(input,-1,keepdims=True)
-    input = tf.math.subtract(input,min_v)
-    max_v = tf.math.reduce_max(input,-1,keepdims=True)
-    input = tf.math.divide(input,max_v) + 0.000001
-    input = tf.math.subtract(input,0.5)
-    input = tf.math.multiply(input,2) 
+    min_v = tf.math.reduce_min(input, -1, keepdims=True)
+    input = tf.math.subtract(input, min_v)
+    max_v = tf.math.reduce_max(input, -1, keepdims=True)
+    input = tf.math.divide(input, max_v) + 0.000001
+    input = tf.math.subtract(input, 0.5)
+    input = tf.math.multiply(input, 2)
     return np.array(input)
 
 
@@ -615,18 +614,18 @@ def merge_again(tracks):
             continue
         overlap = current_track.time_overlap(t)
         percent_overlap = overlap / t.length
-        percent_overlap_2 = overlap/ current_track.length
+        percent_overlap_2 = overlap / current_track.length
 
         f_overlap = current_track.mel_freq_overlap(t)
         f_percent_overlap = f_overlap / t.mel_freq_range
-        
+
         if percent_overlap_2 > 0.5:
-            post_filter = post_filter[:len(post_filter)-1]
+            post_filter = post_filter[: len(post_filter) - 1]
             post_filter.append(t)
             current_track = t
         elif percent_overlap > 0.5 or (percent_overlap > 0 and f_percent_overlap > 0.5):
-            if f_percent_overlap> 0.5:
-                current_track.end = max(current_track.end,t.end)
+            if f_percent_overlap > 0.5:
+                current_track.end = max(current_track.end, t.end)
         else:
             # encountered another big track shall we just make this current track and allow some small overlap???
             current_track = t
@@ -640,6 +639,8 @@ def merge_again(tracks):
             current_track = t
             post_filter.append(current_track)
     return post_filter
+
+
 def main():
     init_logging()
 
@@ -655,12 +656,12 @@ def main():
     # 1 / 0
     # for s in signals:
     #     print(s)
-    tracks = get_tracks_from_signals(signals,end)
+    tracks = get_tracks_from_signals(signals, end)
     # tracks = merge_again(tracks)
     # ,time_overlap_percent = 0.5, freq_overlap_percent = 0.5)
     for t in tracks:
         print(t)
-    
+
     # post_filter = []
     # tracks_sorted = sorted(tracks, key=lambda track: track.start)
     # current_track = None
@@ -676,7 +677,7 @@ def main():
 
     #     f_overlap = current_track.mel_freq_overlap(t)
     #     f_percent_overlap = f_overlap / t.mel_freq_range
-        
+
     #     if percent_overlap_2 > 0.5:
     #         post_filter = post_filter[:len(post_filter)-1]
     #         post_filter.append(t)
@@ -698,9 +699,8 @@ def main():
     #         post_filter.append(current_track)
     # return
 
-
     # tracks_to_audio(tracks, spectogram, frames)
-    plot_mel_signals(np.abs(spectogram), tracks,noise)
+    plot_mel_signals(np.abs(spectogram), tracks, noise)
     return
     # process(args.file)
     process(args.file)
@@ -839,7 +839,7 @@ def plot_mfcc(mfcc):
 #     def to_features(self):
 #         # should 1 second be the same diff as 1000 hz? so scale a 1000 to 1
 #         return np.float32([self.start,self.end,self.mel_freq_start/500,self.mel_freq_end/500])
-   
+
 #     def time_overlap(self, other):
 #         return segment_overlap(
 #             (self.start, self.end),
@@ -929,6 +929,7 @@ def butter_bandpass(lowcut, highcut, fs, order=2):
         return None
     sos = butter(order, freqs, analog=False, btype=btype, output="sos")
     return sos
+
 
 def butter_bandpass_filter(data, lowcut, highcut, fs=48000, order=2):
     if lowcut <= 0 and highcut <= 0:

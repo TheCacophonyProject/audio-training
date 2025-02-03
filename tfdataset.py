@@ -25,7 +25,7 @@ MERGE_LABELS = {
     "house sparrow": "sparrow",
     "new zealand fantail": "fantail",
     "australian magpie": "magpie",
-    "norfolk silvereye": "silverye"
+    "norfolk silvereye": "silverye",
 }
 
 # seed = 1341
@@ -91,7 +91,6 @@ EXTRA_LABELS = ["rooster", "frog", "insect", "human", "noise"]
 OTHER_LABELS = []
 
 
-
 insect = None
 fp = None
 HOP_LENGTH = 281
@@ -102,7 +101,7 @@ NFFT = 4096
 MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, NFFT, BREAK_FREQ)
 MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 
-FMIN=50
+FMIN = 50
 FMAX = 11000
 # JUST FOR HUMAN OR NOT MODEL
 # NOISE_LABELS.extend(SPECIFIC_BIRD_LABELS)
@@ -319,16 +318,23 @@ def load_dataset(filenames, num_labels, labels, args):
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
-    
+
     # if args.get("filter_bad", False):
     #     logging.info("Filtering bad")
     #     dataset = dataset.filter(lambda x, y: not filter_bad_tracks(x, y, labels))
     if args.get("only_features", False):
-            filter_nan = lambda x, y: tf.math.count_nonzero(x[0])>0  and tf.math.count_nonzero(x[1])>0
+        filter_nan = (
+            lambda x, y: tf.math.count_nonzero(x[0]) > 0
+            and tf.math.count_nonzero(x[1]) > 0
+        )
     else:
         logging.info("Removing Nan")
         if args.get("features"):
-            filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[0])) and tf.math.count_nonzero(x[1])>0  and tf.math.count_nonzero(x[2])>0
+            filter_nan = (
+                lambda x, y: not tf.reduce_any(tf.math.is_nan(x[0]))
+                and tf.math.count_nonzero(x[1]) > 0
+                and tf.math.count_nonzero(x[2]) > 0
+            )
         else:
             filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
     dataset = dataset.filter(filter_nan)
@@ -441,37 +447,37 @@ bird_mask = None
 
 
 def get_dataset(dir, labels, **args):
-    global FMAX,MEL_WEIGHTS,FMIN,NFFT,BREAK_FREQ,N_MELS
+    global FMAX, MEL_WEIGHTS, FMIN, NFFT, BREAK_FREQ, N_MELS
 
     if args.get("fmin") is not None:
-        FMIN = args.get("fmin",FMIN)
-        FMAX = args.get("fmax",FMAX)
-        logging.info("Using fmin and fmax %s %s",FMIN,FMAX)
+        FMIN = args.get("fmin", FMIN)
+        FMAX = args.get("fmax", FMAX)
+        logging.info("Using fmin and fmax %s %s", FMIN, FMAX)
 
         MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
-        MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)    
+        MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
     if args.get("n_fft") is not None:
-        print(NFFT,"IS")
+        print(NFFT, "IS")
         NFFT = args.get("n_fft")
-        logging.info("NFFT %s",NFFT)
-        if NFFT  < 2048:
+        logging.info("NFFT %s", NFFT)
+        if NFFT < 2048:
             N_MELS = 96
             global DIMENSIONS
             mel_s = (N_MELS, 513)
             DIMENSIONS = (N_MELS, 513, 1)
-            logging.info("Lower mels as nfft is to low %s",N_MELS)
+            logging.info("Lower mels as nfft is to low %s", N_MELS)
         MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
         MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
     if args.get("break_freq") is not None:
         BREAK_FREQ = args.get("break_freq")
-        logging.info("Applied break freq %s",BREAK_FREQ)
+        logging.info("Applied break freq %s", BREAK_FREQ)
         MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
-        MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)       
+        MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
     ds_first, remapped, epoch_size, labels, extra_label_dic = get_a_dataset(
         dir, labels, args
     )
     args["epoch_size"] = epoch_size
-    deterministic = args.get("deterministic",False)
+    deterministic = args.get("deterministic", False)
     if args.get("load_raw", True):
         logging.info("Mapping raw to mel")
         if args.get("augment", False):
@@ -491,8 +497,11 @@ def get_dataset(dir, labels, **args):
             train_ds = tf.data.Dataset.zip((ds_first, ds_second))
 
             dataset = train_ds.map(
-                lambda ds_one, ds_two: mix_up(ds_one, ds_two, alpha=0.5),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
-            
+                lambda ds_one, ds_two: mix_up(ds_one, ds_two, alpha=0.5),
+                num_parallel_calls=tf.data.AUTOTUNE,
+                deterministic=deterministic,
+            )
+
             # dataset = dataset.map(lambda x, y: mix_up(x, y, dataset2))
 
             # doing mix up
@@ -501,9 +510,17 @@ def get_dataset(dir, labels, **args):
         if args.get("debug"):
             logging.info("Not mapping to mel")
         elif args.get("model_name") == "dual-badwinner2":
-            dataset = dataset.map(lambda x, y: raw_to_mel_dual(x, y),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
+            dataset = dataset.map(
+                lambda x, y: raw_to_mel_dual(x, y),
+                num_parallel_calls=tf.data.AUTOTUNE,
+                deterministic=deterministic,
+            )
         else:
-            dataset = dataset.map(lambda x, y: raw_to_mel(x, y),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
+            dataset = dataset.map(
+                lambda x, y: raw_to_mel(x, y),
+                num_parallel_calls=tf.data.AUTOTUNE,
+                deterministic=deterministic,
+            )
 
     else:
         dataset = ds_first
@@ -539,7 +556,7 @@ def get_a_dataset(dir, labels, args):
             remapped,
             excluded_labels,
         )
-    
+
     remapped_y = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(list(remapped.keys())),
@@ -568,9 +585,9 @@ def get_a_dataset(dir, labels, args):
     # extra tags, since we have multi label problem, morepork is a bird and morepork
     # cat is a cat but also "noise"
     # extra_label_map["-10"] = -10
-    if len(extra_label_dic)== 0:
+    if len(extra_label_dic) == 0:
         # seems to need something
-        extra_label_dic["nonsense"]=1
+        extra_label_dic["nonsense"] = 1
     extra_label_map = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(list(extra_label_dic.keys())),
@@ -587,10 +604,10 @@ def get_a_dataset(dir, labels, args):
 
     xeno_files = Path("/data/audio-data/xenocanto/xeno-training-data/")
     xeno_files = xeno_files / dir.name
-    if xeno_files.exists() and dir.name!="test":
-        logging.info("Xeno files %s",xeno_files)
+    if xeno_files.exists() and dir.name != "test":
+        logging.info("Xeno files %s", xeno_files)
         xeno_files = tf.io.gfile.glob(str(xeno_files / "*.tfrecord"))
-        logging.info("Loading xeno files %s",xeno_files)
+        logging.info("Loading xeno files %s", xeno_files)
         filenames.extend(xeno_files)
 
     lbl_dataset = load_dataset(filenames, num_labels, labels, args)
@@ -687,18 +704,26 @@ def get_a_dataset(dir, labels, args):
 
         if batch_size is not None:
             dataset = dataset.batch(batch_size, drop_remainder=False)
-        if args.get("load_raw",False):
+        if args.get("load_raw", False):
             logging.info("Normalizing input")
             dataset = dataset.map(lambda x, y: normalize(x, y))
         logging.info("Returning debug data")
         return dataset, remapped, None, labels, extra_label_dic
 
-    if not args.get("load_all_y",False):
+    if not args.get("load_all_y", False):
         if args.get("loss_fn") == "WeightedCrossEntropy":
             logging.info("Mapping possiblebirds")
-            dataset = dataset.map(lambda x, y: (x, (y[0], y[5])),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
+            dataset = dataset.map(
+                lambda x, y: (x, (y[0], y[5])),
+                num_parallel_calls=tf.data.AUTOTUNE,
+                deterministic=deterministic,
+            )
         else:
-            dataset = dataset.map(lambda x, y: (x, y[0]),num_parallel_calls=tf.data.AUTOTUNE,deterministic=deterministic)
+            dataset = dataset.map(
+                lambda x, y: (x, y[0]),
+                num_parallel_calls=tf.data.AUTOTUNE,
+                deterministic=deterministic,
+            )
     epoch_size = args.get("epoch_size")
     dist = None
     if epoch_size is None:
@@ -748,11 +773,10 @@ def get_a_dataset(dir, labels, args):
                 x, y, num_labels, weighting, specific_mask, rest_weighting
             )
         )
-    
-    if args.get("load_raw",False):
+
+    if args.get("load_raw", False):
         logging.info("Normalizing input")
         dataset = dataset.map(lambda x, y: normalize(x, y))
-
 
     return dataset, remapped, epoch_size, labels, extra_label_dic
 
@@ -768,7 +792,7 @@ def sample_beta_distribution(size, concentration_0=0.2, concentration_1=0.2):
 
 
 @tf.function
-def mix_up(ds_one, ds_two, alpha=0.2,chance = 0.25):
+def mix_up(ds_one, ds_two, alpha=0.2, chance=0.25):
     # Unpack two datasets
     images_one, labels_one = ds_one
     images_two, labels_two = ds_two
@@ -777,7 +801,7 @@ def mix_up(ds_one, ds_two, alpha=0.2,chance = 0.25):
     batch_size = tf.keras.ops.shape(images_one)[0]
     l = sample_beta_distribution(batch_size, alpha, alpha)
     aug_chance = tf.random.uniform((batch_size,))
-    aug_chance = tf.cast(aug_chance < chance,tf.float32)
+    aug_chance = tf.cast(aug_chance < chance, tf.float32)
     l = l * aug_chance
     x_l = tf.keras.ops.reshape(l, (batch_size, 1))
     y_l = tf.keras.ops.reshape(l, (batch_size, 1))
@@ -852,9 +876,11 @@ def read_tfrecord(
 
     elif not only_features:
         logging.info("Loading sft audio")
-      
+
         if load_raw:
-            tfrecord_format["audio/raw"] = tf.io.FixedLenFeature((48000 * 3), tf.float32)
+            tfrecord_format["audio/raw"] = tf.io.FixedLenFeature(
+                (48000 * 3), tf.float32
+            )
         else:
             tfrecord_format["audio/spectogram"] = tf.io.FixedLenFeature(
                 (2049 * 513), tf.float32
@@ -865,15 +891,18 @@ def read_tfrecord(
             )
 
     if features or only_features:
-        tfrecord_format["audio/short_f"] = tf.io.FixedLenFeature((68 * 60), tf.float32, default_value=tf.zeros((68 * 60)))
-        tfrecord_format["audio/mid_f"] = tf.io.FixedLenFeature((136 * 3), tf.float32,default_value=tf.zeros((136 * 3)))
+        tfrecord_format["audio/short_f"] = tf.io.FixedLenFeature(
+            (68 * 60), tf.float32, default_value=tf.zeros((68 * 60))
+        )
+        tfrecord_format["audio/mid_f"] = tf.io.FixedLenFeature(
+            (136 * 3), tf.float32, default_value=tf.zeros((136 * 3))
+        )
 
     tfrecord_format["audio/signal_percent"] = tf.io.FixedLenFeature((), tf.float32)
 
     example = tf.io.parse_single_example(example, tfrecord_format)
     low_sample = tf.cast(example["audio/low_sample"], tf.int64)
     start_s = tf.cast(example["audio/start_s"], tf.float32)
-
 
     # else:
     #     print("Labels was ",labels)
@@ -926,8 +955,8 @@ def read_tfrecord(
         if only_features:
             print("ONLY FEATURES")
             spectogram = (short_f, mid_f)
-        else: 
-            spectogram = (spectogram, short_f, mid_f )
+        else:
+            spectogram = (spectogram, short_f, mid_f)
         # raw = tf.expand_dims(raw, axis=0)
     if augment:
         logging.info("Augmenting")
@@ -954,7 +983,7 @@ def read_tfrecord(
             )
             if not multi:
                 logging.info("Choosing only one label as not multi")
-                if tf.math.count_nonzero(label)==0:
+                if tf.math.count_nonzero(label) == 0:
                     # if all normal labels are excluded choose an extra one
                     label = tf.reduce_max(
                         tf.one_hot(extra, num_labels, dtype=tf.int32), axis=0
@@ -1024,7 +1053,7 @@ def read_tfrecord(
             example["audio/track_id"],
             possible_labels,
             low_sample,
-            start_s
+            start_s,
         )
 
     return image
@@ -1096,11 +1125,12 @@ def parse_args():
 
     args = parser.parse_args()
     return args
+
+
 # test stuff
 def main():
     init_logging()
     args = parse_args()
-
 
     # batch_data = []
     # batch_data.append(np.zeros(5)-1)
@@ -1157,7 +1187,7 @@ def main():
         #     if l not in excluded_labels and l not in test_brds:
         #         excluded_labels.append(l)
 
-        dataset, remapped, _, labels,_ = get_dataset(
+        dataset, remapped, _, labels, _ = get_dataset(
             tf_dir / "test",
             # filenames,
             labels,
@@ -1179,16 +1209,15 @@ def main():
             # fmax=11000,
             # break_freq=1000,
             use_bird_tags=False,
-            load_all_y = True,
-            shuffle = False
-
+            load_all_y=True,
+            shuffle=False,
             # filenames_2=filenames_2
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
-        for x,y in dataset:
+        for x, y in dataset:
             for y2 in y[0]:
                 print("Have y ", y2)
-        1/0
+        1 / 0
         # for x,y in dataset:
         #     # print(x[0].shape, x[1].shape)
         #     for x2 in x:
@@ -1203,11 +1232,17 @@ def main():
             str(model_path),
             compile=False,
         )
-        model.load_weights(model_path.parent/"val_binary_accuracy.weights.h5")
+        model.load_weights(model_path.parent / "val_binary_accuracy.weights.h5")
         logging.info("LOading model with val acc %s", args.model)
         true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
         true_categories = tf.concat(true_categories, axis=0)
-        preds = model.predict(dataset.map(lambda x, y: (x, y[0]),num_parallel_calls=tf.data.AUTOTUNE,deterministic=True))
+        preds = model.predict(
+            dataset.map(
+                lambda x, y: (x, y[0]),
+                num_parallel_calls=tf.data.AUTOTUNE,
+                deterministic=True,
+            )
+        )
         # filenames.extend(tf.io.gfile.glob(f"{d}/test/**/*.tfrecord"))
     print("labels are ", labels)
     global NZ_BIRD_LOSS_WEIGHTING, BIRD_WEIGHTING, SPECIFIC_BIRD_MASK, GENERIC_BIRD_MASK
@@ -1217,13 +1252,22 @@ def main():
     print("Dist is ", dist)
     for l, d in zip(labels, dist):
         print(f"{l} has {d}")
-    
+
     for e in range(1):
         batch = 0
         for x, y in dataset:
-            batch +=1
+            batch += 1
 
-            show_batch(x, y, labels,batch_i = batch,preds = preds[(batch-1) * 32: 32*batch] if preds is not None else None)
+            show_batch(
+                x,
+                y,
+                labels,
+                batch_i=batch,
+                preds=(
+                    preds[(batch - 1) * 32 : 32 * batch] if preds is not None else None
+                ),
+            )
+
 
 import sys
 from types import ModuleType, FunctionType
@@ -1256,12 +1300,12 @@ def getsize(obj):
     return size * 0.000001
 
 
-def show_batch(image_batch, label_batch, labels,batch_i = 0,preds = None):
+def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
     recs = None
     tracks = None
     starts = None
-    prob_thresh=0.7
-    if isinstance(label_batch,tuple):
+    prob_thresh = 0.7
+    if isinstance(label_batch, tuple):
         recs = label_batch[3]
         tracks = label_batch[4]
         starts = label_batch[7]
@@ -1274,7 +1318,7 @@ def show_batch(image_batch, label_batch, labels,batch_i = 0,preds = None):
     # tracks = label_batch[4]
     # label_batch = label_batch[0]
     fig = plt.figure(figsize=(30, 30))
-    plt.subplots_adjust(hspace=.5)
+    plt.subplots_adjust(hspace=0.5)
 
     print("images in batch", len(image_batch), len(label_batch))
     num_images = len(image_batch)
@@ -1303,7 +1347,7 @@ def show_batch(image_batch, label_batch, labels,batch_i = 0,preds = None):
         if recs is not None:
             track = tracks[n].numpy().decode("utf8")
             rec = recs[n].numpy().decode("utf8")
-            start_s = np.round(starts[n].numpy(),1)
+            start_s = np.round(starts[n].numpy(), 1)
             plot_title = f"{plot_title} - {rec}:{track} at {start_s:.1f}"
         plt.title(f"{plot_title}\n{predicted}")
         img = image_batch[n]
@@ -1398,7 +1442,7 @@ def get_weighting(dataset, labels):
     # excluded_labels = []
     dont_weigh = []
     # for l in labels:
-#     if l in ["human", "bird", "noise", "whistler", "morepork", "kiwi"]:
+    #     if l in ["human", "bird", "noise", "whistler", "morepork", "kiwi"]:
     #         continue
     #     dont_weigh.append(l)
     num_labels = len(labels)
@@ -1482,13 +1526,12 @@ def butter_bandpass(lowcut, highcut, fs, order=2):
 #     return x, y
 
 
-
 @tf.function
 def raw_to_mel_dual(x, y):
 
     raw = x
     raw_2 = tf.compat.v1.identity(raw)
-    raw =  butter_function(raw,0,3000)
+    raw = butter_function(raw, 0, 3000)
     stft = tf.signal.stft(
         raw,
         2048,
@@ -1498,10 +1541,10 @@ def raw_to_mel_dual(x, y):
         # pad_end=True,
         name=None,
     )
-   
+
     stft = tf.transpose(stft, [0, 2, 1])
     stft = tf.math.abs(stft)
-    print("STFT becomes ",stft.shape)
+    print("STFT becomes ", stft.shape)
     batch_size = tf.keras.ops.shape(x)[0]
 
     weights = tf.expand_dims(MEL_WEIGHTS, 0)
@@ -1509,7 +1552,7 @@ def raw_to_mel_dual(x, y):
     image = tf.keras.backend.batch_dot(weights, stft)
     image = tf.expand_dims(image, axis=3)
 
-    raw2 = butter_function(raw_2,500,15000)
+    raw2 = butter_function(raw_2, 500, 15000)
 
     stft = tf.signal.stft(
         raw,
@@ -1520,7 +1563,7 @@ def raw_to_mel_dual(x, y):
         # pad_end=True,
         name=None,
     )
-   
+
     stft = tf.transpose(stft, [0, 2, 1])
     stft = tf.math.abs(stft)
     batch_size = tf.keras.ops.shape(x)[0]
@@ -1530,29 +1573,30 @@ def raw_to_mel_dual(x, y):
     image_2 = tf.keras.backend.batch_dot(weights, stft)
     image_2 = tf.expand_dims(image_2, axis=3)
 
-
     # x =  tf.keras.layers.Concatenate()([image,image_2])
-    return (image,image_2), y
+    return (image, image_2), y
+
 
 @tf.function
-def normalize(input,y):
+def normalize(input, y):
 
     if isinstance(input, tuple):
         x = input[0]
         print("GOt tuple input")
     else:
         x = input
-    min_v  = tf.math.reduce_min(x,-1,keepdims=True)
-    x = tf.math.subtract(x,min_v)
-    max_v = tf.math.reduce_max(x,-1,keepdims=True)
-    x = tf.math.divide(x,max_v) + 0.000001
-    x = tf.math.subtract(x,0.5)
-    x = tf.math.multiply(x,2) 
+    min_v = tf.math.reduce_min(x, -1, keepdims=True)
+    x = tf.math.subtract(x, min_v)
+    max_v = tf.math.reduce_max(x, -1, keepdims=True)
+    x = tf.math.divide(x, max_v) + 0.000001
+    x = tf.math.subtract(x, 0.5)
+    x = tf.math.multiply(x, 2)
     if isinstance(input, tuple):
         print("Returning tuple")
-        return (x,input[1],input[2]),y
+        return (x, input[1], input[2]), y
     else:
-        return x,y
+        return x, y
+
 
 @tf.function
 def raw_to_mel(x, y):
@@ -1560,19 +1604,19 @@ def raw_to_mel(x, y):
         raw = x[0]
     else:
         raw = x
-        
-    global FMIN,FMAX
+
+    global FMIN, FMAX
     # if FMIN >50:
     fmin = 0
     fmax = 0
     if FMIN != 50:
         fmin = FMIN
-    if FMAX !=11000:
+    if FMAX != 11000:
         fmax = FMAX
-    logging.info("Applying butter %s %s",fmin,fmax)
-# not needed if using mel freq bin fmin and fmax
+    logging.info("Applying butter %s %s", fmin, fmax)
+    # not needed if using mel freq bin fmin and fmax
     # raw =  butter_function(raw,fmin,fmax)
-    
+
     stft = tf.signal.stft(
         raw,
         NFFT,
@@ -1599,7 +1643,6 @@ def raw_to_mel(x, y):
     weights = tf.repeat(weights, batch_size, 0)
     image = tf.keras.backend.batch_dot(weights, stft)
     image = tf.expand_dims(image, axis=3)
-
 
     if isinstance(x, tuple):
         x = (image, x[1], x[2])

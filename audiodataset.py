@@ -62,7 +62,7 @@ logging.info("Allow %s to have a recording over multiple datasets", LOW_SAMPLES_
 
 class Config:
     def __init__(self, **args):
-        self.segment_length = args.get("seg_length",3)
+        self.segment_length = args.get("seg_length", 3)
         self.segment_stride = args.get("stride", 1)
         self.hop_length = args.get("hop_length", 281)
         self.break_freq = args.get("break_freq", 1000)
@@ -177,6 +177,7 @@ class AudioDataset:
             logging.info(
                 "%s: %s used as %s ( %s )", k, v, RELABEL[k], len(rec_counts[k])
             )
+
     def print_sample_counts(self):
         counts = {}
         original_c = {}
@@ -375,7 +376,7 @@ class Recording:
         country_code = None
         if location is not None:
             try:
-                if isinstance(location,list):
+                if isinstance(location, list):
                     location = location[0]
                 lat = location.get("lat")
                 lng = location.get("lng")
@@ -585,7 +586,7 @@ class Recording:
                 # sample_i = 0
                 for start in starts:
                     # no negative starts
-                    start = max(0,start)
+                    start = max(0, start)
                     used_sample = start in selected_samples and not small_stride
                     end = start + segment_length
                     end = min(end, track.end)
@@ -730,6 +731,7 @@ TOP_FREQ = 48000 / 2
 
 def load_features(signal, sr):
     from pyAudioAnalysis import MidTermFeatures as aF
+
     # defaults from the pyAudio wiki
     mw = 1.0
     ms = 1.0
@@ -936,7 +938,7 @@ def load_data(
         end = round(segment_l * sr) + start
     else:
         end = round(end * sr)
-    
+
     # can make samples with negative start,
     if start_s < 0:
         logging.warning("Adjusting start to zero")
@@ -995,8 +997,8 @@ def load_data(
         a_max = np.amax(s_data)
         a_min = np.amin(s_data)
         if a_max == a_min:
-            print("Error max is min ",a_max,a_min, start_s,end)
-            1/0
+            print("Error max is min ", a_max, a_min, start_s, end)
+            1 / 0
     except:
         logging.error(
             "Error getting segment  start %s lenght %s",
