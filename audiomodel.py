@@ -807,7 +807,7 @@ class AudioModel:
         logging.info("Loading train")
         excluded_labels = get_excluded_labels(self.labels)
 
-        test_brds = [
+        test_birds = [
             "bird",
             "fantail",
             "morepork",
@@ -822,10 +822,13 @@ class AudioModel:
             "blackbird",
             "sparrow",
             "song thrush",
+            "whistler",
+            "rooster",
+            "silverye"
             # "thrush"
         ]
         for l in self.labels:
-            if l not in excluded_labels and l not in test_brds:
+            if l not in excluded_labels and l not in test_birds:
                 excluded_labels.append(l)
 
         logging.info("labels are %s Excluding %s", self.labels, excluded_labels)

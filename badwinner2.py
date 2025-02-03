@@ -120,17 +120,6 @@ def res_block(X, filters, stage, block, stride=1):
     return X
 
 
-def build_model_resv2(
-    input_shape, norm_layer, num_labels, multi_label=False, add_dense=True,big_condense=True
-):
-    input = tf.keras.Input(shape=input_shape, name="input")
-    # x = norm_layer(input)
-    # if multi_label:
-    filters = 256
-    # y = x σ(a) , where σ(a) = 1/ (1 + exp(−a))
-    n_mels = input_shape[0]
-
-    x = MagTransform()(input)
 
 def build_model_res(
     input_shape, norm_layer, num_labels, multi_label=False, add_dense=True,big_condense=True

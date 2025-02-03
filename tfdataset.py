@@ -25,6 +25,7 @@ MERGE_LABELS = {
     "house sparrow": "sparrow",
     "new zealand fantail": "fantail",
     "australian magpie": "magpie",
+    "norfolk silvereye": "silverye"
 }
 
 # seed = 1341
