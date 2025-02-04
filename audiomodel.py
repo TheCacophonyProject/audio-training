@@ -833,6 +833,9 @@ class AudioModel:
             "whistler",
             "rooster",
             "silverye",
+            "norfolk silvereye",
+            "australian magpie",
+            "new zealand fantail"
             # "thrush"
         ]
         for l in self.labels:
