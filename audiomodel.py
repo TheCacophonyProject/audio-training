@@ -1520,8 +1520,10 @@ def main():
     # return
     if args.confusion is not None:
         model_path = Path(args.name)
-
-        meta_file = model_path.parent / "metadata.txt"
+        if model_path.is_dir():
+            meta_file =  model_path / "metadata.txt"
+        else:
+            meta_file = model_path.parent / "metadata.txt"
         print("Meta", meta_file)
         with open(str(meta_file), "r") as f:
             meta_data = json.load(f)
