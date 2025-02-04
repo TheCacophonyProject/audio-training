@@ -832,7 +832,7 @@ class AudioModel:
             "song thrush",
             "whistler",
             "rooster",
-            "silverye",
+            "silvereye",
             "norfolk silvereye",
             "australian magpie",
             "new zealand fantail"
