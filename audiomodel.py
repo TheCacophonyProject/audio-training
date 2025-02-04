@@ -731,12 +731,13 @@ class AudioModel:
             "val_auc",
             "val_recall",
             "val_huber_loss",
-            "val_precK",
+            # "val_precK",
+            "val_binary_focal_crossentropy"
         ]
         checks = []
         for m in metrics:
             m_dir = self.checkpoint_folder / run_name / f"{m}.weights.h5"
-            if "loss" in m:
+            if "loss" in m or "focal" in "m":
                 mode = "auto"
             else:
                 mode = "max"
@@ -751,12 +752,12 @@ class AudioModel:
             checks.append(m_check)
         earlyStopping = tf.keras.callbacks.EarlyStopping(
             patience=22,
-            monitor="val_loss",
-            mode="min",
+            monitor="val_binary_accuracy",
+            mode="max",
         )
         checks.append(earlyStopping)
         reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor="val_loss", verbose=1, mode="min"
+            monitor="val_binary_accuracy", verbose=1, mode="max"
         )
         checks.append(reduce_lr_callback)
         file_writer_cm = tf.summary.create_file_writer(str(self.log_dir / "cm"))
