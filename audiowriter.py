@@ -51,7 +51,7 @@ from multiprocessing import Pool
 import tensorflow_hub as hub
 from audiodataset import load_features
 import psutil
-
+import subprocess
 
 # stuff to print out label
 # with open('perchlabels.csv') as f:
@@ -325,6 +325,20 @@ def process_job(queue, labels, config, base_dir, writer_i):
 #     global writer
 #     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
 
+def get_ffmpeg_duration(file):
+    command  = f"ffprobe -i {file} -show_entries format=duration -v quiet -of csv=\"p=0\""
+
+
+    proc = subprocess.run(
+            command,
+            shell=True,
+            encoding="ascii",
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    output = proc.stdout
+    return float(output)
 
 def save_data(
     rec,
@@ -345,6 +359,11 @@ def save_data(
         aro = audioread.ffdec.FFmpegAudioFile(rec.filename)
         orig_frames, sr = librosa.load(aro, sr=None)
         aro.close()
+        duration = get_ffmpeg_duration(rec.filename)
+        if abs(duration - len(orig_frames) / sr)> 1:
+            # print(abs(duration - len(orig_frames / sr)))
+            logging.error("Duration does not match ffmpeg %s librosa %s for %s ",duration,len(orig_frames)/sr,rec.filename)
+            return 0
     except:
         logging.error("Error loading rec %s ", rec.filename, exc_info=True)
         try:
