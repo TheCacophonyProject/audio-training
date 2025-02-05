@@ -1167,26 +1167,32 @@ def main():
         # species_list = ["bird", "human", "rain", "other"]
 
         # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-        # test_brds = [
-        #             "bird",
-        #             "fantail",
-        #             "morepork",
-        #             # "noise",
-        #             # "human",
-        #             "grey warbler",
-        #             "insect",
-        #             "kiwi",
-        #             "magpie",
-        #             "tui",
-        #             "house sparrow",
-        #             "blackbird",
-        #             "sparrow",
-        #             "song thrush",
-        #             # "thrush"
-        #         ]
-        # for l in labels:
-        #     if l not in excluded_labels and l not in test_brds:
-        #         excluded_labels.append(l)
+        test_birds = [
+            "bird",
+            "fantail",
+            "morepork",
+            "noise",
+            "human",
+            "grey warbler",
+            "insect",
+            "kiwi",
+            "magpie",
+            "tui",
+            "house sparrow",
+            "blackbird",
+            "sparrow",
+            "song thrush",
+            "whistler",
+            "rooster",
+            "silvereye",
+            "norfolk silvereye",
+            "australian magpie",
+            "new zealand fantail"
+            # "thrush"
+        ]
+        for l in labels:
+            if l not in excluded_labels and l not in test_brds:
+                excluded_labels.append(l)
 
         dataset, remapped, _, labels, _ = get_dataset(
             tf_dir / "test",
