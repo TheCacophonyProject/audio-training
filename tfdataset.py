@@ -1202,9 +1202,9 @@ def main():
             # stop_on_empty=True,
             # filter_freq=False,
             # random_butter=0.9,
-            only_features=True,
+            # only_features=True,
             multi_label=False,
-            load_raw=False,
+            load_raw=True,
             # n_fft=4096,
             # fmin=1000,
             # fmax=11000,
@@ -1212,18 +1212,27 @@ def main():
             use_bird_tags=False,
             load_all_y=True,
             shuffle=False,
+            debug=True,
             # filenames_2=filenames_2
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         )
-        for x, y in dataset:
-            for y2 in y[0]:
-                print("Have y ", y2)
-        1 / 0
-        # for x,y in dataset:
-        #     # print(x[0].shape, x[1].shape)
-        #     for x2 in x:
-        #         print(x2.shape)
-        #         1/0
+        for batch_x , batch_y in dataset:
+            recs = batch_y[3]
+            tracks = batch_y[4]
+            for x,rec,track in zip(batch_x,recs,tracks):
+                data_ok = np.all(x>=1) and np.all(x<=1.000002)
+                a_max = np.amax(x)
+                a_min = np.amin(x)
+                if not data_ok:
+                    # print(x)
+                    x = x.numpy()
+                    logging.info("Bad data for rec %s track %s less than 1 %s over 1 %s max %s min %s", rec,track, x[np.where(x <1)], x[np.where(x >1.000002)],a_max,a_min)
+                
+
+                if a_max == a_min:
+                    logging.info("Max = Min for rec %s track %s max %s min %s", rec,track, a_max,a_min)
+
+        return
     preds = None
     if args.model is not None:
         model_path = Path(args.model)
