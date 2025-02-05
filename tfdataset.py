@@ -698,8 +698,6 @@ def get_a_dataset(dir, labels, args):
     deterministic = args.get("deterministic", False)
 
     if args.get("debug"):
-        specific_track = lambda x, y: tf.math.equal(y[4], tf.constant("2436458"))
-        dataset = dataset.filter(specific_track)
         batch_size = args.get("batch_size", None)
         dataset = dataset.cache()
 
@@ -1226,14 +1224,15 @@ def main():
             recs = batch_y[3]
             tracks = batch_y[4]
             for x,rec,track in zip(batch_x,recs,tracks):
-                data_ok = np.all(x>=1) and np.all(x<=1.000002)
+                data_ok = np.all(x>=-1.00002) and np.all(x<=1.000002)
+                has_nan = np.any(np.isnan(x))
                 a_max = np.amax(x)
                 a_min = np.amin(x)
-                if not data_ok:
+                if not data_ok or has_nan:
                     # print(x)
                     x = x.numpy()
                     logging.info("Bad data for rec %s track %s less than 1 %s over 1 %s max %s min %s", rec,track, x[np.where(x <1)], x[np.where(x >1.000002)],a_max,a_min)
-                
+                    logging.info("Has nan %s",has_nan)
 
                 if a_max == a_min:
                     logging.info("Max = Min for rec %s track %s max %s min %s", rec,track, a_max,a_min)
