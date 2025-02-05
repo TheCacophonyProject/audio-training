@@ -326,7 +326,7 @@ def process_job(queue, labels, config, base_dir, writer_i):
 #     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
 
 def get_ffmpeg_duration(file):
-    command  = f"ffprobe -i {file} -show_entries format=duration -v quiet -of csv=\"p=0\""
+    command  = f"ffprobe -i \"{file}\" -show_entries format=duration -v quiet -of csv=\"p=0\""
 
 
     proc = subprocess.run(
