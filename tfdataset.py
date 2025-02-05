@@ -69,6 +69,7 @@ GENERIC_BIRD_LABELS = [
     "norfolk gerygone",
     "norfolk parrot",
     "norfolk robin",
+    "norfolk silvereye",
     "north island robin",
     "parakeet",
     "red-crowned parakeet",
