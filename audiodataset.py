@@ -951,8 +951,13 @@ def load_data(
     # zero pad shorter
     s_data = frames[start:end]
     if end > len(frames) or start > len(frames):
-        logging.error("Out of frame bounds start %s end %s frame length",start/sr,end/sr, len(frames)/sr)
-        raise Exception("Out of frame bounds")
+        over_end = end - len(frames)
+        if over_end < 0.5:
+            end = len(frames)
+            logging.info("Just out of bounds so setting to end start %s end %s frame length %s",start/sr,end/sr, len(frames)/sr)
+        else:
+            logging.error("Out of frame bounds start %s end %s frame length %s",start/sr,end/sr, len(frames)/sr)
+            raise Exception("Out of frame bounds")
     data_length = len(s_data) / sr
     # if end > len(frames):
     #     sub = frames[start:end]
