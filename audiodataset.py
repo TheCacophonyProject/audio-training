@@ -945,67 +945,70 @@ def load_data(
         start = 0
     data_length = segment_l
     spec = None
+# try:
+    #  use if dont want padding
+    # s_data = frames[start : int(segment_l * sr + start)]
+    # zero pad shorter
+    s_data = frames[start:end]
+    if end > len(frames) or start > len(frames):
+        logging.error("Out of frame bounds start %s end %s frame length",start/sr,end/sr, len(frames)/sr)
+        raise Exception("Out of frame bounds")
+    data_length = len(s_data) / sr
+    # if end > len(frames):
+    #     sub = frames[start:end]
+    #     s_data = np.zeros(int(segment_l * sr))
+    #     # randomize zero padding location
+    #     extra_frames = len(s_data) - len(sub)
+    #     # offset = np.random.randint(0, extra_frames)
+    #     offset = 0
+    #     s_data[offset : offset + len(sub)] = sub
+    #     data_length = len(sub) / sr
+    # else:
+    #     s_data = frames[start:end]
+    short_f = None
+    mid_f = None
     try:
-        #  use if dont want padding
-        # s_data = frames[start : int(segment_l * sr + start)]
-        # zero pad shorter
-        s_data = frames[start:end]
+        short_f, mid_f = load_features(s_data, sr)
+        windows = short_f.shape[1]
+        if windows < 60:
+            short_f = np.pad(short_f, ((0, 0), (0, 60 - windows)))
+        windows = mid_f.shape[1]
+        if windows < 3:
+            mid_f = np.pad(mid_f, ((0, 0), (0, 3 - windows)))
 
-        data_length = len(s_data) / sr
-        # if end > len(frames):
-        #     sub = frames[start:end]
-        #     s_data = np.zeros(int(segment_l * sr))
-        #     # randomize zero padding location
-        #     extra_frames = len(s_data) - len(sub)
-        #     # offset = np.random.randint(0, extra_frames)
-        #     offset = 0
-        #     s_data[offset : offset + len(sub)] = sub
-        #     data_length = len(sub) / sr
-        # else:
-        #     s_data = frames[start:end]
-        short_f = None
-        mid_f = None
-        try:
-            short_f, mid_f = load_features(s_data, sr)
-            windows = short_f.shape[1]
-            if windows < 60:
-                short_f = np.pad(short_f, ((0, 0), (0, 60 - windows)))
-            windows = mid_f.shape[1]
-            if windows < 3:
-                mid_f = np.pad(mid_f, ((0, 0), (0, 3 - windows)))
-
-            assert short_f.shape == (68, 60)
-            assert mid_f.shape == (136, 3)
-        except:
-            logging.info("Error loading features", exc_info=True)
-        if len(s_data) < int(segment_l * sr):
-            extra_frames = int(segment_l * sr) - len(s_data)
-            offset = np.random.randint(0, extra_frames)
-            s_data = np.pad(s_data, (offset, extra_frames - offset))
-        assert len(s_data) == int(segment_l * sr)
-        buttered = butter_bandpass_filter(s_data, min_freq, max_freq, sr)
-        spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
-        if buttered is not None:
-            spectogram_buttered = np.abs(
-                librosa.stft(buttered, n_fft=n_fft, hop_length=hop_length)
-            )
-        else:
-            spectogram_buttered = buttered
-        spec = SpectrogramData(
-            s_data, spectogram, data_length, spectogram_buttered, short_f, mid_f
-        )
-        a_max = np.amax(s_data)
-        a_min = np.amin(s_data)
-        if a_max == a_min:
-            print("Error max is min ", a_max, a_min, start_s, end)
-            1 / 0
+        assert short_f.shape == (68, 60)
+        assert mid_f.shape == (136, 3)
     except:
-        logging.error(
-            "Error getting segment  start %s lenght %s",
-            start_s,
-            config.segment_length,
-            exc_info=True,
+        logging.info("Error loading features", exc_info=True)
+    if len(s_data) < int(segment_l * sr):
+        extra_frames = int(segment_l * sr) - len(s_data)
+        offset = np.random.randint(0, extra_frames)
+        s_data = np.pad(s_data, (offset, extra_frames - offset))
+    assert len(s_data) == int(segment_l * sr)
+    buttered = butter_bandpass_filter(s_data, min_freq, max_freq, sr)
+    spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
+    if buttered is not None:
+        spectogram_buttered = np.abs(
+            librosa.stft(buttered, n_fft=n_fft, hop_length=hop_length)
         )
+    else:
+        spectogram_buttered = buttered
+    spec = SpectrogramData(
+        s_data, spectogram, data_length, spectogram_buttered, short_f, mid_f
+    )
+    a_max = np.amax(s_data)
+    a_min = np.amin(s_data)
+    if a_max == a_min:
+        print("Error max is min ", a_max, a_min, start_s, end)
+        logging.error("Max is min %s start %s end %s data length %s ",a_max,a_min, start/sr, end/sr, len(frames)/sr)
+        raise Exception("Max is min")
+    # except:
+    #     logging.error(
+    #         "Error getting segment  start %s lenght %s",
+    #         start_s,
+    #         config.segment_length,
+    #         exc_info=True,
+    #     )
     return spec
 
 

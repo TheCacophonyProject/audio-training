@@ -439,7 +439,7 @@ def save_data(
                 sample.spectogram_data = spec
                 sample.sr = resample
             except:
-                logging.error("Error %s ", rec.id, exc_info=True)
+                logging.error("Error %s with tracks %s ", rec.id,sample.track_ids, exc_info=True)
             writer_lbl = sample.first_tag
             tf_example, num_annotations_skipped = create_tf_example(sample)
             if by_label:
