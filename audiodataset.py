@@ -945,7 +945,7 @@ def load_data(
         start = 0
     data_length = segment_l
     spec = None
-# try:
+    # try:
     #  use if dont want padding
     # s_data = frames[start : int(segment_l * sr + start)]
     # zero pad shorter
@@ -954,9 +954,19 @@ def load_data(
         over_end = end - len(frames)
         if over_end < 0.5:
             end = len(frames)
-            logging.info("Just out of bounds so setting to end start %s end %s frame length %s",start/sr,end/sr, len(frames)/sr)
+            logging.info(
+                "Just out of bounds so setting to end start %s end %s frame length %s",
+                start / sr,
+                end / sr,
+                len(frames) / sr,
+            )
         else:
-            logging.error("Out of frame bounds start %s end %s frame length %s",start/sr,end/sr, len(frames)/sr)
+            logging.error(
+                "Out of frame bounds start %s end %s frame length %s",
+                start / sr,
+                end / sr,
+                len(frames) / sr,
+            )
             raise Exception("Out of frame bounds")
     data_length = len(s_data) / sr
     # if end > len(frames):
@@ -1005,7 +1015,14 @@ def load_data(
     a_min = np.amin(s_data)
     if a_max == a_min:
         print("Error max is min ", a_max, a_min, start_s, end)
-        logging.error("Max is min %s start %s end %s data length %s ",a_max,a_min, start/sr, end/sr, len(frames)/sr)
+        logging.error(
+            "Max is min %s start %s end %s data length %s ",
+            a_max,
+            a_min,
+            start / sr,
+            end / sr,
+            len(frames) / sr,
+        )
         raise Exception("Max is min")
     # except:
     #     logging.error(
