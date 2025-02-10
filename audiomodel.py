@@ -737,7 +737,7 @@ class AudioModel:
         checks = []
         for m in metrics:
             m_dir = self.checkpoint_folder / run_name / f"{m}.weights.h5"
-            if "loss" in m or "focal" in "m":
+            if "loss" in m or "focal" in m:
                 mode = "auto"
             else:
                 mode = "max"
