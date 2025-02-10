@@ -758,14 +758,18 @@ class Track:
         self.end = metadata["end"]
         self.id = metadata.get("id")
         positions = metadata.get("positions", [])
-        self.min_freq = None
-        self.max_freq = None
+        self.min_freq = metadata.get("minFreq", None)
+        self.max_freq = metadata.get("maxFreq", None)
+
         if len(positions) > 0:
             y = positions[0]["y"]
             height = positions[0]["height"]
             if height != 1:
-                self.min_freq = y * TOP_FREQ
-                self.max_freq = height * TOP_FREQ + self.min_freq
+                if self.min_freq is None:
+                    self.min_freq = y * TOP_FREQ
+                if self.max_freq is None:
+                    self.max_freq = height * TOP_FREQ + self.min_freq
+
         self.automatic_tags = set()
         self.human_tags = set()
         self.automatic = metadata.get("automatic")
