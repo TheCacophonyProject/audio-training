@@ -841,7 +841,8 @@ class AudioModel:
         for l in self.labels:
             if l not in excluded_labels and l not in test_birds:
                 excluded_labels.append(l)
-
+            elif l in excluded_labels and l in test_birds:
+                excluded_labels.remove(l)
         logging.info("labels are %s Excluding %s", self.labels, excluded_labels)
         self.train, remapped, epoch_size, new_labels, extra_label_map = get_dataset(
             training_files_dir,
