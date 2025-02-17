@@ -45,7 +45,29 @@ SPECIFIC_BIRD_LABELS = [
     "fantail",
     "australasian bittern",
     "banded dotterel",
-    "tui"
+    "tui",
+]
+SPECIFIC_BIRD_LABELS = [
+    "bird",
+    "fantail",
+    "morepork",
+    "noise",
+    "human",
+    "grey warbler",
+    "insect",
+    "kiwi",
+    "magpie",
+    "tui",
+    "house sparrow",
+    "blackbird",
+    "sparrow",
+    "song thrush",
+    "whistler",
+    "rooster",
+    "silvereye",
+    "norfolk silvereye",
+    "australian magpie",
+    "new zealand fantail",
 ]
 GENERIC_BIRD_LABELS = [
     "new zealand fantail",
