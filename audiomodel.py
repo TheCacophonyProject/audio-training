@@ -855,26 +855,6 @@ class AudioModel:
             embeddings=self.model_name == "embeddings",
             **args,
         )
-        for batch_x, batch_y in self.train:
-            for x in batch_x:
-                has_nan = np.any(np.isnan(x))
-
-                a_max = np.amax(x)
-                a_min = np.amin(x)
-                if has_nan:
-                    # print(x)
-                    x = x.numpy()
-                    logging.info(
-                        "Train less %s than 1 %s over 1 %s max %s min %s has nan %s",
-                        x[np.where(x < 1)],
-                        x[np.where(x > 1.000002)],
-                        a_max,
-                        a_min,
-                        has_nan,
-                    )
-
-                if a_max == a_min:
-                    logging.info("Train Max = Min max %s min %s", a_max, a_min)
 
         self.num_train_instance = epoch_size
         if self.second_data_dir is not None:
@@ -893,26 +873,6 @@ class AudioModel:
             embeddings=self.model_name == "embeddings",
             **args,
         )
-        for batch_x, batch_y in self.validation:
-            for x in batch_x:
-                has_nan = np.any(np.isnan(x))
-
-                a_max = np.amax(x)
-                a_min = np.amin(x)
-                if has_nan:
-                    # print(x)
-                    x = x.numpy()
-                    logging.info(
-                        "Val less %s than 1 %s over 1 %s max %s min %s has nan %s",
-                        x[np.where(x < 1)],
-                        x[np.where(x > 1.000002)],
-                        a_max,
-                        a_min,
-                        has_nan,
-                    )
-
-                if a_max == a_min:
-                    logging.info("Val Max = Min max %s min %s", a_max, a_min)
 
         self.labels = new_labels
         self.training_data_meta = meta

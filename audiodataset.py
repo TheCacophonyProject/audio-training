@@ -955,7 +955,7 @@ def load_data(
     # zero pad shorter
     s_data = frames[start:end]
     if end > len(frames) or start > len(frames):
-        over_end = end - len(frames)
+        over_end = (end - len(frames)) / sr
         if over_end < 0.5:
             end = len(frames)
             logging.info(
