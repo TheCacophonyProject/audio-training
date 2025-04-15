@@ -405,9 +405,10 @@ class Recording:
         self.small_strides = []
         if load_samples:
             self.signal_percent()
-            (self.samples, self.small_strides, self.unused_samples) = self.get_samples(
-                config.segment_length, config.segment_stride
-            )
+            self.load_samples(                config.segment_length, config.segment_stride)
+
+    def load_samples(self,segment_length,segment_stride):
+            (self.samples, self.small_strides, self.unused_samples) = self.get_samples(segment_length,segment_stride)
 
     def add_tracks(self, tracks):
         for t in tracks:

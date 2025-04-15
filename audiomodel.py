@@ -816,6 +816,7 @@ class AudioModel:
         excluded_labels = get_excluded_labels(self.labels)
 
         test_birds = [
+            "bellbird"
             "bird",
             "fantail",
             "morepork",

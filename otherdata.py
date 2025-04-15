@@ -564,10 +564,163 @@ def chime_data():
         json.dump(meta_data, f, indent=4)
 
 
+    logging.info("Loaded samples mem %s", psutil.virtual_memory()[2])
+    dataset.print_counts()
+    # return
+    datasets = split_randomly(dataset, no_test=False)
+    # for d in datasets:
+    #     for r in d.recs:
+    #         name = r.filename
+    #         noisy_name = noisy_p / f"bird-{name.name}"
+    #         if noisy_name.exists():
+    #             add_rec(d, noisy_name, ["human", "bird"], config)
+    #             logging.info("Adding %s %s %s", noisy_name, " from ", name)
+    #         noisy_name = noisy_p / f"noise-{name.name}"
+    #
+    #         if noisy_name.exists():
+    #             add_rec(dataset, noisy_name, ["human", "noise"], config)
+    #             print("Adding %s %s %s", noisy_name, " from ", name)
+    logging.info("Split samples mem %s", psutil.virtual_memory()[2])
+
+    all_labels = set()
+    for d in datasets:
+        logging.info("%s Dataset", d.name)
+        d.print_sample_counts()
+
+        all_labels.update(d.labels)
+    # return
+    all_labels = list(all_labels)
+    all_labels.sort()
+    for d in datasets:
+        d.labels = all_labels
+    base_dir = Path("/data/audio-data/")
+    record_dir = base_dir / "flickr-training-data/"
+    print("saving to", record_dir)
+    logging.info("Saving pre samples mem %s", psutil.virtual_memory()[2])
+
+    dataset_counts = {}
+    for dataset in datasets:
+        dir = record_dir / dataset.name
+        print("saving to ", dir)
+        create_tf_records(dataset, dir, datasets[0].labels, num_shards=100)
+        dataset_counts[dataset.name] = dataset.get_counts()
+        # dataset.saveto_numpy(os.path.join(base_dir))
+    # dont need dataset anymore just need some meta
+    meta_filename = f"{base_dir}/flickr-training-data/training-meta.json"
+    meta_data = {
+        "labels": datasets[0].labels,
+        "type": "audio",
+        "counts": dataset_counts,
+        "by_label": False,
+        "relabbled": RELABEL,
+    }
+    meta_data.update(config.__dict__)
+    with open(meta_filename, "w") as f:
+        json.dump(meta_data, f, indent=4)
+
+
+
+
+
+
+def tier1_data(data_dir):
+    print("Loading tier1")
+    test_labels = [
+            "bellbird",
+            "bird",
+            "fantail",
+            "morepork",
+            "noise",
+            "human",
+            "grey warbler",
+            "insect",
+            "kiwi",
+            "magpie",
+            "tui",
+            "house sparrow",
+            "blackbird",
+            "sparrow",
+            "song thrush",
+            "whistler",
+            "rooster",
+            "silvereye",
+            "norfolk silvereye",
+            "australian magpie",
+            "new zealand fantail",
+            "banded dotterel",
+            "australasian bittern"
+    ]
+           
+    ebird_map = {}
+    with open("classes.csv", newline="") as csvfile:
+        dreader = csv.reader(csvfile, delimiter=",", quotechar="|")
+        i = -1
+        for row in dreader:
+            i+=1
+            if i == 0:
+                continue
+            # ebird = (common, extra)
+            ebird_map[row[2]]= (row[1].lower(),row[4].lower())
+    config = Config()
+    dataset = AudioDataset("Tier1", config)
+    metadata = data_dir/"001_metadata.csv"
+    with open(metadata, newline="") as csvfile:
+        dreader = csv.reader(csvfile, delimiter=",", quotechar="\"")
+        i = -1
+        for row in dreader:
+            i += 1
+            if i == 0:
+                continue
+            id, filename, label, other_labels,start,end = row
+            # if label != "dobplo1":
+                # continue
+            primary_label = ebird_map.get(label)
+            # print("Dot mapped too",primary_label)
+            if primary_label is None:
+                continue
+            if primary_label[0] in test_labels:
+                label = primary_label[0]
+            elif primary_label[1] in test_labels:
+                label = primary_label[1]
+            elif "kiwi" in primary_label[0]:
+                label = "kiwi"
+            else:
+                continue
+
+            # try:
+            #     y, sr = librosa.load(rec_name)
+            #     end = librosa.get_duration(y=y, sr=sr)
+            #     y = None
+            #     sr = None
+            # except:
+            #     continue
+            r = Recording({"id": id, "tracks": []}, data_dir/filename,dataset.config, load_samples=False)
+            t = Track(
+                {
+                    "id": id,
+                    "start": 0,
+                    "end": 5,
+                    "tags": [{"automatic": False, "what": label}],
+                },
+                r.filename,
+                r.id,
+                r,
+            )
+
+            r.tracks = [t]
+            r.human_tags.add(label)
+            r.load_samples(dataset.config.segment_length,dataset.config.segment_stride)
+            # dataset
+            dataset.add_recording(r)
+    print(dataset.print_counts())
+
 def main():
     init_logging()
     args = parse_args()
-    weakly_lbled_data(args.dir)
+
+    tier1_data(args.dir)
+    return
+    # weakly_lbled_data(args.dir)
     return
     # process_noise()
     # return
