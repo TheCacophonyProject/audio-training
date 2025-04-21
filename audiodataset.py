@@ -1005,16 +1005,17 @@ def load_data(
         offset = np.random.randint(0, extra_frames)
         s_data = np.pad(s_data, (offset, extra_frames - offset))
     assert len(s_data) == int(segment_l * sr)
-    buttered = butter_bandpass_filter(s_data, min_freq, max_freq, sr)
-    spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
-    if buttered is not None:
-        spectogram_buttered = np.abs(
-            librosa.stft(buttered, n_fft=n_fft, hop_length=hop_length)
-        )
-    else:
-        spectogram_buttered = buttered
+    # buttered = butter_bandpass_filter(s_data, min_freq, max_freq, sr)
+    normed = normalize_data(s_data)
+    spectogram = np.abs(librosa.stft(normed, n_fft=n_fft, hop_length=hop_length))
+    # if buttered is not None:
+    #     spectogram_buttered = np.abs(
+    #         librosa.stft(buttered, n_fft=n_fft, hop_length=hop_length)
+    #     )
+    # else:
+    #     spectogram_buttered = buttered
     spec = SpectrogramData(
-        s_data, spectogram, data_length, spectogram_buttered, short_f, mid_f
+        s_data, spectogram, data_length, None, short_f, mid_f
     )
     a_max = np.amax(s_data)
     a_min = np.amin(s_data)
@@ -1038,6 +1039,16 @@ def load_data(
     #     )
     return spec
 
+
+
+def normalize_data(x):
+    min_v = np.min(x, -1, keepdims=True)
+    x = x - min_v
+    max_v = np.max(x, -1, keepdims=True)
+    x = x / max_v + 0.000001
+    x = x - 0.5
+    x = x * 2
+    return x
 
 from scipy.signal import butter, sosfilt, sosfreqz, freqs
 
