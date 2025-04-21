@@ -716,18 +716,26 @@ def tier1_data(base_dir):
                 #     continue
                 r = Recording({"id": id, "tracks": []}, audio_file,dataset.config, load_samples=False)
                 assert r.id not in dataset.recs
+                track_length = end-start
+                t_start = 0
+                t_end = min(track_length, 5)
+
+                if label != "banded dotterel" and track_length>=4:
+                    # just choose 1 track in centre
+                    t_start = 1
+                    t_end = 4
+
                 t = Track(
                     {
                         "id": id,
-                        "start": 0,
-                        "end": 5,
+                        "start": t_start,
+                        "end": t_end,
                         "tags": [{"automatic": False, "what": label}],
                     },
                     r.filename,
                     r.id,
                     r,
                 )
-
                 r.tracks = [t]
                 r.human_tags.add(label)
                 r.load_samples(dataset.config.segment_length,dataset.config.segment_stride)
