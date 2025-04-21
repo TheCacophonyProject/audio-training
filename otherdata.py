@@ -623,7 +623,7 @@ def chime_data():
 
 
 
-def tier1_data(data_dir):
+def tier1_data(base_dir):
     print("Loading tier1")
     test_labels = [
             "bellbird",
@@ -663,55 +663,69 @@ def tier1_data(data_dir):
             ebird_map[row[2]]= (row[1].lower(),row[4].lower())
     config = Config()
     dataset = AudioDataset("Tier1", config)
-    metadata = data_dir/"001_metadata.csv"
-    with open(metadata, newline="") as csvfile:
-        dreader = csv.reader(csvfile, delimiter=",", quotechar="\"")
-        i = -1
-        for row in dreader:
-            i += 1
-            if i == 0:
-                continue
-            id, filename, label, other_labels,start,end = row
-            # if label != "dobplo1":
-                # continue
-            primary_label = ebird_map.get(label)
-            # print("Dot mapped too",primary_label)
-            if primary_label is None:
-                continue
-            if primary_label[0] in test_labels:
-                label = primary_label[0]
-            elif primary_label[1] in test_labels:
-                label = primary_label[1]
-            elif "kiwi" in primary_label[0]:
-                label = "kiwi"
-            else:
-                continue
+    folders = ["Train_001","Train_002"]
+    max_track_length = None
+    for folder in folders:
+        dataset_dir = base_dir/folder
+        metadata =dataset_dir/"001_metadata.csv"
+        if not metadata.exists():
+            logging.warning("No metadata at %s",metadata)
+            continue
+        with open(metadata, newline="") as csvfile:
+            dreader = csv.reader(csvfile, delimiter=",", quotechar="\"")
+            i = -1
+            for row in dreader:
+                i += 1
+                if i == 0:
+                    continue
+                id, filename, label, other_labels,start,end = row
+                start = int(start)
+                end = int(end)
+                # if label != "dobplo1":
+                    # continue
+                primary_label = ebird_map.get(label)
+                # print("Dot mapped too",primary_label)
+                if primary_label is None:
+                    continue
+                if primary_label[0] in test_labels:
+                    label = primary_label[0]
+                elif primary_label[1] in test_labels:
+                    label = primary_label[1]
+                elif "kiwi" in primary_label[0]:
+                    label = "kiwi"
+                else:
+                    continue
 
-            # try:
-            #     y, sr = librosa.load(rec_name)
-            #     end = librosa.get_duration(y=y, sr=sr)
-            #     y = None
-            #     sr = None
-            # except:
-            #     continue
-            r = Recording({"id": id, "tracks": []}, data_dir/filename,dataset.config, load_samples=False)
-            t = Track(
-                {
-                    "id": id,
-                    "start": 0,
-                    "end": 5,
-                    "tags": [{"automatic": False, "what": label}],
-                },
-                r.filename,
-                r.id,
-                r,
-            )
+                audio_file = dataset_dir/filename
+                if not audio_file.exists():
+                    logging.warn("COuld not find %s", audio_file)
+                    continue
+                # try:
+                #     y, sr = librosa.load(rec_name)
+                #     end = librosa.get_duration(y=y, sr=sr)
+                #     y = None
+                #     sr = None
+                # except:
+                #     continue
+                r = Recording({"id": id, "tracks": []}, audio_file,dataset.config, load_samples=False)
+                t = Track(
+                    {
+                        "id": id,
+                        "start": 0,
+                        "end": 5,
+                        "tags": [{"automatic": False, "what": label}],
+                    },
+                    r.filename,
+                    r.id,
+                    r,
+                )
 
-            r.tracks = [t]
-            r.human_tags.add(label)
-            r.load_samples(dataset.config.segment_length,dataset.config.segment_stride)
-            # dataset
-            dataset.add_recording(r)
+                r.tracks = [t]
+                r.human_tags.add(label)
+                r.load_samples(dataset.config.segment_length,dataset.config.segment_stride)
+                # dataset
+                dataset.add_recording(r)
+        print("Max track length is",max_track_length)
     print(dataset.print_counts())
 
 def main():
