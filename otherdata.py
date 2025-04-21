@@ -4,7 +4,7 @@ import logging
 import sys
 from pathlib import Path
 from audiodataset import Track, Recording, AudioDataset, RELABEL, AudioSample, Config
-from build import split_randomly
+from build import split_randomly,validate_datasets
 import psutil
 import random
 from audiomentations import AddBackgroundNoise, PolarityInversion, Compose
@@ -671,6 +671,7 @@ def tier1_data(base_dir):
         if not metadata.exists():
             logging.warning("No metadata at %s",metadata)
             continue
+        logging.info("Loading from %s",dataset_dir)
         with open(metadata, newline="") as csvfile:
             dreader = csv.reader(csvfile, delimiter=",", quotechar="\"")
             i = -1
@@ -678,7 +679,13 @@ def tier1_data(base_dir):
                 i += 1
                 if i == 0:
                     continue
-                id, filename, label, other_labels,start,end = row
+
+                if len(row)==6:
+                    id, filename, label, other_labels,start,end = row
+                else:
+                    id = f"{folder}-{i}"
+                    filename, label, other_labels,start,end = row
+
                 start = int(start)
                 end = int(end)
                 # if label != "dobplo1":
@@ -696,9 +703,9 @@ def tier1_data(base_dir):
                 else:
                     continue
 
-                audio_file = dataset_dir/filename
+                audio_file = dataset_dir/"train_audio"/filename
                 if not audio_file.exists():
-                    logging.warn("COuld not find %s", audio_file)
+                    # logging.warn("COuld not find %s", audio_file)
                     continue
                 # try:
                 #     y, sr = librosa.load(rec_name)
@@ -708,6 +715,7 @@ def tier1_data(base_dir):
                 # except:
                 #     continue
                 r = Recording({"id": id, "tracks": []}, audio_file,dataset.config, load_samples=False)
+                assert r.id not in dataset.recs
                 t = Track(
                     {
                         "id": id,
@@ -725,9 +733,65 @@ def tier1_data(base_dir):
                 r.load_samples(dataset.config.segment_length,dataset.config.segment_stride)
                 # dataset
                 dataset.add_recording(r)
-        print("Max track length is",max_track_length)
-    print(dataset.print_counts())
+    logging.info("Loaded tier 1 data")
+    dataset.print_sample_counts()
 
+    datasets = split_randomly(dataset)
+    save_data(datasets,base_dir,dataset.config)
+
+def save_data(datasets, base_dir,config):
+    all_labels = set()
+    for d in datasets:
+        logging.info("")
+        logging.info("%s Dataset", d.name)
+        d.print_sample_counts()
+
+        all_labels.update(d.labels)
+    all_labels = list(all_labels)
+    all_labels.sort()
+    for d in datasets:
+        d.labels = all_labels
+        print("setting all labels", all_labels)
+    validate_datasets(datasets)
+    record_dir = base_dir/ "training-data/"
+    print("saving to", record_dir)
+    # return
+    dataset_counts = {}
+    dataset_recs = {}
+    for dataset in datasets:
+        dir = record_dir/  dataset.name
+        r_counts = dataset.get_rec_counts()
+        for k, v in r_counts.items():
+            r_counts[k] = len(v)
+        dataset_recs[dataset.name] = list(dataset.recs.keys())
+        dataset_counts[dataset.name] = {
+            "rec_counts": r_counts,
+            "sample_counts": dataset.get_counts(),
+        }
+        create_tf_records(dataset, dir, datasets[0].labels, num_shards=100)
+
+        # dataset.saveto_numpy(os.path.join(base_dir))
+    # dont need dataset anymore just need some meta
+    meta_filename = f"{base_dir}/training-data/training-meta.json"
+    meta_data = {
+        # "segment_length": SEGMENT_LENGTH,
+        # "segment_stride": SEGMENT_STRIDE,
+        # "hop_length": HOP_LENGTH,
+        # "n_mels": N_MELS,
+        # "fmin": FMIN,
+        # "fmax": FMAX,
+        # "break_freq": BREAK_FREQ,
+        # "htk": HTK,
+        "labels": datasets[0].labels,
+        "type": "audio",
+        "counts": dataset_counts,
+        "recs": dataset_recs,
+        "by_label": False,
+        "relabbled": RELABEL,
+    }
+    meta_data.update(config.__dict__)
+    with open(meta_filename, "w") as f:
+        json.dump(meta_data, f, indent=4)
 def main():
     init_logging()
     args = parse_args()

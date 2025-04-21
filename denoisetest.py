@@ -79,6 +79,7 @@ def load_recording(file, resample=48000):
 def signal_noise(file, hop_length=281):
     frames, sr = load_recording(file)
     end = get_end(frames, sr)
+    # end = 5
     frames = frames[: int(sr * end)]
     # frames = frames[: sr * 120]
     # n_fft = sr // 10
@@ -103,16 +104,29 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     row_medians = row_medians[:, np.newaxis]
     row_medians = np.repeat(row_medians, columns, axis=1)
     column_medians = np.repeat(column_medians, rows, axis=0)
+    kernel = np.ones((4, 4), np.uint8)
+    spectogram = cv2.morphologyEx(spectogram, cv2.MORPH_OPEN, kernel)
+    signal_thresh = 2
     signal = (spectogram > 3 * column_medians) & (spectogram > 3 * row_medians)
     noise = (spectogram > 2.5 * column_medians) & (spectogram > 2.5 * row_medians)
     noise[signal == noise] = 0
     noise = noise.astype(np.uint8)
     signal = signal.astype(np.uint8)
+    # print(signal)
+    # print("SIgnal shape is ",signal.shape)
+    # noise[noise>0]= 128
+    # print(noise)
+    signal[signal>0]= 255
+    # signal = signal + noise
+    # plt.imshow(signal,origin="lower")
+    # plt.show()
+    # plt.imshow(noise,origin="lower")
+    # plt.show()
     min_width = 0.1
     min_width = min_width * sr / 281
     min_width = int(min_width)
 
-    width = 0.25  # seconds
+    width = 0.5  # seconds
     width = width * sr / 281
     width = int(width)
     freq_range = 100
@@ -123,13 +137,14 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
             height = i + 1
             break
 
-    kernel = np.ones((4, 4), np.uint8)
     signal = cv2.morphologyEx(signal, cv2.MORPH_OPEN, kernel)
     noise = cv2.morphologyEx(noise, cv2.MORPH_OPEN, kernel)
     #
     signal = cv2.dilate(signal, np.ones((height, width), np.uint8))
     signal = cv2.erode(signal, np.ones((height // 10, width), np.uint8))
-
+    # plt.imshow(signal,origin="lower")
+    # plt.show()
+    # 1/0
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(signal)
 
     stats = stats[1:]
@@ -645,10 +660,11 @@ def main():
     init_logging()
 
     args = parse_args()
-    test_plot(args.file)
-    return
+   
     # mix_file(args.file, args.mix)
     signals, noise, spectogram, frames, end = signal_noise(args.file)
+    # plot_mel_signals(np.abs(spectogram), signals, noise)
+
     # means_merge(spectogram,signal)
     # return
     # for s in signal:
@@ -657,11 +673,11 @@ def main():
     # for s in signals:
     #     print(s)
     tracks = get_tracks_from_signals(signals, end)
+    plot_mel_signals(np.abs(spectogram), tracks, noise)
+
     # tracks = merge_again(tracks)
     # ,time_overlap_percent = 0.5, freq_overlap_percent = 0.5)
-    for t in tracks:
-        print(t)
-
+    
     # post_filter = []
     # tracks_sorted = sorted(tracks, key=lambda track: track.start)
     # current_track = None
@@ -700,7 +716,7 @@ def main():
     # return
 
     # tracks_to_audio(tracks, spectogram, frames)
-    plot_mel_signals(np.abs(spectogram), tracks, noise)
+    # plot_mel_signals(np.abs(spectogram), signals, noise)
     return
     # process(args.file)
     process(args.file)
