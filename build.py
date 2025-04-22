@@ -656,16 +656,18 @@ def main():
 
     #     for unused in rec.unused_samples:
     #         logging.info("Not Used samples are %s", unused)
-    balance_ds(dataset, datasets[0], max_repeats=5)
-    balance_ds(dataset, datasets[1])
+    if args.balance:
+        logging.info("Balancing datasets")
+        balance_ds(dataset, datasets[0], max_repeats=5)
+        balance_ds(dataset, datasets[1])
 
-    logging.info("After balance")
-    for d in datasets[:2]:
-        logging.info("")
-        logging.info("%s Dataset", d.name)
-        d.print_sample_counts()
+        logging.info("After balance")
+        for d in datasets[:2]:
+            logging.info("")
+            logging.info("%s Dataset", d.name)
+            d.print_sample_counts()
 
-        all_labels.update(d.labels)
+            all_labels.update(d.labels)
 
     all_labels = list(all_labels)
     all_labels.sort()
@@ -851,6 +853,13 @@ def parse_args():
         default=True,
         action="count",
         help="Filter frequency of tracks",
+    )
+
+    parser.add_argument(
+        "--balance",
+        default=False,
+        action="count",
+        help="Try balance labels by oversampling low sample classess (doesn't seem to be effective)",
     )
 
     parser.add_argument(

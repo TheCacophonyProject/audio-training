@@ -405,10 +405,12 @@ class Recording:
         self.small_strides = []
         if load_samples:
             self.signal_percent()
-            self.load_samples(                config.segment_length, config.segment_stride)
+            self.load_samples(config.segment_length, config.segment_stride)
 
-    def load_samples(self,segment_length,segment_stride):
-            (self.samples, self.small_strides, self.unused_samples) = self.get_samples(segment_length,segment_stride)
+    def load_samples(self, segment_length, segment_stride):
+        (self.samples, self.small_strides, self.unused_samples) = self.get_samples(
+            segment_length, segment_stride
+        )
 
     def add_tracks(self, tracks):
         for t in tracks:
@@ -1007,16 +1009,14 @@ def load_data(
     assert len(s_data) == int(segment_l * sr)
     # buttered = butter_bandpass_filter(s_data, min_freq, max_freq, sr)
     normed = normalize_data(s_data)
-    spectogram = np.abs(librosa.stft(normed, n_fft=n_fft, hop_length=hop_length))
+    spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
     # if buttered is not None:
     #     spectogram_buttered = np.abs(
     #         librosa.stft(buttered, n_fft=n_fft, hop_length=hop_length)
     #     )
     # else:
     #     spectogram_buttered = buttered
-    spec = SpectrogramData(
-        s_data, spectogram, data_length, None, short_f, mid_f
-    )
+    spec = SpectrogramData(s_data, spectogram, data_length, None, short_f, mid_f)
     a_max = np.amax(s_data)
     a_min = np.amin(s_data)
     if a_max == a_min:
@@ -1040,7 +1040,6 @@ def load_data(
     return spec
 
 
-
 def normalize_data(x):
     min_v = np.min(x, -1, keepdims=True)
     x = x - min_v
@@ -1049,6 +1048,7 @@ def normalize_data(x):
     x = x - 0.5
     x = x * 2
     return x
+
 
 from scipy.signal import butter, sosfilt, sosfreqz, freqs
 

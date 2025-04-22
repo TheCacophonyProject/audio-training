@@ -4,7 +4,7 @@ import logging
 import sys
 from pathlib import Path
 from audiodataset import Track, Recording, AudioDataset, RELABEL, AudioSample, Config
-from build import split_randomly,validate_datasets
+from build import split_randomly, validate_datasets
 import psutil
 import random
 from audiomentations import AddBackgroundNoise, PolarityInversion, Compose
@@ -563,7 +563,6 @@ def chime_data():
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4)
 
-
     logging.info("Loaded samples mem %s", psutil.virtual_memory()[2])
     dataset.print_counts()
     # return
@@ -619,77 +618,72 @@ def chime_data():
         json.dump(meta_data, f, indent=4)
 
 
-
-
-
-
 def tier1_data(base_dir):
     print("Loading tier1")
     test_labels = [
-            "bellbird",
-            "bird",
-            "fantail",
-            "morepork",
-            "noise",
-            "human",
-            "grey warbler",
-            "insect",
-            "kiwi",
-            "magpie",
-            "tui",
-            "house sparrow",
-            "blackbird",
-            "sparrow",
-            "song thrush",
-            "whistler",
-            "rooster",
-            "silvereye",
-            "norfolk silvereye",
-            "australian magpie",
-            "new zealand fantail",
-            "banded dotterel",
-            "australasian bittern"
+        "bellbird",
+        "bird",
+        "fantail",
+        "morepork",
+        "noise",
+        "human",
+        "grey warbler",
+        "insect",
+        "kiwi",
+        "magpie",
+        "tui",
+        "house sparrow",
+        "blackbird",
+        "sparrow",
+        "song thrush",
+        "whistler",
+        "rooster",
+        "silvereye",
+        "norfolk silvereye",
+        "australian magpie",
+        "new zealand fantail",
+        "banded dotterel",
+        "australasian bittern",
     ]
-           
+
     ebird_map = {}
     with open("classes.csv", newline="") as csvfile:
         dreader = csv.reader(csvfile, delimiter=",", quotechar="|")
         i = -1
         for row in dreader:
-            i+=1
+            i += 1
             if i == 0:
                 continue
             # ebird = (common, extra)
-            ebird_map[row[2]]= (row[1].lower(),row[4].lower())
+            ebird_map[row[2]] = (row[1].lower(), row[4].lower())
     config = Config()
     dataset = AudioDataset("Tier1", config)
-    folders = ["Train_001","Train_002"]
-    max_track_length = None
+    folders = ["Train_001", "Train_002"]
     for folder in folders:
-        dataset_dir = base_dir/folder
-        metadata =dataset_dir/"001_metadata.csv"
+        dataset_dir = base_dir / folder
+        metadata = dataset_dir / "001_metadata.csv"
         if not metadata.exists():
-            logging.warning("No metadata at %s",metadata)
+            logging.warning("No metadata at %s", metadata)
             continue
-        logging.info("Loading from %s",dataset_dir)
+        logging.info("Loading from %s", dataset_dir)
         with open(metadata, newline="") as csvfile:
-            dreader = csv.reader(csvfile, delimiter=",", quotechar="\"")
+            dreader = csv.reader(csvfile, delimiter=",", quotechar='"')
             i = -1
             for row in dreader:
                 i += 1
                 if i == 0:
                     continue
 
-                if len(row)==6:
-                    id, filename, label, other_labels,start,end = row
+                if len(row) == 6:
+                    id, filename, label, other_labels, start, end = row
                 else:
                     id = f"{folder}-{i}"
-                    filename, label, other_labels,start,end = row
+                    filename, label, other_labels, start, end = row
 
                 start = int(start)
                 end = int(end)
                 # if label != "dobplo1":
-                    # continue
+                # continue
                 primary_label = ebird_map.get(label)
                 # print("Dot mapped too",primary_label)
                 if primary_label is None:
@@ -703,7 +697,7 @@ def tier1_data(base_dir):
                 else:
                     continue
 
-                audio_file = dataset_dir/"train_audio"/filename
+                audio_file = dataset_dir / "train_audio" / filename
                 if not audio_file.exists():
                     # logging.warn("COuld not find %s", audio_file)
                     continue
@@ -714,13 +708,18 @@ def tier1_data(base_dir):
                 #     sr = None
                 # except:
                 #     continue
-                r = Recording({"id": id, "tracks": []}, audio_file,dataset.config, load_samples=False)
+                r = Recording(
+                    {"id": id, "tracks": []},
+                    audio_file,
+                    dataset.config,
+                    load_samples=False,
+                )
                 assert r.id not in dataset.recs
-                track_length = end-start
+                track_length = end - start
                 t_start = 0
                 t_end = min(track_length, 5)
 
-                if label != "banded dotterel" and track_length>=4:
+                if label != "banded dotterel" and track_length >= 4:
                     # just choose 1 track in centre
                     t_start = 1
                     t_end = 4
@@ -738,16 +737,19 @@ def tier1_data(base_dir):
                 )
                 r.tracks = [t]
                 r.human_tags.add(label)
-                r.load_samples(dataset.config.segment_length,dataset.config.segment_stride)
+                r.load_samples(
+                    dataset.config.segment_length, dataset.config.segment_stride
+                )
                 # dataset
                 dataset.add_recording(r)
     logging.info("Loaded tier 1 data")
     dataset.print_sample_counts()
 
     datasets = split_randomly(dataset)
-    save_data(datasets,base_dir,dataset.config)
+    save_data(datasets, base_dir, dataset.config)
 
-def save_data(datasets, base_dir,config):
+
+def save_data(datasets, base_dir, config):
     all_labels = set()
     for d in datasets:
         logging.info("")
@@ -761,13 +763,13 @@ def save_data(datasets, base_dir,config):
         d.labels = all_labels
         print("setting all labels", all_labels)
     validate_datasets(datasets)
-    record_dir = base_dir/ "training-data/"
+    record_dir = base_dir / "training-data/"
     print("saving to", record_dir)
     # return
     dataset_counts = {}
     dataset_recs = {}
     for dataset in datasets:
-        dir = record_dir/  dataset.name
+        dir = record_dir / dataset.name
         r_counts = dataset.get_rec_counts()
         for k, v in r_counts.items():
             r_counts[k] = len(v)
@@ -800,6 +802,8 @@ def save_data(datasets, base_dir,config):
     meta_data.update(config.__dict__)
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4)
+
+
 def main():
     init_logging()
     args = parse_args()

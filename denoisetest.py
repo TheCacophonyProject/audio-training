@@ -116,7 +116,7 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     # print("SIgnal shape is ",signal.shape)
     # noise[noise>0]= 128
     # print(noise)
-    signal[signal>0]= 255
+    signal[signal > 0] = 255
     # signal = signal + noise
     # plt.imshow(signal,origin="lower")
     # plt.show()
@@ -660,7 +660,7 @@ def main():
     init_logging()
 
     args = parse_args()
-   
+
     # mix_file(args.file, args.mix)
     signals, noise, spectogram, frames, end = signal_noise(args.file)
     # plot_mel_signals(np.abs(spectogram), signals, noise)
@@ -677,7 +677,7 @@ def main():
 
     # tracks = merge_again(tracks)
     # ,time_overlap_percent = 0.5, freq_overlap_percent = 0.5)
-    
+
     # post_filter = []
     # tracks_sorted = sorted(tracks, key=lambda track: track.start)
     # current_track = None

@@ -789,12 +789,7 @@ class AudioModel:
             args.get("use_generic_bird"),
         )
         labels = set()
-        filenames = []
-        second_filenames = None
-        if self.second_data_dir is not None:
-            second_filenames = tf.io.gfile.glob(
-                f"{str(self.second_data_dir)}/train/*/*.tfrecord"
-            )
+
         training_files_dir = self.data_dir / "train"
 
         file = f"{self.data_dir}/training-meta.json"
@@ -816,7 +811,7 @@ class AudioModel:
         excluded_labels = get_excluded_labels(self.labels)
 
         test_birds = [
-            "bellbird"
+            "bellbird",
             "bird",
             "fantail",
             "morepork",
@@ -845,6 +840,10 @@ class AudioModel:
             elif l in excluded_labels and l in test_birds:
                 excluded_labels.remove(l)
         logging.info("labels are %s Excluding %s", self.labels, excluded_labels)
+        second_dir = None
+        if self.second_data_dir is not None:
+            second_dir = self.second_data_dir / "train"
+
         self.train, remapped, epoch_size, new_labels, extra_label_map = get_dataset(
             training_files_dir,
             self.labels,
@@ -852,16 +851,15 @@ class AudioModel:
             image_size=self.input_shape,
             augment=False,  # seems to perform worse
             excluded_labels=excluded_labels,
-            filenames_2=second_filenames,
+            second_dir=second_dir,
             embeddings=self.model_name == "embeddings",
             **args,
         )
 
         self.num_train_instance = epoch_size
         if self.second_data_dir is not None:
-            second_filenames = tf.io.gfile.glob(
-                f"{str(self.second_data_dir)}/validation/*/*.tfrecord"
-            )
+            second_dir = self.second_data_dir / "validation"
+
         logging.info("Loading Val")
 
         self.validation, _, _, _, _ = get_dataset(
@@ -870,7 +868,7 @@ class AudioModel:
             batch_size=self.batch_size,
             image_size=self.input_shape,
             excluded_labels=excluded_labels,
-            filenames_2=second_filenames,
+            second_dir=second_dir,
             embeddings=self.model_name == "embeddings",
             **args,
         )
@@ -882,11 +880,10 @@ class AudioModel:
 
     def load_test_set(self, **args):
         logging.info("Loading test")
-        second_filenames = None
+        second_dir = None
         if self.second_data_dir is not None:
-            second_filenames = tf.io.gfile.glob(
-                f"{str(self.second_data_dir)}/test/*/*.tfrecord"
-            )
+            second_dir = self.second_data_dir / "test"
+
         test_args = dict(args)
         test_args["shuffle"] = False
         self.test, _, _, _, _ = get_dataset(
@@ -895,7 +892,7 @@ class AudioModel:
             batch_size=self.batch_size,
             image_size=self.input_shape,
             mean_sub=self.mean_sub,
-            filenames_2=second_filenames,
+            second_dir=second_dir,
             embeddings=self.model_name == "embeddings",
             deterministic=True,
             **test_args,
@@ -1691,7 +1688,7 @@ def parse_args():
     parser.add_argument(
         "--second-dataset-dir",
         type=none_or_str,
-        default="/data/audio-data/flickr-training-data",
+        default=None,
         help="Secondary dataset directory to use",
     )
     parser.add_argument("--confusion", help="Save confusion matrix for model")

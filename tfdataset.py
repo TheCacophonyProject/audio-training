@@ -626,6 +626,15 @@ def get_a_dataset(dir, labels, args):
     logging.info("Loading tf records from %s", dir)
     filenames = tf.io.gfile.glob(str(dir / "*.tfrecord"))
 
+    if args.get("second_dir") is not None:
+        second_dir = Path(args.get("second_dir"))
+
+        second_filenames = tf.io.gfile.glob(str(second_dir / "*.tfrecord"))
+        logging.info("Loading second files %s", second_filenames)
+        filenames.extend(second_filenames)
+    else:
+        logging.info("Not using second dataset")
+
     xeno_files = Path("/data/audio-data/xenocanto/xeno-training-data/")
     xeno_files = xeno_files / dir.name
     if xeno_files.exists() and dir.name != "test":
@@ -648,20 +657,21 @@ def get_a_dataset(dir, labels, args):
 
     # may perform better without adding generics birds but sitll having generic label
     dataset_2 = None
+    # can load other dataset directory like this if want to avoid getting more from
+    # one dataset
+    # if args.get("filenames_2") is not None:
+    #     logging.info("Loading second files %s", args.get("filenames_2")[:1])
+    #     second = args.get("filenames_2")
 
-    if args.get("filenames_2") is not None:
-        logging.info("Loading second files %s", args.get("filenames_2")[:1])
-        second = args.get("filenames_2")
+    #     #   dont think no bird is needed
+    #     # bird_c = dist[labels.index("bird")]
+    #     # args["no_bird"] = True
+    #     # added bird noise to human recs but it messes model, so dont use for now
 
-        #   dont think no bird is needed
-        # bird_c = dist[labels.index("bird")]
-        # args["no_bird"] = True
-        # added bird noise to human recs but it messes model, so dont use for now
+    #     dataset_2 = load_dataset(second, len(labels), labels, args)
 
-        dataset_2 = load_dataset(second, len(labels), labels, args)
-
-    else:
-        logging.info("Not using second dataset")
+    # else:
+    #     logging.info("Not using second dataset")
 
     if len(datasets) == 1:
         dataset = datasets[0]
@@ -1212,7 +1222,7 @@ def main():
             # "thrush"
         ]
         for l in labels:
-            if l not in excluded_labels and l not in test_brds:
+            if l not in excluded_labels and l not in test_birds:
                 excluded_labels.append(l)
 
         dataset, remapped, _, labels, _ = get_dataset(
