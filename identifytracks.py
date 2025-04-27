@@ -47,6 +47,7 @@ def get_end(frames, sr):
         end = start + chunk_length
     return file_length
 
+
 def signal_noise(frames, sr, hop_length=281):
     # frames = frames[:sr]
     n_fft = sr // 10
@@ -105,6 +106,7 @@ def signal_noise(frames, sr, hop_length=281):
         signals.append(Signal(start, end, freq_range[0], freq_range[1]))
 
     return signals
+
 
 def segment_overlap(first, second):
     return (
@@ -190,7 +192,6 @@ def merge_signals(signals):
         signals.remove(s)
 
     return signals, something_merged
-
 
 
 def get_tracks_from_signals(signals, end):

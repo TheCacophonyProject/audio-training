@@ -1033,7 +1033,7 @@ class AudioModel:
                     weights=weights,
                     include_top=False,
                     input_shape=input_shape,
-                    include_preprocessing=False
+                    include_preprocessing=False,
                 ),
                 None,
             )

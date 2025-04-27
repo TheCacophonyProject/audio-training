@@ -298,7 +298,7 @@ def process_job(queue, labels, config, base_dir, writer_i):
                     counts,
                     by_label,
                     num_shards=shards,
-                    offset = saved,
+                    offset=saved,
                 )
                 if i % 10 == 0:
                     logging.info("Clear gc")
@@ -357,7 +357,7 @@ def save_data(
     add_features=True,
     by_label=False,
     num_shards=4,
-    offset = 0
+    offset=0,
 ):
     resample = 48000
     try:
@@ -458,7 +458,7 @@ def save_data(
             if by_label:
                 writer = writers[writer_lbl]
             else:
-                shard = (i+offset) % num_shards
+                shard = (i + offset) % num_shards
                 writer = writers[f"all-{shard}"]
             counts[writer_lbl] += 1
             writer.write(tf_example.SerializeToString())

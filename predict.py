@@ -40,7 +40,7 @@ from denoisetest import (
     signal_noise_data,
     butter_bandpass_filter,
 )
-from identifytracks import get_tracks_from_signals, signal_noise,get_end
+from identifytracks import get_tracks_from_signals, signal_noise, get_end
 
 from plot_utils import plot_mel, plot_mel_signals, plot_spec
 import matplotlib.patches as patches
@@ -614,15 +614,15 @@ def chirp_embeddings(file, stride=5):
     return np.array(embeddings), len(rec_data) / sr
 
 
-
 def normalize_data(x):
     min_v = np.min(x, -1, keepdims=True)
     x = x - min_v
     max_v = np.max(x, -1, keepdims=True)
     x = x / max_v + 0.000001
     x = x - 0.5
-    x =x * 2
+    x = x * 2
     return x
+
 
 def main():
     init_logging()
@@ -630,10 +630,9 @@ def main():
     frames, sr = load_recording(args.file)
     end = get_end(frames, sr)
     frames = frames[: int(sr * end)]
-    signals = signal_noise(frames,sr)
+    signals = signal_noise(frames, sr)
 
-
-    tracks = get_tracks_from_signals(signals,end)
+    tracks = get_tracks_from_signals(signals, end)
     for s in tracks:
         print("SIgnals are ", s)
     # get_speech_score(args.file)
@@ -764,7 +763,7 @@ def main():
                 mean_sub,
                 mel_break=break_freq,
                 n_mels=n_mels,
-                normalize = normalize,
+                normalize=normalize,
             )
         # data = np.array(data)
 

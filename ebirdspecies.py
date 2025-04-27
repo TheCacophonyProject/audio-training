@@ -4,7 +4,7 @@ import json
 
 
 # save ebird species list per region of nz
-key = "my api key"
+key = "YOUR KEY"
 api_url = "https://api.ebird.org/v2/product/spplist/{}"
 
 
@@ -24,6 +24,11 @@ r.raise_for_status()
 regions = r.json()
 
 
+regions_url = "https://api.ebird.org/v2/ref/region/info/NF"
+r = requests.get(regions_url, headers=headers)
+r.raise_for_status()
+nf_region = r.json()
+regions.append(nf_region)
 nz_birds = {}
 
 region_info_url = "https://api.ebird.org/v2/ref/region/info/{}"
