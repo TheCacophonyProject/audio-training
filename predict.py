@@ -34,14 +34,14 @@ from tfdataset import get_dataset
 
 import soundfile as sf
 import matplotlib
-from custommels import mel_spec
+from custommel import mel_spec
 from denoisetest import (
-    signal_noise,
     space_signals,
     signal_noise_data,
-    signals_to_tracks,
     butter_bandpass_filter,
 )
+from identifytracks import get_tracks_from_signals, signal_noise,get_end
+
 from plot_utils import plot_mel, plot_mel_signals, plot_spec
 import matplotlib.patches as patches
 import csv
@@ -239,6 +239,7 @@ def load_samples(
     channels=1,
     power=1,
     db_scale=False,
+    normalize=False,
 ):
     logging.info(
         "Loading samples with length %s stride %s hop length %s and mean_sub %s mfcc %s break %s htk %s n mels %s fmin %s fmax %s",
@@ -264,7 +265,7 @@ def load_samples(
     end = segment_length
     mel_samples = []
     for t in tracks:
-        show_spec = True
+        show_spec = False
         track_data = []
         start = t.start
         end = start + segment_length
@@ -275,6 +276,10 @@ def load_samples(
             data = frames[sr_start:sr_end]
             if len(data) != sample_size:
                 data = np.pad(data, (0, sample_size - len(data)))
+
+            if normalize:
+                data = normalize_data(data)
+                # 1/0
             spect = get_spect(
                 data,
                 sr,
@@ -609,11 +614,28 @@ def chirp_embeddings(file, stride=5):
     return np.array(embeddings), len(rec_data) / sr
 
 
+
+def normalize_data(x):
+    min_v = np.min(x, -1, keepdims=True)
+    x = x - min_v
+    max_v = np.max(x, -1, keepdims=True)
+    x = x / max_v + 0.000001
+    x = x - 0.5
+    x =x * 2
+    return x
+
 def main():
     init_logging()
     args = parse_args()
-    signal, noise, spectogram, _ = signal_noise(args.file)
-    tracks = signals_to_tracks(signal)
+    frames, sr = load_recording(args.file)
+    end = get_end(frames, sr)
+    frames = frames[: int(sr * end)]
+    signals = signal_noise(frames,sr)
+
+
+    tracks = get_tracks_from_signals(signals,end)
+    for s in tracks:
+        print("SIgnals are ", s)
     # get_speech_score(args.file)
     # show_signals(args.file)
     # return
@@ -645,10 +667,12 @@ def main():
     # return
     # model = tf.keras.models.load_model(str(load_model))
 
-    # model.load_weights(load_model / "val_binary_accuracy").expect_partial()
-    # model.save(load_model / "frozen_model")
+    # model.load_weights(load_model.parent / "val_binary_accuracy.weights.h5")
+    # save_dir = Path("frozen_model")
+
+    # model.save(save_dir / load_model.parent.name/ load_model.name)
     # 1 / 0
-    with open(load_model / "metadata.txt", "r") as f:
+    with open(load_model.parent / "metadata.txt", "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
     multi_label = meta.get("multi_label", True)
@@ -662,6 +686,8 @@ def main():
     model_name = meta.get("name", False)
     break_freq = meta.get("break_freq", 700)
     n_mels = meta.get("n_mels", 120)
+    normalize = meta.get("normalize", True)
+
     hop_length = 281
     # print("stride is", segment_stride)
     # segment_length = 2
@@ -738,14 +764,15 @@ def main():
                 mean_sub,
                 mel_break=break_freq,
                 n_mels=n_mels,
+                normalize = normalize,
             )
-        data = np.array(data)
+        # data = np.array(data)
 
     start = 0
 
     for d, t in zip(data, tracks):
         pred_counts = [0] * len(labels)
-        print("Predicting", t, " samples are ", len(data))
+        print("Predicting", t, " samples are ", len(d))
         predictions = model.predict(np.array(d))
         for start_i, p in enumerate(predictions):
             print(
@@ -771,12 +798,12 @@ def main():
         result = ModelResult(model_name)
         t.predictions.append(result)
         max_p = None
-        for l_i, p_counts in enumerate(pred_counts):
-            if p_counts >= max(1, len(predictions) // 2):
-                pred_labels.append(labels[l_i])
-                result.labels.append(labels[l_i])
-                result.confidences.append(100)
-        continue
+        # for l_i, p_counts in enumerate(pred_counts):
+        #     if p_counts >= max(1, len(predictions) // 2):
+        #         pred_labels.append(labels[l_i])
+        #         result.labels.append(labels[l_i])
+        #         result.confidences.append(100)
+        # continue
         for i, p in enumerate(prediction):
             if max_p is None or p > max_p[1]:
                 max_p = (i, p)

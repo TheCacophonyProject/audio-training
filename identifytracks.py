@@ -47,10 +47,9 @@ def get_end(frames, sr):
         end = start + chunk_length
     return file_length
 
-
 def signal_noise(frames, sr, hop_length=281):
     # frames = frames[:sr]
-    n_fft = get_nfft(sr)
+    n_fft = sr // 10
     # frames = frames[: sr * 3]
     spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
 
@@ -107,7 +106,6 @@ def signal_noise(frames, sr, hop_length=281):
 
     return signals
 
-
 def segment_overlap(first, second):
     return (
         (first[1] - first[0])
@@ -124,7 +122,7 @@ def mel_freq(f):
 # try and merge signals that are close together in time and frequency
 
 
-def merge_signals(signals, freq_overlap_percent=0.75, time_overlap_percent=0.75):
+def merge_signals(signals):
     unique_signals = []
     to_delete = []
     something_merged = False
@@ -150,16 +148,16 @@ def merge_signals(signals, freq_overlap_percent=0.75, time_overlap_percent=0.75)
             overlap = s.time_overlap(u)
             if s.mel_freq_start > 1000 and u.mel_freq_start > 1000:
                 freq_overlap = 0.1
-                freq_overlap_time = freq_overlap_percent - 0.25
+                freq_overlap_time = 0.5
             else:
                 freq_overlap = 0.5
-                freq_overlap_time = freq_overlap_percent
+                freq_overlap_time = 0.75
             if s.start > u.end:
                 time_diff = s.start - u.end
             else:
                 time_diff = u.start - s.end
             mel_overlap = s.mel_freq_overlap(u)
-            if overlap > u.length * time_overlap_percent and mel_overlap > -20:
+            if overlap > u.length * 0.75 and mel_overlap > -20:
                 s.merge(u)
                 merged = True
 
@@ -194,11 +192,13 @@ def merge_signals(signals, freq_overlap_percent=0.75, time_overlap_percent=0.75)
     return signals, something_merged
 
 
+
 def get_tracks_from_signals(signals, end):
     # probably a much more efficient way of doing this
     # just keep merging until there are no more valid merges
     merged = True
     min_mel_range = 50
+
     while merged:
         signals, merged = merge_signals(signals)
 
