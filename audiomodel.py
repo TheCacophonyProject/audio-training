@@ -374,7 +374,7 @@ class AudioModel:
         self.input_shape = DIMENSIONS
         if self.model_name == "embeddings":
             self.input_shape = EMBEDDING_SHAPE
-        elif self.model_name == "efficientnetb0":
+        elif "efficientnet" in self.model_name:
             self.input_shape = (self.input_shape[0], self.input_shape[1], 3)
         elif self.model_name == "dual-badwinner2":
             self.input_shape = (96, 511, 1)
@@ -1024,6 +1024,16 @@ class AudioModel:
                     weights=weights,
                     include_top=False,
                     input_shape=input_shape,
+                ),
+                None,
+            )
+        elif pretrained_model == "efficientnetv2b3":
+            return (
+                tf.keras.applications.EfficientNetV2B3(
+                    weights=weights,
+                    include_top=False,
+                    input_shape=input_shape,
+                    include_preprocessing=False
                 ),
                 None,
             )

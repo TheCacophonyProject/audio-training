@@ -968,10 +968,9 @@ def read_tfrecord(
         # spectogram = tf.math.pow(spectogram,2)
         spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
         spectogram = tf.expand_dims(spectogram, axis=-1)
-        if model_name == "efficientnetb0":
+        if "efficientnet" in model_name:
+            logging.info("Repeating last dim for efficient net")
             spectogram = tf.repeat(spectogram, 3, 2)
-
-        print("Loaded spect ", spectogram.shape)
     if features or only_features:
         short_f = example["audio/short_f"]
         mid_f = example["audio/mid_f"]
