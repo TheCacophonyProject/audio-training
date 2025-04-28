@@ -646,7 +646,14 @@ def tier1_data(base_dir):
         "australasian bittern",
     ]
 
-    ebird_map = {}
+
+    ebird_map ={}
+    with open('ebird_taxonomy.json') as f:
+        for line in f:
+            split_l = line.split(",")
+            ebird_map[split_l[2]] = (split_l[1].lower(),split_l[9].lower())
+    # 1/0
+    # ebird_map = {}
     with open("classes.csv", newline="") as csvfile:
         dreader = csv.reader(csvfile, delimiter=",", quotechar="|")
         i = -1
@@ -659,6 +666,7 @@ def tier1_data(base_dir):
     config = Config()
     dataset = AudioDataset("Tier1", config)
     folders = ["Train_001", "Train_002"]
+    counts = {}
     for folder in folders:
         dataset_dir = base_dir / folder
         metadata = dataset_dir / "001_metadata.csv"
@@ -685,9 +693,14 @@ def tier1_data(base_dir):
                 # if label != "dobplo1":
                 # continue
                 primary_label = ebird_map.get(label)
+
                 # print("Dot mapped too",primary_label)
                 if primary_label is None:
+                    print("No Mapping for ", label)
                     continue
+                if primary_label not in counts:
+                    counts[primary_label] = 0
+                counts[primary_label] +=1
                 if primary_label[0] in test_labels:
                     label = primary_label[0]
                 elif primary_label[1] in test_labels:
@@ -698,16 +711,8 @@ def tier1_data(base_dir):
                     continue
 
                 audio_file = dataset_dir / "train_audio" / filename
-                if not audio_file.exists():
-                    # logging.warn("COuld not find %s", audio_file)
-                    continue
-                # try:
-                #     y, sr = librosa.load(rec_name)
-                #     end = librosa.get_duration(y=y, sr=sr)
-                #     y = None
-                #     sr = None
-                # except:
-                #     continue
+                # if not audio_file.exists():
+                    # continue
                 r = Recording(
                     {"id": id, "tracks": []},
                     audio_file,
@@ -742,6 +747,14 @@ def tier1_data(base_dir):
                 )
                 # dataset
                 dataset.add_recording(r)
+        print("Counts are ", counts)
+        keys = list(counts.keys())
+        keys.sort()
+        for k in  keys:
+            print(f"{k[0]}, {counts[k]}")
+        tootal = list(counts.values())
+        print("total is ", np.sum(tootal))
+        counts = {}
     logging.info("Loaded tier 1 data")
     dataset.print_sample_counts()
 

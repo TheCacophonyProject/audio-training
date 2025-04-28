@@ -149,11 +149,11 @@ def set_specific_by_count(meta):
                 if v in dataset:
                     total_count += dataset[v]
                 dataset[k] = total_count
-                logging.info("Adjusting count %s to %s", k, total_count)
+                logging.info("Adding samples of %s to  %s for a total of %s",k ,v, total_count)
 
                 if v in dataset:
                     dataset[v] = total_count
-                    logging.info("Adjusting count %s to %s", v, total_count)
+                    logging.info("Setting total of %s to %s", v, total_count)
 
     labels_with_data = []
     for label, count in training.items():

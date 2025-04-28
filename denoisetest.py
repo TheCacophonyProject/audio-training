@@ -80,7 +80,9 @@ def signal_noise(file, hop_length=281):
     frames, sr = load_recording(file)
     end = get_end(frames, sr)
     # end = 5
-    frames = frames[: int(sr * end)]
+    frames = frames[int(45*sr): int(sr * 57)]
+
+    # frames = frames[: int(sr * end)]
     # frames = frames[: sr * 120]
     # n_fft = sr // 10
     n_fft = 4096
@@ -93,7 +95,38 @@ def signal_noise(file, hop_length=281):
     return signals, noise, spectogram, frames, end
 
 
+def scale_minmax(X, min=0.0, max=1.0):
+    X_std = (X - X.min()) / (X.max() - X.min())
+    X_scaled = X_std * (max - min) + min
+    return X_scaled
+
+
 def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
+    # normed = librosa.display.specshow(
+    #     # S,
+    #     librosa.amplitude_to_db(spectogram, ref=np.max),
+    #     x_axis="time",
+    #     y_axis="linear",
+    #     sr=48000,
+    #     fmax=30000,
+    #     fmin=0,
+    #     hop_length=281,
+    # )
+    # normed = scale_minmax(spectogram,0,255).astype(np.uint8)
+    # # normed = 255 - normed
+    # print(normed)
+    # plt.imshow(normed,origin="lower")
+    # plt.show()
+    # # plot_spec(spectogram)
+    # # a_max = np.amax(spectogram)
+    # # a_min = np.amin(spectogram)
+    # # normed = 255*(spectogram- a_min)/ (a_max-a_min)
+    # # normed = np.uint8(normed)
+    # # print(a_max,a_min)
+    # edges = cv2.Canny(normed,100,200)
+    # plt.imshow(edges,origin="lower")
+    # plt.show()
+
     a_max = np.amax(spectogram)
     # spectogram = spectogram / a_max
     row_medians = np.median(spectogram, axis=1)
@@ -106,12 +139,55 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     column_medians = np.repeat(column_medians, rows, axis=0)
     kernel = np.ones((4, 4), np.uint8)
     spectogram = cv2.morphologyEx(spectogram, cv2.MORPH_OPEN, kernel)
+
+
+
     signal_thresh = 2
     signal = (spectogram > 3 * column_medians) & (spectogram > 3 * row_medians)
     noise = (spectogram > 2.5 * column_medians) & (spectogram > 2.5 * row_medians)
     noise[signal == noise] = 0
     noise = noise.astype(np.uint8)
     signal = signal.astype(np.uint8)
+
+    normed = scale_minmax(1*spectogram,0,255).astype(np.uint8)
+    # normed = (spectogram > 1 * column_medians) & (spectogram > 1 * row_medians)
+    normed = normed.astype(np.uint8)
+    normed = normed * 255
+ 
+    otsus = False
+    kernel2=(15, 15)
+    image = cv2.GaussianBlur(normed, kernel2, 0)
+    flags = cv2.THRESH_BINARY
+    if otsus:
+        flags += cv2.THRESH_OTSU
+    _, image = cv2.threshold(image, 0, 255, flags)
+    image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
+    plt.imshow(image,origin="lower")
+    plt.show()
+    components, small_mask, stats, _  =  cv2.connectedComponentsWithStats(image)
+    fig = plt.figure(figsize=(10, 10))
+    ax = plt.subplot(1, 1, 1)
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
+    import matplotlib.patches as patches
+    for s in stats[1:]:
+        # max_freq = min(len(freqs) - 1, s[1] + s[3])
+        # freq_range = (freqs[s[1]], freqs[max_freq])
+        # start = s[0] * 281 / sr
+        # end = (s[0] + s[2]) * 281 / sr
+        # print(s,start,end, freq_range)
+        rect = patches.Rectangle(
+            (s[0], s[1]),
+            s[2],
+            s[3],
+            linewidth=1,
+            edgecolor="r",
+            facecolor="none",
+        )
+        ax.add_patch(rect)
+    # edges = cv2.Canny(normed,100,200)
+    ax.imshow(image,origin="lower")
+    plt.show()
+
     # print(signal)
     # print("SIgnal shape is ",signal.shape)
     # noise[noise>0]= 128
