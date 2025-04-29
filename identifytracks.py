@@ -4,9 +4,8 @@ from custommel import mel_spec
 import math
 import cv2
 
-WIDTH = 0.25
 MAX_FRQUENCY = 48000 / 2
-SIGNAL_WIDTH = 0.25
+SIGNAL_WIDTH = 0.5
 TOP_FREQ = 48000 / 2
 
 
@@ -50,7 +49,7 @@ def get_end(frames, sr):
 
 def signal_noise(frames, sr, hop_length=281):
     # frames = frames[:sr]
-    n_fft = sr // 10
+    n_fft = 4096
     # frames = frames[: sr * 3]
     spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
 
@@ -64,16 +63,12 @@ def signal_noise(frames, sr, hop_length=281):
     row_medians = row_medians[:, np.newaxis]
     row_medians = np.repeat(row_medians, columns, axis=1)
     column_medians = np.repeat(column_medians, rows, axis=0)
-
+    kernel = np.ones((4, 4), np.uint8)
     signal = (spectogram > 3 * column_medians) & (spectogram > 3 * row_medians)
 
     signal = signal.astype(np.uint8)
-    kernel = np.ones((4, 4), np.uint8)
     signal = cv2.morphologyEx(signal, cv2.MORPH_OPEN, kernel)
 
-    min_width = 0.1
-    min_width = min_width * sr / hop_length
-    min_width = int(min_width)
     width = SIGNAL_WIDTH * sr / hop_length
     width = int(width)
     freq_range = 100
@@ -90,7 +85,9 @@ def signal_noise(frames, sr, hop_length=281):
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(signal)
     stats = stats[1:]
     stats = sorted(stats, key=lambda stat: stat[0])
-    stats = [s for s in stats if s[2] > min_width]
+    min_width =  0.65 * width
+    min_height =  height - height // 10
+    stats = [s for s in stats if s[2] > min_width and s[3] > min_height]
 
     i = 0
     # indicator_vector = np.uint8(indicator_vector)
@@ -103,9 +100,10 @@ def signal_noise(frames, sr, hop_length=281):
         freq_range = (freqs[s[1]], freqs[max_freq])
         start = s[0] * 281 / sr
         end = (s[0] + s[2]) * 281 / sr
-        signals.append(Signal(start, end, freq_range[0], freq_range[1]))
+        signals.append(Signal(start, end, freq_range[0], freq_range[1], s[4]))
 
-    return signals
+    return signals,spectogram
+
 
 
 def segment_overlap(first, second):
@@ -143,7 +141,7 @@ def merge_signals(signals):
             if u == s:
                 continue
             in_freq = u.mel_freq_end < 1500 and s.mel_freq_end < 1500
-            in_freq = in_freq or u.mel_freq_start > 1500 and s.mel_freq_start > 1500
+            in_freq = in_freq or u.mel_freq_end > 1500 and s.mel_freq_end > 1500
             # ensure both are either below 1500 or abov
             if not in_freq:
                 continue
@@ -212,24 +210,37 @@ def get_tracks_from_signals(signals, end):
         if s.length < min_length:
             to_delete.append(s)
             continue
-        s.enlarge(1.4, min_track_length=min_track_length)
+        # s.enlarge(1.4, min_track_length=min_track_length)
 
-        s.end = min(end, s.end)
+        # s.end = min(end, s.end)
         for s2 in signals:
             if s2 in to_delete:
                 continue
             if s == s2:
                 continue
+
+            # continue
             overlap = s.time_overlap(s2)
-            engulfed = overlap >= 0.9 * s2.length
-            f_overlap = s.mel_freq_overlap(s2)
-            range = s2.mel_freq_range
-            range *= 0.7
-            if f_overlap > range and engulfed:
+            mel_overlap = s.freq_overlap(s2)
+            min_length = min(s.length,s2.length)
+
+            print("TIme overlap between ",s, " and ", s2, " is ", overlap/min_length, mel_overlap)
+            if  overlap > 0.7*min_length and abs(mel_overlap) < 2200:
+                s.merge(s2)
                 to_delete.append(s2)
+                continue
+            # engulfed = overlap >= 0.9 * s2.length
+            # f_overlap = s.mel_freq_overlap(s2)
+            # range = s2.mel_freq_range
+            # range *= 0.7
+            # if f_overlap > range and engulfed:
+            #     to_delete.append(s2)
 
     for s in to_delete:
         signals.remove(s)
+    for s in signals:
+        s.enlarge(1.4, min_track_length=min_track_length)
+        s.end = min(end, s.end)
     to_delete = []
     for s in signals:
         if s.mel_freq_range < min_mel_range:
@@ -243,7 +254,7 @@ SIGNAL_ID = 0
 
 
 class Signal:
-    def __init__(self, start, end, freq_start, freq_end):
+    def __init__(self, start, end, freq_start, freq_end,mass):
         global SIGNAL_ID
         self.id = SIGNAL_ID
         SIGNAL_ID += 1
@@ -251,7 +262,7 @@ class Signal:
         self.end = end
         self.freq_start = freq_start
         self.freq_end = freq_end
-
+        self.mass = mass
         self.mel_freq_start = mel_freq(freq_start)
         self.mel_freq_end = mel_freq(freq_end)
         self.predictions = []
@@ -300,10 +311,10 @@ class Signal:
             (other.mel_freq_start, other.mel_freq_end),
         )
 
-    def freq_overlap(s, s2):
+    def freq_overlap(self,other):
         return segment_overlap(
-            (self.mel_freq_start, self.mel_freq_end),
-            (other.mel_freq_start, other.mel_freq_end),
+            (self.freq_start, self.freq_end),
+            (other.freq_start, other.freq_end),
         )
 
     @property
@@ -344,9 +355,10 @@ class Signal:
         self.freq_end = max(self.freq_end, other.freq_end)
         self.mel_freq_start = mel_freq(self.freq_start)
         self.mel_freq_end = mel_freq(self.freq_end)
+        self.mass += other.mass
 
     def __str__(self):
-        return f"Signal: {self.start}-{self.end} f: {self.freq_start}-{self.freq_end}"
+        return f"Signal: {self.start}-{self.end} f: {self.freq_start}-{self.freq_end} mass {self.mass}"
 
     def get_meta(self):
         meta = {}

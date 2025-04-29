@@ -630,7 +630,7 @@ def main():
     frames, sr = load_recording(args.file)
     end = get_end(frames, sr)
     frames = frames[: int(sr * end)]
-    signals = signal_noise(frames, sr)
+    signals,_ = signal_noise(frames, sr)
 
     tracks = get_tracks_from_signals(signals, end)
     for s in tracks:

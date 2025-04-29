@@ -23,11 +23,10 @@ import argparse
 import logging
 import tensorflow as tf
 
-import tensorflow_probability as tfp
+# import tensorflow_probability as tfp
 
 # Worth looking into lme pooling as proposed in  https://github.com/f0k/birdclef2018/blob/master/experiments/model.py
 # Research/2018-birdclef.pdf
-
 
 @tf.keras.utils.register_keras_serializable(package="MyLayers", name="MagTransform")
 class MagTransform(tf.keras.layers.Layer):
@@ -44,7 +43,7 @@ class MagTransform(tf.keras.layers.Layer):
     def call(self, inputs):
         c = tf.math.pow(inputs, tf.math.sigmoid(self.a))
         return c
-
+    
 
 #         arch = 'conv:32x3x3
 # conv:32x3x3

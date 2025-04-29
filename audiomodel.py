@@ -516,7 +516,7 @@ class AudioModel:
         model_stats.update(self.training_data_meta)
         model_stats.update(args)
         model_stats["name"] = self.model_name
-        # model_stats["use_generic_bird"] = args.get("use_generic_bird", False)
+        model_stats["use_generic_bird"] = args.get("use_generic_bird", False)
         # model_stats["filter_freq"] = args.get("filter_freq", False)
         model_stats["labels"] = self.labels
         # model_stats["multi_label"] = args.get("multi_label", False)
@@ -800,7 +800,10 @@ class AudioModel:
         labels = list(labels)
         labels.sort()
         self.labels = labels
-        if "bird" not in self.labels:
+        if not args.get("use_generic_bird",False):
+            if "bird" in self.labels:
+                self.labels.remove("bird")
+        elif "bird" not in self.labels:
             self.labels.append("bird")
         if "noise" not in self.labels:
             self.labels.append("noise")

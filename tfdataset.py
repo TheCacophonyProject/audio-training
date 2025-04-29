@@ -306,9 +306,10 @@ def load_dataset(filenames, num_labels, labels, args):
     GENERIC_BIRD_MASK = np.zeros(num_labels)
     if "rifleman" in labels:
         NZ_BIRD_LOSS_WEIGHTING[labels.index("rifleman")] = 1
-    NZ_BIRD_LOSS_WEIGHTING[labels.index("bird")] = 1
-    BIRD_WEIGHTING[labels.index("bird")] = 1
-    GENERIC_BIRD_MASK[labels.index("bird")] = 1
+    if "bird" in labels:
+        NZ_BIRD_LOSS_WEIGHTING[labels.index("bird")] = 1
+        BIRD_WEIGHTING[labels.index("bird")] = 1
+        GENERIC_BIRD_MASK[labels.index("bird")] = 1
 
     for i, l in enumerate(labels):
         if (l in GENERIC_BIRD_LABELS or l in SPECIFIC_BIRD_LABELS) and l != "bird":
