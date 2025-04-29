@@ -800,7 +800,7 @@ class AudioModel:
         labels = list(labels)
         labels.sort()
         self.labels = labels
-        if not args.get("use_generic_bird",False):
+        if not args.get("use_generic_bird", False):
             if "bird" in self.labels:
                 self.labels.remove("bird")
         elif "bird" not in self.labels:

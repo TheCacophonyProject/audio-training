@@ -15,7 +15,11 @@ import math
 from plot_utils import plot_spec, plot_mel_signals, plot_mel
 from custommel import mel_spec
 import tensorflow as tf
-from identifytracks import get_tracks_from_signals, Signal,signal_noise as track_signals
+from identifytracks import (
+    get_tracks_from_signals,
+    Signal,
+    signal_noise as track_signals,
+)
 
 # from dateutil.parser import parse as parse_date
 import sys
@@ -88,9 +92,7 @@ def signal_noise(file, hop_length=281):
     n_fft = 4096
     # spectogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
     # plot_spec(spectogram)
-    signals, spectogram = track_signals(
-        frames, sr, hop_length=hop_length
-    )
+    signals, spectogram = track_signals(frames, sr, hop_length=hop_length)
     noise = []
     return signals, noise, spectogram, frames, end
 
@@ -143,7 +145,7 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     # kernel = np.ones((4, 4*3), np.uint8)
     # signal = (spectogram > 3 * column_medians) & (spectogram > 3 * row_medians)
     # noise = (spectogram > 2.5 * column_medians) & (spectogram > 2.5 * row_medians)
-  
+
     # plt.imshow(np.uint8(signal)*255,origin="lower")
     # plt.show()
     # plt.imshow(np.uint8(noise) * 100 + np.uint8(signal)*255,origin="lower")
@@ -164,30 +166,31 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     noise[signal == noise] = 0
     noise = noise.astype(np.uint8)
     signal = signal.astype(np.uint8)
-    normed = scale_minmax(spectogram,0,100).astype(np.uint8)
-    normed = (spectogram > 1 * column_medians) & (spectogram >1 * row_medians)
-    normed = normed + signal*255
+    normed = scale_minmax(spectogram, 0, 100).astype(np.uint8)
+    normed = (spectogram > 1 * column_medians) & (spectogram > 1 * row_medians)
+    normed = normed + signal * 255
     normed = normed.astype(np.uint8)
     normed = normed * 255
     # plt.imshow(normed,origin="lower")
     # plt.show()
     otsus = True
-    kernel2=(45, 205)
+    kernel2 = (45, 205)
     image = cv2.GaussianBlur(normed, kernel2, 0)
     flags = cv2.THRESH_BINARY
     if otsus:
         flags += cv2.THRESH_OTSU
     _, image = cv2.threshold(image, None, 255, flags)
     # image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel2)
-    image = cv2.dilate(image, kernel2,iterations=4)
+    image = cv2.dilate(image, kernel2, iterations=4)
 
     # plt.imshow(image,origin="lower")
     # plt.show()
-    components, small_mask, stats, _  =  cv2.connectedComponentsWithStats(image)
+    components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
     # fig = plt.figure(figsize=(10, 10))
     # ax = plt.subplot(1, 1, 1)
     freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
     import matplotlib.patches as patches
+
     # for s in stats[1:]:
     #     # max_freq = min(len(freqs) - 1, s[1] + s[3])
     #     # freq_range = (freqs[s[1]], freqs[max_freq])
@@ -212,7 +215,7 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     # noise[noise>0]= 128
     # print(noise)
     signal[signal > 0] = 255
-    normed = (spectogram > 1 * column_medians) & (spectogram >1 * row_medians)
+    normed = (spectogram > 1 * column_medians) & (spectogram > 1 * row_medians)
     normed = np.uint8(normed)
     freq_range = 300
     height = 0
@@ -235,15 +238,14 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     signal = cv2.dilate(signal, np.ones((height, width), np.uint8))
     signal = cv2.erode(signal, np.ones((height // 10, width), np.uint8))
 
-    normed = np.float32(normed*10)+ np.uint8(signal)
-    np.clip(normed,0,255,out = normed)
+    normed = np.float32(normed * 10) + np.uint8(signal)
+    np.clip(normed, 0, 255, out=normed)
     signal = np.uint8(normed)
     # signal = signal + noise
     # plt.imshow(signal,origin="lower")
     # plt.show()
     # plt.imshow(noise,origin="lower")
     # plt.show()
-
 
     # signal = cv2.morphologyEx(signal, cv2.MORPH_OPEN, kernel)
     noise = cv2.morphologyEx(noise, cv2.MORPH_OPEN, kernel)
@@ -269,9 +271,9 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     stats = sorted(stats, key=lambda stat: stat[0])
     # # for x in small_mask:
     # # print(x[-10:])
-    min_width =  0.65 * width
-    min_height =  height - height // 10
-    print("Min width is ", min_width, min_height, " height is ",height)
+    min_width = 0.65 * width
+    min_height = height - height // 10
+    print("Min width is ", min_width, min_height, " height is ", height)
     stats = [s for s in stats if s[2] > min_width and s[3] > min_height]
     s_start = -1
     noise_start = -1
@@ -285,7 +287,7 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
         start = s[0] * 281 / sr
         end = (s[0] + s[2]) * 281 / sr
         print(s)
-        signals.append(Signal(start, end, freq_range[0], freq_range[1],s[4]))
+        signals.append(Signal(start, end, freq_range[0], freq_range[1], s[4]))
         print(signals[-1])
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(noise)
     stats = stats[1:]
@@ -631,14 +633,14 @@ def means_merge(spectogram, signals):
 
     possible_colours = list(mcolors.CSS4_COLORS.keys())
     rect_colours = []
-    print("Clusters are ",labels)
+    print("Clusters are ", labels)
     print(possible_colours)
     merged = {}
     index = 0
     merged[-1] = []
     for l in labels:
         if l == -1:
-           
+
             merged[-1].append(signals[index])
             print("Ignored", signals[index])
         elif l in merged:
@@ -658,10 +660,10 @@ def means_merge(spectogram, signals):
         rect_colours.append(possible_colours[0])
     del merged[-1]
     for l in labels:
-        if l==-1:
+        if l == -1:
             continue
         signals.append(merged[l])
-        rect_colours.append(possible_colours[l+1])
+        rect_colours.append(possible_colours[l + 1])
 
     print("Signals are ", len(signals))
     plot_mel_signals(np.abs(spectogram), signals, colours=rect_colours)
@@ -807,8 +809,8 @@ def main():
 
     # mix_file(args.file, args.mix)
     signals, noise, spectogram, frames, end = signal_noise(args.file)
- 
-    # plot_mel_signals(np.abs(spectogram), signals, noise)
+
+    plot_mel_signals(np.abs(spectogram), signals, noise)
 
     # means_merge(spectogram,signals)
     # return

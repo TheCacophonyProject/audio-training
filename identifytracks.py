@@ -5,7 +5,7 @@ import math
 import cv2
 
 MAX_FRQUENCY = 48000 / 2
-SIGNAL_WIDTH = 0.5
+SIGNAL_WIDTH = 0.25
 TOP_FREQ = 48000 / 2
 
 
@@ -85,8 +85,8 @@ def signal_noise(frames, sr, hop_length=281):
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(signal)
     stats = stats[1:]
     stats = sorted(stats, key=lambda stat: stat[0])
-    min_width =  0.65 * width
-    min_height =  height - height // 10
+    min_width = 0.65 * width
+    min_height = height - height // 10
     stats = [s for s in stats if s[2] > min_width and s[3] > min_height]
 
     i = 0
@@ -102,8 +102,7 @@ def signal_noise(frames, sr, hop_length=281):
         end = (s[0] + s[2]) * 281 / sr
         signals.append(Signal(start, end, freq_range[0], freq_range[1], s[4]))
 
-    return signals,spectogram
-
+    return signals, spectogram
 
 
 def segment_overlap(first, second):
@@ -222,10 +221,18 @@ def get_tracks_from_signals(signals, end):
             # continue
             overlap = s.time_overlap(s2)
             mel_overlap = s.freq_overlap(s2)
-            min_length = min(s.length,s2.length)
+            min_length = min(s.length, s2.length)
 
-            print("TIme overlap between ",s, " and ", s2, " is ", overlap/min_length, mel_overlap)
-            if  overlap > 0.7*min_length and abs(mel_overlap) < 2200:
+            print(
+                "TIme overlap between ",
+                s,
+                " and ",
+                s2,
+                " is ",
+                overlap / min_length,
+                mel_overlap,
+            )
+            if overlap > 0.7 * min_length and abs(mel_overlap) < 2200:
                 s.merge(s2)
                 to_delete.append(s2)
                 continue
@@ -254,7 +261,7 @@ SIGNAL_ID = 0
 
 
 class Signal:
-    def __init__(self, start, end, freq_start, freq_end,mass):
+    def __init__(self, start, end, freq_start, freq_end, mass):
         global SIGNAL_ID
         self.id = SIGNAL_ID
         SIGNAL_ID += 1
@@ -311,7 +318,7 @@ class Signal:
             (other.mel_freq_start, other.mel_freq_end),
         )
 
-    def freq_overlap(self,other):
+    def freq_overlap(self, other):
         return segment_overlap(
             (self.freq_start, self.freq_end),
             (other.freq_start, other.freq_end),

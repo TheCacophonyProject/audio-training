@@ -28,6 +28,7 @@ import tensorflow as tf
 # Worth looking into lme pooling as proposed in  https://github.com/f0k/birdclef2018/blob/master/experiments/model.py
 # Research/2018-birdclef.pdf
 
+
 @tf.keras.utils.register_keras_serializable(package="MyLayers", name="MagTransform")
 class MagTransform(tf.keras.layers.Layer):
     def __init__(self, **kwargs):
@@ -43,7 +44,7 @@ class MagTransform(tf.keras.layers.Layer):
     def call(self, inputs):
         c = tf.math.pow(inputs, tf.math.sigmoid(self.a))
         return c
-    
+
 
 #         arch = 'conv:32x3x3
 # conv:32x3x3

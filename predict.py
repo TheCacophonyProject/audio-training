@@ -305,7 +305,6 @@ def load_samples(
             if show_spec:
                 print("Showing spec for ", t)
             show_spec = False
-
             track_data.append(spect)
             start = start + stride
             end = start + segment_length
@@ -358,8 +357,7 @@ def get_spect(
 
         # bandpassed = data
         spectogram = np.abs(librosa.stft(data, n_fft=n_fft, hop_length=hop_length))
-        # if show_spec:
-        # plot_spec(spectogram)
+
         # bins = 1 + n_fft / 2
         # max_f = sr / 2
         # gap = max_f / bins
@@ -381,6 +379,8 @@ def get_spect(
             mel_break,
             power=power,
         )
+        if show_spec:
+            plot_mel(mel)
     if db_scale:
         mel = librosa.power_to_db(mel, ref=np.max)
     mel = tf.expand_dims(mel, axis=2)
@@ -630,7 +630,7 @@ def main():
     frames, sr = load_recording(args.file)
     end = get_end(frames, sr)
     frames = frames[: int(sr * end)]
-    signals,_ = signal_noise(frames, sr)
+    signals, _ = signal_noise(frames, sr)
 
     tracks = get_tracks_from_signals(signals, end)
     for s in tracks:

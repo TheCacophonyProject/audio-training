@@ -34,7 +34,19 @@ MERGE_LABELS = {
 AUTOTUNE = tf.data.AUTOTUNE
 # IMAGE_SIZE = [256, 256]
 # BATCH_SIZE = 64
-NOISE_LABELS = ["insect", "wind", "vehicle", "dog", "rain", "static", "noise", "cat"]
+NOISE_LABELS = [
+    "insect",
+    "wind",
+    "vehicle",
+    "dog",
+    "rain",
+    "static",
+    "noise",
+    "cat",
+    "cow",
+    "chicken",
+    "water",
+]
 SPECIFIC_BIRD_LABELS = [
     "bird",
     "whistler",
@@ -149,7 +161,9 @@ def set_specific_by_count(meta):
                 if v in dataset:
                     total_count += dataset[v]
                 dataset[k] = total_count
-                logging.info("Adding samples of %s to  %s for a total of %s",k ,v, total_count)
+                logging.info(
+                    "Adding samples of %s to  %s for a total of %s", k, v, total_count
+                )
 
                 if v in dataset:
                     dataset[v] = total_count

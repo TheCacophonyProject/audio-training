@@ -43,8 +43,8 @@ def plot_mel_signals(mel, signals, signals2=[], i=0, colours=None):
         edge_color = "g"
         # if s.mel_freq_range < 50:
         #     edge_color = "r"
-        if colours is not None and len(colours)>0:
-            edge_color = colours[signal_i%len(colours)]
+        if colours is not None and len(colours) > 0:
+            edge_color = colours[signal_i % len(colours)]
         rect = patches.Rectangle(
             (start_x, s.freq_start),
             end_x - start_x,
@@ -105,6 +105,7 @@ def plot_mel(mel, filename="mel"):
     fig = plt.figure(figsize=(10, 10))
     ax = plt.subplot(1, 1, 1)
     img = librosa.display.specshow(
+        # librosa.power_to_db(mel, ref=np.max),
         mel,
         x_axis="time",
         y_axis="mel",
