@@ -23,7 +23,7 @@ import argparse
 import logging
 import tensorflow as tf
 
-# import tensorflow_probability as tfp
+import tensorflow_probability as tfp
 
 # Worth looking into lme pooling as proposed in  https://github.com/f0k/birdclef2018/blob/master/experiments/model.py
 # Research/2018-birdclef.pdf
@@ -306,21 +306,15 @@ def build_model(
         #  like an inbetween max and average, higher the sharpness the more like max it becomes
         # haven't found any benefit using LME
         if lme:
-            x = logmeanexp(x, axis=1, sharpness=5, keepdims=False)
-            x = logmeanexp(x, axis=2, sharpness=5, keepdims=False)
+            x = LMELayer(axis=1, sharpness=5)(x)
+            x = LMELayer(axis=2, sharpness=5)(x) 
+
         x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
         x = tf.keras.activations.sigmoid(x)
 
     model = tf.keras.models.Model(input, outputs=x)
     return model
-
-
-def logmeanexp(x, axis=None, keepdims=False, sharpness=5):
-    return (
-        tfp.math.reduce_logmeanexp(x * sharpness, axis=axis, keepdims=keepdims)
-        / sharpness
-    )
 
 
 #
@@ -338,11 +332,16 @@ def logmeanexp(x, axis=None, keepdims=False, sharpness=5):
 # in 45 samples if we have 7 stronge predictions of 0.9 this will equate to 0.8 in this label
 # 7 being roughly 1/2 second of audio
 
+class LMELayer(tf.keras.Layer):
+    def __init__(self, sharpness =5, axis = None):
+        super(LMELayer, self).__init__()
+        self.sharpness = sharpness
+        self.axis = axis
 
-def logmeanexp(x, axis=None, keepdims=False, sharpness=5):
-    return (
-        tfp.math.reduce_logmeanexp(x * sharpness, axis=axis, keepdims=True) / sharpness
-    )
+    def call(self, x):
+        return (
+            tfp.math.reduce_logmeanexp(x * self.sharpness, axis=self.axis, keepdims=True) / self.sharpness
+        )
 
 
 def main():
@@ -354,7 +353,9 @@ def main():
     # model = tf.keras.models.load_model("test-model/test.keras",compile=False)
 
     # return
-    model = build_model_res((160, 513, 1), None, 21, multi_label=True)
+    model = build_model((160, 513, 1), None, 21, multi_label=True, lme=True)
+
+    # model = build_model_res((160, 513, 1), None, 21, multi_label=True)
     model.summary()
     # model.compile(
     #     optimizer=tf.keras.optimizers.Adam(),

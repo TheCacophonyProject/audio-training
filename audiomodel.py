@@ -1276,8 +1276,8 @@ def multi_confusion_single(
         dataset = tf_to_ydf(dataset)
 
     y_pred = model.predict(dataset)
-
-    labels.append("nothing")
+    if "nothing" not in labels:
+        labels.append("nothing")
     none_p = []
     none_y = []
     flat_p = []
@@ -1294,6 +1294,7 @@ def multi_confusion_single(
         best_prob = p[best_label]
 
         best_labels = np.argwhere(p > prob_thresh).ravel()
+
 
         # get true label that isn't bird if available and use this as overall tag
         # arg_sorted = np.argsort(y)
@@ -1320,14 +1321,20 @@ def multi_confusion_single(
                 flat_p.append(index)
             elif y_l == 1 and not predicted:
                 flat_y.append(index)
-                flat_p.append(len(labels) - 1)
+                flat_p.append(len(labels) - 1) #None
 
-                # is this index but we predicted something else add to missing conf
-                # if index != bird_index and best_prob > 0.5:
-                for best_label in best_labels:
+                # if we have no prediction over a threshold put the best one over a reasonable threshold (0.3) into the None matrix
+                if best_prob >= 0.3 and len(best_labels) ==0:
                     if best_label not in true_labels:
                         none_y.append(index)
                         none_p.append(best_label)
+
+                # # is this index but we predicted something else add to missing conf
+                # # if index != bird_index and best_prob > 0.5:
+                # for best_label in best_labels:
+                #     if best_label not in true_labels:
+                #         none_y.append(index)
+                #         none_p.append(best_label)
 
             index += 1
 

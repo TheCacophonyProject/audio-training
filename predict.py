@@ -265,7 +265,7 @@ def load_samples(
     end = segment_length
     mel_samples = []
     for t in tracks:
-        show_spec = False
+        show_spec = True
         track_data = []
         start = t.start
         end = start + segment_length
