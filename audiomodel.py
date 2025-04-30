@@ -1283,7 +1283,7 @@ def multi_confusion_single(
     flat_p = []
     flat_y = []
     bird_index = None
-    if "bird" in labels
+    if "bird" in labels:
         bird_index = labels.index("bird")
     for y, p in zip(true_categories, y_pred):
         # get predicted label that isn't bird and use this as overall tag
