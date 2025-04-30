@@ -37,10 +37,10 @@ class MagTransform(tf.keras.layers.Layer):
             initializer=tf.keras.initializers.Constant(value=-1.0),
             name="a-power",
             dtype="float32",
-            shape=(),
+            shape=[1],
             trainable=True,
             constraint = tf.keras.constraints.MinMaxNorm(
-                min_value=-2.0, max_value=1.0, rate=1.0, axis=0
+                min_value=-2.0, max_value=1.0, rate=1.0, axis=-1
             )
         )
 

@@ -786,8 +786,8 @@ def get_a_dataset(dir, labels, args):
         for l, d in zip(labels, dist):
             logging.info(f" for {l} have {d}")
     # tf because of sample from datasets
-    dataset = dataset.repeat(2)
-    dataset = dataset.take(epoch_size)
+    # dataset = dataset.repeat(2)
+    # dataset = dataset.take(epoch_size)
     batch_size = args.get("batch_size", None)
     # dataset = dataset.cache()
 
