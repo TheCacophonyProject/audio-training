@@ -627,14 +627,14 @@ def normalize_data(x):
 def main():
     init_logging()
     args = parse_args()
-    frames, sr = load_recording(args.file)
-    end = get_end(frames, sr)
-    frames = frames[: int(sr * end)]
-    signals, _ = signal_noise(frames, sr)
+    # frames, sr = load_recording(args.file)
+    # end = get_end(frames, sr)
+    # frames = frames[: int(sr * end)]
+    # signals, _ = signal_noise(frames, sr)
 
-    tracks = get_tracks_from_signals(signals, end)
-    for s in tracks:
-        print("SIgnals are ", s)
+    # tracks = get_tracks_from_signals(signals, end)
+    # for s in tracks:
+    #     print("SIgnals are ", s)
     # get_speech_score(args.file)
     # show_signals(args.file)
     # return
@@ -653,6 +653,14 @@ def main():
         compile=False,
     )
     model.summary()
+    for l in model.layers[:2]:
+        weights = l.get_weights()
+
+        print(l)
+        for i, w in enumerate(weights):
+            print(f"{w}  Weights {i}: shape={w.shape}")
+            print(w)
+    return
     # an idea to get more details predictions
     # model.trainable = False
     #

@@ -34,11 +34,14 @@ class MagTransform(tf.keras.layers.Layer):
     def __init__(self, **kwargs):
         super(MagTransform, self).__init__(**kwargs)
         self.a = self.add_weight(
-            initializer=tf.keras.initializers.Constant(value=0.0),
+            initializer=tf.keras.initializers.Constant(value=-1.0),
             name="a-power",
             dtype="float32",
             shape=(),
             trainable=True,
+            constraint = tf.keras.constraints.MinMaxNorm(
+                min_value=-2.0, max_value=1.0, rate=1.0, axis=0
+            )
         )
 
     def call(self, inputs):

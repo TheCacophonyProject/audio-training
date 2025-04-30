@@ -980,7 +980,8 @@ def read_tfrecord(
 
             spectogram = example["audio/spectogram"]
         spectogram = tf.reshape(spectogram, (2049, 513))
-        # spectogram = tf.math.pow(spectogram,2)
+        # conver to power
+        spectogram = tf.math.pow(spectogram,2)
         spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
         spectogram = tf.expand_dims(spectogram, axis=-1)
         if "efficientnet" in model_name:
@@ -1102,7 +1103,7 @@ def read_tfrecord(
             start_s,
         )
 
-    return image
+    return spectogram
 
 
 def class_func(features, label):
@@ -1168,7 +1169,10 @@ def parse_args():
         default=None,
         help="Model to load and do preds",
     )
-
+    parser.add_argument(
+        "dir",
+        help="Dataset dir",
+    )
     args = parser.parse_args()
     return args
 
@@ -1177,7 +1181,7 @@ def parse_args():
 def main():
     init_logging()
     args = parse_args()
-
+    dataset_dirs = [Path(args.dir)]
     # batch_data = []
     # batch_data.append(np.zeros(5)-1)
     # batch_data = np.array(batch_data)
@@ -1187,9 +1191,9 @@ def main():
     #     print(n)
     # return
     # return
-    datasets = ["other-training-data", "training-data", "chime-training-data"]
-    datasets = ["training-data"]
-    dataset_dirs = ["./audio-training/training-data"]
+    # datasets = ["other-training-data", "training-data", "chime-training-data"]
+    # datasets = ["training-data"]
+    # dataset_dirs = ["./audio-training/training-data"]
     # dataset_dirs = ["./augmented-training"]
 
     filenames = []
@@ -1198,8 +1202,8 @@ def main():
     for d in dataset_dirs:
         tf_dir = Path(d)
         # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
-        file = f"{d}/training-meta.json"
-        with open(file, "r") as f:
+        file = tf_dir.parent/"training-meta.json"
+        with file.open("r") as f:
             meta = json.load(f)
         labels.update(meta.get("labels", []))
         labels.add("bird")
@@ -1240,65 +1244,51 @@ def main():
                 excluded_labels.append(l)
 
         dataset, remapped, _, labels, _ = get_dataset(
-            tf_dir / "test",
-            # filenames,
+            tf_dir,
             labels,
-            # use_generic_bird=False,
             deterministic=True,
             batch_size=32,
             image_size=DIMENSIONS,
-            # augment=False,
-            # resample=False,
             excluded_labels=excluded_labels,
-            # stop_on_empty=True,
-            # filter_freq=False,
-            # random_butter=0.9,
-            # only_features=True,
-            multi_label=False,
-            load_raw=True,
-            # n_fft=4096,
-            # fmin=1000,
-            # fmax=11000,
-            # break_freq=1000,
+            multi_label=True,
             use_bird_tags=False,
             load_all_y=True,
             shuffle=False,
             debug=True,
-            # filenames_2=filenames_2
-            # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
+            load_raw = False,
         )
-        for batch_x, batch_y in dataset:
-            recs = batch_y[3]
-            tracks = batch_y[4]
-            for x, rec, track in zip(batch_x, recs, tracks):
-                data_ok = np.all(x >= -1.00002) and np.all(x <= 1.000002)
-                has_nan = np.any(np.isnan(x))
-                a_max = np.amax(x)
-                a_min = np.amin(x)
-                if not data_ok or has_nan:
-                    # print(x)
-                    x = x.numpy()
-                    logging.info(
-                        "Bad data for rec %s track %s less than 1 %s over 1 %s max %s min %s",
-                        rec,
-                        track,
-                        x[np.where(x < 1)],
-                        x[np.where(x > 1.000002)],
-                        a_max,
-                        a_min,
-                    )
-                    logging.info("Has nan %s", has_nan)
+        # for batch_x, batch_y in dataset:
+        #     recs = batch_y[3]
+        #     tracks = batch_y[4]
+        #     for x, rec, track in zip(batch_x, recs, tracks):
+        #         data_ok = np.all(x >= -1.00002) and np.all(x <= 1.000002)
+        #         has_nan = np.any(np.isnan(x))
+        #         a_max = np.amax(x)
+        #         a_min = np.amin(x)
+        #         if not data_ok or has_nan:
+        #             # print(x)
+        #             x = x.numpy()
+        #             logging.info(
+        #                 "Bad data for rec %s track %s less than 1 %s over 1 %s max %s min %s",
+        #                 rec,
+        #                 track,
+        #                 x[np.where(x < 1)],
+        #                 x[np.where(x > 1.000002)],
+        #                 a_max,
+        #                 a_min,
+        #             )
+        #             logging.info("Has nan %s", has_nan)
 
-                if a_max == a_min:
-                    logging.info(
-                        "Max = Min for rec %s track %s max %s min %s",
-                        rec,
-                        track,
-                        a_max,
-                        a_min,
-                    )
+        #         if a_max == a_min:
+        #             logging.info(
+        #                 "Max = Min for rec %s track %s max %s min %s",
+        #                 rec,
+        #                 track,
+        #                 a_max,
+        #                 a_min,
+        #             )
 
-        return
+        # return
     preds = None
     if args.model is not None:
         model_path = Path(args.model)
@@ -1322,8 +1312,7 @@ def main():
         # filenames.extend(tf.io.gfile.glob(f"{d}/test/**/*.tfrecord"))
     print("labels are ", labels)
     global NZ_BIRD_LOSS_WEIGHTING, BIRD_WEIGHTING, SPECIFIC_BIRD_MASK, GENERIC_BIRD_MASK
-    print("GENERIC_BIRD_MASK", GENERIC_BIRD_MASK)
-    print("SPECIFIC", SPECIFIC_BIRD_MASK)
+
     dist, _ = get_distribution(dataset, len(labels), batched=True, one_hot=True)
     print("Dist is ", dist)
     for l, d in zip(labels, dist):
@@ -1394,11 +1383,9 @@ def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
     # tracks = label_batch[4]
     # label_batch = label_batch[0]
     fig = plt.figure(figsize=(30, 30))
-    plt.subplots_adjust(hspace=0.5)
-
+    plt.subplots_adjust(hspace=0.6)
     print("images in batch", len(image_batch), len(label_batch))
     num_images = len(image_batch)
-    print("labl batch", label_batch[0])
     i = 0
     for n in range(num_images):
         predicted = ""
@@ -1415,6 +1402,7 @@ def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
                 lbl.append(labels[l_i])
         p = n
         ax = plt.subplot(num_images // 3 + 1, 3, p + 1)
+        ax.get_xaxis().set_visible(False)
 
         i += 1
         # plot_spec(image_batch[n][:, :, 0], ax)
@@ -1428,8 +1416,8 @@ def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
         plt.title(f"{plot_title}\n{predicted}")
         img = image_batch[n]
         plot_mel(image_batch[n][:, :, 0], ax)
-    # plt.savefig(f"dataset-images/batch-{batch_i}.png")
-    plt.show()
+    plt.savefig(f"dataset-images/batch-{batch_i}.png")
+    # plt.show()
 
 
 def plot_mfcc(mfccs, ax):
