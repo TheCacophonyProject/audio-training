@@ -1282,14 +1282,16 @@ def multi_confusion_single(
     none_y = []
     flat_p = []
     flat_y = []
-    bird_index = labels.index("bird")
+    bird_index = None
+    if "bird" in labels
+        bird_index = labels.index("bird")
     for y, p in zip(true_categories, y_pred):
         # get predicted label that isn't bird and use this as overall tag
         # may not work when we have 2 tags for a recording but i dont think this is the case at the moment
         index = 0
         arg_sorted = np.argsort(p)
         best_label = arg_sorted[-1]
-        if best_label == bird_index and p[arg_sorted[-2]] != 0:
+        if bird_index is not None and best_label == bird_index and p[arg_sorted[-2]] != 0:
             best_label = arg_sorted[-2]
         best_prob = p[best_label]
 

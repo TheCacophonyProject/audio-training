@@ -39,9 +39,9 @@ class MagTransform(tf.keras.layers.Layer):
             dtype="float32",
             shape=[1],
             trainable=True,
-            constraint = tf.keras.constraints.MinMaxNorm(
+            constraint=tf.keras.constraints.MinMaxNorm(
                 min_value=-2.0, max_value=1.0, rate=1.0, axis=-1
-            )
+            ),
         )
 
     def call(self, inputs):
@@ -310,7 +310,7 @@ def build_model(
         # haven't found any benefit using LME
         if lme:
             x = LMELayer(axis=1, sharpness=5)(x)
-            x = LMELayer(axis=2, sharpness=5)(x) 
+            x = LMELayer(axis=2, sharpness=5)(x)
 
         x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
@@ -335,15 +335,19 @@ def build_model(
 # in 45 samples if we have 7 stronge predictions of 0.9 this will equate to 0.8 in this label
 # 7 being roughly 1/2 second of audio
 
+
 class LMELayer(tf.keras.Layer):
-    def __init__(self, sharpness =5, axis = None):
+    def __init__(self, sharpness=5, axis=None):
         super(LMELayer, self).__init__()
         self.sharpness = sharpness
         self.axis = axis
 
     def call(self, x):
         return (
-            tfp.math.reduce_logmeanexp(x * self.sharpness, axis=self.axis, keepdims=True) / self.sharpness
+            tfp.math.reduce_logmeanexp(
+                x * self.sharpness, axis=self.axis, keepdims=True
+            )
+            / self.sharpness
         )
 
 

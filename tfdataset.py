@@ -981,7 +981,7 @@ def read_tfrecord(
             spectogram = example["audio/spectogram"]
         spectogram = tf.reshape(spectogram, (2049, 513))
         # conver to power
-        spectogram = tf.math.pow(spectogram,2)
+        spectogram = tf.math.pow(spectogram, 2)
         spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
         spectogram = tf.expand_dims(spectogram, axis=-1)
         if "efficientnet" in model_name:
@@ -1202,7 +1202,7 @@ def main():
     for d in dataset_dirs:
         tf_dir = Path(d)
         # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
-        file = tf_dir.parent/"training-meta.json"
+        file = tf_dir.parent / "training-meta.json"
         with file.open("r") as f:
             meta = json.load(f)
         labels.update(meta.get("labels", []))
@@ -1255,7 +1255,7 @@ def main():
             load_all_y=True,
             shuffle=False,
             debug=True,
-            load_raw = False,
+            load_raw=False,
         )
         # for batch_x, batch_y in dataset:
         #     recs = batch_y[3]
