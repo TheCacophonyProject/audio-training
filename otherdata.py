@@ -847,10 +847,12 @@ def add_signal_meta(dir):
 
 def process_signal(metadata_file):
     try:
-        with metadata_file.open("r") as f:
-            # add in some metadata stats
-            meta = json.load(f)
-
+        if metadata_file.exists():
+            with metadata_file.open("r") as f:
+                # add in some metadata stats
+                meta = json.load(f)
+        else:
+            meta = {}
         if meta.get("signal", None) is not None:
             print("Zeroing existing signal")
             meta["signal"] = None
@@ -869,6 +871,7 @@ def process_signal(metadata_file):
         signals, noise, _, _, end = signal_noise(file)
 
         signals = [s.to_array() for s in signals]
+        meta["file"] = str(file)
         meta["signal"] = signals
         meta["noise"] = noise
         meta["rec_end"] = end
