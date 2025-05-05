@@ -15,6 +15,7 @@ import numpy as np
 from multiprocessing import Pool
 from identifytracks import signal_noise, get_tracks_from_signals, get_end
 import argparse
+import matplotlib.pyplot as plt
 
 
 def load_recording(file, resample=48000):
@@ -663,10 +664,13 @@ def tier1_data(base_dir):
             # ebird = (common, extra)
             ebird_map[row[2]] = (row[1].lower(), row[4].lower())
     config = Config()
+    plot_signal=True
     dataset = AudioDataset("Tier1", config)
     folders = ["Train_001", "Train_002"]
     counts = {}
+    label_percents = {}
     for folder in folders:
+        ignore_long_tracks = folder == "Train_002"
         dataset_dir = base_dir / folder
         metadata = dataset_dir / "001_metadata.csv"
         if not metadata.exists():
@@ -689,6 +693,9 @@ def tier1_data(base_dir):
 
                 start = int(start)
                 end = int(end)
+                length = end-start
+                if length > 5:
+                    logging.info("Track length %s so Ignoring %s",length, filename)
                 # if label != "dobplo1":
                 # continue
                 primary_label = ebird_map.get(label)
@@ -712,8 +719,18 @@ def tier1_data(base_dir):
                 audio_file = dataset_dir / "train_audio" / filename
                 # if not audio_file.exists():
                 # continue
+                metadata_file = audio_file.with_suffix(".txt")
+                if metadata_file.exists():
+                    with metadata_file.open("r") as f:
+                    # add in some metadata stats
+                        meta = json.load(f)
+                else:
+                    meta = {}
+                meta["id"] = id
+                meta["tracks"] = []
+                
                 r = Recording(
-                    {"id": id, "tracks": []},
+                    meta,
                     audio_file,
                     dataset.config,
                     load_samples=False,
@@ -740,12 +757,22 @@ def tier1_data(base_dir):
                     r,
                 )
                 r.tracks = [t]
+                r.signal_percent()
+
+                if plot_signal:
+                    if label not in label_percents:
+
+                        label_percents[label] = [0]* 11
+                    signal_percent = round(t.signal_percent * 10)
+                    label_percents[label][signal_percent]+=1
                 r.human_tags.add(label)
                 r.load_samples(
                     dataset.config.segment_length, dataset.config.segment_stride
                 )
                 # dataset
                 dataset.add_recording(r)
+
+            
         print("Counts are ", counts)
         keys = list(counts.keys())
         keys.sort()
@@ -754,6 +781,20 @@ def tier1_data(base_dir):
         tootal = list(counts.values())
         print("total is ", np.sum(tootal))
         counts = {}
+        if plot_signal:
+            save_dir=  dataset_dir / "train_audio" / folder / "signal-graphs"
+            save_dir.mkdir(parents=True, exist_ok=True)
+            for labels,values in label_percents.items():
+                plt.plot(np.arange(1.1,step =0.1), values, marker='o', linestyle='-')
+
+                # Add labels and title
+                plt.xlabel("Signal percent")
+                plt.ylabel("Tracks")
+                plt.title(f"{label}")
+                plt.savefig(str(save_dir/f"{label}.png"))
+            label_percents = {}
+    if plot_signal:
+        return
     logging.info("Loaded tier 1 data")
     dataset.print_sample_counts()
 
