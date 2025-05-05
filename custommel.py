@@ -12,7 +12,6 @@ def mel_frequencies(n_mels, fmin, fmax, break_freq):
     min_mel = hz_to_mel(fmin, break_freq)
     max_mel = hz_to_mel(fmax, break_freq)
     mels = np.linspace(min_mel, max_mel, n_mels)
-
     return break_freq * (10.0 ** (mels / 2595.0) - 1.0)
 
 

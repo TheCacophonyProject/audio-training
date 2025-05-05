@@ -101,6 +101,18 @@ def plot_spec(S, filename="spec"):
     plt.close()
 
 
+def plot_mel_weights(weights):
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots()
+    img = librosa.display.specshow(
+        weights, x_axis="linear", ax=ax, sr=48000, n_fft=4096, fmin=50, fmax=11000
+    )
+    ax.set(ylabel="Mel filter", title="Mel filter bank")
+    fig.colorbar(img, ax=ax)
+    plt.show()
+
+
 def plot_mel(mel, filename="mel"):
     fig = plt.figure(figsize=(10, 10))
     ax = plt.subplot(1, 1, 1)

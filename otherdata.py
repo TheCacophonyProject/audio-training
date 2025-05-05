@@ -816,11 +816,84 @@ def save_data(datasets, base_dir, config):
         json.dump(meta_data, f, indent=4)
 
 
+from identifytracks import (
+    signal_noise as track_signals,
+)
+
+
+def signal_noise(file, hop_length=281):
+    frames, sr = load_recording(file)
+    end = get_end(frames, sr)
+    # end = 5
+    # frames = frames[int(20*sr): int(sr * 40)]
+
+    frames = frames[: int(sr * end)]
+    # frames = frames[: sr * 120]
+    # n_fft = sr // 10
+    n_fft = 4096
+    # spectogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
+    # plot_spec(spectogram)
+    signals, spectogram = track_signals(frames, sr, hop_length=hop_length, n_fft=n_fft)
+    noise = []
+    return signals, noise, spectogram, frames, end
+
+
+def add_signal_meta(dir):
+    meta_files = dir.glob("**/*.txt")
+
+    with Pool(processes=8) as pool:
+        [0 for x in pool.imap_unordered(process_signal, meta_files, chunksize=8)]
+
+
+def process_signal(metadata_file):
+    try:
+        with metadata_file.open("r") as f:
+            # add in some metadata stats
+            meta = json.load(f)
+
+        if meta.get("signal", None) is not None:
+            print("Zeroing existing signal")
+            meta["signal"] = None
+            # print("Already have signal data")
+            # return
+        file = metadata_file.with_suffix(".m4a")
+        if not file.exists():
+            file = metadata_file.with_suffix(".wav")
+        if not file.exists():
+            file = metadata_file.with_suffix(".mp3")
+        if not file.exists():
+            logging.info("Not recording for %s", metadata_file)
+            return
+
+        logging.info("Calcing %s", file)
+        signals, noise, _, _, end = signal_noise(file)
+
+        signals = [s.to_array() for s in signals]
+        meta["signal"] = signals
+        meta["noise"] = noise
+        meta["rec_end"] = end
+        with metadata_file.open("w") as f:
+            json.dump(
+                meta,
+                f,
+                indent=4,
+            )
+        logging.info("Updated %s", metadata_file)
+    except:
+        logging.error("Error processing %s", f, exc_info=True)
+    return
+
+
 def main():
     init_logging()
     args = parse_args()
-
-    tier1_data(args.dir)
+    if args.signal:
+        print("Adding signal data to ", args.dir)
+        add_signal_meta(args.dir)
+        return
+    else:
+        print("Doing tier 1 data")
+        tier1_data(args.dir)
     return
     # weakly_lbled_data(args.dir)
     return
@@ -915,6 +988,9 @@ def main():
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--dir", help="Dir to load")
+    parser.add_argument(
+        "-s", "--signal", action="store_true", help="Add signal data to dir"
+    )
 
     args = parser.parse_args()
     args.dir = Path(args.dir)

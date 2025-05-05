@@ -313,8 +313,12 @@ def build_model(
             x = LMELayer(axis=2, sharpness=5)(x)
 
         x = tf.keras.layers.GlobalAveragePooling2D()(x)
-
-        x = tf.keras.activations.sigmoid(x)
+        if multi_label:
+            logging.info("Using sig")
+            x = tf.keras.activations.sigmoid(x)
+        else:
+            logging.info("Using softmax")
+            x = tf.keras.activations.softmax(x)
 
     model = tf.keras.models.Model(input, outputs=x)
     return model

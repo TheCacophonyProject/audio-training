@@ -1291,12 +1291,15 @@ def multi_confusion_single(
         index = 0
         arg_sorted = np.argsort(p)
         best_label = arg_sorted[-1]
-        if bird_index is not None and best_label == bird_index and p[arg_sorted[-2]] != 0:
+        if (
+            bird_index is not None
+            and best_label == bird_index
+            and p[arg_sorted[-2]] != 0
+        ):
             best_label = arg_sorted[-2]
         best_prob = p[best_label]
 
         best_labels = np.argwhere(p > prob_thresh).ravel()
-
 
         # get true label that isn't bird if available and use this as overall tag
         # arg_sorted = np.argsort(y)
@@ -1312,8 +1315,10 @@ def multi_confusion_single(
         for y_l, p_l in zip(y, p):
             predicted = p_l >= prob_thresh
             if y_l == 0 and predicted:
-                # can put this as none
-                # flat_y.append(len(labels) - 1)
+                # if predicted but is not true
+
+                # add this index as wrong for all true labels. where it hasn't got it right
+
                 for true_label in true_labels:
                     if true_label not in best_labels:
                         flat_y.append(true_label)
@@ -1323,10 +1328,10 @@ def multi_confusion_single(
                 flat_p.append(index)
             elif y_l == 1 and not predicted:
                 flat_y.append(index)
-                flat_p.append(len(labels) - 1) #None
+                flat_p.append(len(labels) - 1)  # None
 
                 # if we have no prediction over a threshold put the best one over a reasonable threshold (0.3) into the None matrix
-                if best_prob >= 0.3 and len(best_labels) ==0:
+                if best_prob >= 0.3 and len(best_labels) == 0:
                     if best_label not in true_labels:
                         none_y.append(index)
                         none_p.append(best_label)
@@ -1877,7 +1882,7 @@ def macro_soft_f1(y, y_hat):
 
 
 def best_threshold(model, labels, dataset, filename):
-    from sklearn.metrics import roc_curve, auc
+    from sklearn.metrics import roc_curve, auc, precision_recall_curve
 
     # sklearn.metrics.auc(
     y_pred = model.predict(dataset)
@@ -1898,31 +1903,36 @@ def best_threshold(model, labels, dataset, filename):
         class_id = np.flatnonzero(label_binarizer.classes_ == i)[0]
         print("plt show for", class_of_interest)
 
-        fpr, tpr, thresholds = roc_curve(
+        precision, recall, thresholds = precision_recall_curve(
             y_onehot_test[:, class_id], y_pred[:, class_id]
         )
+        fscore = (2 * precision * recall) / (precision + recall)
+        ix = np.argmax(fscore)
+
+        # fpr, tpr, thresholds = roc_curve(
+        #     y_onehot_test[:, class_id], y_pred[:, class_id]
+        # )
         # RocCurveDisplay.from_predictions(
         #     y_onehot_test[:, class_id],
         #     y_pred[:, class_id],
         #     name=f"{class_of_interest} vs the rest",
         #     color="darkorange",
         # )
-        plt.plot(fpr, tpr, marker=".", label=class_of_interest)
+        testy = y_onehot_test[:, class_id]
+        no_skill = len(testy[testy == 1]) / len(testy)
 
-        plt.plot([0, 1], [0, 1], "k--", label="chance level (AUC = 0.5)")
+        plt.plot(recall, precision, marker=".", label="Logistic")
+        plt.plot([0, 1], [no_skill, no_skill], linestyle="--", label="No Skill")
         plt.axis("square")
-        plt.xlabel("False Positive Rate")
-        plt.ylabel("True Positive Rate")
-        plt.title("One-vs-Rest ROC curves:\nVirginica vs (Setosa & Versicolor)")
+        plt.xlabel("Recall")
+        plt.ylabel("Precision")
+        plt.title(f"Recall vs Precivsion - {labels[i]}")
         plt.legend()
+        plt.scatter(recall[ix], precision[ix], marker="o", color="black", label="Best")
+
         plt.savefig(f"{labels[i]}-{filename}.png", format="png")
         plt.clf()
-        print(tpr.shape, tpr.dtype, fpr.shape)
-        # tpr = np.array(tpr)
-        # fpr = np.array(fpr)
-        gmeans = np.sqrt(tpr * (1 - fpr))
-        ix = np.argmax(gmeans)
-        print("Best Threshold=%f, G-Mean=%.3f" % (thresholds[ix], gmeans[ix]))
+        print("Best Threshold=%f, F-Score=%.3f" % (thresholds[ix], fscore[ix]))
         # for area, thresh in zip(areas, thresholds):
         #     # print("f", f, t)
         #     print("Thresholds are", thresh, area)

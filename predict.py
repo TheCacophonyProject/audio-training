@@ -653,7 +653,26 @@ def main():
         compile=False,
     )
     model.summary()
-    for l in model.layers[:2]:
+    model.layers.pop()
+    print("Last layer is ", model.layers[-1])
+    final_layer = model.layers[-1].output
+    print(final_layer)
+    output = tf.keras.activations.softmax(final_layer)
+    model = tf.keras.models.Model(model.input, outputs=output)
+    print(model.summary())
+    print(model.output)
+    return
+    for l in model.layers:
+        print(l)
+    final_layer = model.layers[-1]
+    config = final_layer.get_config()
+    print(config)
+    # print(final_layer, final_layer.activation)
+    print(model.__dict__.keys())
+    return
+    for l in model.layers:
+        print(l.name, l)
+        continue
         weights = l.get_weights()
 
         print(l)

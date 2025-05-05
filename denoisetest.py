@@ -12,8 +12,8 @@ import pickle
 import json
 import audioread.ffdec  # Use ffmpeg decoder
 import math
-from plot_utils import plot_spec, plot_mel_signals, plot_mel
-from custommel import mel_spec
+from plot_utils import plot_spec, plot_mel_signals, plot_mel, plot_mel_weights
+from custommel import mel_spec, mel_f
 import tensorflow as tf
 from identifytracks import (
     get_tracks_from_signals,
@@ -89,10 +89,10 @@ def signal_noise(file, hop_length=281):
     frames = frames[: int(sr * end)]
     # frames = frames[: sr * 120]
     # n_fft = sr // 10
-    n_fft = 4096
+    n_fft = 2048
     # spectogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
     # plot_spec(spectogram)
-    signals, spectogram = track_signals(frames, sr, hop_length=hop_length)
+    signals, spectogram = track_signals(frames, sr, hop_length=hop_length, n_fft=n_fft)
     noise = []
     return signals, noise, spectogram, frames, end
 
@@ -481,7 +481,7 @@ def get_end(frames, sr):
 #             # ensure both are either below 1500 or abov
 #             if overlap > u.length * time_overlap_percent and mel_overlap > -20:
 #                 #  (
-#                 #     mel_overlap > u.mel_freq_range * freq_overlap
+#                 #     mel_overlap > u.Freq_range * freq_overlap
 #                 # ):
 #                 # times overlap a lot be more leninant on freq
 #                 # s.merge(u)
@@ -790,11 +790,94 @@ def merge_again(tracks):
     return post_filter
 
 
+def birdnet_mel(sr, data, frame_length, hop_length=281, mel_weights=None):
+    mel_filterbank = tf.signal.linear_to_mel_weight_matrix(
+        num_mel_bins=160,
+        num_spectrogram_bins=frame_length // 2 + 1,
+        sample_rate=sr,
+        lower_edge_hertz=50,
+        upper_edge_hertz=11000,
+        dtype=tf.float32,
+    )
+    # Perform STFT
+    spec = tf.signal.stft(
+        data,
+        frame_length,
+        hop_length,
+        fft_length=frame_length,
+        window_fn=tf.signal.hann_window,
+        pad_end=True,
+        name="stft",
+    )
+    # Cast from complex to float
+    spec = tf.dtypes.cast(spec, tf.float32)
+
+    if mel_weights is not None:
+
+        # S = librosa.feature.melspectrogram(S=D, sr=sr)
+        spec = tf.transpose(spec, [1, 0])
+        # print(mel_weights.shape, spec.shape)
+        spec = tf.tensordot(mel_weights, spec, 1)
+
+        spec = tf.math.pow(spec, 2.0)
+        return spec.numpy()
+
+        # or
+
+        mel_weights = tf.transpose(mel_weights, [1, 0])
+        spec = tf.tensordot(spec, mel_weights, 1)
+
+        spec = tf.math.pow(spec, 2.0)
+        spec = tf.transpose(spec, [1, 0])
+
+        return spec.numpy()
+
+    spec = tf.tensordot(spec, mel_filterbank, 1)
+
+    # Apply mel scale
+
+    # Convert to power spectrogram
+    spec = tf.math.pow(spec, 2.0)
+
+    # Flip spec horizontally
+    # spec = tf.reverse(spec, axis=[1])
+    spec = tf.transpose(spec, [1, 0])
+
+    # Swap axes to fit input shape
+    return spec.numpy()
+
+
 def main():
     init_logging()
 
     args = parse_args()
+    n_fft = 4096
+    hop_length = 281
+    N_MELS = 160
+    BREAK_FREQ = 1000
+    MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, n_fft, BREAK_FREQ)
+    # plot_mel_weights(MEL_WEIGHTS)
+    MEL_WEIGHTS = librosa.filters.mel(
+        sr=48000, n_fft=n_fft, n_mels=N_MELS, fmin=50, fmax=11000
+    )
+    # plot_mel_weights(MEL_WEIGHTS)
 
+    print(MEL_WEIGHTS.dtype)
+    frames, sr = load_recording(args.file)
+    mel = birdnet_mel(sr, frames, n_fft, hop_length=hop_length, mel_weights=MEL_WEIGHTS)
+    plot_mel(mel)
+    # return
+
+    spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
+    plot_spec(spectogram)
+    mel = spectogram
+    mel = tf.tensordot(MEL_WEIGHTS, mel, 1)
+    mel = tf.math.pow(mel, 2)
+
+    mel = mel.numpy()
+    print(mel.shape)
+    plot_mel(mel)
+    return
     # test_image = np.zeros((40,40),dtype = np.uint8)
     # test_image[10][10] = 255
     # kernel = np.ones((4, 10), np.uint8)
@@ -809,9 +892,17 @@ def main():
 
     # mix_file(args.file, args.mix)
     signals, noise, spectogram, frames, end = signal_noise(args.file)
-
-    plot_mel_signals(np.abs(spectogram), signals, noise)
-
+    N_MELS = 160
+    NFFT = 2048
+    BREAK_FREQ = 1000
+    MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, NFFT, BREAK_FREQ)
+    mel = tf.math.pow(spectogram, 2)
+    mel = tf.tensordot(MEL_WEIGHTS, mel, 1)
+    mel = mel.numpy()
+    print(mel.shape)
+    plot_mel(mel)
+    # plot_mel_signals(np.abs(spectogram), signals, noise)
+    return
     # means_merge(spectogram,signals)
     # return
     # for s in signal:

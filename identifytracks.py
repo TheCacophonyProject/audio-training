@@ -47,12 +47,12 @@ def get_end(frames, sr):
     return file_length
 
 
-def signal_noise(frames, sr, hop_length=281):
+def signal_noise(frames, sr, hop_length=281, n_fft=4096):
     # frames = frames[:sr]
-    n_fft = 4096
+    # n_fft = 4096
     # frames = frames[: sr * 3]
     spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
-
+    og_spec = spectogram.copy()
     a_max = np.amax(spectogram)
     spectogram = spectogram / a_max
     row_medians = np.median(spectogram, axis=1)
@@ -102,7 +102,7 @@ def signal_noise(frames, sr, hop_length=281):
         end = (s[0] + s[2]) * 281 / sr
         signals.append(Signal(start, end, freq_range[0], freq_range[1], s[4]))
 
-    return signals, spectogram
+    return signals, og_spec
 
 
 def segment_overlap(first, second):
