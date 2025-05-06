@@ -670,12 +670,14 @@ class AudioModel:
                 len(self.labels),
             )
         else:
-            norm_layer = tf.keras.layers.Normalization()
-            norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
+            # norm_layer = tf.keras.layers.Normalization()
+            # norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
             input = tf.keras.Input(shape=self.input_shape, name="input")
 
             base_model, self.preprocess_fn = self.get_base_model(self.input_shape)
-            x = norm_layer(input)
+            # x = norm_layer(input)
+            x = badwinner2.MagTransform()(input)
+
             x = base_model(x)
             # , training=True)
 
