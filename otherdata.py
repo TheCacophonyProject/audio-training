@@ -788,12 +788,12 @@ def tier1_data(base_dir):
             for label,values in label_percents.items():
                 plt.plot(np.arange(1.1,step =0.1), values, marker='o', linestyle='-')
 
-            # Add labels and title
-            plt.xlabel("Signal percent")
-            plt.ylabel("Tracks")
-            plt.title(f"{label}")
-            plt.legend()
-            plt.savefig(str(save_dir/f"all.png"))
+                # Add labels and title
+                plt.xlabel("Signal percent")
+                plt.ylabel("Tracks")
+                plt.title(f"{label}")
+                plt.legend()
+                plt.savefig(str(save_dir/f"{label}.png"))
             label_percents = {}
     if plot_signal:
         return
@@ -876,13 +876,67 @@ def signal_noise(file, hop_length=281):
     n_fft = 4096
     # spectogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
     # plot_spec(spectogram)
-    signals, spectogram = track_signals(frames, sr, hop_length=hop_length, n_fft=n_fft)
+    signals, spectogram = track_signals(frames, sr, hop_length=hop_length, n_fft=n_fft,min_width = 0, min_height=0)
     noise = []
     return signals, noise, spectogram, frames, end
 
 
 def add_signal_meta(dir):
-    meta_files = dir.glob("**/*.txt")
+
+
+    test_labels = [
+        "bellbird",
+        "bird",
+        "fantail",
+        "morepork",
+        "noise",
+        "human",
+        "grey warbler",
+        "insect",
+        "kiwi",
+        "magpie",
+        "tui",
+        "house sparrow",
+        "blackbird",
+        "sparrow",
+        "song thrush",
+        "whistler",
+        "rooster",
+        "silvereye",
+        "norfolk silvereye",
+        "australian magpie",
+        "new zealand fantail",
+        "banded dotterel",
+        "australasian bittern",
+    ]
+
+    ebird_labels = set()
+    with open("eBird_taxonomy_v2024.csv") as f:
+        for line in f:
+            split_l = line.split(",")
+            if split_l[1].lower() in test_labels or  split_l[9].lower() in test_labels or "kiwi" in split_l[1]:
+                ebird_labels.add(split_l[2])
+    # 1/0
+    # ebird_map = {}
+    with open("classes.csv", newline="") as csvfile:
+        dreader = csv.reader(csvfile, delimiter=",", quotechar="|")
+        i = -1
+        for row in dreader:
+            i += 1
+            if i == 0:
+                continue
+            # ebird = (common, extra)
+            if row[1].lower() in test_labels or  row[4].lower() in test_labels or "kiwi" in row[1].lower():
+                ebird_labels.add(row[2])
+    print("Only running on ", ebird_labels)
+    meta_files = []
+    folders = ["Train_001", "Train_002"]
+    for folder in folders:
+        audio_dir = dir / folder/"train_audio"
+        for lbl in ebird_labels:
+            lbl_dir = audio_dir / lbl
+            meta_files.extend(lbl_dir.glob("**/*.flac"))
+    print(meta_files)
 
     with Pool(processes=8) as pool:
         [0 for x in pool.imap_unordered(process_signal, meta_files, chunksize=8)]
@@ -890,6 +944,7 @@ def add_signal_meta(dir):
 
 def process_signal(metadata_file):
     try:
+        metadata_file = metadata_file.with_suffix(".txt")
         if metadata_file.exists():
             with metadata_file.open("r") as f:
                 # add in some metadata stats

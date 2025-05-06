@@ -47,7 +47,7 @@ def get_end(frames, sr):
     return file_length
 
 
-def signal_noise(frames, sr, hop_length=281, n_fft=4096):
+def signal_noise(frames, sr, hop_length=281, n_fft=4096, min_width = None, min_height = None):
     # frames = frames[:sr]
     # n_fft = 4096
     # frames = frames[: sr * 3]
@@ -85,8 +85,12 @@ def signal_noise(frames, sr, hop_length=281, n_fft=4096):
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(signal)
     stats = stats[1:]
     stats = sorted(stats, key=lambda stat: stat[0])
-    min_width = 0.65 * width
-    min_height = height - height // 10
+    if min_height is None:
+        min_height = height - height // 10
+    if min_width is None:
+        min_width = 0.65 * width
+
+    print("Min height",min_height, " min width", min_width)
     stats = [s for s in stats if s[2] > min_width and s[3] > min_height]
 
     i = 0
