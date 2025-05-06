@@ -1911,7 +1911,7 @@ def best_threshold(model, labels, dataset, filename):
     y_onehot_test = label_binarizer.transform(true_categories)
     # y_onehot_test.shape  # (n_samples, n_classes)
     print(label_binarizer.classes_)
-    thresholds = []
+    thresholds_best = []
     for i, class_of_interest in enumerate(labels):
         # class_of_interest = "virginica"
         class_id = np.flatnonzero(label_binarizer.classes_ == i)[0]
@@ -1947,11 +1947,11 @@ def best_threshold(model, labels, dataset, filename):
         plt.savefig(f"{labels[i]}-{filename}.png", format="png")
         plt.clf()
         print("Best Threshold=%f, F-Score=%.3f" % (thresholds[ix], fscore[ix]))
-        thresholds.append(thresholds[ix])
+        thresholds_best.append(thresholds[ix])
         # for area, thresh in zip(areas, thresholds):
         #     # print("f", f, t)
         #     print("Thresholds are", thresh, area)
-    thresholds = np.array(thresholds)
+    thresholds = np.array(thresholds_best)
     logging.info(
         "ALl thresholds are %s mean %s median %s",
         thresholds,
