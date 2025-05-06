@@ -769,7 +769,7 @@ def tier1_data(base_dir):
                 if plot_signal:
                     if label not in label_percents:
 
-                        label_percents[label] = [0] * (signal_scale+1)
+                        label_percents[label] = [0] * (signal_scale + 1)
                     signal_percent = round(t.signal_percent * signal_scale)
                     label_percents[label][signal_percent] += 1
                 r.human_tags.add(label)
@@ -793,7 +793,7 @@ def tier1_data(base_dir):
             save_dir.mkdir(parents=True, exist_ok=True)
             for label, values in label_percents.items():
                 plt.clf()
-                plt.plot(np.arange(signal_scale+1), values, marker="o", linestyle="-")
+                plt.plot(np.arange(signal_scale + 1), values, marker="o", linestyle="-")
 
                 # Add labels and title
                 plt.xlabel("Signal percent")
@@ -809,6 +809,31 @@ def tier1_data(base_dir):
 
     datasets = split_randomly(dataset)
     save_data(datasets, base_dir, dataset.config)
+
+
+def plot_signal(dataset, out_dir):
+    label_percents = {}
+    signal_scale = 10
+    for rec in dataset.recs.values():
+        for t in rec.tracks:
+            print("Got track ", t)
+            for label in t.human_tags:
+                if label not in label_percents:
+
+                    label_percents[label] = [0] * (signal_scale + 1)
+                signal_percent = round(t.signal_percent * signal_scale)
+                label_percents[label][signal_percent] += 1
+    save_dir = out_dir / "signal-graphs"
+    save_dir.mkdir(parents=True, exist_ok=True)
+    for label, values in label_percents.items():
+        plt.clf()
+        plt.plot(np.arange(signal_scale + 1), values, marker="o", linestyle="-")
+
+        # Add labels and title
+        plt.xlabel("Signal percent")
+        plt.ylabel("Tracks")
+        plt.title(f"{label}")
+        plt.savefig(str(save_dir / f"{label}.png"))
 
 
 def save_data(datasets, base_dir, config):

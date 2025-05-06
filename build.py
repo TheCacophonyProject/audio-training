@@ -622,6 +622,13 @@ def main():
     # config = load_config(args.config_file)
     dataset = AudioDataset("all", config)
     dataset.load_meta(args.dir)
+
+    if args.plot_signal:
+        logging.info("Plotting signals")
+        from otherdata import plot_signal
+
+        plot_signal(dataset, Path(args.dir))
+        return
     # filter_birds(dataset)
     # return
     # for r in dataset.recs:
@@ -861,6 +868,12 @@ def parse_args():
         action="count",
         help="Try balance labels by oversampling low sample classess (doesn't seem to be effective)",
     )
+    parser.add_argument(
+        "--plot-signal",
+        default=False,
+        action="count",
+        help="Plot signal percent",
+    )
 
     parser.add_argument(
         "--split-file",
@@ -868,6 +881,7 @@ def parse_args():
         help="Split the dataset using clip ids specified in this file",
     )
     args = parser.parse_args()
+    args.dir = Path(args.dir)
     return args
 
 
