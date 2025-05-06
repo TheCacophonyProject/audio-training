@@ -4,7 +4,9 @@ import json
 
 
 # save ebird species list per region of nz
-key = "YOUR KEY"
+with open("ebirdkey.txt", "r") as f:
+    key = f.readline()
+
 api_url = "https://api.ebird.org/v2/product/spplist/{}"
 
 

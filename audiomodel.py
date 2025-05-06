@@ -2021,7 +2021,7 @@ def log_hist_weights(model, writer):
         with writer.as_default():
             for tf_var in model.trainable_weights:
                 if tf_var.name == "a-power":
-                    tf.summary.scalar(tf_var.name, tf_var.numpy(), step=epoch)
+                    tf.summary.histogram(tf_var.name, tf_var.numpy(), step=epoch)
                 # tf.summary.histogram(tf_var.name, tf_var.numpy(), step=epoch)
 
     return log_hist

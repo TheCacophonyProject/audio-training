@@ -92,7 +92,9 @@ def signal_noise(file, hop_length=281):
     n_fft = 4096
     # spectogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
     # plot_spec(spectogram)
-    signals, spectogram = track_signals(frames, sr, hop_length=hop_length, n_fft=n_fft,min_width= 0,min_height=0)
+    signals, spectogram = track_signals(
+        frames, sr, hop_length=hop_length, n_fft=n_fft, min_width=0, min_height=0
+    )
     noise = []
     return signals, noise, spectogram, frames, end
 
@@ -894,8 +896,8 @@ def main():
     freq_filter = 1000
     total_signal = 0
     for s in signals:
-        total_signal +=s.length
-    print("Sig percent ",100* total_signal / len(frames)/sr )
+        total_signal += s.length
+    print("Sig percent ", 100 * total_signal / len(frames) / sr)
 
     plot_mel_signals(np.abs(spectogram), signals, noise)
     return

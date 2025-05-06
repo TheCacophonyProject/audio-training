@@ -664,7 +664,7 @@ def tier1_data(base_dir):
             # ebird = (common, extra)
             ebird_map[row[2]] = (row[1].lower(), row[4].lower())
     config = Config()
-    plot_signal=True
+    plot_signal = True
     dataset = AudioDataset("Tier1", config)
     folders = ["Train_001", "Train_002"]
     counts = {}
@@ -693,9 +693,9 @@ def tier1_data(base_dir):
 
                 start = int(start)
                 end = int(end)
-                length = end-start
+                length = end - start
                 if length > 5 and ignore_long_tracks:
-                    logging.info("Track length %s so Ignoring %s",length, filename)
+                    logging.info("Track length %s so Ignoring %s", length, filename)
                     continue
                 # if label != "dobplo1":
                 # continue
@@ -723,13 +723,13 @@ def tier1_data(base_dir):
                 metadata_file = audio_file.with_suffix(".txt")
                 if metadata_file.exists():
                     with metadata_file.open("r") as f:
-                    # add in some metadata stats
+                        # add in some metadata stats
                         meta = json.load(f)
                 else:
                     meta = {}
                 meta["id"] = id
                 meta["tracks"] = []
-                
+
                 r = Recording(
                     meta,
                     audio_file,
@@ -763,9 +763,9 @@ def tier1_data(base_dir):
                 if plot_signal:
                     if label not in label_percents:
 
-                        label_percents[label] = [0]* 11
+                        label_percents[label] = [0] * 11
                     signal_percent = round(t.signal_percent * 10)
-                    label_percents[label][signal_percent]+=1
+                    label_percents[label][signal_percent] += 1
                 r.human_tags.add(label)
                 r.load_samples(
                     dataset.config.segment_length, dataset.config.segment_stride
@@ -773,7 +773,6 @@ def tier1_data(base_dir):
                 # dataset
                 dataset.add_recording(r)
 
-            
         print("Counts are ", counts)
         keys = list(counts.keys())
         keys.sort()
@@ -783,17 +782,17 @@ def tier1_data(base_dir):
         print("total is ", np.sum(tootal))
         counts = {}
         if plot_signal:
-            save_dir=  dataset_dir / "signal-graphs"
+            save_dir = dataset_dir / "signal-graphs"
             save_dir.mkdir(parents=True, exist_ok=True)
-            for label,values in label_percents.items():
-                plt.plot(np.arange(1.1,step =0.1), values, marker='o', linestyle='-')
+            for label, values in label_percents.items():
+                plt.plot(np.arange(1.1, step=0.1), values, marker="o", linestyle="-")
 
                 # Add labels and title
                 plt.xlabel("Signal percent")
                 plt.ylabel("Tracks")
                 plt.title(f"{label}")
                 plt.legend()
-                plt.savefig(str(save_dir/f"{label}.png"))
+                plt.savefig(str(save_dir / f"{label}.png"))
             label_percents = {}
     if plot_signal:
         return
@@ -876,13 +875,14 @@ def signal_noise(file, hop_length=281):
     n_fft = 4096
     # spectogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
     # plot_spec(spectogram)
-    signals, spectogram = track_signals(frames, sr, hop_length=hop_length, n_fft=n_fft,min_width = 0, min_height=0)
+    signals, spectogram = track_signals(
+        frames, sr, hop_length=hop_length, n_fft=n_fft, min_width=0, min_height=0
+    )
     noise = []
     return signals, noise, spectogram, frames, end
 
 
 def add_signal_meta(dir):
-
 
     test_labels = [
         "bellbird",
@@ -914,7 +914,11 @@ def add_signal_meta(dir):
     with open("eBird_taxonomy_v2024.csv") as f:
         for line in f:
             split_l = line.split(",")
-            if split_l[1].lower() in test_labels or  split_l[9].lower() in test_labels or "kiwi" in split_l[1]:
+            if (
+                split_l[1].lower() in test_labels
+                or split_l[9].lower() in test_labels
+                or "kiwi" in split_l[1]
+            ):
                 ebird_labels.add(split_l[2])
     # 1/0
     # ebird_map = {}
@@ -926,13 +930,17 @@ def add_signal_meta(dir):
             if i == 0:
                 continue
             # ebird = (common, extra)
-            if row[1].lower() in test_labels or  row[4].lower() in test_labels or "kiwi" in row[1].lower():
+            if (
+                row[1].lower() in test_labels
+                or row[4].lower() in test_labels
+                or "kiwi" in row[1].lower()
+            ):
                 ebird_labels.add(row[2])
     print("Only running on ", ebird_labels)
     meta_files = []
     folders = ["Train_001", "Train_002"]
     for folder in folders:
-        audio_dir = dir / folder/"train_audio"
+        audio_dir = dir / folder / "train_audio"
         for lbl in ebird_labels:
             lbl_dir = audio_dir / lbl
             meta_files.extend(lbl_dir.glob("**/*.flac"))
