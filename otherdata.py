@@ -936,7 +936,6 @@ def add_signal_meta(dir):
         for lbl in ebird_labels:
             lbl_dir = audio_dir / lbl
             meta_files.extend(lbl_dir.glob("**/*.flac"))
-    print(meta_files)
 
     with Pool(processes=8) as pool:
         [0 for x in pool.imap_unordered(process_signal, meta_files, chunksize=8)]
