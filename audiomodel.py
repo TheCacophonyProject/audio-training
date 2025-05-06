@@ -436,7 +436,9 @@ class AudioModel:
         if weights is not None:
             self.load_weights(weights)
 
-        checkpoints = self.checkpoints(run_name)
+        checkpoints = self.checkpoints(
+            run_name, multi_label=args.get("multi_label", True)
+        )
         class_weights = None
         if args.get("use_weighting", True):
             class_weights = get_weighting(self.train, self.labels)
@@ -724,11 +726,9 @@ class AudioModel:
         )
         self.model.summary()
 
-    def checkpoints(self, run_name):
+    def checkpoints(self, run_name, multi_label=True):
         metrics = [
             "val_loss",
-            "val_binary_accuracy",
-            "val_categorical_accuracy",
             "val_precision",
             "val_auc",
             "val_recall",
@@ -736,6 +736,10 @@ class AudioModel:
             # "val_precK",
             "val_binary_focal_crossentropy",
         ]
+        accuracy = "val_categorical_accuracy"
+        if multi_label:
+            accuracy = "val_binary_accuracy"
+        metrics.append(accuracy)
         checks = []
         for m in metrics:
             m_dir = self.checkpoint_folder / run_name / f"{m}.weights.h5"
@@ -754,12 +758,12 @@ class AudioModel:
             checks.append(m_check)
         earlyStopping = tf.keras.callbacks.EarlyStopping(
             patience=22,
-            monitor="val_binary_accuracy",
+            monitor=accuracy,
             mode="max",
         )
         checks.append(earlyStopping)
         reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor="val_binary_accuracy", verbose=1, mode="max"
+            monitor=accuracy, verbose=1, mode="max"
         )
         checks.append(reduce_lr_callback)
         file_writer_cm = tf.summary.create_file_writer(str(self.log_dir / "cm"))
@@ -1574,7 +1578,7 @@ def main():
             )
 
             model.summary()
-            if multi:
+            if not multi:
                 popped = model.layers.pop()
                 logging.info("Replacing softmax with sigmoid")
                 popped.activation = tf.keras.activations.sigmoid
@@ -1948,7 +1952,13 @@ def best_threshold(model, labels, dataset, filename):
         #     # print("f", f, t)
         #     print("Thresholds are", thresh, area)
     thresholds = np.array(thresholds)
-    logging.info("ALl thresholds are %s mean %s median %s", thresholds, np.mean(thresholds), np.median(thresholds))
+    logging.info(
+        "ALl thresholds are %s mean %s median %s",
+        thresholds,
+        np.mean(thresholds),
+        np.median(thresholds),
+    )
+
 
 def macro_f1(y, y_hat, thresh=0.5):
     """Compute the macro F1-score on a batch of observations (average F1 across labels)
