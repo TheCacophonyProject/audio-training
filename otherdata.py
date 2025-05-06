@@ -665,10 +665,12 @@ def tier1_data(base_dir):
             ebird_map[row[2]] = (row[1].lower(), row[4].lower())
     config = Config()
     plot_signal = True
+    signal_scale = 100
     dataset = AudioDataset("Tier1", config)
     folders = ["Train_001", "Train_002"]
     counts = {}
     label_percents = {}
+
     for folder in folders:
         filtered_stats = {}
         ignore_long_tracks = folder == "Train_002"
@@ -767,8 +769,8 @@ def tier1_data(base_dir):
                 if plot_signal:
                     if label not in label_percents:
 
-                        label_percents[label] = [0] * 11
-                    signal_percent = round(t.signal_percent * 10)
+                        label_percents[label] = [0] * (signal_scale+1)
+                    signal_percent = round(t.signal_percent * signal_scale)
                     label_percents[label][signal_percent] += 1
                 r.human_tags.add(label)
                 r.load_samples(
@@ -791,7 +793,7 @@ def tier1_data(base_dir):
             save_dir.mkdir(parents=True, exist_ok=True)
             for label, values in label_percents.items():
                 plt.clf()
-                plt.plot(np.arange(1.1, step=0.1), values, marker="o", linestyle="-")
+                plt.plot(np.arange(signal_scale+1), values, marker="o", linestyle="-")
 
                 # Add labels and title
                 plt.xlabel("Signal percent")
