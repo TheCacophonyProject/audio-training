@@ -648,7 +648,7 @@ def tier1_data(base_dir):
     ]
 
     ebird_map = {}
-    with open("ebird_taxonomy.json") as f:
+    with open("eBird_taxonomy_v2024.csv") as f:
         for line in f:
             split_l = line.split(",")
             ebird_map[split_l[2]] = (split_l[1].lower(), split_l[9].lower())
@@ -694,8 +694,9 @@ def tier1_data(base_dir):
                 start = int(start)
                 end = int(end)
                 length = end-start
-                if length > 5:
+                if length > 5 and ignore_long_tracks:
                     logging.info("Track length %s so Ignoring %s",length, filename)
+                    continue
                 # if label != "dobplo1":
                 # continue
                 primary_label = ebird_map.get(label)
@@ -782,16 +783,17 @@ def tier1_data(base_dir):
         print("total is ", np.sum(tootal))
         counts = {}
         if plot_signal:
-            save_dir=  dataset_dir / "train_audio" / folder / "signal-graphs"
+            save_dir=  dataset_dir / "signal-graphs"
             save_dir.mkdir(parents=True, exist_ok=True)
-            for labels,values in label_percents.items():
+            for label,values in label_percents.items():
                 plt.plot(np.arange(1.1,step =0.1), values, marker='o', linestyle='-')
 
-                # Add labels and title
-                plt.xlabel("Signal percent")
-                plt.ylabel("Tracks")
-                plt.title(f"{label}")
-                plt.savefig(str(save_dir/f"{label}.png"))
+            # Add labels and title
+            plt.xlabel("Signal percent")
+            plt.ylabel("Tracks")
+            plt.title(f"{label}")
+            plt.legend()
+            plt.savefig(str(save_dir/f"all.png"))
             label_percents = {}
     if plot_signal:
         return
