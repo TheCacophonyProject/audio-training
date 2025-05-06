@@ -962,6 +962,8 @@ def process_signal(metadata_file):
         if not file.exists():
             file = metadata_file.with_suffix(".mp3")
         if not file.exists():
+            file = metadata_file.with_suffix(".flac")
+        if not file.exists():
             logging.info("Not recording for %s", metadata_file)
             return
 
