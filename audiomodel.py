@@ -1748,6 +1748,9 @@ def parse_args():
         "--filter-freq", default=False, action="count", help="Filter Freq"
     )
     parser.add_argument(
+        "--filter-signal", default=False, action="count", help="Filter by signal percent > 0.0"
+    )
+    parser.add_argument(
         "--random-butter",
         default=0,
         type=float,

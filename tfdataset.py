@@ -725,9 +725,9 @@ def get_a_dataset(dir, labels, args):
         logging.info("Filtering out bird tags without specific bird")
         dataset = dataset.filter(others_filter)
     # bird_dataset = dataset.filter(bird_filter)
-    # if args.get("filter_signal") is not None:
-    #     logging.info("Filtering signal by percent 0.1")
-    #     bird_dataset = bird_dataset.filter(filter_signal)
+    if args.get("filter_signal") is not None:
+        logging.info("Filtering signal by percent 0.0")
+        dataset = dataset.filter(filter_signal)
     if dir.name != "train":
         # train data too big for ram
         dataset = dataset.cache()
@@ -1771,7 +1771,7 @@ def pcen_function(x, y):
 
 
 def filter_signal(x, y):
-    return tf.math.greater(y[2], 0.1)
+    return tf.math.greater(y[2], 0.0)
     # return tf.math.equal(tf.argmax(y[0]), 1)
 
 

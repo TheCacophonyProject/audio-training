@@ -664,7 +664,7 @@ def tier1_data(base_dir):
             # ebird = (common, extra)
             ebird_map[row[2]] = (row[1].lower(), row[4].lower())
     config = Config()
-    plot_signal = True
+    plot_signal = False
     signal_scale = 100
     dataset = AudioDataset("Tier1", config)
     folders = ["Train_001", "Train_002"]
@@ -724,8 +724,8 @@ def tier1_data(base_dir):
                     logging.info("Track length %s so Ignoring %s", length, filename)
                     continue
                 audio_file = dataset_dir / "train_audio" / filename
-                # if not audio_file.exists():
-                # continue
+                if not audio_file.exists():
+                    continue
                 metadata_file = audio_file.with_suffix(".txt")
                 if metadata_file.exists():
                     with metadata_file.open("r") as f:
@@ -816,7 +816,6 @@ def plot_signal(dataset, out_dir):
     signal_scale = 10
     for rec in dataset.recs.values():
         for t in rec.tracks:
-            print("Got track ", t)
             for label in t.human_tags:
                 if label not in label_percents:
 
@@ -942,41 +941,44 @@ def add_signal_meta(dir):
         "banded dotterel",
         "australasian bittern",
     ]
-
-    ebird_labels = set()
-    with open("eBird_taxonomy_v2024.csv") as f:
-        for line in f:
-            split_l = line.split(",")
-            if (
-                split_l[1].lower() in test_labels
-                or split_l[9].lower() in test_labels
-                or "kiwi" in split_l[1]
-            ):
-                ebird_labels.add(split_l[2])
-    # 1/0
-    # ebird_map = {}
-    with open("classes.csv", newline="") as csvfile:
-        dreader = csv.reader(csvfile, delimiter=",", quotechar="|")
-        i = -1
-        for row in dreader:
-            i += 1
-            if i == 0:
-                continue
-            # ebird = (common, extra)
-            if (
-                row[1].lower() in test_labels
-                or row[4].lower() in test_labels
-                or "kiwi" in row[1].lower()
-            ):
-                ebird_labels.add(row[2])
-    print("Only running on ", ebird_labels)
-    meta_files = []
-    folders = ["Train_001", "Train_002"]
-    for folder in folders:
-        audio_dir = dir / folder / "train_audio"
-        for lbl in ebird_labels:
-            lbl_dir = audio_dir / lbl
-            meta_files.extend(lbl_dir.glob("**/*.flac"))
+    tier1_data = False
+    if tier1_data:
+        ebird_labels = set()
+        with open("eBird_taxonomy_v2024.csv") as f:
+            for line in f:
+                split_l = line.split(",")
+                if (
+                    split_l[1].lower() in test_labels
+                    or split_l[9].lower() in test_labels
+                    or "kiwi" in split_l[1]
+                ):
+                    ebird_labels.add(split_l[2])
+        # 1/0
+        # ebird_map = {}
+        with open("classes.csv", newline="") as csvfile:
+            dreader = csv.reader(csvfile, delimiter=",", quotechar="|")
+            i = -1
+            for row in dreader:
+                i += 1
+                if i == 0:
+                    continue
+                # ebird = (common, extra)
+                if (
+                    row[1].lower() in test_labels
+                    or row[4].lower() in test_labels
+                    or "kiwi" in row[1].lower()
+                ):
+                    ebird_labels.add(row[2])
+        print("Only running on ", ebird_labels)
+        meta_files = []
+        folders = ["Train_001", "Train_002"]
+        for folder in folders:
+            audio_dir = dir / folder / "train_audio"
+            for lbl in ebird_labels:
+                lbl_dir = audio_dir / lbl
+                meta_files.extend(lbl_dir.glob("**/*.flac"))
+    else:
+        meta_files = dir.glob("**/*.txt")
 
     with Pool(processes=8) as pool:
         [0 for x in pool.imap_unordered(process_signal, meta_files, chunksize=8)]
