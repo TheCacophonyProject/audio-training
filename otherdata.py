@@ -670,6 +670,7 @@ def tier1_data(base_dir):
     counts = {}
     label_percents = {}
     for folder in folders:
+        filtered_stats = {}
         ignore_long_tracks = folder == "Train_002"
         dataset_dir = base_dir / folder
         metadata = dataset_dir / "001_metadata.csv"
@@ -694,9 +695,7 @@ def tier1_data(base_dir):
                 start = int(start)
                 end = int(end)
                 length = end - start
-                if length > 5 and ignore_long_tracks:
-                    logging.info("Track length %s so Ignoring %s", length, filename)
-                    continue
+
                 # if label != "dobplo1":
                 # continue
                 primary_label = ebird_map.get(label)
@@ -716,7 +715,12 @@ def tier1_data(base_dir):
                     label = "kiwi"
                 else:
                     continue
-
+                if length > 5 and ignore_long_tracks:
+                    if label not in filtered_stats:
+                        filtered_stats[label] = 0
+                    filtered_stats[label] += 1
+                    logging.info("Track length %s so Ignoring %s", length, filename)
+                    continue
                 audio_file = dataset_dir / "train_audio" / filename
                 # if not audio_file.exists():
                 # continue
@@ -774,6 +778,7 @@ def tier1_data(base_dir):
                 dataset.add_recording(r)
 
         print("Counts are ", counts)
+        print("FIltereds are ", filtered_stats)
         keys = list(counts.keys())
         keys.sort()
         for k in keys:
@@ -785,6 +790,7 @@ def tier1_data(base_dir):
             save_dir = dataset_dir / "signal-graphs"
             save_dir.mkdir(parents=True, exist_ok=True)
             for label, values in label_percents.items():
+                plt.clf()
                 plt.plot(np.arange(1.1, step=0.1), values, marker="o", linestyle="-")
 
                 # Add labels and title
