@@ -51,7 +51,7 @@ RELABEL["great spotted kiwi"] = "kiwi"
 RELABEL["norfolk morepork"] = "morepork"
 RELABEL["golden whistler"] = "whistler"
 RELABEL["norfolk golden whistler"] = "whistler"
-
+RELABEL["golden-backed whistler"] = "whistler"
 SAMPLE_GROUP_ID = 0
 MIN_TRACK_LENGTH = 1.5
 

@@ -229,15 +229,15 @@ def get_tracks_from_signals(signals, end):
             mel_overlap = s.freq_overlap(s2)
             min_length = min(s.length, s2.length)
 
-            print(
-                "TIme overlap between ",
-                s,
-                " and ",
-                s2,
-                " is ",
-                overlap / min_length,
-                mel_overlap,
-            )
+            # print(
+            #     "TIme overlap between ",
+            #     s,
+            #     " and ",
+            #     s2,
+            #     " is ",
+            #     overlap / min_length,
+            #     mel_overlap,
+            # )
             if overlap > 0.7 * min_length and abs(mel_overlap) < 2200:
                 s.merge(s2)
                 to_delete.append(s2)

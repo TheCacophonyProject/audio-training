@@ -1326,9 +1326,9 @@ def multi_confusion_single(
                 # add this index as wrong for all true labels. where it hasn't got it right
 
                 for true_label in true_labels:
-                    if true_label not in best_labels:
-                        flat_y.append(true_label)
-                        flat_p.append(index)
+                    # if true_label not in best_labels:
+                    flat_y.append(true_label)
+                    flat_p.append(index)
             elif y_l == 1 and predicted:
                 flat_y.append(index)
                 flat_p.append(index)
@@ -1378,97 +1378,6 @@ def multi_confusion_single(
     plt.savefig(none_path.with_suffix(".png"), format="png")
 
 
-def multi_confusion(
-    model, labels, dataset, filename="confusion.png", one_hot=True, model_name=None
-):
-    from sklearn.preprocessing import MultiLabelBinarizer
-
-    mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
-    true_categories = [y for x, y in dataset]
-    true_categories = tf.concat(true_categories, axis=0)
-    y_true = []
-    if one_hot:
-        for y in true_categories:
-            non_zero = tf.where(y).numpy()
-            y_true.append(list(non_zero.flatten()))
-        # only usefull if not multi
-        # true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    else:
-        y_true = np.array(true_categories)
-    if model_name == "rf-features":
-        dataset = tf_to_ydf(dataset)
-    y_pred = model.predict(dataset)
-
-    predicted_categories = []
-    for pred in y_pred:
-        cur_preds = []
-        for i, p in enumerate(pred):
-            if p > 0.7:
-                cur_preds.append(i)
-        predicted_categories.append(cur_preds)
-
-    for i, l in enumerate(labels):
-        print("for ", l)
-        lbl_count = 0
-        tp = 0
-        fn = 0
-        fp = 0
-        tn = 0
-        neg_c = 0
-        wrong_labels = {}
-        for ll in labels:
-            wrong_labels[ll] = 0
-        for y, p in zip(y_true, predicted_categories):
-            if i in y:
-                lbl_count += 1
-                if i in p:
-                    tp += 1
-                else:
-                    fp += 1
-                    for lbl_p in p:
-                        wrong_labels[labels[lbl_p]] += 1
-            else:
-                neg_c += 1
-                if i in p:
-                    fn += 1
-                else:
-                    tn += 1
-
-        print("Have", lbl_count)
-        print("Incorrects are", wrong_labels)
-        if lbl_count == 0:
-            continue
-        try:
-            print(
-                "{}( {}%)\t{}( {}% )".format(
-                    tp, round(100 * tp / (tp + fp)), fp, round(100 * fp / (tp + fp))
-                )
-            )
-            print(
-                "{}( {}%)\t{}( {}% )".format(
-                    fn, round(100 * fn / (tn + fn)), tn, round(100 * tn / (tn + fn))
-                )
-            )
-        except:
-            pass
-    y_true = mlb.fit_transform(y_true)
-    predicted_categories = mlb.fit_transform(predicted_categories)
-    cms = multilabel_confusion_matrix(
-        y_true, predicted_categories, labels=np.arange(len(labels))
-    )
-    # Log the confusion matrix as an image summary.
-    for i, cm in enumerate(cms):
-        cm2 = np.empty((cm.shape))
-        cm2[0] = np.flip(cm[1])
-        cm2[1] = np.flip(cm[0])
-        figure = plot_confusion_matrix(cm2, class_names=[labels[i], "not"])
-        logging.info("Saving confusion to %s", filename)
-        file_name = filename.parent / f"{labels[i]}-{filename}"
-        file_name = file_name.with_suffix(".png")
-        plt.savefig(file_name, format="png")
-
-
-#
 #
 # def confusion(model, labels, dataset, filename="confusion.png"):
 #     true_categories = [y for x, y in dataset]
@@ -1748,7 +1657,10 @@ def parse_args():
         "--filter-freq", default=False, action="count", help="Filter Freq"
     )
     parser.add_argument(
-        "--filter-signal", default=False, action="count", help="Filter by signal percent > 0.0"
+        "--filter-signal",
+        default=False,
+        action="count",
+        help="Filter by signal percent > 0.0",
     )
     parser.add_argument(
         "--random-butter",

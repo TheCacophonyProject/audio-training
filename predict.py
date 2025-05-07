@@ -256,7 +256,8 @@ def load_samples(
     )
     mels = []
     i = 0
-    n_fft = sr // 10
+    # n_fft = sr // 10
+    n_fft = 4096
     # hop_length = 640  # feature frame rate of 75
 
     sample_size = int(sr * segment_length)
@@ -624,17 +625,68 @@ def normalize_data(x):
     return x
 
 
+def add_ebird_mappings(labels):
+    from audiodataset import RELABEL
+
+    ebird_map = {}
+    for l in labels:
+        ebird_map[l] = []
+
+    with open("eBird_taxonomy_v2024.csv") as f:
+        for line in f:
+            split_l = line.split(",")
+            model_label = None
+            # 1/0
+            if split_l[4].lower() in RELABEL.keys():
+                lbl_check = RELABEL[split_l[4].lower()]
+                if lbl_check in labels:
+                    model_label = lbl_check
+            if model_label is None and split_l[4].lower() in labels:
+                model_label = split_l[4].lower()
+            # if split_l[9].lower() in labels:
+            # model_label = split_l[9].lower()
+            if "kiwi" in split_l[4].lower() and "kiwi" in labels:
+                model_label = "kiwi"
+            if model_label is not None:
+                if split_l[2].lower() not in ebird_map[model_label]:
+                    ebird_map[model_label].append(split_l[2].lower())
+
+    with open("classes.csv", newline="") as csvfile:
+        dreader = csv.reader(csvfile, delimiter=",", quotechar="|")
+        i = -1
+        for row in dreader:
+            i += 1
+            if i == 0:
+                continue
+            # ebird = (common, extra)
+            model_label = None
+            if row[1].lower() in labels:
+                model_label = row[1].lower()
+            if row[4].lower() in labels:
+                model_label = row[4].lower()
+            if "kiwi" in row[1].lower() and "kiwi" in labels:
+                model_label = "kiwi"
+            if model_label is not None:
+                if row[2].lower() not in ebird_map[model_label]:
+                    ebird_map[model_label].append(row[2].lower())
+    return ebird_map
+
+
 def main():
     init_logging()
     args = parse_args()
-    # frames, sr = load_recording(args.file)
-    # end = get_end(frames, sr)
-    # frames = frames[: int(sr * end)]
-    # signals, _ = signal_noise(frames, sr)
+    frames, sr = load_recording(args.file)
+    end = get_end(frames, sr)
+    frames = frames[: int(sr * end)]
+    signals, _ = signal_noise(frames, sr)
 
-    # tracks = get_tracks_from_signals(signals, end)
-    # for s in tracks:
-    #     print("SIgnals are ", s)
+    tracks = get_tracks_from_signals(signals, end)
+    track = tracks[0]
+    track.start = 0
+    track.end = 5
+    tracks = [track]
+    for s in tracks:
+        print("SIgnals are ", s)
     # get_speech_score(args.file)
     # show_signals(args.file)
     # return
@@ -653,33 +705,16 @@ def main():
         compile=False,
     )
     model.summary()
-    model.layers.pop()
-    print("Last layer is ", model.layers[-1])
-    final_layer = model.layers[-1].output
-    print(final_layer)
-    output = tf.keras.activations.softmax(final_layer)
-    model = tf.keras.models.Model(model.input, outputs=output)
-    print(model.summary())
-    print(model.output)
-    return
-    for l in model.layers:
-        print(l)
-    final_layer = model.layers[-1]
-    config = final_layer.get_config()
-    print(config)
-    # print(final_layer, final_layer.activation)
-    print(model.__dict__.keys())
-    return
-    for l in model.layers:
-        print(l.name, l)
-        continue
-        weights = l.get_weights()
+    with open(load_model.parent / "metadata.txt", "r") as f:
+        meta = json.load(f)
+    multi = meta.get("multi_label", True)
+    # if not multi:
+    #     popped = model.layers.pop()
+    #     logging.info("Replacing softmax with sigmoid")
+    #     popped.activation = tf.keras.activations.sigmoid
+    #     model = tf.keras.models.Model(model.input, outputs=popped.output)
+    #     model.summary()
 
-        print(l)
-        for i, w in enumerate(weights):
-            print(f"{w}  Weights {i}: shape={w.shape}")
-            print(w)
-    return
     # an idea to get more details predictions
     # model.trainable = False
     #
@@ -693,14 +728,21 @@ def main():
     # return
     # model = tf.keras.models.load_model(str(load_model))
 
-    # model.load_weights(load_model.parent / "val_binary_accuracy.weights.h5")
+    model.load_weights(load_model.parent / "val_categorical_accuracy.weights.h5")
     # save_dir = Path("frozen_model")
 
     # model.save(save_dir / load_model.parent.name/ load_model.name)
     # 1 / 0
-    with open(load_model.parent / "metadata.txt", "r") as f:
-        meta = json.load(f)
+
     labels = meta.get("labels", [])
+    ebird_ids = meta.get("ebird_ids", [])
+    ebirds = add_ebird_mappings(labels)
+    for label, ids in zip(labels, ebird_ids):
+        print(label, "Have ", ids, " now calced ", ebirds[label])
+        # assert ids = ebirds[label]
+    # for k,v in ebirds.items():
+    # print(f"{k} = {v}")
+    # return
     multi_label = meta.get("multi_label", True)
     segment_length = meta.get("segment_length", 1.5)
     segment_stride = meta.get("segment_stride", 2)
