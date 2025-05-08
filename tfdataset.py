@@ -725,7 +725,7 @@ def get_a_dataset(dir, labels, args):
         logging.info("Filtering out bird tags without specific bird")
         dataset = dataset.filter(others_filter)
     # bird_dataset = dataset.filter(bird_filter)
-    if args.get("filter_signal") is not None:
+    if args.get("filter_signal",False):
         logging.info("Filtering signal by percent 0.0")
         dataset = dataset.filter(filter_signal)
     if dir.name != "train":
