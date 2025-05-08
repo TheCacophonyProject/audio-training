@@ -1528,6 +1528,7 @@ def main():
             fmax=meta_data.get("fmax"),
             break_freq=meta_data.get("break_freq"),
             n_fft=meta_data.get("n_fft"),
+            model_name = model_name
         )
         # acc = tf.metrics.binary_accuracy
         if model_name != "rf-features":
