@@ -648,12 +648,17 @@ def tier1_data(base_dir):
     ]
 
     ebird_map = {}
+    first = True
     with open("eBird_taxonomy_v2024.csv") as f:
         for line in f:
+            if first:
+                first = False
+                continue
             split_l = line.split(",")
-            ebird_map[split_l[2]] = (split_l[1].lower(), split_l[9].lower())
-    # 1/0
-    # ebird_map = {}
+            # for i,split in enumerate(split_l):
+            # print(i,split)
+            ebird_map[split_l[2]] = (split_l[4].lower(), split_l[8].lower())
+
     with open("classes.csv", newline="") as csvfile:
         dreader = csv.reader(csvfile, delimiter=",", quotechar="|")
         i = -1
@@ -706,9 +711,7 @@ def tier1_data(base_dir):
                 if primary_label is None:
                     print("No Mapping for ", label)
                     continue
-                if primary_label not in counts:
-                    counts[primary_label] = 0
-                counts[primary_label] += 1
+
                 if primary_label[0] in test_labels:
                     label = primary_label[0]
                 elif primary_label[1] in test_labels:
@@ -716,7 +719,13 @@ def tier1_data(base_dir):
                 elif "kiwi" in primary_label[0]:
                     label = "kiwi"
                 else:
-                    continue
+                    label = primary_label[0].replace(" ", "-")
+                if label not in counts:
+                    counts[label] = 0
+                counts[label] += 1
+                if label == "species":
+                    print(id)
+                    # continue
                 # if length > 5 and ignore_long_tracks:
                 #     if label not in filtered_stats:
                 #         filtered_stats[label] = 0
@@ -755,14 +764,16 @@ def tier1_data(base_dir):
                     # just choose 1 track in centre
                     t_start = 1
                     t_end = 4
+                if "best_track" not in meta:
+                    print("No best track", audio_file)
+                    continue
+                meta["best_track"]["id"] = id
+
+                track_meta = meta["best_track"]
+                track_meta["tags"][0]["what"] = label
 
                 t = Track(
-                    {
-                        "id": id,
-                        "start": t_start,
-                        "end": t_end,
-                        "tags": [{"automatic": False, "what": label}],
-                    },
+                    track_meta,
                     r.filename,
                     r.id,
                     r,
@@ -782,12 +793,11 @@ def tier1_data(base_dir):
                 )
                 # dataset
                 dataset.add_recording(r)
-        print("Counts are ", counts)
         print("FIltereds are ", filtered_stats)
         keys = list(counts.keys())
         keys.sort()
         for k in keys:
-            print(f"{k[0]}, {counts[k]}")
+            print(f"{k}, {counts[k]}")
         tootal = list(counts.values())
         print("total is ", np.sum(tootal))
         counts = {}
@@ -1047,6 +1057,9 @@ def generate_tracks(file):
     meta_f = file.with_suffix(".txt")
     metadata = {}
     if meta_f.exists():
+        if meta_f.is_dir():
+            logging.error("Is dir %s ", meta_f)
+            return
         with meta_f.open("r") as f:
             metadata = json.load(f)
     else:
@@ -1072,7 +1085,7 @@ def generate_tracks(file):
     tracks = get_tracks_from_signals(signals, end=end)
 
     length_per_segment = []
-    best_segment = None
+    best_segment = (0, 0, 0)
     previous_segment = None
     length_score = None
     for start in range(int(end - 3) + 1):

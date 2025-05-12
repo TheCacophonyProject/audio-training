@@ -241,6 +241,7 @@ def load_samples(
     db_scale=False,
     normalize=False,
 ):
+    filter_below = 1000
     logging.info(
         "Loading samples with length %s stride %s hop length %s and mean_sub %s mfcc %s break %s htk %s n mels %s fmin %s fmax %s",
         segment_length,
@@ -270,17 +271,29 @@ def load_samples(
         track_data = []
         start = t.start
         end = start + segment_length
-        end = min(end, t.end)
-        sr_start = int(start * sr)
-        sr_end = min(int(end * sr), sr_start + sample_size)
+        end = min(end, t.length)
+        print("DOing track ", start, end)
+        sr_start = 0
+        sr_end = min(int(end * sr), sample_size)
+        track_frames = frames[int(t.start * sr) : int(t.end * sr)]
+        print(track_frames.shape)
         while True:
-            data = frames[sr_start:sr_end]
+            data = track_frames[sr_start:sr_end]
+            print(sr_start, sr_end)
             if len(data) != sample_size:
+                print("Padded the data for ", t, data.shape)
+
                 data = np.pad(data, (0, sample_size - len(data)))
 
+            if filter_below and t.freq_end < filter_below:
+                logging.info(
+                    "Filter freq below %s %s %s", filter_below, t.freq_start, t.freq_end
+                )
+                data = butter_bandpass_filter(data, t.freq_start, t.freq_end, sr)
             if normalize:
                 data = normalize_data(data)
                 # 1/0
+            print("Power is ", power)
             spect = get_spect(
                 data,
                 sr,
@@ -728,7 +741,7 @@ def main():
     # return
     # model = tf.keras.models.load_model(str(load_model))
 
-    model.load_weights(load_model.parent / "val_categorical_accuracy.weights.h5")
+    # model.load_weights(load_model.parent / "val_categorical_accuracy.weights.h5")
     # save_dir = Path("frozen_model")
 
     # model.save(save_dir / load_model.parent.name/ load_model.name)
@@ -737,25 +750,30 @@ def main():
     labels = meta.get("labels", [])
     ebird_ids = meta.get("ebird_ids", [])
     ebirds = add_ebird_mappings(labels)
+    list_mappings = []
+    for l in labels:
+        list_mappings.append(ebirds[l])
     for label, ids in zip(labels, ebird_ids):
         print(label, "Have ", ids, " now calced ", ebirds[label])
-        # assert ids = ebirds[label]
-    # for k,v in ebirds.items():
-    # print(f"{k} = {v}")
-    # return
+
+    meta["ebird_ids"] = list_mappings
+    # with open(load_model.parent / "metadata.txt", "w") as f:
+    # json.dump(meta,f,indent=4)
+    assert len(ebirds) == len(labels)
+
     multi_label = meta.get("multi_label", True)
-    segment_length = meta.get("segment_length", 1.5)
-    segment_stride = meta.get("segment_stride", 2)
+    segment_length = meta.get("segment_length", 3)
+    segment_stride = meta.get("segment_stride", 1)
     use_mfcc = meta.get("use_mfcc", True)
     mean_sub = meta.get("mean_sub", False)
     use_mfcc = meta.get("use_mfcc", False)
-    hop_length = meta.get("hop_length", 640)
+    hop_length = meta.get("hop_length", 281)
     prob_thresh = meta.get("threshold", 0.7)
     model_name = meta.get("name", False)
-    break_freq = meta.get("break_freq", 700)
-    n_mels = meta.get("n_mels", 120)
+    break_freq = meta.get("break_freq", 1000)
+    n_mels = meta.get("n_mels", 160)
     normalize = meta.get("normalize", True)
-
+    power = meta.get("power", 2)
     hop_length = 281
     # print("stride is", segment_stride)
     # segment_length = 2
@@ -820,7 +838,7 @@ def main():
             data, length = yamn_embeddings(file, segment_stride)
         else:
             frames, sr = load_recording(file)
-            frames = butter_bandpass_filter(frames, 0, 10000, sr, order=5)
+            # frames = butter_bandpass_filter(frames, 0, 10000, sr, order=5)
 
             data = load_samples(
                 frames,
@@ -833,6 +851,7 @@ def main():
                 mel_break=break_freq,
                 n_mels=n_mels,
                 normalize=normalize,
+                power=power,
             )
         # data = np.array(data)
 
