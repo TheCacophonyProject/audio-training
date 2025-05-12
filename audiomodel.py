@@ -1546,11 +1546,6 @@ def main():
             # model.evaluate(dataset)
 
         if dataset is not None:
-            best_threshold(model, labels, dataset, args.confusion)
-            # return
-
-            weight_base_path = model_path.parent
-            args.confusion = Path(args.confusion)
             if meta_data.get("only_features"):
                 weight_files = [None]
             else:
@@ -1563,6 +1558,13 @@ def main():
                         else "val_categorical_accuracy.weights.h5"
                     ),
                 ]
+            logging.info("Using %s weights", weight_base_path / weight_files[1])
+            model.load_weights(weight_base_path / w)
+            best_threshold(model, labels, dataset, args.confusion)
+            # return
+
+            weight_base_path = model_path.parent
+            args.confusion = Path(args.confusion)
 
             for w in weight_files:
                 if w is not None:
