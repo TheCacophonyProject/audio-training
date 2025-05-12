@@ -1487,12 +1487,12 @@ def main():
             )
 
             model.summary()
-            if not multi:
-                popped = model.layers.pop()
-                logging.info("Replacing softmax with sigmoid")
-                popped.activation = tf.keras.activations.sigmoid
-                model = tf.keras.models.Model(model.input, outputs=popped.output)
-                model.summary()
+            # if not multi:
+            #     popped = model.layers.pop()
+            #     logging.info("Replacing softmax with sigmoid")
+            #     popped.activation = tf.keras.activations.sigmoid
+            #     model = tf.keras.models.Model(model.input, outputs=popped.output)
+            #     model.summary()
         labels = meta_data.get("labels")
         print("model labels are", labels)
 
@@ -1528,7 +1528,7 @@ def main():
             fmax=meta_data.get("fmax"),
             break_freq=meta_data.get("break_freq"),
             n_fft=meta_data.get("n_fft"),
-            model_name = model_name
+            model_name=model_name,
         )
         # acc = tf.metrics.binary_accuracy
         if model_name != "rf-features":

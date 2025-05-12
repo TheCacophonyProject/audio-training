@@ -92,9 +92,9 @@ def signal_noise(file, hop_length=281):
     n_fft = 4096
     # spectogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
     # plot_spec(spectogram)
-    signals, spectogram = track_signals(
-        frames, sr, hop_length=hop_length, n_fft=n_fft, min_width=0, min_height=0
-    )
+    signals, spectogram = track_signals(frames, sr, hop_length=hop_length, n_fft=n_fft)
+    # , min_width=0, min_height=0
+    # )
     noise = []
     return signals, noise, spectogram, frames, end
 
@@ -896,22 +896,73 @@ def main():
     freq_filter = 1000
     total_signal = 0
     for s in signals:
+        print("Sig is ", s)
         total_signal += s.length
     print("Sig percent ", 100 * total_signal / len(frames) / sr)
 
-    plot_mel_signals(np.abs(spectogram), signals, noise)
-    return
-    print(signals)
+    # plot_mel_signals(np.abs(spectogram), signals, noise)
+    # return
+    # print(signals)
     # means_merge(spectogram,signals)
     # return
     # for s in signal:
     # print(s)
     # 1 / 0
     # for s in signals:
-    #     print(s)
+    # print(s)
+    # return
+    # length_per_segment = []
+    # for start in range(int(end-3)+1):
+    #     s_end = start + 3
+    #     signal_length = 0
+    #     for s in signals:
+    #         if s.start < start and s.end < s_end:
+    #             continue
+
+    #         if s.start > s_end:
+    #             break
+    #         signal_length += min(s.end,s_end) - max(start,s.start)
+    #         # print("adding ",min(s.end,s_end) -  max(start,s.start), " for ", start, s_end, " from signal ", s, " length ", s.length)
+    #     length_per_segment.append(signal_length)
+    #     print(f"Signal length at {start}-{s_end} is {signal_length}")
     tracks = get_tracks_from_signals(signals, end)
+
+    length_per_segment = []
+    best_segment = None
+    previous_segment = None
+    length_score = None
+    print("End is ", end)
+    for start in range(int(end - 3) + 1):
+        s_end = start + 3
+        signal_length = 0
+        for s in tracks:
+            if s.start < start and s.end < s_end:
+                continue
+
+            if s.start > s_end:
+                break
+            signal_length += min(s.end, s_end) - max(start, s.start)
+            # print("adding ",min(s.end,s_end) -  max(start,s.start), " for ", start, s_end, " from signal ", s, " length ", s.length)
+        if len(length_per_segment) > 0:
+            length_score = length_per_segment[-1]
+            if len(length_per_segment) == 1:
+                length_score += signal_length
+            else:
+                length_score += (signal_length + length_per_segment[-2]) / 2
+            # print("Comparing",best_segment, " to ",length_score)
+            if best_segment is None or best_segment[2] < length_score:
+                # print("Updating ",start-1)
+                best_segment = (start - 1, signal_length, length_score)
+        else:
+            best_segment = (start, signal_length, signal_length)
+            # print(length_score)
+        print(f"Signal length at {start}-{s_end} is {signal_length}")
+
+        length_per_segment.append(signal_length)
+
+    print("Best signal is ", best_segment)
     for t in tracks:
-        print(t)
+        print("Track is ", t)
     plot_mel_signals(np.abs(spectogram), tracks, noise)
 
     # tracks = merge_again(tracks)

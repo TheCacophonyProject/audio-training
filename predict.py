@@ -266,7 +266,7 @@ def load_samples(
     end = segment_length
     mel_samples = []
     for t in tracks:
-        show_spec = True
+        show_spec = False
         track_data = []
         start = t.start
         end = start + segment_length
@@ -681,12 +681,12 @@ def main():
     signals, _ = signal_noise(frames, sr)
 
     tracks = get_tracks_from_signals(signals, end)
-    track = tracks[0]
-    track.start = 0
-    track.end = 5
-    tracks = [track]
-    for s in tracks:
-        print("SIgnals are ", s)
+    # track = tracks[0]
+    # track.start = 0
+    # track.end = 5
+    # tracks = [track]
+    # for s in tracks:
+    #     print("SIgnals are ", s)
     # get_speech_score(args.file)
     # show_signals(args.file)
     # return
@@ -708,7 +708,7 @@ def main():
     with open(load_model.parent / "metadata.txt", "r") as f:
         meta = json.load(f)
     multi = meta.get("multi_label", True)
-    # if not multi:
+    # if  1== 0 and not multi:
     #     popped = model.layers.pop()
     #     logging.info("Replacing softmax with sigmoid")
     #     popped.activation = tf.keras.activations.sigmoid
@@ -841,7 +841,10 @@ def main():
     for d, t in zip(data, tracks):
         pred_counts = [0] * len(labels)
         print("Predicting", t, " samples are ", len(d))
+        print(np.array(d).shape)
+        d = np.repeat(d, 3, -1)
         predictions = model.predict(np.array(d))
+
         for start_i, p in enumerate(predictions):
             print(
                 "Pred for start ", t.start + start_i * segment_stride, np.round(p * 100)

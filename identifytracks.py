@@ -92,7 +92,7 @@ def signal_noise(
     if min_width is None:
         min_width = 0.65 * width
 
-    print("Min height", min_height, " min width", min_width)
+    # print("Min height", min_height, " min width", min_width, " equates to ", min_width * 281/sr, freqs[int(min_height)])
     stats = [s for s in stats if s[2] > min_width and s[3] > min_height]
 
     i = 0
@@ -253,7 +253,8 @@ def get_tracks_from_signals(signals, end):
         signals.remove(s)
     for s in signals:
         s.enlarge(1.4, min_track_length=min_track_length)
-        s.end = min(end, s.end)
+        if end is not None:
+            s.end = min(end, s.end)
     to_delete = []
     for s in signals:
         if s.mel_freq_range < min_mel_range:

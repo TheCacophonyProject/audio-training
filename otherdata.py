@@ -13,7 +13,7 @@ import random
 import audioread.ffdec  # Use ffmpeg decoder
 import numpy as np
 from multiprocessing import Pool
-from identifytracks import signal_noise, get_tracks_from_signals, get_end
+from identifytracks import signal_noise, get_tracks_from_signals, get_end, Signal
 import argparse
 import matplotlib.pyplot as plt
 
@@ -218,49 +218,49 @@ def merge_again(tracks):
     return post_filter
 
 
-def generate_tracks(wav_file):
-    min_freq = lbl_meta.get("min_freq")
-    max_freq = lbl_meta.get("max_freq")
+# def generate_tracks(wav_file):
+#     min_freq = lbl_meta.get("min_freq")
+#     max_freq = lbl_meta.get("max_freq")
 
-    # wav_file = args[0]
-    # clip_id = args[1]
-    meta_f = wav_file.with_suffix(".txt")
-    metadata = {}
-    if meta_f.exists():
-        with meta_f.open("r") as f:
-            metadata = json.load(f)
+#     # wav_file = args[0]
+#     # clip_id = args[1]
+#     meta_f = wav_file.with_suffix(".txt")
+#     metadata = {}
+#     if meta_f.exists():
+#         with meta_f.open("r") as f:
+#             metadata = json.load(f)
 
-    if "Tracks" in metadata:
-        return
-    frames, sr = load_recording(wav_file, None)
+#     if "Tracks" in metadata:
+#         return
+#     frames, sr = load_recording(wav_file, None)
 
-    length = get_end(frames, sr)
-    signals = signal_noise(frames[: int(sr * length)], sr, 281)
-    signals = [
-        s
-        for s in signals
-        if (min_freq is None or s.freq_start > min_freq)
-        and (max_freq is None or s.freq_start < max_freq)
-    ]
+#     length = get_end(frames, sr)
+#     signals = signal_noise(frames[: int(sr * length)], sr, 281)
+#     signals = [
+#         s
+#         for s in signals
+#         if (min_freq is None or s.freq_start > min_freq)
+#         and (max_freq is None or s.freq_start < max_freq)
+#     ]
 
-    tracks = get_tracks_from_signals(signals, length)
-    tracks = merge_again(tracks)
-    tracks_meta = []
-    for i, t in enumerate(tracks):
+#     tracks = get_tracks_from_signals(signals, length)
+#     tracks = merge_again(tracks)
+#     tracks_meta = []
+#     for i, t in enumerate(tracks):
 
-        track_meta = t.get_meta()
-        track_meta["id"] = f"{wav_file.name}-{i}"
-        tag = {"automatic": False, "what": wav_file.parent.name}
-        track_meta["tags"] = [tag]
-        tracks_meta.append(track_meta)
-    metadata["Tracks"] = tracks_meta
-    metadata["id"] = metadata["additionalMetadata"]["xeno-id"]
-    metadata["duration"] = length
-    # metadata["location"] =
-    # could get some metadata  from xeno canto
+#         track_meta = t.get_meta()
+#         track_meta["id"] = f"{wav_file.name}-{i}"
+#         tag = {"automatic": False, "what": wav_file.parent.name}
+#         track_meta["tags"] = [tag]
+#         tracks_meta.append(track_meta)
+#     metadata["Tracks"] = tracks_meta
+#     metadata["id"] = metadata["additionalMetadata"]["xeno-id"]
+#     metadata["duration"] = length
+#     # metadata["location"] =
+#     # could get some metadata  from xeno canto
 
-    with meta_f.open("w") as f:
-        json.dump(metadata, f, indent=4)
+#     with meta_f.open("w") as f:
+#         json.dump(metadata, f, indent=4)
 
 
 lbl_meta = None
@@ -670,10 +670,10 @@ def tier1_data(base_dir):
     folders = ["Train_001", "Train_002"]
     counts = {}
     label_percents = {}
-
+    ignore_long_tracks = False
     for folder in folders:
         filtered_stats = {}
-        ignore_long_tracks = folder == "Train_002"
+        # ignore_long_tracks = folder == "Train_002"
         dataset_dir = base_dir / folder
         metadata = dataset_dir / "001_metadata.csv"
         if not metadata.exists():
@@ -717,13 +717,17 @@ def tier1_data(base_dir):
                     label = "kiwi"
                 else:
                     continue
-                if length > 5 and ignore_long_tracks:
-                    if label not in filtered_stats:
-                        filtered_stats[label] = 0
-                    filtered_stats[label] += 1
-                    logging.info("Track length %s so Ignoring %s", length, filename)
-                    continue
+                # if length > 5 and ignore_long_tracks:
+                #     if label not in filtered_stats:
+                #         filtered_stats[label] = 0
+                #     filtered_stats[label] += 1
+                #     logging.info("Track length %s so Ignoring %s", length, filename)
+                #     continue
+                # if length > 3:
+                # # or "kiwi" in label or "more" in label:
+                #     continue
                 audio_file = dataset_dir / "train_audio" / filename
+
                 if not audio_file.exists():
                     continue
                 metadata_file = audio_file.with_suffix(".txt")
@@ -778,7 +782,6 @@ def tier1_data(base_dir):
                 )
                 # dataset
                 dataset.add_recording(r)
-
         print("Counts are ", counts)
         print("FIltereds are ", filtered_stats)
         keys = list(counts.keys())
@@ -1029,10 +1032,95 @@ def process_signal(metadata_file):
     return
 
 
+def generate_tracks_master(dir):
+    meta_files = dir.glob("**/*.txt")
+
+    with Pool(processes=8) as pool:
+        [0 for x in pool.imap_unordered(generate_tracks, meta_files, chunksize=8)]
+
+
+def generate_tracks(file):
+    print(file)
+    min_height = 105.46875
+    min_width = 0.15981875
+
+    meta_f = file.with_suffix(".txt")
+    metadata = {}
+    if meta_f.exists():
+        with meta_f.open("r") as f:
+            metadata = json.load(f)
+    else:
+        logging.error("No metadata found for %s", file)
+        return
+    end = metadata.get("rec_end", None)
+    if "signal" not in metadata:
+        logging.error("No Signals metadata found for %s", file)
+        return
+    meta_sig = metadata.get("signal")
+    signals = []
+    sig_end = None
+    for s in meta_sig:
+        if (s[1] - s[0]) < min_width or (s[3] - s[2]) < min_width:
+            continue
+        signals.append(Signal(s[0], s[1], s[2], s[3], 0))
+        if end is None:
+            if sig_end is None or s[1] > sig_end:
+                sig_end = s[1]
+    if end is None:
+        end = sig_end + 3
+        logging.info("Using last signal + 3 as end %s", end)
+    tracks = get_tracks_from_signals(signals, end=end)
+
+    length_per_segment = []
+    best_segment = None
+    previous_segment = None
+    length_score = None
+    for start in range(int(end - 3) + 1):
+        s_end = start + 3
+        signal_length = 0
+        for s in tracks:
+            if s.start < start and s.end < s_end:
+                continue
+
+            if s.start > s_end:
+                break
+            signal_length += min(s.end, s_end) - max(start, s.start)
+        if len(length_per_segment) > 0:
+            length_score = length_per_segment[-1]
+            if len(length_per_segment) == 1:
+                length_score += signal_length
+            else:
+                length_score += (signal_length + length_per_segment[-2]) / 2
+            if best_segment is None or best_segment[2] < length_score:
+                best_segment = (start - 1, signal_length, length_score)
+        else:
+            best_segment = (start, signal_length, signal_length)
+            # print(length_score)
+        # print(f"Signal length at {start}-{s_end} is {signal_length}")
+
+        length_per_segment.append(signal_length)
+    best_track = {
+        "score": best_segment[2],
+        "signal_length": best_segment[1],
+        "start": best_segment[0],
+        "end": best_segment[0] + 3,
+        "tags": [{"automatic": False, "what": file.parent.name}],
+    }
+    # print("Best signal is ", best_segment)
+    metadata["best_track"] = best_track
+
+    with open(meta_f, "w") as f:
+        json.dump(metadata, f, indent=4)
+
+
 def main():
     init_logging()
     args = parse_args()
-    if args.signal:
+    if args.tracks:
+        logging.info("Adding best track estimates")
+        generate_tracks_master(args.dir)
+        return
+    elif args.signal:
         print("Adding signal data to ", args.dir)
         add_signal_meta(args.dir)
         return
@@ -1136,7 +1224,9 @@ def parse_args():
     parser.add_argument(
         "-s", "--signal", action="store_true", help="Add signal data to dir"
     )
-
+    parser.add_argument(
+        "-t", "--tracks", action="store_true", help="Add best track data"
+    )
     args = parser.parse_args()
     args.dir = Path(args.dir)
     return args
