@@ -10,6 +10,16 @@ with open("ebirdkey.txt", "r") as f:
 api_url = "https://api.ebird.org/v2/product/spplist/{}"
 
 
+sub_id = "S77204871"
+checklist = f"https://api.ebird.org/v2/product/checklist/view/{sub_id}"
+headers = {"x-ebirdapitoken": key}
+r = requests.get(checklist, headers=headers)
+r.raise_for_status()
+check_list = r.json()
+for ob in check_list["obs"]:
+    print(ob)
+# print(check_list["obs"]keys())
+1 / 0
 # taxonomy = "https://api.ebird.org/v2/ref/taxonomy/ebird"
 # headers = {'x-ebirdapitoken': key}
 # r = requests.get(taxonomy,headers=headers)

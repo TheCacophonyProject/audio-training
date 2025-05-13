@@ -723,9 +723,7 @@ def tier1_data(base_dir):
                 if label not in counts:
                     counts[label] = 0
                 counts[label] += 1
-                if label == "species":
-                    print(id)
-                    # continue
+                # continue
                 # if length > 5 and ignore_long_tracks:
                 #     if label not in filtered_stats:
                 #         filtered_stats[label] = 0
@@ -771,7 +769,11 @@ def tier1_data(base_dir):
 
                 track_meta = meta["best_track"]
                 track_meta["tags"][0]["what"] = label
-
+                meta_length = track_meta["end"] - track_meta["start"]
+                if meta_length > length:
+                    track_meta["end"] = end
+                    print("Adjusted end of ", filename, track_meta)
+                    return
                 t = Track(
                     track_meta,
                     r.filename,
