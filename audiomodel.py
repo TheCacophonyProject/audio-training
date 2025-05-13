@@ -122,7 +122,17 @@ class AudioModel:
         file = self.data_dir / "training-meta.json"
         with open(file, "r") as f:
             meta = json.load(f)
-        self.labels = meta.get("labels", [])
+
+        labels = set(meta.get("labels", []))
+        if self.second_data_dir is not None:
+            logging.info("Loading second metadata %s", self.second_data_dir)
+            file = self.second_data_dir / "training-meta.json"
+            with open(file, "r") as f:
+                second_meta = json.load(f)
+            second_labels = set(second_meta.get("labels", []))
+            labels.update(second_labels)
+
+        self.labels = list(labels)
         if "bird" not in self.labels:
             self.labels.append("bird")
         if "noise" not in self.labels:
@@ -801,7 +811,15 @@ class AudioModel:
         file = f"{self.data_dir}/training-meta.json"
         with open(file, "r") as f:
             meta = json.load(f)
+
         labels.update(meta.get("labels", []))
+        if self.second_data_dir is not None:
+            logging.info("Loading second metadata %s", self.second_data_dir)
+            file = self.second_data_dir / "training-meta.json"
+            with open(file, "r") as f:
+                second_meta = json.load(f)
+            second_labels = set(second_meta.get("labels", []))
+            labels.update(second_labels)
         set_specific_by_count(meta)
         labels = list(labels)
         labels.sort()
