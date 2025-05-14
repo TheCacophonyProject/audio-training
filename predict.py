@@ -269,19 +269,17 @@ def load_samples(
     for t in tracks:
         show_spec = False
         track_data = []
-        start = t.start
+        track_data = []
+        start = 0
         end = start + segment_length
         end = min(end, t.length)
-        print("DOing track ", start, end)
-        sr_start = 0
+
         sr_end = min(int(end * sr), sample_size)
+        sr_start = 0
         track_frames = frames[int(t.start * sr) : int(t.end * sr)]
-        print(track_frames.shape)
         while True:
             data = track_frames[sr_start:sr_end]
-            print(sr_start, sr_end)
             if len(data) != sample_size:
-                print("Padded the data for ", t, data.shape)
 
                 data = np.pad(data, (0, sample_size - len(data)))
 
@@ -293,7 +291,6 @@ def load_samples(
             if normalize:
                 data = normalize_data(data)
                 # 1/0
-            print("Power is ", power)
             spect = get_spect(
                 data,
                 sr,
@@ -325,7 +322,7 @@ def load_samples(
             sr_start = int(start * sr)
             sr_end = min(int(end * sr), sr_start + sample_size)
             # always take 1 sample
-            if end > t.end:
+            if end > t.length:
                 break
         mel_samples.append(track_data)
     return mel_samples

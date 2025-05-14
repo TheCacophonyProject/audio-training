@@ -422,6 +422,9 @@ def get_remappings(
     for excluded in excluded_labels:
         if excluded in labels:
             new_labels.remove(excluded)
+    for label in MERGE_LABELS.keys():
+        if label in new_labels:
+            new_labels.remove(label)
     for l in labels:
         if l in excluded_labels:
             re_dic[l] = -1
