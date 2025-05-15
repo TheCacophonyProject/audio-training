@@ -837,35 +837,55 @@ class AudioModel:
         logging.info("Loading train")
         excluded_labels = get_excluded_labels(self.labels)
 
-        test_birds = [
-            "bellbird",
-            "bird",
-            "fantail",
-            "morepork",
-            "noise",
-            "human",
-            "grey warbler",
-            "insect",
-            "kiwi",
-            "magpie",
-            "tui",
-            "house sparrow",
-            "blackbird",
-            "sparrow",
-            "song thrush",
-            "whistler",
-            "rooster",
-            "silvereye",
-            "norfolk silvereye",
-            "australian magpie",
-            "new zealand fantail",
-            # "thrush"
-        ]
-        for l in self.labels:
-            if l not in excluded_labels and l not in test_birds:
-                excluded_labels.append(l)
-            elif l in excluded_labels and l in test_birds:
-                excluded_labels.remove(l)
+        if args.get("only_features", False):
+            from tfdataset import ANIMAL_LABELS, set_merge_labels
+
+            merge_labels = {}
+            excluded_labels = []
+            for l in labels:
+                if l == "bird":
+                    continue
+                if l in SPECIFIC_BIRD_LABELS or l in GENERIC_BIRD_LABELS:
+                    print("Setting", l, " to bird")
+                    merge_labels[l] = "bird"
+                elif l in ANIMAL_LABELS:
+                    merge_labels[l] = "animal"
+                elif l == "insect":
+                    continue
+                    # merge_labels[l] = "insect"
+                elif l in NOISE_LABELS:
+                    merge_labels[l] = "noise"
+            set_merge_labels(merge_labels)
+        else:
+            test_birds = [
+                "bellbird",
+                "bird",
+                "fantail",
+                "morepork",
+                "noise",
+                "human",
+                "grey warbler",
+                "insect",
+                "kiwi",
+                "magpie",
+                "tui",
+                "house sparrow",
+                "blackbird",
+                "sparrow",
+                "song thrush",
+                "whistler",
+                "rooster",
+                "silvereye",
+                "norfolk silvereye",
+                "australian magpie",
+                "new zealand fantail",
+                # "thrush"
+            ]
+            for l in self.labels:
+                if l not in excluded_labels and l not in test_birds:
+                    excluded_labels.append(l)
+                elif l in excluded_labels and l in test_birds:
+                    excluded_labels.remove(l)
         logging.info("labels are %s Excluding %s", self.labels, excluded_labels)
         second_dir = None
         if self.second_data_dir is not None:
@@ -2167,6 +2187,7 @@ def tf_to_ydf(dataset):
         ydf_ds["f1"].append(short_f)
         ydf_ds["f2"].append(long_f)
         ydf_ds["y"].append(tf.argmax(y).numpy())
+
     ydf_ds["f1"] = np.float32(ydf_ds["f1"])
     ydf_ds["f2"] = np.float32(ydf_ds["f2"])
     ydf_ds["y"] = np.int16(ydf_ds["y"])

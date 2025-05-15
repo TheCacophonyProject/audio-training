@@ -46,27 +46,32 @@ NOISE_LABELS = [
     "cow",
     "chicken",
     "water",
+    "sheep",
 ]
+
+
+ANIMAL_LABELS = ["cat", "cow", "chicken", "dog", "sheep"]
+
+# SPECIFIC_BIRD_LABELS = [
+#     "bird",
+#     "whistler",
+#     "kiwi",
+#     "morepork",
+#     "rifleman",
+#     "sparrow",
+#     "fantail",
+#     "australasian bittern",
+#     "banded dotterel",
+#     "tui",
+# ]
 SPECIFIC_BIRD_LABELS = [
     "bird",
-    "whistler",
-    "kiwi",
-    "morepork",
-    "rifleman",
-    "sparrow",
-    "fantail",
-    "australasian bittern",
-    "banded dotterel",
-    "tui",
-]
-SPECIFIC_BIRD_LABELS = [
-    "bird",
     "fantail",
     "morepork",
-    "noise",
-    "human",
+    # "noise",
+    # "human",
     "grey warbler",
-    "insect",
+    # "insect",
     "kiwi",
     "magpie",
     "tui",
@@ -144,6 +149,12 @@ FMAX = 11000
 # NOISE_LABELS.extend(GENERIC_BIRD_LABELS)
 # NOISE_LABELS.extend(OTHER_LABELS)
 # keep_excluded_in_extra = False
+
+
+def set_merge_labels(new_merge):
+    global MERGE_LABELS
+    MERGE_LABELS = new_merge
+    logging.info("Set merge %s", new_merge)
 
 
 def set_specific_by_count(meta):
@@ -422,11 +433,14 @@ def get_remappings(
     for excluded in excluded_labels:
         if excluded in labels:
             new_labels.remove(excluded)
+
+    merge_v = list(MERGE_LABELS.values())
+
     for label in MERGE_LABELS.keys():
-        if label in new_labels:
+        if label in new_labels and label not in merge_v:
             new_labels.remove(label)
     for l in labels:
-        if l in excluded_labels:
+        if l in excluded_labels and l:
             re_dic[l] = -1
             # remapped[l] = []
             logging.info("Excluding %s", l)
