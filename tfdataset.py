@@ -1054,8 +1054,11 @@ def read_tfrecord(
                     label = tf.reduce_max(
                         tf.one_hot(extra, num_labels, dtype=tf.int32), axis=0
                     )
-                max_l = tf.argmax(label)
-                label = tf.one_hot(max_l, num_labels, dtype=tf.int32)
+                if tf.math.count_nonzero(label) == 0:
+                    label = tf.zeros(num_labels)
+                else:
+                    max_l = tf.argmax(label)
+                    label = tf.one_hot(max_l, num_labels, dtype=tf.int32)
             if embed_preds is not None:
                 embed_preds = tf.reduce_max(
                     tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
