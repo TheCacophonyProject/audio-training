@@ -662,14 +662,19 @@ def get_a_dataset(dir, labels, args):
         second_dir = Path(args.get("second_dir"))
 
         second_filenames = tf.io.gfile.glob(str(second_dir / "*.tfrecord"))
-        logging.info("Loading second files %s", second_filenames)
+        logging.info(
+            "Loading second files %s count: %s",
+            second_filenames[0],
+            len(second_filenames),
+        )
         filenames.extend(second_filenames)
     else:
         logging.info("Not using second dataset")
 
     xeno_files = Path("/data/audio-data/xenocanto/xeno-training-data/")
     xeno_files = xeno_files / dir.name
-    if xeno_files.exists() and dir.name != "test":
+    do_xeno = False
+    if do_xeno and xeno_files.exists() and dir.name != "test":
         logging.info("Xeno files %s", xeno_files)
         xeno_files = tf.io.gfile.glob(str(xeno_files / "*.tfrecord"))
         logging.info("Loading xeno files %s", xeno_files)
@@ -747,7 +752,8 @@ def get_a_dataset(dir, labels, args):
         dataset = dataset.filter(filter_signal)
     # if dir.name != "train":
     # train data too big for ram
-    # dataset = dataset.cache()
+    if args.get("cache", False):
+        dataset = dataset.cache()
     if args.get("shuffle", True):
         dataset = dataset.shuffle(
             4096, reshuffle_each_iteration=args.get("reshuffle", True)
@@ -1055,7 +1061,7 @@ def read_tfrecord(
                         tf.one_hot(extra, num_labels, dtype=tf.int32), axis=0
                     )
                 if tf.math.count_nonzero(label) == 0:
-                    label = tf.zeros(num_labels)
+                    label = tf.zeros(num_labels, dtype=tf.int32)
                 else:
                     max_l = tf.argmax(label)
                     label = tf.one_hot(max_l, num_labels, dtype=tf.int32)

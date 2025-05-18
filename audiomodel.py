@@ -503,7 +503,7 @@ class AudioModel:
             acc = (
                 "val_binary_accuracy.weights.h5"
                 if args.get("multi_label")
-                else "val_acc.weights.h5"
+                else "val_categorical_accuracy.weights.h5"
             )
             self.model.load_weights(os.path.join(self.checkpoint_folder, run_name, acc))
             confusion_file = (
@@ -1567,6 +1567,7 @@ def main():
             break_freq=meta_data.get("break_freq"),
             n_fft=meta_data.get("n_fft"),
             model_name=model_name,
+            cache=True,
         )
         # acc = tf.metrics.binary_accuracy
         if model_name != "rf-features":
@@ -1596,12 +1597,12 @@ def main():
                         else "val_categorical_accuracy.weights.h5"
                     ),
                 ]
+            weight_base_path = model_path.parent
             logging.info("Using %s weights", weight_base_path / weight_files[1])
-            model.load_weights(weight_base_path / w)
+            model.load_weights(weight_base_path / weight_files[1])
             best_threshold(model, labels, dataset, args.confusion)
             # return
 
-            weight_base_path = model_path.parent
             args.confusion = Path(args.confusion)
 
             for w in weight_files:
