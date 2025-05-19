@@ -831,6 +831,7 @@ class AudioModel:
             self.labels.append("bird")
         if "noise" not in self.labels:
             self.labels.append("noise")
+
         # if "other" not in self.labels:
         # self.labels.append("other")
         self.labels.sort()
@@ -839,6 +840,10 @@ class AudioModel:
 
         if args.get("only_features", False):
             from tfdataset import ANIMAL_LABELS, set_merge_labels
+
+            if "animal" not in self.labels:
+                self.labels.append("animal")
+            self.labels.sort()
 
             merge_labels = {}
             excluded_labels = []
@@ -855,6 +860,8 @@ class AudioModel:
                     # merge_labels[l] = "insect"
                 elif l in NOISE_LABELS:
                     merge_labels[l] = "noise"
+            excluded_labels = ["false-positive"]
+
             set_merge_labels(merge_labels)
         else:
             test_birds = [

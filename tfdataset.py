@@ -480,13 +480,13 @@ def get_remappings(
             if l in MERGE_LABELS and MERGE_LABELS[l] in labels:
                 logging.info("Re labeiling %s as %s", l, MERGE_LABELS[l])
                 re_dic[l] = new_labels.index(MERGE_LABELS[l])
-            else:
+            elif l in new_labels:
                 re_dic[l] = new_labels.index(l)
             # remapped[l] = [l]
             # values.append(new_labels.index(l))
     if not use_generic_bird:
         re_dic["bird"] = -1
-    re_dic["slender-billed white-eye"] = -1
+    # re_dic["slender-billed white-eye"] = -1
 
     master_keys = []
     master_values = []
