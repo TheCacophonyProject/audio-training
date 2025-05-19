@@ -738,7 +738,7 @@ def main():
     # return
     # model = tf.keras.models.load_model(str(load_model))
 
-    # model.load_weights(load_model.parent / "val_categorical_accuracy.weights.h5")
+    model.load_weights(load_model.parent / "val_categorical_accuracy.weights.h5")
     # save_dir = Path("frozen_model")
 
     # model.save(save_dir / load_model.parent.name/ load_model.name)

@@ -468,9 +468,14 @@ def get_remappings(
 
     merge_v = list(MERGE_LABELS.values())
 
+    for k, v in MERGE_LABELS.items():
+        if k in new_labels and v not in new_labels:
+            new_labels.append(v)
+    new_labels.sort()
     for label in MERGE_LABELS.keys():
         if label in new_labels and label not in merge_v:
             new_labels.remove(label)
+
     for l in labels:
         if l in excluded_labels and l:
             re_dic[l] = -1
@@ -480,7 +485,7 @@ def get_remappings(
             if l in MERGE_LABELS and MERGE_LABELS[l] in labels:
                 logging.info("Re labeiling %s as %s", l, MERGE_LABELS[l])
                 re_dic[l] = new_labels.index(MERGE_LABELS[l])
-            elif l in new_labels:
+            else:
                 re_dic[l] = new_labels.index(l)
             # remapped[l] = [l]
             # values.append(new_labels.index(l))
