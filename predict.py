@@ -754,8 +754,8 @@ def main():
         print(label, "Have ", ids, " now calced ", ebirds[label])
 
     meta["ebird_ids"] = list_mappings
-    # with open(load_model.parent / "metadata.txt", "w") as f:
-    # json.dump(meta,f,indent=4)
+    with open(load_model.parent / "metadata.txt", "w") as f:
+        json.dump(meta, f, indent=4)
     assert len(ebirds) == len(labels)
 
     multi_label = meta.get("multi_label", True)
@@ -857,7 +857,7 @@ def main():
     for d, t in zip(data, tracks):
         pred_counts = [0] * len(labels)
         print("Predicting", t, " samples are ", len(d))
-        print(np.array(d).shape)
+        # print(np.array(d).shape)
         d = np.repeat(d, 3, -1)
         predictions = model.predict(np.array(d))
 

@@ -1161,6 +1161,7 @@ def read_tfrecord(
             possible_labels,
             low_sample,
             start_s,
+            tf.cast(example["audio/class/text"], tf.string),
         )
 
     return spectogram
@@ -1260,6 +1261,27 @@ def str2bool(v):
         raise argparse.ArgumentTypeError("Boolean value expected.")
 
 
+def debug_labels(dataset, labels):
+    mapped = {}
+    for l in labels:
+        mapped[l] = set()
+    for x, batch_y in dataset:
+        y_true = batch_y[0]
+        y_label = batch_y[-1]
+        for y_t, y_l in zip(y_true, y_label):
+            text_label = y_l.numpy().decode("utf8")
+            summed = np.sum(y_t)
+            if summed > 1:
+                print("Multiple labels", y_t, text_label)
+                continue
+            max_i = tf.argmax(y_t)
+            lbl = labels[max_i]
+            mapped[lbl].add(text_label)
+    for k, v in mapped.items():
+        print(f"{k} = {v}")
+    # print("Mapped labels are ",mapped)
+
+
 # test stuff
 def main():
     init_logging()
@@ -1303,6 +1325,7 @@ def main():
             args.use_bird_tags = True
         else:
             test_birds = [
+                "bellbird",
                 "bird",
                 "fantail",
                 "morepork",
@@ -1328,6 +1351,11 @@ def main():
             for l in labels:
                 if l not in excluded_labels and l not in test_birds:
                     excluded_labels.append(l)
+                elif l in excluded_labels and l in test_birds:
+                    excluded_labels.remove(l)
+            # for l in labels:
+            #     if l not in excluded_labels and l not in test_birds:
+            #         excluded_labels.append(l)
 
         dataset, remapped, _, labels, _ = get_dataset(
             tf_dir,
@@ -1344,6 +1372,8 @@ def main():
             only_features=args.only_features,
             debug=True,
         )
+        debug_labels(dataset, labels)
+        return
         # for batch_x, batch_y in dataset:
         #     recs = batch_y[3]
         #     tracks = batch_y[4]
