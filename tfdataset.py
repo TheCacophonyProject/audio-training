@@ -50,7 +50,7 @@ NOISE_LABELS = [
 ]
 
 
-ANIMAL_LABELS = ["cat", "cow", "chicken", "dog", "sheep"]
+ANIMAL_LABELS = ["cat", "cow", "chicken", "dog", "sheep", "possum", "rodent"]
 
 # SPECIFIC_BIRD_LABELS = [
 #     "bird",
@@ -137,12 +137,10 @@ GENERIC_BIRD_LABELS = [
     "eurasian blackbird",
     "european goldfinch",
     "european greenfinch",
-    "false-positive",
     "frog",
     "greenfinch",
     "gull",
     "harrier",
-    "human",
     "kaka",
     "kea",
     "kereru",
@@ -153,10 +151,8 @@ GENERIC_BIRD_LABELS = [
     "paradise shelduck",
     "pheasant",
     "pigeon",
-    "possum",
     "red-tailed tropicbird",
     "redpoll",
-    "rodent",
     "rosella",
     "southern black-backed gull",
     "swamp harrier",
@@ -1237,8 +1233,31 @@ def parse_args():
         "dir",
         help="Dataset dir",
     )
+    parser.add_argument(
+        "--only-features", default=False, action="count", help="Train on features"
+    )
+    parser.add_argument(
+        "--multi-label", type=str2bool, default=True, help="Multi label"
+    )
+    parser.add_argument(
+        "--use_bird_tags",
+        default=False,
+        action="count",
+        help="Use tracks of generic bird tags ( without specific birds) in training",
+    )
     args = parser.parse_args()
     return args
+
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")
 
 
 # test stuff
@@ -1246,19 +1265,6 @@ def main():
     init_logging()
     args = parse_args()
     dataset_dirs = [Path(args.dir)]
-    # batch_data = []
-    # batch_data.append(np.zeros(5)-1)
-    # batch_data = np.array(batch_data)
-    # normalized = normalize(batch_data,None)
-    # print("Normalized becomes ")
-    # for n in normalized:
-    #     print(n)
-    # return
-    # return
-    # datasets = ["other-training-data", "training-data", "chime-training-data"]
-    # datasets = ["training-data"]
-    # dataset_dirs = ["./audio-training/training-data"]
-    # dataset_dirs = ["./augmented-training"]
 
     filenames = []
     labels = set()
@@ -1276,36 +1282,52 @@ def main():
         set_specific_by_count(meta)
         excluded_labels = get_excluded_labels(labels)
         labels.sort()
-        # print("loaded labels", labels)
-        # species_list = ["bird", "human", "rain", "other"]
 
-        # filenames = tf.io.gfile.glob(f"./training-data/validation/*.tfrecord")
-        test_birds = [
-            "bird",
-            "fantail",
-            "morepork",
-            "noise",
-            "human",
-            "grey warbler",
-            "insect",
-            "kiwi",
-            "magpie",
-            "tui",
-            "house sparrow",
-            "blackbird",
-            "sparrow",
-            "song thrush",
-            "whistler",
-            "rooster",
-            "silvereye",
-            "norfolk silvereye",
-            "australian magpie",
-            "new zealand fantail",
-            # "thrush"
-        ]
-        for l in labels:
-            if l not in excluded_labels and l not in test_birds:
-                excluded_labels.append(l)
+        if args.only_features:
+            merge_labels = {}
+            excluded_labels = []
+            for l in labels:
+                if l == "bird":
+                    continue
+                if l in SPECIFIC_BIRD_LABELS or l in GENERIC_BIRD_LABELS:
+                    print("Setting", l, " to bird")
+                    merge_labels[l] = "bird"
+                elif l in ANIMAL_LABELS:
+                    merge_labels[l] = "animal"
+                elif l == "insect":
+                    continue
+                    # merge_labels[l] = "insect"
+                elif l in NOISE_LABELS:
+                    merge_labels[l] = "noise"
+            set_merge_labels(merge_labels)
+            args.use_bird_tags = True
+        else:
+            test_birds = [
+                "bird",
+                "fantail",
+                "morepork",
+                "noise",
+                "human",
+                "grey warbler",
+                "insect",
+                "kiwi",
+                "magpie",
+                "tui",
+                "house sparrow",
+                "blackbird",
+                "sparrow",
+                "song thrush",
+                "whistler",
+                "rooster",
+                "silvereye",
+                "norfolk silvereye",
+                "australian magpie",
+                "new zealand fantail",
+                # "thrush"
+            ]
+            for l in labels:
+                if l not in excluded_labels and l not in test_birds:
+                    excluded_labels.append(l)
 
         dataset, remapped, _, labels, _ = get_dataset(
             tf_dir,
@@ -1314,12 +1336,13 @@ def main():
             batch_size=32,
             image_size=DIMENSIONS,
             excluded_labels=excluded_labels,
-            multi_label=True,
-            use_bird_tags=False,
+            multi_label=args.multi_label,
+            use_bird_tags=args.use_bird_tags,
             load_all_y=True,
             shuffle=False,
-            debug=True,
             load_raw=False,
+            only_features=args.only_features,
+            debug=True,
         )
         # for batch_x, batch_y in dataset:
         #     recs = batch_y[3]
