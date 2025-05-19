@@ -482,7 +482,7 @@ def get_remappings(
             # remapped[l] = []
             logging.info("Excluding %s", l)
         else:
-            if l in MERGE_LABELS and MERGE_LABELS[l] in labels:
+            if l in MERGE_LABELS and MERGE_LABELS[l] in new_labels:
                 logging.info("Re labeiling %s as %s", l, MERGE_LABELS[l])
                 re_dic[l] = new_labels.index(MERGE_LABELS[l])
             else:
