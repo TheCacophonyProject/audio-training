@@ -16,6 +16,7 @@ from pathlib import Path
 import tensorflow_io as tfio
 from audiomentations import AddBackgroundNoise, PolarityInversion, Compose
 import soundfile as sf
+from badwinner2 import MagTransform
 
 BIRD_PATH = []
 NOISE_PATH = []
@@ -800,7 +801,8 @@ def get_a_dataset(dir, labels, args):
         debug_filter = lambda x, y: tf.math.reduce_all(tf.math.equal(y[0], debug_mask))
         dataset = dataset.filter(debug_filter)
 
-    if args.get("cache", False):
+    if args.get("cache", False) or dir.name != "train":
+        logging.info("Caching to mem")
         dataset = dataset.cache()
     if args.get("shuffle", True):
         dataset = dataset.shuffle(
@@ -1387,7 +1389,8 @@ def main():
             load_raw=False,
             only_features=args.only_features,
             debug=True,
-            debug_bird="tui",
+            debug_bird="magpie",
+            model_name="efficientnet",
         )
         # debug_labels(dataset, labels)
         # return
@@ -1432,10 +1435,10 @@ def main():
             str(model_path),
             compile=False,
         )
-        model.load_weights(model_path.parent / "val_binary_accuracy.weights.h5")
+        # model.load_weights(model_path.parent / "val_binary_accuracy.weights.h5")
         logging.info("LOading model with val acc %s", args.model)
-        true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
-        true_categories = tf.concat(true_categories, axis=0)
+        # true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
+        # true_categories = tf.concat(true_categories, axis=0)
         preds = model.predict(
             dataset.map(
                 lambda x, y: (x, y[0]),
@@ -1443,6 +1446,30 @@ def main():
                 deterministic=True,
             )
         )
+        index = 0
+        for _, y_b in dataset:
+
+            recs = y_b[3]
+            tracks = y_b[4]
+            starts = y_b[7]
+            y_true = y_b[0]
+            for y, rec, track, start in zip(y_true, recs, tracks, starts):
+                pred = preds[index]
+                max_i = tf.argmax(pred)
+                conf = pred[max_i]
+                p_label = labels[max_i]
+                y_true = tf.argmax(y)
+                print("Y true is ", y_true, y)
+                y_label = labels[y_true]
+
+                rec = rec.numpy().decode("utf8")
+                track = track.numpy().decode("utf8")
+                start = start.numpy()
+
+                print(
+                    f"{y_label} predicted as {p_label} with {round(100*conf)}% id: {rec}-{track} at {start}"
+                )
+                index += 1
         # filenames.extend(tf.io.gfile.glob(f"{d}/test/**/*.tfrecord"))
     print("labels are ", labels)
     global NZ_BIRD_LOSS_WEIGHTING, BIRD_WEIGHTING, SPECIFIC_BIRD_MASK, GENERIC_BIRD_MASK
