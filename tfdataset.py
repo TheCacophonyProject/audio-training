@@ -787,8 +787,19 @@ def get_a_dataset(dir, labels, args):
     if args.get("filter_signal", False):
         logging.info("Filtering signal by percent 0.0")
         dataset = dataset.filter(filter_signal)
+
     # if dir.name != "train":
     # train data too big for ram
+    if args.get("debug_bird"):
+        logging.info("Debugging on %s", args.get("debug_bird"))
+        debug_i = labels.index(args.get("debug_bird"))
+        debug_mask = np.zeros(num_labels, dtype=np.float32)
+        debug_mask[debug_i] = 1
+
+        debug_mask = tf.constant(debug_mask, dtype=tf.float32)
+        debug_filter = lambda x, y: tf.math.reduce_all(tf.math.equal(y[0], debug_mask))
+        dataset = dataset.filter(debug_filter)
+
     if args.get("cache", False):
         dataset = dataset.cache()
     if args.get("shuffle", True):
@@ -1376,9 +1387,10 @@ def main():
             load_raw=False,
             only_features=args.only_features,
             debug=True,
+            debug_bird="tui",
         )
-        debug_labels(dataset, labels)
-        return
+        # debug_labels(dataset, labels)
+        # return
         # for batch_x, batch_y in dataset:
         #     recs = batch_y[3]
         #     tracks = batch_y[4]
