@@ -1870,7 +1870,7 @@ def raw_to_mel(x, y):
         " STFT shape is ",
         stft.shape,
     )
-
+    stft = tf.math.pow(stft, 2)
     stft = tf.transpose(stft, [0, 2, 1])
     stft = tf.math.abs(stft)
     batch_size = tf.keras.ops.shape(raw)[0]
