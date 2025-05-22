@@ -280,8 +280,9 @@ def load_samples(
         while True:
             data = track_frames[sr_start:sr_end]
             if len(data) != sample_size:
-
-                data = np.pad(data, (0, sample_size - len(data)))
+                extra_frames = sample_size - len(data)
+                offset = np.random.randint(0, extra_frames)
+                data = np.pad(data, (offset, extra_frames - offset))
 
             if filter_below and t.freq_end < filter_below:
                 logging.info(
@@ -290,7 +291,6 @@ def load_samples(
                 data = butter_bandpass_filter(data, t.freq_start, t.freq_end, sr)
             if normalize:
                 data = normalize_data(data)
-                # 1/0
             spect = get_spect(
                 data,
                 sr,
@@ -691,10 +691,10 @@ def main():
     signals, _ = signal_noise(frames, sr)
 
     tracks = get_tracks_from_signals(signals, end)
-    # track = tracks[0]
-    # track.start = 0
-    # track.end = 5
-    # tracks = [track]
+    track = tracks[0]
+    track.start = 28.06436538696289
+    track.end = 31.0
+    tracks = [track]
     # for s in tracks:
     #     print("SIgnals are ", s)
     # get_speech_score(args.file)

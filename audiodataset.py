@@ -1009,7 +1009,7 @@ def load_data(
     assert len(s_data) == int(segment_l * sr)
     # buttered = butter_bandpass_filter(s_data, min_freq, max_freq, sr)
     normed = normalize_data(s_data)
-    spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
+    spectogram = np.abs(librosa.stft(normed, n_fft=n_fft, hop_length=hop_length))
     # if buttered is not None:
     #     spectogram_buttered = np.abs(
     #         librosa.stft(buttered, n_fft=n_fft, hop_length=hop_length)

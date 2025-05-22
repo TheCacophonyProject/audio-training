@@ -1304,128 +1304,136 @@ def debug_labels(dataset, labels):
 def main():
     init_logging()
     args = parse_args()
-    dataset_dirs = [Path(args.dir)]
+    d = Path(args.dir)
 
     filenames = []
     labels = set()
-    datasets = []
-    for d in dataset_dirs:
-        tf_dir = Path(d)
-        # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
-        file = tf_dir.parent / "training-meta.json"
+    tf_dir = Path(d)
+    # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
+    file = tf_dir.parent / "training-meta.json"
+    with file.open("r") as f:
+        meta = json.load(f)
+    labels.update(meta.get("labels", []))
+    # labels.add("bird")
+    # labels.add("noise")
+    # labels = list(labels)
+    set_specific_by_count(meta)
+    excluded_labels = get_excluded_labels(labels)
+
+    if args.model:
+        file = Path(args.model).parent / "metadata.txt"
         with file.open("r") as f:
-            meta = json.load(f)
-        labels.update(meta.get("labels", []))
-        labels.add("bird")
-        labels.add("noise")
-        labels = list(labels)
-        set_specific_by_count(meta)
-        excluded_labels = get_excluded_labels(labels)
-        labels.sort()
+            model_meta = json.load(f)
+        labels = model_meta["labels"]
+        excluded_labels = model_meta.get("excluded_labels")
+        remapped_labels = model_meta.get("remapped_labels")
+        extra_label_map = model_meta.get("extra_label_map")
+    if args.only_features:
+        merge_labels = {}
+        excluded_labels = []
+        for l in labels:
+            if l == "bird":
+                continue
+            if l in SPECIFIC_BIRD_LABELS or l in GENERIC_BIRD_LABELS:
+                print("Setting", l, " to bird")
+                merge_labels[l] = "bird"
+            elif l in ANIMAL_LABELS:
+                merge_labels[l] = "animal"
+            elif l == "insect":
+                continue
+                # merge_labels[l] = "insect"
+            elif l in NOISE_LABELS:
+                merge_labels[l] = "noise"
+        set_merge_labels(merge_labels)
+        args.use_bird_tags = True
+    else:
+        test_birds = [
+            "bellbird",
+            "fantail",
+            "morepork",
+            "noise",
+            "human",
+            "grey warbler",
+            "insect",
+            "kiwi",
+            "magpie",
+            "tui",
+            "house sparrow",
+            "blackbird",
+            "sparrow",
+            "song thrush",
+            "whistler",
+            "rooster",
+            "silvereye",
+            "norfolk silvereye",
+            "australian magpie",
+            "new zealand fantail",
+            # "thrush"
+        ]
+        for l in labels:
+            if l not in excluded_labels and l not in test_birds:
+                excluded_labels.append(l)
+            elif l in excluded_labels and l in test_birds:
+                excluded_labels.remove(l)
+        # for l in labels:
+        #     if l not in excluded_labels and l not in test_birds:
+        #         excluded_labels.append(l)
 
-        if args.only_features:
-            merge_labels = {}
-            excluded_labels = []
-            for l in labels:
-                if l == "bird":
-                    continue
-                if l in SPECIFIC_BIRD_LABELS or l in GENERIC_BIRD_LABELS:
-                    print("Setting", l, " to bird")
-                    merge_labels[l] = "bird"
-                elif l in ANIMAL_LABELS:
-                    merge_labels[l] = "animal"
-                elif l == "insect":
-                    continue
-                    # merge_labels[l] = "insect"
-                elif l in NOISE_LABELS:
-                    merge_labels[l] = "noise"
-            set_merge_labels(merge_labels)
-            args.use_bird_tags = True
-        else:
-            test_birds = [
-                "bellbird",
-                "bird",
-                "fantail",
-                "morepork",
-                "noise",
-                "human",
-                "grey warbler",
-                "insect",
-                "kiwi",
-                "magpie",
-                "tui",
-                "house sparrow",
-                "blackbird",
-                "sparrow",
-                "song thrush",
-                "whistler",
-                "rooster",
-                "silvereye",
-                "norfolk silvereye",
-                "australian magpie",
-                "new zealand fantail",
-                # "thrush"
-            ]
-            for l in labels:
-                if l not in excluded_labels and l not in test_birds:
-                    excluded_labels.append(l)
-                elif l in excluded_labels and l in test_birds:
-                    excluded_labels.remove(l)
-            # for l in labels:
-            #     if l not in excluded_labels and l not in test_birds:
-            #         excluded_labels.append(l)
+    dataset, remapped, _, labels, _ = get_dataset(
+        tf_dir,
+        labels,
+        deterministic=True,
+        batch_size=32,
+        image_size=DIMENSIONS,
+        excluded_labels=excluded_labels,
+        remapped_labels=remapped_labels,
+        extra_label_map=extra_label_map,
+        multi_label=args.multi_label,
+        use_bird_tags=args.use_bird_tags,
+        load_all_y=True,
+        shuffle=False,
+        load_raw=False,
+        only_features=args.only_features,
+        debug=True,
+        debug_bird="magpie",
+        model_name="efficientnet",
+        use_generic_bird=False,
+        cache=True,
+    )
+    # debug_labels(dataset, labels)
+    # return
+    # for batch_x, batch_y in dataset:
+    #     recs = batch_y[3]
+    #     tracks = batch_y[4]
+    #     for x, rec, track in zip(batch_x, recs, tracks):
+    #         data_ok = np.all(x >= -1.00002) and np.all(x <= 1.000002)
+    #         has_nan = np.any(np.isnan(x))
+    #         a_max = np.amax(x)
+    #         a_min = np.amin(x)
+    #         if not data_ok or has_nan:
+    #             # print(x)
+    #             x = x.numpy()
+    #             logging.info(
+    #                 "Bad data for rec %s track %s less than 1 %s over 1 %s max %s min %s",
+    #                 rec,
+    #                 track,
+    #                 x[np.where(x < 1)],
+    #                 x[np.where(x > 1.000002)],
+    #                 a_max,
+    #                 a_min,
+    #             )
+    #             logging.info("Has nan %s", has_nan)
 
-        dataset, remapped, _, labels, _ = get_dataset(
-            tf_dir,
-            labels,
-            deterministic=True,
-            batch_size=32,
-            image_size=DIMENSIONS,
-            excluded_labels=excluded_labels,
-            multi_label=args.multi_label,
-            use_bird_tags=args.use_bird_tags,
-            load_all_y=True,
-            shuffle=False,
-            load_raw=False,
-            only_features=args.only_features,
-            debug=True,
-            debug_bird="magpie",
-            model_name="efficientnet",
-        )
-        # debug_labels(dataset, labels)
-        # return
-        # for batch_x, batch_y in dataset:
-        #     recs = batch_y[3]
-        #     tracks = batch_y[4]
-        #     for x, rec, track in zip(batch_x, recs, tracks):
-        #         data_ok = np.all(x >= -1.00002) and np.all(x <= 1.000002)
-        #         has_nan = np.any(np.isnan(x))
-        #         a_max = np.amax(x)
-        #         a_min = np.amin(x)
-        #         if not data_ok or has_nan:
-        #             # print(x)
-        #             x = x.numpy()
-        #             logging.info(
-        #                 "Bad data for rec %s track %s less than 1 %s over 1 %s max %s min %s",
-        #                 rec,
-        #                 track,
-        #                 x[np.where(x < 1)],
-        #                 x[np.where(x > 1.000002)],
-        #                 a_max,
-        #                 a_min,
-        #             )
-        #             logging.info("Has nan %s", has_nan)
+    #         if a_max == a_min:
+    #             logging.info(
+    #                 "Max = Min for rec %s track %s max %s min %s",
+    #                 rec,
+    #                 track,
+    #                 a_max,
+    #                 a_min,
+    #             )
 
-        #         if a_max == a_min:
-        #             logging.info(
-        #                 "Max = Min for rec %s track %s max %s min %s",
-        #                 rec,
-        #                 track,
-        #                 a_max,
-        #                 a_min,
-        #             )
-
-        # return
+    # return
     preds = None
     if args.model is not None:
         model_path = Path(args.model)
@@ -1435,8 +1443,10 @@ def main():
             str(model_path),
             compile=False,
         )
-        # model.load_weights(model_path.parent / "val_binary_accuracy.weights.h5")
+        model.load_weights(model_path.parent / "val_categorical_accuracy.weights.h5")
         logging.info("LOading model with val acc %s", args.model)
+        model.trainable = False
+        model.summary()
         # true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
         # true_categories = tf.concat(true_categories, axis=0)
         preds = model.predict(
@@ -1577,6 +1587,7 @@ def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
         plt.title(f"{plot_title}\n{predicted}")
         img = image_batch[n]
         plot_mel(image_batch[n][:, :, 0], ax)
+        # np.save(f"dataset-images/batch-{batch_i}-{rec}-{start_s:.1f}.npy",image_batch[n])
     plt.savefig(f"dataset-images/batch-{batch_i}.png")
     # plt.show()
 
