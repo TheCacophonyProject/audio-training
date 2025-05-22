@@ -1849,7 +1849,7 @@ def raw_to_mel(x, y):
         fmin = FMIN
     if FMAX != 11000:
         fmax = FMAX
-    logging.info("Applying butter %s %s", fmin, fmax)
+    # logging.info("Applying butter %s %s", fmin, fmax)
     # not needed if using mel freq bin fmin and fmax
     # raw =  butter_function(raw,fmin,fmax)
 
