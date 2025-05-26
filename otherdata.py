@@ -619,7 +619,7 @@ def chime_data():
         json.dump(meta_data, f, indent=4)
 
 
-def tier1_data(base_dir):
+def tier1_data(base_dir, split_file=None):
     print("Loading tier1")
     test_labels = [
         "bellbird",
@@ -821,7 +821,25 @@ def tier1_data(base_dir):
         return
     logging.info("Loaded tier 1 data")
     dataset.print_sample_counts()
-
+    if split_file is not None:
+        logging.info("Splitting by %s", split_file)
+        with open(split_file, "r") as t:
+            # add in some metadata stats
+            split_meta = json.load(t)
+        split_by_ds = split_meta["recs"]
+        datasets = []
+        for name in ["train", "validation", "test"]:
+            split_clips = split_by_ds[name]
+            ds = AudioDataset(name, dataset.config)
+            datasets.append(ds)
+            logging.info("Loading %s using ids %s", name, split_clips)
+            for clip_id in split_clips:
+                if clip_id in dataset.recs:
+                    rec = dataset.recs[clip_id]
+                    ds.add_recording(rec)
+                else:
+                    logging.error("Missing clip id %s", clip_id)
+    return
     datasets = split_randomly(dataset)
     save_data(datasets, base_dir, dataset.config)
 
@@ -1141,7 +1159,7 @@ def main():
         return
     else:
         print("Doing tier 1 data")
-        tier1_data(args.dir)
+        tier1_data(args.dir, args.split_file)
     return
     # weakly_lbled_data(args.dir)
     return
@@ -1241,6 +1259,11 @@ def parse_args():
     )
     parser.add_argument(
         "-t", "--tracks", action="store_true", help="Add best track data"
+    )
+    parser.add_argument(
+        "--split-file",
+        default=None,
+        help="Split the dataset using clip ids specified in this file",
     )
     args = parser.parse_args()
     args.dir = Path(args.dir)
