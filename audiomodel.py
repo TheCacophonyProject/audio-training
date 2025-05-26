@@ -801,7 +801,7 @@ class AudioModel:
 
         if DEBUG_PROFILE:
             tboard_callback = tf.keras.callbacks.TensorBoard(
-                log_dir=self.checkpoint_folder / run_name / "profiler",
+                log_dir=self.log_dir / run_name / "profiler",
                 histogram_freq=1,
                 profile_batch=0,
             )

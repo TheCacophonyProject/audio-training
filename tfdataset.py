@@ -1879,6 +1879,7 @@ def raw_to_mel(x, y):
     weights = tf.repeat(weights, batch_size, 0)
     image = tf.keras.backend.batch_dot(weights, stft)
     image = tf.expand_dims(image, axis=3)
+    image = tf.repeat(image, 3, 3)
 
     if isinstance(x, tuple):
         x = (image, x[1], x[2])
