@@ -66,6 +66,7 @@ import math
 
 from resnet import wr_resnet
 
+DEBUG_PROFILE = True
 #
 # num_residual_units = 2
 # momentum = 0.9
@@ -776,15 +777,17 @@ class AudioModel:
             monitor=accuracy, verbose=1, mode="max"
         )
         checks.append(reduce_lr_callback)
-        file_writer_cm = tf.summary.create_file_writer(str(self.log_dir / "cm"))
-        cm_callback = tf.keras.callbacks.LambdaCallback(
-            on_epoch_end=lambda epoch, logs: log_confusion_matrix(
-                epoch, logs, self.model, self.validation, file_writer_cm, self.labels
-            )
-        )
+        # file_writer_cm = tf.summary.create_file_writer(str(self.log_dir / "cm"))
+        # cm_callback = tf.keras.callbacks.LambdaCallback(
+        #     on_epoch_end=lambda epoch, logs: log_confusion_matrix(
+        #         epoch, logs, self.model, self.validation, file_writer_cm, self.labels
+        #     )
+        # )
         # checks.append(cm_callback)
+        weight_writer = tf.summary.create_file_writer(str(self.log_dir / "weights"))
+
         hist_callback = tf.keras.callbacks.LambdaCallback(
-            on_epoch_end=log_hist_weights(self.model, file_writer_cm)
+            on_epoch_end=log_hist_weights(self.model, weight_writer)
         )
         checks.append(hist_callback)
 
@@ -795,6 +798,14 @@ class AudioModel:
             save_freq="epoch",
         )
         checks.append(model_checkpt)
+
+        if DEBUG_PROFILE:
+            tboard_callback = tf.keras.callbacks.TensorBoard(
+                log_dir=self.checkpoint_folder / run_name / "profiler",
+                histogram_freq=1,
+                profile_batch=0,
+            )
+            checks.append(tboard_callback)
         return checks
 
     def load_datasets(self, labels, **args):

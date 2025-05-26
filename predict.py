@@ -239,7 +239,7 @@ def load_samples(
     channels=1,
     power=1,
     db_scale=False,
-    normalize=False,
+    normalize=True,
 ):
     filter_below = 1000
     logging.info(
@@ -691,10 +691,10 @@ def main():
     signals, _ = signal_noise(frames, sr)
 
     tracks = get_tracks_from_signals(signals, end)
-    track = tracks[0]
-    track.start = 28.06436538696289
-    track.end = 31.0
-    tracks = [track]
+    # track = tracks[0]
+    # track.start = 28.06436538696289
+    # track.end = 31.0
+    # tracks = [track]
     # for s in tracks:
     #     print("SIgnals are ", s)
     # get_speech_score(args.file)
