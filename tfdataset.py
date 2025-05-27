@@ -401,6 +401,7 @@ def load_dataset(filenames, num_labels, labels, args):
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
+    return dataset
 
     # if args.get("filter_bad", False):
     #     logging.info("Filtering bad")
@@ -421,6 +422,7 @@ def load_dataset(filenames, num_labels, labels, args):
         else:
             filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
     dataset = dataset.filter(filter_nan)
+   
     if args.get("one_hot", True):
         filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y[0]), 0)
     else:
@@ -632,275 +634,23 @@ def set_remapped_extra(remap, extra_l):
 
 def get_a_dataset(dir, labels, args):
 
-    extra_label_dic = args.get("extra_label_map")
-    remapped = args.get("remapped_labels", [])
-    excluded_labels = args.get("excluded_labels", [])
-    use_generic_bird = args.get("use_generic_bird", True)
-
-    global extra_label_map
-    global remapped_y
-    if extra_label_dic is None:
-        extra_label_dic, remapped, labels = get_remappings(
-            labels, excluded_labels, use_generic_bird=use_generic_bird
-        )
-    else:
-        logging.info(
-            "Load with predefined extra label dic %s remapped %s excluded %s",
-            extra_label_dic,
-            remapped,
-            excluded_labels,
-        )
-
-    remapped_y = tf.lookup.StaticHashTable(
-        initializer=tf.lookup.KeyValueTensorInitializer(
-            keys=tf.constant(list(remapped.keys())),
-            values=tf.constant(list(remapped.values())),
-        ),
-        default_value=tf.constant(-1),
-        name="remapped_y",
-    )
-    logging.info(
-        "Remapped %s extra mapping %s new labels %s Use gen bird %s",
-        remapped,
-        extra_label_dic,
-        labels,
-        use_generic_bird,
-    )
-    global bird_i
-    global noise_i
-    global human_i
-    if "bird" in labels:
-        bird_i = labels.index("bird")
-    if "noise" in labels:
-        noise_i = labels.index("noise")
-    if "human" in labels:
-        human_i = labels.index("human")
-
-    # extra tags, since we have multi label problem, morepork is a bird and morepork
-    # cat is a cat but also "noise"
-    # extra_label_map["-10"] = -10
-    if len(extra_label_dic) == 0:
-        # seems to need something
-        extra_label_dic["nonsense"] = 1
-    extra_label_map = tf.lookup.StaticHashTable(
-        initializer=tf.lookup.KeyValueTensorInitializer(
-            keys=tf.constant(list(extra_label_dic.keys())),
-            values=tf.constant(list(extra_label_dic.values())),
-        ),
-        default_value=tf.constant(-1),
-        name="extra_label_map",
-    )
-
     num_labels = len(labels)
     datasets = []
     logging.info("Loading tf records from %s", dir)
     filenames = tf.io.gfile.glob(str(dir / "*.tfrecord"))
 
-    if args.get("second_dir") is not None:
-        second_dir = Path(args.get("second_dir"))
-
-        second_filenames = tf.io.gfile.glob(str(second_dir / "*.tfrecord"))
-        logging.info(
-            "Loading second files %s count: %s",
-            second_filenames[0],
-            len(second_filenames),
-        )
-        filenames.extend(second_filenames)
-    else:
-        logging.info("Not using second dataset")
-
-    xeno_files = Path("/data/audio-data/xenocanto/xeno-training-data/")
-    xeno_files = xeno_files / dir.name
-    do_xeno = False
-    if do_xeno and xeno_files.exists() and dir.name != "test":
-        logging.info("Xeno files %s", xeno_files)
-        xeno_files = tf.io.gfile.glob(str(xeno_files / "*.tfrecord"))
-        logging.info("Loading xeno files %s", xeno_files)
-        filenames.extend(xeno_files)
-
-    lbl_dataset = load_dataset(filenames, num_labels, labels, args)
+    dataset = load_dataset(filenames, num_labels, labels, args)
     logging.info("Loading %s files from %s", len(filenames), dir)
-    datasets.append(lbl_dataset)
-    for lbl_dir in dir.iterdir():
-        if not lbl_dir.is_dir():
-            continue
-        filenames = tf.io.gfile.glob(str(lbl_dir / "*.tfrecord"))
-
-        lbl_dataset = load_dataset(filenames, num_labels, labels, args)
-        logging.info("Loading %s files from %s", len(filenames), lbl_dir)
-        datasets.append(lbl_dataset)
-
-    # may perform better without adding generics birds but sitll having generic label
-    dataset_2 = None
-    # can load other dataset directory like this if want to avoid getting more from
-    # one dataset
-    # if args.get("filenames_2") is not None:
-    #     logging.info("Loading second files %s", args.get("filenames_2")[:1])
-    #     second = args.get("filenames_2")
-
-    #     #   dont think no bird is needed
-    #     # bird_c = dist[labels.index("bird")]
-    #     # args["no_bird"] = True
-    #     # added bird noise to human recs but it messes model, so dont use for now
-
-    #     dataset_2 = load_dataset(second, len(labels), labels, args)
-
-    # else:
-    #     logging.info("Not using second dataset")
-
-    if len(datasets) == 1:
-        dataset = datasets[0]
-    else:
-        logging.info("Stopping on empty? %s", args.get("resample", False))
-        dataset = tf.data.Dataset.sample_from_datasets(
-            datasets,
-            # stop_on_empty_dataset=False,
-            stop_on_empty_dataset=args.get(
-                "stop_on_empty", args.get("resample", False)
-            ),
-            rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
-        )
-    if args.get("no_low_samples", False):
-        logging.info("Filtering out low samples")
-        no_low_samples_filter = lambda x, y: tf.math.equal(
-            y[6], tf.constant(0, dtype=tf.int64)
-        )
-        dataset = dataset.filter(no_low_samples_filter)
-
-    if not args.get("one_hot", True):
-        bird_mask = tf.constant(bird_i, dtype=tf.float32)
-        bird_filter = lambda x, y: tf.math.equal(y[0], bird_mask)
-        others_filter = lambda x, y: not tf.math.equal(y[0], bird_mask)
-    else:
-        bird_mask = np.zeros(num_labels, dtype=bool)
-        bird_mask[bird_i] = 1
-        bird_mask = tf.constant(bird_mask)
-        bird_filter = lambda x, y: tf.math.reduce_all(
-            tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
-        )
-        others_filter = lambda x, y: not tf.math.reduce_all(
-            tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
-        )
-    if not args.get("use_bird_tags", False):
-        logging.info("Filtering out bird tags without specific bird")
-        dataset = dataset.filter(others_filter)
-    # bird_dataset = dataset.filter(bird_filter)
-    if args.get("filter_signal", False):
-        logging.info("Filtering signal by percent 0.0")
-        dataset = dataset.filter(filter_signal)
-
-    # if dir.name != "train":
-    # train data too big for ram
-    if args.get("debug_bird"):
-        logging.info("Debugging on %s", args.get("debug_bird"))
-        debug_i = labels.index(args.get("debug_bird"))
-        debug_mask = np.zeros(num_labels, dtype=np.float32)
-        debug_mask[debug_i] = 1
-
-        debug_mask = tf.constant(debug_mask, dtype=tf.float32)
-        debug_filter = lambda x, y: tf.math.reduce_all(tf.math.equal(y[0], debug_mask))
-        dataset = dataset.filter(debug_filter)
-
-    if args.get("cache", False) or dir.name != "train":
-        logging.info("Caching to mem")
-        dataset = dataset.cache()
-    if args.get("shuffle", True):
-        dataset = dataset.shuffle(
-            4096, reshuffle_each_iteration=args.get("reshuffle", True)
-        )
-    if dataset_2 is not None:
-        logging.info("Adding second dataset with weights [0.6,0.4]")
-        dataset = tf.data.Dataset.sample_from_datasets(
-            [dataset, dataset_2],
-            weights=[0.6, 0.4],
-            stop_on_empty_dataset=True,
-            rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
-        )
-
-    logging.info("Loss fn is %s", args.get("loss_fn"))
-    deterministic = args.get("deterministic", False)
-
-    if args.get("debug"):
-        batch_size = args.get("batch_size", None)
-        dataset = dataset.cache()
-
-        if batch_size is not None:
-            dataset = dataset.batch(batch_size, drop_remainder=False)
-        if args.get("load_raw", False):
-            logging.info("Normalizing input")
-            dataset = dataset.map(lambda x, y: normalize(x, y))
-        logging.info("Returning debug data")
-        return dataset, remapped, None, labels, extra_label_dic
-
-    if not args.get("load_all_y", False):
-        if args.get("loss_fn") == "WeightedCrossEntropy":
-            logging.info("Mapping possiblebirds")
-            dataset = dataset.map(
-                lambda x, y: (x, (y[0], y[5])),
-                num_parallel_calls=tf.data.AUTOTUNE,
-                deterministic=deterministic,
-            )
-        else:
-            dataset = dataset.map(
-                lambda x, y: (x, y[0]),
-                num_parallel_calls=tf.data.AUTOTUNE,
-                deterministic=deterministic,
-            )
-    epoch_size = args.get("epoch_size")
-    dist = None
-    if epoch_size is None:
-        dist, epoch_size = get_distribution(
-            dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
-        )
-
-    pcen = args.get("pcen", False)
-    if pcen:
-        logging.info("Taking PCEN")
-        dataset = dataset.map(lambda x, y: pcen_function(x, y))
-    if dist is not None:
-        for l, d in zip(labels, dist):
-            logging.info(f" for {l} have {d}")
-    # tf because of sample from datasets
-    # dataset = dataset.repeat(2)
-    # dataset = dataset.take(epoch_size)
+   
+    dataset = dataset.shuffle(
+        4096, reshuffle_each_iteration=args.get("reshuffle", True)
+    )
+        
     batch_size = args.get("batch_size", None)
-    # dataset = dataset.cache()
+    dataset = dataset.batch(batch_size, drop_remainder=False)
 
-    # dont think we need this iwth interleave
-    # if args.get("shuffle", True):
-    #     dataset = dataset.shuffle(
-    #         40096, reshuffle_each_iteration=args.get("reshuffle", True)
-    #     )
 
-    if batch_size is not None:
-        dataset = dataset.batch(batch_size, drop_remainder=False)
-
-    # dont think using this anymore GP
-    if args.get("weight_specific", False):
-        weighting = np.ones((num_labels), dtype=np.float32)
-        weighting[bird_i] = 0.8
-        weighting = tf.constant(weighting)
-        specific_mask = np.zeros((num_labels), dtype=np.float32)
-        for i, l in enumerate(labels):
-            if l in SPECIFIC_BIRD_LABELS and l != "bird":
-                specific_mask[i] = 1
-        print(
-            "for labels", labels, " have ", specific_mask, " weighting bird", weighting
-        )
-        specific_mask = tf.constant(specific_mask)
-
-        rest_weighting = tf.constant(tf.ones(num_labels))
-        dataset = dataset.map(
-            lambda x, y: weight_specific(
-                x, y, num_labels, weighting, specific_mask, rest_weighting
-            )
-        )
-
-    if args.get("load_raw", False):
-        logging.info("Normalizing input")
-        dataset = dataset.map(lambda x, y: normalize(x, y))
-
-    return dataset, remapped, epoch_size, labels, extra_label_dic
+    return dataset, None, None, labels, None
 
 
 @tf.function
@@ -1062,127 +812,118 @@ def read_tfrecord(
         if "efficientnet" in model_name:
             logging.info("Repeating last dim for efficient net")
             spectogram = tf.repeat(spectogram, 3, 2)
-    if features or only_features:
-        short_f = example["audio/short_f"]
-        mid_f = example["audio/mid_f"]
-        # if only_features:
-        # spectogram = tf.concat((short_f, mid_f), axis=0)
-        #     # mid_f = tf.reshape(mid_f, (136, 3))
-        #     # short_f = tf.reshape(short_f, (68, 60))
+    return spectogram,tf.one_hot(1,num_labels,dtype = tf.int32)
+   
+    # if features or only_features:
+    #     short_f = example["audio/short_f"]
+    #     mid_f = example["audio/mid_f"]
+    #     # if only_features:
+    #     # spectogram = tf.concat((short_f, mid_f), axis=0)
+    #     #     # mid_f = tf.reshape(mid_f, (136, 3))
+    #     #     # short_f = tf.reshape(short_f, (68, 60))
 
-        #     # raw = (short_f, mid_f)
-        # else:
-        mid_f = tf.reshape(mid_f, (136, 3))
-        short_f = tf.reshape(short_f, (68, 60))
-        if only_features:
-            print("ONLY FEATURES")
-            spectogram = (short_f, mid_f)
-        else:
-            spectogram = (spectogram, short_f, mid_f)
-        # raw = tf.expand_dims(raw, axis=0)
-    if augment:
-        logging.info("Augmenting")
-    if mean_sub:
-        print("Subbing mean")
-        mel_m = tf.reduce_mean(mel, axis=1)
-        # gp not sure to mean over axis 0 or 1
-        mel_m = tf.expand_dims(mel_m, axis=1)
-        # mean over each mel bank
-        mel = mel - mel_m
-    if labeled:
-        # label = tf.cast(example["audio/class/label"], tf.int32)
-        label = tf.cast(example["audio/class/text"], tf.string)
-        split_labels = tf.strings.split(label, sep="\n")
-        global remapped_y, extra_label_map
-        labels = remapped_y.lookup(split_labels)
-        extra = extra_label_map.lookup(split_labels)
-        if multi:
+    #     #     # raw = (short_f, mid_f)
+    #     # else:
+    #     mid_f = tf.reshape(mid_f, (136, 3))
+    #     short_f = tf.reshape(short_f, (68, 60))
+    #     if only_features:
+    #         print("ONLY FEATURES")
+    #         spectogram = (short_f, mid_f)
+    #     else:
+    #         spectogram = (spectogram, short_f, mid_f)
+    #     # raw = tf.expand_dims(raw, axis=0)
+    # if augment:
+    #     logging.info("Augmenting")
+    # if mean_sub:
+    #     print("Subbing mean")
+    #     mel_m = tf.reduce_mean(mel, axis=1)
+    #     # gp not sure to mean over axis 0 or 1
+    #     mel_m = tf.expand_dims(mel_m, axis=1)
+    #     # mean over each mel bank
+    #     mel = mel - mel_m
+    # if labeled:
+    #     # label = tf.cast(example["audio/class/label"], tf.int32)
+    #     label = tf.cast(example["audio/class/text"], tf.string)
+    #     split_labels = tf.strings.split(label, sep="\n")
+    #     global remapped_y, extra_label_map
+    #     labels = remapped_y.lookup(split_labels)
+    #     extra = extra_label_map.lookup(split_labels)
+    #     if multi:
 
-            labels = tf.concat([labels, extra], axis=0)
-        if one_hot:
-            label = tf.reduce_max(
-                tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
-            )
-            if not multi:
-                logging.info("Choosing only one label as not multi")
-                if tf.math.count_nonzero(label) == 0:
-                    # if all normal labels are excluded choose an extra one
-                    label = tf.reduce_max(
-                        tf.one_hot(extra, num_labels, dtype=tf.int32), axis=0
-                    )
-                if tf.math.count_nonzero(label) == 0:
-                    label = tf.zeros(num_labels, dtype=tf.int32)
-                else:
-                    max_l = tf.argmax(label)
-                    label = tf.one_hot(max_l, num_labels, dtype=tf.int32)
-            if embed_preds is not None:
-                embed_preds = tf.reduce_max(
-                    tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
-                )
-        else:
-            # pretty sure this is wrong but never used
-            logging.error("Don't think non one hot works please check")
-            label = labels
-        signal_percent = 0.0
-        if no_bird:
-            logging.info("no bird")
-            # dont use bird or noise label from mixed ones
-            if one_hot:
-                no_bird_mask = np.ones(num_labels, dtype=bool)
-                no_bird_mask[bird_i] = 0
-                no_bird_mask = tf.constant(no_bird_mask)
-                label = tf.cast(label, tf.bool)
-                label = tf.math.logical_and(label, no_bird_mask)
-                no_noise_mask = np.ones(num_labels, dtype=bool)
-                no_noise_mask[noise_i] = 0
-                no_noise_mask = tf.constant(no_noise_mask)
-                label = tf.math.logical_and(label, no_noise_mask)
-            else:
-                print("Not doing no bird as not implemeneted")
-            label = tf.cast(label, tf.int32)
-        signal_percent = example["audio/signal_percent"]
+    #         labels = tf.concat([labels, extra], axis=0)
+    #     if one_hot:
+    #         label = tf.reduce_max(
+    #             tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
+    #         )
+    #         if not multi:
+    #             logging.info("Choosing only one label as not multi")
+    #             if tf.math.count_nonzero(label) == 0:
+    #                 # if all normal labels are excluded choose an extra one
+    #                 label = tf.reduce_max(
+    #                     tf.one_hot(extra, num_labels, dtype=tf.int32), axis=0
+    #                 )
+    #             if tf.math.count_nonzero(label) == 0:
+    #                 label = tf.zeros(num_labels, dtype=tf.int32)
+    #             else:
+    #                 max_l = tf.argmax(label)
+    #                 label = tf.one_hot(max_l, num_labels, dtype=tf.int32)
+    #         if embed_preds is not None:
+    #             embed_preds = tf.reduce_max(
+    #                 tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
+    #             )
+    #     else:
+    #         # pretty sure this is wrong but never used
+    #         logging.error("Don't think non one hot works please check")
+    #         label = labels
+    #     signal_percent = 0.0
+    #     if no_bird:
+    #         logging.info("no bird")
+    #         # dont use bird or noise label from mixed ones
+    #         if one_hot:
+    #             no_bird_mask = np.ones(num_labels, dtype=bool)
+    #             no_bird_mask[bird_i] = 0
+    #             no_bird_mask = tf.constant(no_bird_mask)
+    #             label = tf.cast(label, tf.bool)
+    #             label = tf.math.logical_and(label, no_bird_mask)
+    #             no_noise_mask = np.ones(num_labels, dtype=bool)
+    #             no_noise_mask[noise_i] = 0
+    #             no_noise_mask = tf.constant(no_noise_mask)
+    #             label = tf.math.logical_and(label, no_noise_mask)
+    #         else:
+    #             print("Not doing no bird as not implemeneted")
+    #         label = tf.cast(label, tf.int32)
+    #     signal_percent = example["audio/signal_percent"]
 
-        label = tf.cast(label, tf.float32)
-        possible_labels = tf.ones(label.shape, tf.float32)
+    #     label = tf.cast(label, tf.float32)
+    #     possible_labels = tf.ones(label.shape, tf.float32)
 
-        lat = example["audio/lat"]
-        lng = example["audio/lng"]
-        # if label has no specific bird in it and has generic bird, weight differently
-        if not tf.math.reduce_any(
-            tf.math.logical_and(
-                tf.cast(label, tf.bool), tf.cast(SPECIFIC_BIRD_MASK, tf.bool)
-            )
-        ) and tf.math.reduce_any(
-            tf.math.logical_and(
-                tf.cast(label, tf.bool), tf.cast(GENERIC_BIRD_MASK, tf.bool)
-            )
-        ):
-            if lat == 0 or lng == 0:
-                possible_labels = NZ_BIRD_LOSS_WEIGHTING
-            elif (
-                lat <= NZ_BOX[1]
-                and lat >= NZ_BOX[3]
-                and lng >= NZ_BOX[0]
-                and lng <= NZ_BOX[2]
-            ):
-                possible_labels = NZ_BIRD_LOSS_WEIGHTING
-            else:
-                possible_labels = BIRD_WEIGHTING
-        return spectogram, (
-            label,
-            embed_preds,
-            signal_percent,
-            # min_freq,
-            # max_freq,
-            example["audio/rec_id"],
-            example["audio/track_id"],
-            possible_labels,
-            low_sample,
-            start_s,
-            tf.cast(example["audio/class/text"], tf.string),
-        )
+    #     lat = example["audio/lat"]
+    #     lng = example["audio/lng"]
+    #     # if label has no specific bird in it and has generic bird, weight differently
+    #     if not tf.math.reduce_any(
+    #         tf.math.logical_and(
+    #             tf.cast(label, tf.bool), tf.cast(SPECIFIC_BIRD_MASK, tf.bool)
+    #         )
+    #     ) and tf.math.reduce_any(
+    #         tf.math.logical_and(
+    #             tf.cast(label, tf.bool), tf.cast(GENERIC_BIRD_MASK, tf.bool)
+    #         )
+    #     ):
+    #         if lat == 0 or lng == 0:
+    #             possible_labels = NZ_BIRD_LOSS_WEIGHTING
+    #         elif (
+    #             lat <= NZ_BOX[1]
+    #             and lat >= NZ_BOX[3]
+    #             and lng >= NZ_BOX[0]
+    #             and lng <= NZ_BOX[2]
+    #         ):
+    #             possible_labels = NZ_BIRD_LOSS_WEIGHTING
+    #         else:
+    #             possible_labels = BIRD_WEIGHTING
+    #     return spectogram
+    #         ,label
 
-    return spectogram
+    # return spectogram
 
 
 def class_func(features, label):

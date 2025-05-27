@@ -803,7 +803,7 @@ class AudioModel:
             tboard_callback = tf.keras.callbacks.TensorBoard(
                 log_dir=self.log_dir / run_name / "profiler",
                 histogram_freq=1,
-                profile_batch=1,
+                profile_batch=(10,30),
             )
             checks.append(tboard_callback)
         return checks
