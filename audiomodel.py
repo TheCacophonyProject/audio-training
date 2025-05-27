@@ -115,7 +115,7 @@ class AudioModel:
         self.data_dir = data_dir
         self.second_data_dir = second_data_dir
         self.model_name = model_name
-        self.batch_size = 8
+        self.batch_size = 32
         self.validation = None
         self.test = None
         self.train = None
@@ -452,13 +452,14 @@ class AudioModel:
                 ],
             )
         else:
-            strategy = tf.distribute.MirroredStrategy()
-            with strategy.scope():
+            # can use for 2 gpus, but seems to be much slower on our setup
+            # strategy = tf.distribute.MirroredStrategy()
+            # with strategy.scope():
 
-                self.build_model(
-                    multi_label=args.get("multi_label", True),
-                    loss_fn=args.get("loss_fn", "keras"),
-                )
+            self.build_model(
+                multi_label=args.get("multi_label", True),
+                loss_fn=args.get("loss_fn", "keras"),
+            )
             (self.checkpoint_folder / run_name).mkdir(parents=True, exist_ok=True)
             if self.model_name != "rf-features":
                 self.model.save(self.checkpoint_folder / run_name / f"{run_name}.keras")

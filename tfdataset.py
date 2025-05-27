@@ -801,6 +801,7 @@ def get_a_dataset(dir, labels, args):
         debug_filter = lambda x, y: tf.math.reduce_all(tf.math.equal(y[0], debug_mask))
         dataset = dataset.filter(debug_filter)
 
+    deterministic = args.get("deterministic", False)
 
     if args.get("debug"):
         batch_size = args.get("batch_size", None)
@@ -829,7 +830,6 @@ def get_a_dataset(dir, labels, args):
                 deterministic=deterministic,
             )
 
-
     if args.get("cache", False) or dir.name != "train":
         logging.info("Caching to mem")
         dataset = dataset.cache()
@@ -847,7 +847,6 @@ def get_a_dataset(dir, labels, args):
         )
 
     logging.info("Loss fn is %s", args.get("loss_fn"))
-    deterministic = args.get("deterministic", False)
 
     epoch_size = args.get("epoch_size")
     dist = None
