@@ -1050,6 +1050,7 @@ def process_signal(metadata_file):
         meta["signal"] = signals
         meta["noise"] = noise
         meta["rec_end"] = end
+        meta["signal_version"]=1.0
         with metadata_file.open("w") as f:
             json.dump(
                 meta,
