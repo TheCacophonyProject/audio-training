@@ -801,24 +801,6 @@ def get_a_dataset(dir, labels, args):
         debug_filter = lambda x, y: tf.math.reduce_all(tf.math.equal(y[0], debug_mask))
         dataset = dataset.filter(debug_filter)
 
-    if args.get("cache", False) or dir.name != "train":
-        logging.info("Caching to mem")
-        dataset = dataset.cache()
-    if args.get("shuffle", True):
-        dataset = dataset.shuffle(
-            4096, reshuffle_each_iteration=args.get("reshuffle", True)
-        )
-    if dataset_2 is not None:
-        logging.info("Adding second dataset with weights [0.6,0.4]")
-        dataset = tf.data.Dataset.sample_from_datasets(
-            [dataset, dataset_2],
-            weights=[0.6, 0.4],
-            stop_on_empty_dataset=True,
-            rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
-        )
-
-    logging.info("Loss fn is %s", args.get("loss_fn"))
-    deterministic = args.get("deterministic", False)
 
     if args.get("debug"):
         batch_size = args.get("batch_size", None)
@@ -846,6 +828,27 @@ def get_a_dataset(dir, labels, args):
                 num_parallel_calls=tf.data.AUTOTUNE,
                 deterministic=deterministic,
             )
+
+
+    if args.get("cache", False) or dir.name != "train":
+        logging.info("Caching to mem")
+        dataset = dataset.cache()
+    if args.get("shuffle", True):
+        dataset = dataset.shuffle(
+            4096, reshuffle_each_iteration=args.get("reshuffle", True)
+        )
+    if dataset_2 is not None:
+        logging.info("Adding second dataset with weights [0.6,0.4]")
+        dataset = tf.data.Dataset.sample_from_datasets(
+            [dataset, dataset_2],
+            weights=[0.6, 0.4],
+            stop_on_empty_dataset=True,
+            rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
+        )
+
+    logging.info("Loss fn is %s", args.get("loss_fn"))
+    deterministic = args.get("deterministic", False)
+
     epoch_size = args.get("epoch_size")
     dist = None
     if epoch_size is None:
@@ -853,10 +856,10 @@ def get_a_dataset(dir, labels, args):
             dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
         )
 
-    pcen = args.get("pcen", False)
-    if pcen:
-        logging.info("Taking PCEN")
-        dataset = dataset.map(lambda x, y: pcen_function(x, y))
+    # pcen = args.get("pcen", False)
+    # if pcen:
+    #     logging.info("Taking PCEN")
+    #     dataset = dataset.map(lambda x, y: pcen_function(x, y))
     if dist is not None:
         for l, d in zip(labels, dist):
             logging.info(f" for {l} have {d}")
