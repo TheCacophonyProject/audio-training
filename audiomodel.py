@@ -5,6 +5,23 @@
 
 import argparse
 import os
+
+
+# https://www.tensorflow.org/guide/profiler#improve_device_performance
+# dont know if does anything
+import ctypes
+
+_libcudart = ctypes.CDLL("libcudart.so")
+# Set device limit on the current device
+# cudaLimitMaxL2FetchGranularity = 0x05
+pValue = ctypes.cast((ctypes.c_int * 1)(), ctypes.POINTER(ctypes.c_int))
+_libcudart.cudaDeviceSetLimit(ctypes.c_int(0x05), ctypes.c_int(128))
+_libcudart.cudaDeviceGetLimit(pValue, ctypes.c_int(0x05))
+assert pValue.contents.value == 128
+
+os.environ["TF_GPU_THREAD_MODE"] = "gpu_private"
+os.environ["TF_GPU_THREAD_COUNT"] = "1"
+
 import random
 import datetime
 import logging
@@ -66,7 +83,7 @@ import math
 
 from resnet import wr_resnet
 
-DEBUG_PROFILE = True
+DEBUG_PROFILE = False
 #
 # num_residual_units = 2
 # momentum = 0.9
@@ -435,10 +452,13 @@ class AudioModel:
                 ],
             )
         else:
-            self.build_model(
-                multi_label=args.get("multi_label", True),
-                loss_fn=args.get("loss_fn", "keras"),
-            )
+            strategy = tf.distribute.MirroredStrategy()
+            with strategy.scope():
+
+                self.build_model(
+                    multi_label=args.get("multi_label", True),
+                    loss_fn=args.get("loss_fn", "keras"),
+                )
             (self.checkpoint_folder / run_name).mkdir(parents=True, exist_ok=True)
             if self.model_name != "rf-features":
                 self.model.save(self.checkpoint_folder / run_name / f"{run_name}.keras")
@@ -803,7 +823,7 @@ class AudioModel:
             tboard_callback = tf.keras.callbacks.TensorBoard(
                 log_dir=self.log_dir / run_name / "profiler",
                 histogram_freq=1,
-                profile_batch=1,
+                profile_batch=(10, 30),
             )
             checks.append(tboard_callback)
         return checks
