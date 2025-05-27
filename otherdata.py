@@ -773,6 +773,7 @@ def tier1_data(base_dir, split_file=None):
                 if meta_length > length:
                     track_meta["end"] = end
                     # print("Adjusted end of ", filename, track_meta)
+                    # return
                 t = Track(
                     track_meta,
                     r.filename,
@@ -1044,7 +1045,7 @@ def process_signal(metadata_file):
         logging.info("Calcing %s", file)
         signals, noise, _, _, end = signal_noise(file)
 
-        signals = [s.to_array() for s in signals]
+        signals = [s.to_array(decimals=2) for s in signals]
         meta["file"] = str(file)
         meta["signal"] = signals
         meta["noise"] = noise
@@ -1057,7 +1058,7 @@ def process_signal(metadata_file):
             )
         logging.info("Updated %s", metadata_file)
     except:
-        logging.error("Error processing %s", f, exc_info=True)
+        logging.error("Error processing %s", metadata_file, exc_info=True)
     return
 
 
@@ -1067,9 +1068,11 @@ def generate_tracks_master(dir):
     meta_files = dir.glob("**/*.txt")
 
     if tier1_data:
+        meta_files = []
         folders = ["Train_001", "Train_002"]
         for folder in folders:
             dataset_dir = dir / folder
+            meta_files.extend(dataset_dir.glob("**/*.txt"))
             metadata = dataset_dir / "001_metadata.csv"
             with open(metadata, newline="") as csvfile:
                 dreader = csv.reader(csvfile, delimiter=",", quotechar='"')
@@ -1090,9 +1093,14 @@ def generate_tracks_master(dir):
                     filename_to_meta[filename] = {"start": start, "end": end}
         pool_data = []
         for f in meta_files:
+            if f.name != "BM90_BIRM_171029_221420_001.txt":
+                continue
             flac_file = Path(f.parent.name) / f.stem
             flac_file = flac_file.with_suffix(".flac")
-            csv_meta = filename_to_meta[str(flac_file)]
+            csv_meta = filename_to_meta.get(str(flac_file))
+            if csv_meta is None:
+                print("Skipping", f)
+                continue
             pool_data.append((f, csv_meta))
     else:
         pool_data = [meta_files]
@@ -1107,7 +1115,7 @@ def generate_tracks(metadata):
     else:
         file = metadata
         csv_meta = None
-    print(file, " with meta", csv_meta)
+
     min_height = 105.46875
     min_width = 0.15981875
 
@@ -1122,10 +1130,12 @@ def generate_tracks(metadata):
     else:
         logging.error("No metadata found for %s", file)
         return
+    end = metadata.get("rec_end", None)
     if csv_meta:
-        end = csv_meta["end"]
-    else:
-        end = metadata.get("rec_end", None)
+        # take which ever ends first
+        c_end = csv_meta["end"] - csv_meta["start"]
+        end = min(c_end, end)
+
     if "signal" not in metadata:
         logging.error("No Signals metadata found for %s", file)
         return
@@ -1142,36 +1152,54 @@ def generate_tracks(metadata):
     if end is None:
         end = sig_end + 3
         logging.info("Using last signal + 3 as end %s", end)
-    tracks = get_tracks_from_signals(signals, end=end)
+    tracks = get_tracks_from_signals(signals, end=end, filter_short=False)
 
     length_per_segment = []
     best_segment = (0, 0, 0)
-    previous_segment = None
     length_score = None
-    for start in range(int(end - 3) + 1):
+    starts = int(end) - 3 + 1
+    starts = max(starts, 1)
+    step = 0.5
+    starts = np.arange(starts, step=step)
+    # possibly could align starts with the signals instead of 0
+    for start in starts:
         s_end = start + 3
-        signal_length = 0
-        for s in tracks:
-            if s.start < start and s.end < s_end:
-                continue
+        signal_length = signal_length_for_segment(tracks, start, s_end)
 
-            if s.start > s_end:
-                break
-            signal_length += min(s.end, s_end) - max(start, s.start)
         if len(length_per_segment) > 0:
+            # always adding for 1 before
             length_score = length_per_segment[-1]
             if len(length_per_segment) == 1:
                 length_score += signal_length
             else:
+                # 0.5 of prev and post score
                 length_score += (signal_length + length_per_segment[-2]) / 2
+
             if best_segment is None or best_segment[2] < length_score:
-                best_segment = (start - 1, signal_length, length_score)
+                best_segment = (start - step, signal_length, length_score)
         else:
             best_segment = (start, signal_length, signal_length)
             # print(length_score)
-        # print(f"Signal length at {start}-{s_end} is {signal_length}")
+        #    print(f"Signal length at {start}-{s_end} is {signal_length}")
 
         length_per_segment.append(signal_length)
+
+    # note also skipping last seg above
+    # do_last_seg = False
+    # #end of audio normally is worse so probably  not worth using
+    # if do_last_seg:
+    #     last_seg = end - 3
+    #     if last_seg > 0 and last_seg not in starts:
+    #         signal_length = signal_length_for_segment(tracks, last_seg,last_seg+3)
+
+    #         prev = max(0,last_seg - 3)
+    #         prev_length = signal_length_for_segment(tracks, prev,prev+3)
+    #         length_score = signal_length + prev_length
+    #         if best_segment is None or best_segment[2] < length_score:
+    #             best_segment = (last_seg, signal_length, length_score)
+
+    #         length_per_segment.append(signal_length)
+
     best_track = {
         "score": best_segment[2],
         "signal_length": best_segment[1],
@@ -1179,16 +1207,34 @@ def generate_tracks(metadata):
         "end": best_segment[0] + 3,
         "tags": [{"automatic": False, "what": file.parent.name}],
     }
+    if best_segment[0] != metadata["best_track"]["start"]:
+        print("Differing starts", file, best_track, metadata["best_track"])
+        1 / 0
     # print("Best signal is ", best_segment)
+    return
     metadata["best_track"] = best_track
 
     with open(meta_f, "w") as f:
         json.dump(metadata, f, indent=4)
 
 
+def signal_length_for_segment(tracks, s_start, s_end):
+    signal_length = 0
+    for s in tracks:
+        if s.start < s_start and s.end < s_end:
+            continue
+
+        if s.start > s_end:
+            break
+        signal_length += min(s.end, s_end) - max(s_start, s.start)
+    return signal_length
+
+
 def main():
     init_logging()
     args = parse_args()
+    # generate_tracks(Path("AA138_BIRX_150115_052707_000.txt"))
+    # return
     if args.tracks:
         logging.info("Adding best track estimates")
         generate_tracks_master(args.dir)

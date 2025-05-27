@@ -197,7 +197,7 @@ def merge_signals(signals):
     return signals, something_merged
 
 
-def get_tracks_from_signals(signals, end):
+def get_tracks_from_signals(signals, end, filter_short=True):
     # probably a much more efficient way of doing this
     # just keep merging until there are no more valid merges
     merged = True
@@ -212,7 +212,7 @@ def get_tracks_from_signals(signals, end):
     for s in signals:
         if s in to_delete:
             continue
-        if s.length < min_length:
+        if filter_short and s.length < min_length:
             to_delete.append(s)
             continue
         # s.enlarge(1.4, min_track_length=min_track_length)
