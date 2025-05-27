@@ -772,8 +772,7 @@ def tier1_data(base_dir, split_file=None):
                 meta_length = track_meta["end"] - track_meta["start"]
                 if meta_length > length:
                     track_meta["end"] = end
-                    print("Adjusted end of ", filename, track_meta)
-                    return
+                    # print("Adjusted end of ", filename, track_meta)
                 t = Track(
                     track_meta,
                     r.filename,
@@ -832,15 +831,15 @@ def tier1_data(base_dir, split_file=None):
             split_clips = split_by_ds[name]
             ds = AudioDataset(name, dataset.config)
             datasets.append(ds)
-            logging.info("Loading %s using ids %s", name, split_clips)
+            logging.info("Loading %s using ids from split # %s", name, len(split_clips))
             for clip_id in split_clips:
                 if clip_id in dataset.recs:
                     rec = dataset.recs[clip_id]
                     ds.add_recording(rec)
                 else:
                     logging.error("Missing clip id %s", clip_id)
-    return
-    datasets = split_randomly(dataset)
+    else:
+        datasets = split_randomly(dataset)
     save_data(datasets, base_dir, dataset.config)
 
 
