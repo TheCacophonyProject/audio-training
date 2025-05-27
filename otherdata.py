@@ -974,7 +974,7 @@ def add_signal_meta(dir):
         "banded dotterel",
         "australasian bittern",
     ]
-    tier1_data = False
+    tier1_data = True
     if tier1_data:
         ebird_labels = set()
         with open("eBird_taxonomy_v2024.csv") as f:
@@ -1093,8 +1093,6 @@ def generate_tracks_master(dir):
                     filename_to_meta[filename] = {"start": start, "end": end}
         pool_data = []
         for f in meta_files:
-            if f.name != "BM90_BIRM_171029_221420_001.txt":
-                continue
             flac_file = Path(f.parent.name) / f.stem
             flac_file = flac_file.with_suffix(".flac")
             csv_meta = filename_to_meta.get(str(flac_file))
@@ -1233,8 +1231,6 @@ def signal_length_for_segment(tracks, s_start, s_end):
 def main():
     init_logging()
     args = parse_args()
-    # generate_tracks(Path("AA138_BIRX_150115_052707_000.txt"))
-    # return
     if args.tracks:
         logging.info("Adding best track estimates")
         generate_tracks_master(args.dir)
