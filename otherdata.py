@@ -646,7 +646,7 @@ def tier1_data(base_dir, split_file=None):
         "banded dotterel",
         "australasian bittern",
     ]
-
+    only_test_labels = True
     ebird_map = {}
     first = True
     with open("eBird_taxonomy_v2024.csv") as f:
@@ -720,6 +720,12 @@ def tier1_data(base_dir, split_file=None):
                     label = "kiwi"
                 else:
                     label = primary_label[0].replace(" ", "-")
+
+                if only_test_labels and label not in test_labels:
+                    if label not in filtered_stats:
+                        filtered_stats[label] = 0
+                    filtered_stats[label] += 1
+                    continue
                 if label not in counts:
                     counts[label] = 0
                 counts[label] += 1
@@ -1050,7 +1056,7 @@ def process_signal(metadata_file):
         meta["signal"] = signals
         meta["noise"] = noise
         meta["rec_end"] = end
-        meta["signal_version"]=1.0
+        meta["signal_version"] = 1.0
         with metadata_file.open("w") as f:
             json.dump(
                 meta,
