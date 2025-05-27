@@ -699,8 +699,8 @@ def tier1_data(base_dir, split_file=None):
                     id = f"{folder}-{i}"
                     filename, label, other_labels, start, end = row
 
-                start = int(start)
-                end = int(end)
+                start = float(start)
+                end = float(end)
                 length = end - start
 
                 # if label != "dobplo1":
@@ -1063,14 +1063,52 @@ def process_signal(metadata_file):
 
 
 def generate_tracks_master(dir):
+    tier1_data = True
+    filename_to_meta = {}
     meta_files = dir.glob("**/*.txt")
 
+    if tier1_data:
+        folders = ["Train_001", "Train_002"]
+        for folder in folders:
+            dataset_dir = dir / folder
+            metadata = dataset_dir / "001_metadata.csv"
+            with open(metadata, newline="") as csvfile:
+                dreader = csv.reader(csvfile, delimiter=",", quotechar='"')
+                i = -1
+
+                for row in dreader:
+                    i += 1
+                    if i == 0:
+                        continue
+                    if len(row) == 6:
+                        id, filename, label, other_labels, start, end = row
+                    else:
+                        id = f"{folder}-{i}"
+                        filename, label, other_labels, start, end = row
+                    start = float(start)
+                    end = float(end)
+                    length = end - start
+                    filename_to_meta[filename] = {"start": start, "end": end}
+        pool_data = []
+        for f in meta_files:
+            flac_file = Path(f.parent.name) / f.stem
+            flac_file = flac_file.with_suffix(".flac")
+            csv_meta = filename_to_meta[str(flac_file)]
+            pool_data.append((f, csv_meta))
+    else:
+        pool_data = [meta_files]
     with Pool(processes=8) as pool:
-        [0 for x in pool.imap_unordered(generate_tracks, meta_files, chunksize=8)]
+        [0 for x in pool.imap_unordered(generate_tracks, pool_data, chunksize=8)]
 
 
-def generate_tracks(file):
-    print(file)
+def generate_tracks(metadata):
+    if isinstance(metadata, tuple):
+        file = metadata[0]
+        csv_meta = metadata[1]
+    else:
+        file = metadata
+        csv_meta = None
+    print(file, " with meta", csv_meta)
     min_height = 105.46875
     min_width = 0.15981875
 
@@ -1085,7 +1123,10 @@ def generate_tracks(file):
     else:
         logging.error("No metadata found for %s", file)
         return
-    end = metadata.get("rec_end", None)
+    if csv_meta:
+        end = csv_meta["end"]
+    else:
+        end = metadata.get("rec_end", None)
     if "signal" not in metadata:
         logging.error("No Signals metadata found for %s", file)
         return
