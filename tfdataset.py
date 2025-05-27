@@ -422,7 +422,7 @@ def load_dataset(filenames, num_labels, labels, args):
         else:
             filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
     dataset = dataset.filter(filter_nan)
-   
+
     if args.get("one_hot", True):
         filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y[0]), 0)
     else:
@@ -641,14 +641,13 @@ def get_a_dataset(dir, labels, args):
 
     dataset = load_dataset(filenames, num_labels, labels, args)
     logging.info("Loading %s files from %s", len(filenames), dir)
-   
+
     dataset = dataset.shuffle(
         4096, reshuffle_each_iteration=args.get("reshuffle", True)
     )
-        
+
     batch_size = args.get("batch_size", None)
     dataset = dataset.batch(batch_size, drop_remainder=False)
-
 
     return dataset, None, None, labels, None
 
@@ -812,8 +811,8 @@ def read_tfrecord(
         if "efficientnet" in model_name:
             logging.info("Repeating last dim for efficient net")
             spectogram = tf.repeat(spectogram, 3, 2)
-    return spectogram,tf.one_hot(1,num_labels,dtype = tf.int32)
-   
+    return spectogram, tf.one_hot(1, num_labels, dtype=tf.int32)
+
     # if features or only_features:
     #     short_f = example["audio/short_f"]
     #     mid_f = example["audio/mid_f"]
