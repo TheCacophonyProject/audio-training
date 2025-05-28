@@ -242,19 +242,19 @@ def load_samples(
     normalize=True,
 ):
     filter_below = 1000
-    logging.info(
-        "Loading samples with length %s stride %s hop length %s and mean_sub %s mfcc %s break %s htk %s n mels %s fmin %s fmax %s",
-        segment_length,
-        stride,
-        hop_length,
-        mean_sub,
-        use_mfcc,
-        mel_break,
-        htk,
-        n_mels,
-        fmin,
-        fmax,
-    )
+    # logging.info(
+    #     "Loading samples with length %s stride %s hop length %s and mean_sub %s mfcc %s break %s htk %s n mels %s fmin %s fmax %s",
+    #     segment_length,
+    #     stride,
+    #     hop_length,
+    #     mean_sub,
+    #     use_mfcc,
+    #     mel_break,
+    #     htk,
+    #     n_mels,
+    #     fmin,
+    #     fmax,
+    # )
     mels = []
     i = 0
     # n_fft = sr // 10
@@ -289,6 +289,7 @@ def load_samples(
                     "Filter freq below %s %s %s", filter_below, t.freq_start, t.freq_end
                 )
                 data = butter_bandpass_filter(data, t.freq_start, t.freq_end, sr)
+
             if normalize:
                 data = normalize_data(data)
             spect = get_spect(
@@ -683,6 +684,8 @@ def add_ebird_mappings(labels):
 
 
 def predict_on_folder(load_model, base_dir):
+    total_files = 0
+    total_correct = 0
     load_model = Path(load_model)
     logging.info("Loading %s with weights %s", load_model, "val_acc")
     model = tf.keras.models.load_model(
@@ -711,7 +714,7 @@ def predict_on_folder(load_model, base_dir):
     normalize = meta.get("normalize", True)
     power = meta.get("power", 2)
     hop_length = 281
-
+    morepork_i = labels.index("morepork")
     meta_files = base_dir.glob("**/*.txt")
     for metadata_file in meta_files:
         file = metadata_file.with_suffix(".m4a")
@@ -734,11 +737,18 @@ def predict_on_folder(load_model, base_dir):
         frames, sr = load_recording(file)
         end = len(frames) / sr
         track.end = min(end, track.end)
+        tracks = [track]
 
-        data = load_samples(
+        # to debug each 3 second segment
+        # start = 0
+        # while start < end-2:
+        #     track = Signal(start,min(end,start + 3), 0, 15000, 0)
+        #     tracks.append(track)
+        #     start +=1
+        all_data = load_samples(
             frames,
             sr,
-            [track],
+            tracks,
             segment_length,
             segment_stride,
             hop_length,
@@ -747,34 +757,45 @@ def predict_on_folder(load_model, base_dir):
             n_mels=n_mels,
             normalize=normalize,
             power=power,
-        )[0]
-        data = np.array(data)
-        assert len(data) == 1
-        if "efficientnet" in model_name.lower():
-            logging.info("Repeating input")
-            d = np.repeat(d, 3, -1)
-        prediction = model.predict(np.array(data))[0]
-        result = ModelResult(model_name)
-        max_p = None
-        # this is for multi label
-        # logging.info("Pred is %s",np.round(100*prediction))
-        for i, p in enumerate(prediction):
-            if max_p is None or p > max_p[1]:
-                max_p = (i, p)
-            if p >= prob_thresh:
-                result.labels.append(labels[i])
-                result.confidences.append(round(p * 100))
+        )
+        for data, track in zip(all_data, tracks):
+            # data = np.array(data)
+            assert len(data) == 1
+            if "efficientnet" in model_name.lower():
+                logging.info("Repeating input")
+                data = np.repeat(data, 3, -1)
+            prediction = model.predict(np.array(data))[0]
+            result = ModelResult(model_name)
+            max_p = None
+            # this is for multi label
+            # logging.info("%s Pred at %s Seconds %s ",track,track.start,np.round(100*prediction))
+            for i, p in enumerate(prediction):
+                if max_p is None or p > max_p[1]:
+                    max_p = (i, p)
+                if p >= prob_thresh:
+                    result.labels.append(labels[i])
+                    result.confidences.append(round(p * 100))
 
-        label = best_track["tags"][0]["what"]
-        if label not in result.labels:    
-            logging.info(
-                "%s %s has predictions  %s",
-                metadata_file,
-                best_track["tags"][0]["what"],
-                result.preds_tostr(),
-            )
-        # max_i = np.argmax(predictions)
-        # max_conf = predictions[max_i]
+            label = best_track["tags"][0]["what"]
+            if label == "morepo2":
+                label = "morepork"
+            label_conf = round(prediction[labels.index(label)]*100)
+
+            if label not in result.labels:    
+                logging.info(
+                    "%s %s has morepork %s predictions  %s",
+                    metadata_file,
+                    best_track["tags"][0]["what"],
+                    label_conf,
+                    result.preds_tostr(),
+                )
+            else:
+                total_correct+=1
+        total_files+=1
+
+    logging.info("COrrect %s out of %s ( %s )",total_correct,total_files, round(100*total_correct/total_files))
+            # max_i = np.argmax(predictions)
+            # max_conf = predictions[max_i]
 
 
 def main():
@@ -1052,7 +1073,8 @@ def parse_args():
 
     parser.add_argument("model", help="Run name")
     args = parser.parse_args()
-    args.dir = Path(args.dir)
+    if args.dir:
+        args.dir = Path(args.dir)
 
     return args
 
