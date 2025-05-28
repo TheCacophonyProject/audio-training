@@ -40,7 +40,7 @@ from denoisetest import (
     signal_noise_data,
     butter_bandpass_filter,
 )
-from identifytracks import get_tracks_from_signals, signal_noise, get_end
+from identifytracks import get_tracks_from_signals, signal_noise, get_end, Signal
 
 from plot_utils import plot_mel, plot_mel_signals, plot_spec
 import matplotlib.patches as patches
@@ -283,14 +283,13 @@ def load_samples(
                 extra_frames = sample_size - len(data)
                 offset = np.random.randint(0, extra_frames)
                 data = np.pad(data, (offset, extra_frames - offset))
-
+                logging.info("PADDED")
             if filter_below and t.freq_end < filter_below:
                 logging.info(
                     "Filter freq below %s %s %s", filter_below, t.freq_start, t.freq_end
                 )
                 data = butter_bandpass_filter(data, t.freq_start, t.freq_end, sr)
             if normalize:
-                print("NORMALIZEING")
                 data = normalize_data(data)
             spect = get_spect(
                 data,
@@ -683,9 +682,107 @@ def add_ebird_mappings(labels):
     return ebird_map
 
 
+def predict_on_folder(load_model, base_dir):
+    load_model = Path(load_model)
+    logging.info("Loading %s with weights %s", load_model, "val_acc")
+    model = tf.keras.models.load_model(
+        str(load_model),
+        compile=False,
+    )
+    model.summary()
+    with open(load_model.parent / "metadata.txt", "r") as f:
+        meta = json.load(f)
+    multi = meta.get("multi_label", True)
+    labels = meta.get("labels", [])
+    with open(load_model.parent / "metadata.txt", "w") as f:
+        json.dump(meta, f, indent=4)
+
+    multi_label = meta.get("multi_label", True)
+    segment_length = meta.get("segment_length", 3)
+    segment_stride = meta.get("segment_stride", 1)
+    use_mfcc = meta.get("use_mfcc", True)
+    mean_sub = meta.get("mean_sub", False)
+    use_mfcc = meta.get("use_mfcc", False)
+    hop_length = meta.get("hop_length", 281)
+    prob_thresh = meta.get("threshold", 0.7)
+    model_name = meta.get("name", False)
+    break_freq = meta.get("break_freq", 1000)
+    n_mels = meta.get("n_mels", 160)
+    normalize = meta.get("normalize", True)
+    power = meta.get("power", 2)
+    hop_length = 281
+
+    meta_files = base_dir.glob("**/*.txt")
+    for metadata_file in meta_files:
+        file = metadata_file.with_suffix(".m4a")
+        if not file.exists():
+            file = metadata_file.with_suffix(".wav")
+        if not file.exists():
+            file = metadata_file.with_suffix(".mp3")
+        if not file.exists():
+            file = metadata_file.with_suffix(".flac")
+        if not file.exists():
+            logging.info("Not recording for %s", metadata_file)
+            continue
+
+        with metadata_file.open("r") as f:
+            # add in some metadata stats
+            meta = json.load(f)
+
+        best_track = meta["best_track"]
+        track = Signal(best_track["start"], best_track["end"], 0, 15000, 0)
+        frames, sr = load_recording(file)
+        end = len(frames) / sr
+        track.end = min(end, track.end)
+
+        data = load_samples(
+            frames,
+            sr,
+            [track],
+            segment_length,
+            segment_stride,
+            hop_length,
+            mean_sub,
+            mel_break=break_freq,
+            n_mels=n_mels,
+            normalize=normalize,
+            power=power,
+        )[0]
+        data = np.array(data)
+        assert len(data) == 1
+        if "efficientnet" in model_name.lower():
+            logging.info("Repeating input")
+            d = np.repeat(d, 3, -1)
+        prediction = model.predict(np.array(data))[0]
+        result = ModelResult(model_name)
+        max_p = None
+        # this is for multi label
+        # logging.info("Pred is %s",np.round(100*prediction))
+        for i, p in enumerate(prediction):
+            if max_p is None or p > max_p[1]:
+                max_p = (i, p)
+            if p >= prob_thresh:
+                result.labels.append(labels[i])
+                result.confidences.append(round(p * 100))
+
+        label = best_track["tags"][0]["what"]
+        if label not in result.labels:    
+            logging.info(
+                "%s %s has predictions  %s",
+                metadata_file,
+                best_track["tags"][0]["what"],
+                result.preds_tostr(),
+            )
+        # max_i = np.argmax(predictions)
+        # max_conf = predictions[max_i]
+
+
 def main():
     init_logging()
     args = parse_args()
+    if args.dir:
+        predict_on_folder(args.model, args.dir)
+        return
     frames, sr = load_recording(args.file)
     end = get_end(frames, sr)
     frames = frames[: int(sr * end)]
@@ -951,10 +1048,12 @@ def parse_args():
     parser.add_argument("--confusion", help="Save confusion matrix for model")
     parser.add_argument("--file", help="Audio file to predict")
     parser.add_argument("--dataset", help="Dataset to predict")
+    parser.add_argument("-d", "--dir", help="Directory to predict")
 
     parser.add_argument("model", help="Run name")
-
     args = parser.parse_args()
+    args.dir = Path(args.dir)
+
     return args
 
 
@@ -1057,6 +1156,32 @@ class ModelResult:
             meta["raw_tag"] = self.raw_tag
             meta["raw_confidence"] = self.raw_confidence
         return meta
+
+    def preds_tostr(self):
+        output = ""
+        for conf, label in zip(self.confidences, self.labels):
+            output = f"{output} {label}:{conf}"
+        return output
+
+
+@tf.keras.utils.register_keras_serializable(package="MyLayers", name="MagTransform")
+class MagTransform(tf.keras.layers.Layer):
+    def __init__(self, **kwargs):
+        super(MagTransform, self).__init__(**kwargs)
+        self.a = self.add_weight(
+            initializer=tf.keras.initializers.Constant(value=-1.0),
+            name="a-power",
+            dtype="float32",
+            shape=(),
+            trainable=True,
+            # constraint=tf.keras.constraints.MinMaxNorm(
+            #     min_value=-2.0, max_value=1.0, rate=1.0, axis=-1
+            # ),
+        )
+
+    def call(self, inputs):
+        c = tf.math.pow(inputs, tf.math.sigmoid(self.a))
+        return c
 
 
 if __name__ == "__main__":

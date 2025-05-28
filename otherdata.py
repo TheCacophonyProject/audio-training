@@ -1212,11 +1212,7 @@ def generate_tracks(metadata):
         "end": best_segment[0] + 3,
         "tags": [{"automatic": False, "what": file.parent.name}],
     }
-    if best_segment[0] != metadata["best_track"]["start"]:
-        print("Differing starts", file, best_track, metadata["best_track"])
-        1 / 0
-    # print("Best signal is ", best_segment)
-    return
+
     metadata["best_track"] = best_track
 
     with open(meta_f, "w") as f:
