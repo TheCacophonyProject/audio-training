@@ -696,6 +696,11 @@ def get_a_dataset(dir, labels, args):
     logging.info("Loading tf records from %s", dir)
     filenames = tf.io.gfile.glob(str(dir / "*.tfrecord"))
 
+    logging.info("Loading %s files from %s", len(filenames), dir)
+    our_dataset = load_dataset(filenames, num_labels, labels, args)
+    datasets.append(our_dataset)
+    dataset_2 = None
+    filenames = []
     if args.get("second_dir") is not None:
         second_dir = Path(args.get("second_dir"))
 
@@ -706,6 +711,10 @@ def get_a_dataset(dir, labels, args):
             len(second_filenames),
         )
         filenames.extend(second_filenames)
+
+        logging.info("Loading %s files from %s", len(filenames), dir)
+        dataset_2 = load_dataset(filenames, num_labels, labels, args)
+        # datasets.append(second_ds)
     else:
         logging.info("Not using second dataset")
 
@@ -718,35 +727,36 @@ def get_a_dataset(dir, labels, args):
         logging.info("Loading xeno files %s", xeno_files)
         filenames.extend(xeno_files)
 
-    lbl_dataset = load_dataset(filenames, num_labels, labels, args)
-    logging.info("Loading %s files from %s", len(filenames), dir)
-    datasets.append(lbl_dataset)
-    for lbl_dir in dir.iterdir():
-        if not lbl_dir.is_dir():
-            continue
-        filenames = tf.io.gfile.glob(str(lbl_dir / "*.tfrecord"))
+    # lbl_dataset = load_dataset(filenames, num_labels, labels, args)
+    # logging.info("Loading %s files from %s", len(filenames), dir)
+    # datasets.append(lbl_dataset)
 
-        lbl_dataset = load_dataset(filenames, num_labels, labels, args)
-        logging.info("Loading %s files from %s", len(filenames), lbl_dir)
-        datasets.append(lbl_dataset)
+    # for lbl_dir in dir.iterdir():
+    #     if not lbl_dir.is_dir():
+    #         continue
+    #     filenames = tf.io.gfile.glob(str(lbl_dir / "*.tfrecord"))
 
-    # may perform better without adding generics birds but sitll having generic label
-    dataset_2 = None
-    # can load other dataset directory like this if want to avoid getting more from
-    # one dataset
-    # if args.get("filenames_2") is not None:
-    #     logging.info("Loading second files %s", args.get("filenames_2")[:1])
-    #     second = args.get("filenames_2")
+    #     lbl_dataset = load_dataset(filenames, num_labels, labels, args)
+    #     logging.info("Loading %s files from %s", len(filenames), lbl_dir)
+    #     datasets.append(lbl_dataset)
 
-    #     #   dont think no bird is needed
-    #     # bird_c = dist[labels.index("bird")]
-    #     # args["no_bird"] = True
-    #     # added bird noise to human recs but it messes model, so dont use for now
+    # # may perform better without adding generics birds but sitll having generic label
+    # dataset_2 = None
+    # # can load other dataset directory like this if want to avoid getting more from
+    # # one dataset
+    # # if args.get("filenames_2") is not None:
+    # #     logging.info("Loading second files %s", args.get("filenames_2")[:1])
+    # #     second = args.get("filenames_2")
 
-    #     dataset_2 = load_dataset(second, len(labels), labels, args)
+    # #     #   dont think no bird is needed
+    # #     # bird_c = dist[labels.index("bird")]
+    # #     # args["no_bird"] = True
+    # #     # added bird noise to human recs but it messes model, so dont use for now
 
-    # else:
-    #     logging.info("Not using second dataset")
+    # #     dataset_2 = load_dataset(second, len(labels), labels, args)
+
+    # # else:
+    # #     logging.info("Not using second dataset")
 
     if len(datasets) == 1:
         dataset = datasets[0]
@@ -767,43 +777,45 @@ def get_a_dataset(dir, labels, args):
         )
         dataset = dataset.filter(no_low_samples_filter)
 
-    if not args.get("one_hot", True):
-        bird_mask = tf.constant(bird_i, dtype=tf.float32)
-        bird_filter = lambda x, y: tf.math.equal(y[0], bird_mask)
-        others_filter = lambda x, y: not tf.math.equal(y[0], bird_mask)
-    else:
-        bird_mask = np.zeros(num_labels, dtype=bool)
-        bird_mask[bird_i] = 1
-        bird_mask = tf.constant(bird_mask)
-        bird_filter = lambda x, y: tf.math.reduce_all(
-            tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
-        )
-        others_filter = lambda x, y: not tf.math.reduce_all(
-            tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
-        )
-    if not args.get("use_bird_tags", False):
-        logging.info("Filtering out bird tags without specific bird")
-        dataset = dataset.filter(others_filter)
+    if args.get("multi_label", True):
+        # not sure if this is needed at all
+        if not args.get("one_hot", True):
+            bird_mask = tf.constant(bird_i, dtype=tf.float32)
+            bird_filter = lambda x, y: tf.math.equal(y[0], bird_mask)
+            others_filter = lambda x, y: not tf.math.equal(y[0], bird_mask)
+        else:
+            bird_mask = np.zeros(num_labels, dtype=bool)
+            bird_mask[bird_i] = 1
+            bird_mask = tf.constant(bird_mask)
+            bird_filter = lambda x, y: tf.math.reduce_all(
+                tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
+            )
+            others_filter = lambda x, y: not tf.math.reduce_all(
+                tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
+            )
+        if not args.get("use_bird_tags", False):
+            logging.info("Filtering out bird tags without specific bird")
+            dataset = dataset.filter(others_filter)
+
     # bird_dataset = dataset.filter(bird_filter)
     if args.get("filter_signal", False):
         logging.info("Filtering signal by percent 0.0")
         dataset = dataset.filter(filter_signal)
 
-    # if dir.name != "train":
-    # train data too big for ram
-    if args.get("debug_bird"):
-        logging.info("Debugging on %s", args.get("debug_bird"))
-        debug_i = labels.index(args.get("debug_bird"))
-        debug_mask = np.zeros(num_labels, dtype=np.float32)
-        debug_mask[debug_i] = 1
-
-        debug_mask = tf.constant(debug_mask, dtype=tf.float32)
-        debug_filter = lambda x, y: tf.math.reduce_all(tf.math.equal(y[0], debug_mask))
-        dataset = dataset.filter(debug_filter)
-
     deterministic = args.get("deterministic", False)
 
     if args.get("debug"):
+        if args.get("debug_bird"):
+            logging.info("Debugging on %s", args.get("debug_bird"))
+            debug_i = labels.index(args.get("debug_bird"))
+            debug_mask = np.zeros(num_labels, dtype=np.float32)
+            debug_mask[debug_i] = 1
+
+            debug_mask = tf.constant(debug_mask, dtype=tf.float32)
+            debug_filter = lambda x, y: tf.math.reduce_all(
+                tf.math.equal(y[0], debug_mask)
+            )
+            dataset = dataset.filter(debug_filter)
         batch_size = args.get("batch_size", None)
         dataset = dataset.cache()
 
@@ -829,20 +841,31 @@ def get_a_dataset(dir, labels, args):
                 num_parallel_calls=tf.data.AUTOTUNE,
                 deterministic=deterministic,
             )
+            if dataset_2 is not None:
+                dataset_2 = dataset_2.map(
+                    lambda x, y: (x, y[0]),
+                    num_parallel_calls=tf.data.AUTOTUNE,
+                    deterministic=deterministic,
+                )
 
-    if args.get("cache", False) or dir.name != "train":
+    # try caching just our dataset
+    if True or args.get("cache", False) or dir.name != "train":
         logging.info("Caching to mem")
         dataset = dataset.cache()
     if args.get("shuffle", True):
         dataset = dataset.shuffle(
             4096, reshuffle_each_iteration=args.get("reshuffle", True)
         )
+        if dataset_2 is not None:
+            dataset_2 = dataset_2.shuffle(
+                4096, reshuffle_each_iteration=args.get("reshuffle", True)
+            )
     if dataset_2 is not None:
-        logging.info("Adding second dataset with weights [0.6,0.4]")
+        # logging.info("Adding second dataset with weights [0.6,0.4]")
         dataset = tf.data.Dataset.sample_from_datasets(
             [dataset, dataset_2],
-            weights=[0.6, 0.4],
-            stop_on_empty_dataset=True,
+            # weights=[0.6, 0.4],
+            stop_on_empty_dataset=False,
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
 

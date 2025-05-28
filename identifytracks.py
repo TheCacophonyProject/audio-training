@@ -212,8 +212,9 @@ def get_tracks_from_signals(signals, end, filter_short=True):
     for s in signals:
         if s in to_delete:
             continue
-        if filter_short and s.length < min_length:
-            to_delete.append(s)
+        if s.length < min_length:
+            if filter_short:
+                to_delete.append(s)
             continue
         # s.enlarge(1.4, min_track_length=min_track_length)
 

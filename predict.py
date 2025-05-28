@@ -290,6 +290,7 @@ def load_samples(
                 )
                 data = butter_bandpass_filter(data, t.freq_start, t.freq_end, sr)
             if normalize:
+                print("NORMALIZEING")
                 data = normalize_data(data)
             spect = get_spect(
                 data,
@@ -690,7 +691,7 @@ def main():
     frames = frames[: int(sr * end)]
     signals, _ = signal_noise(frames, sr)
 
-    tracks = get_tracks_from_signals(signals, end)
+    tracks = get_tracks_from_signals(signals, end)[:1]
     # track = tracks[0]
     # track.start = 28.06436538696289
     # track.end = 31.0
@@ -738,7 +739,7 @@ def main():
     # return
     # model = tf.keras.models.load_model(str(load_model))
 
-    model.load_weights(load_model.parent / "val_categorical_accuracy.weights.h5")
+    # model.load_weights(load_model.parent / "val_categorical_accuracy.weights.h5")
     # save_dir = Path("frozen_model")
 
     # model.save(save_dir / load_model.parent.name/ load_model.name)

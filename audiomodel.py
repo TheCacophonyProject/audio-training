@@ -6,21 +6,23 @@
 import argparse
 import os
 
+TRAINING = False
 
 # https://www.tensorflow.org/guide/profiler#improve_device_performance
 # dont know if does anything
-import ctypes
+if TRAINING:
+    import ctypes
 
-_libcudart = ctypes.CDLL("libcudart.so")
-# Set device limit on the current device
-# cudaLimitMaxL2FetchGranularity = 0x05
-pValue = ctypes.cast((ctypes.c_int * 1)(), ctypes.POINTER(ctypes.c_int))
-_libcudart.cudaDeviceSetLimit(ctypes.c_int(0x05), ctypes.c_int(128))
-_libcudart.cudaDeviceGetLimit(pValue, ctypes.c_int(0x05))
-assert pValue.contents.value == 128
+    _libcudart = ctypes.CDLL("libcudart.so")
+    # Set device limit on the current device
+    # cudaLimitMaxL2FetchGranularity = 0x05
+    pValue = ctypes.cast((ctypes.c_int * 1)(), ctypes.POINTER(ctypes.c_int))
+    _libcudart.cudaDeviceSetLimit(ctypes.c_int(0x05), ctypes.c_int(128))
+    _libcudart.cudaDeviceGetLimit(pValue, ctypes.c_int(0x05))
+    assert pValue.contents.value == 128
 
-os.environ["TF_GPU_THREAD_MODE"] = "gpu_private"
-os.environ["TF_GPU_THREAD_COUNT"] = "1"
+    os.environ["TF_GPU_THREAD_MODE"] = "gpu_private"
+    os.environ["TF_GPU_THREAD_COUNT"] = "1"
 
 import random
 import datetime
