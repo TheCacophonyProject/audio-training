@@ -966,20 +966,17 @@ def load_data(
             offset = np.random.randint(0, missing)
             start = start - offset
 
-            if start < 0:
+            if start <= 0:
                 start = 0
-                end_offset = sr_data_l - (end - start)
-                end_offset = min(end_offset, len(frames))
+                end = start + sr_data_l
+                end = min(end, len(frames))
             else:
                 end_offset = end + missing - offset
                 if end_offset > len(frames):
                     end_offset = len(frames)
-
-                    missing = sr_data_l - (end_offset - start)
-                    start = start - missing
+                    start = end_offset - sr_data_l
                     start = max(start, 0)
                 end = end_offset
-            assert end - start == sr_data_l
             # print(
             #     "Now start is ",
             #     start / sr,
@@ -992,6 +989,8 @@ def load_data(
             #     " for length ",
             #     len(frames) / sr,
             # )
+            assert end - start == sr_data_l
+
         s_data = frames[start : int(segment_l * sr + start)]
 
     if end > len(frames) or start > len(frames):
