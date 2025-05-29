@@ -440,7 +440,7 @@ def save_data(
                     sample.embeddings = embeddings.numpy()[0]
                     max_l = np.argmax(sample.logits)
                     # logging.info("For label %s got %s with score %s ebird %s",sample.tags,df[max_l],sample.logits[max_l],ebird_map[df[max_l]])
-                logging.info("Mem %s", psutil.virtual_memory()[2])
+                # logging.info("Mem %s", psutil.virtual_memory()[2])
 
                 if spec is None:
                     logging.warn("error loading spec for %s", rec.id)

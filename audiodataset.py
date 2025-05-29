@@ -75,6 +75,8 @@ class Config:
 
 class AudioDataset:
     def __init__(self, name, config):
+        if config is None:
+            config = Config()
         # self.base_path = Path(base_path)
         self.config = config
         self.name = name
@@ -921,6 +923,7 @@ def load_data(
     end=None,
     min_freq=None,
     max_freq=None,
+    use_padding=True,
 ):
     segment_l = config.segment_length
     segment_stride = config.segment_stride
@@ -941,6 +944,7 @@ def load_data(
         # n_fft = sr // 10
     start = start_s * sr
     start = round(start)
+    end_s = end
     if end is None:
         end = round(segment_l * sr) + start
     else:
@@ -952,11 +956,44 @@ def load_data(
         start = 0
     data_length = segment_l
     spec = None
-    # try:
-    #  use if dont want padding
-    # s_data = frames[start : int(segment_l * sr + start)]
-    # zero pad shorter
-    s_data = frames[start:end]
+    if use_padding:
+        s_data = frames[start:end]
+    else:
+        sr_data_l = sr * segment_l
+        missing = sr_data_l - (end - start)
+        if missing > 0:
+            # print("Missing is ", missing / sr, " from ", start / sr, end / sr)
+            offset = np.random.randint(0, missing)
+            start = start - offset
+
+            if start < 0:
+                start = 0
+                end_offset = sr_data_l - (end - start)
+                end_offset = min(end_offset, len(frames))
+            else:
+                end_offset = end + missing - offset
+                if end_offset > len(frames):
+                    end_offset = len(frames)
+
+                    missing = sr_data_l - (end_offset - start)
+                    start = start - missing
+                    start = max(start, 0)
+                end = end_offset
+            assert end - start == sr_data_l
+            # print(
+            #     "Now start is ",
+            #     start / sr,
+            #     " end ",
+            #     end / sr,
+            #     " original was ",
+            #     start_s,
+            #     " - ",
+            #     end_s,
+            #     " for length ",
+            #     len(frames) / sr,
+            # )
+        s_data = frames[start : int(segment_l * sr + start)]
+
     if end > len(frames) or start > len(frames):
         over_end = (end - len(frames)) / sr
         if over_end < 0.5:

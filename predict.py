@@ -692,6 +692,8 @@ def predict_on_folder(load_model, base_dir):
         str(load_model),
         compile=False,
     )
+    model.load_weights(load_model.parent / "val_binary_accuracy.weights.h5")
+
     model.summary()
     with open(load_model.parent / "metadata.txt", "r") as f:
         meta = json.load(f)
@@ -779,9 +781,9 @@ def predict_on_folder(load_model, base_dir):
             label = best_track["tags"][0]["what"]
             if label == "morepo2":
                 label = "morepork"
-            label_conf = round(prediction[labels.index(label)]*100)
+            label_conf = round(prediction[labels.index(label)] * 100)
 
-            if label not in result.labels:    
+            if label not in result.labels:
                 logging.info(
                     "%s %s has morepork %s predictions  %s",
                     metadata_file,
@@ -790,17 +792,133 @@ def predict_on_folder(load_model, base_dir):
                     result.preds_tostr(),
                 )
             else:
-                total_correct+=1
-        total_files+=1
+                total_correct += 1
+        total_files += 1
 
-    logging.info("COrrect %s out of %s ( %s )",total_correct,total_files, round(100*total_correct/total_files))
-            # max_i = np.argmax(predictions)
-            # max_conf = predictions[max_i]
+    logging.info(
+        "COrrect %s out of %s ( %s )",
+        total_correct,
+        total_files,
+        round(100 * total_correct / total_files),
+    )
+    # max_i = np.argmax(predictions)
+    # max_conf = predictions[max_i]
+
+
+def predict_on_test(split_file, load_model, base_dir, confusion_file="confusion.png"):
+    confusion_file = Path(confusion_file)
+    from build import split_by_file
+
+    dataset = AudioDataset("all", None)
+    dataset.load_meta(base_dir)
+    with open(split_file, "r") as t:
+        # add in some metadata stats
+        split_meta = json.load(t)
+    _, _, test = split_by_file(dataset, split_meta)
+
+    total_files = 0
+    total_correct = 0
+    load_model = Path(load_model)
+    logging.info("Loading %s with weights %s", load_model, "val_acc")
+    model = tf.keras.models.load_model(
+        str(load_model),
+        compile=False,
+    )
+    # model.load_weights(load_model.parent / "val_binary_accuracy.weights.h5")
+
+    model.summary()
+    with open(load_model.parent / "metadata.txt", "r") as f:
+        meta = json.load(f)
+    multi = meta.get("multi_label", True)
+    labels = meta.get("labels", [])
+    with open(load_model.parent / "metadata.txt", "w") as f:
+        json.dump(meta, f, indent=4)
+
+    multi_label = meta.get("multi_label", True)
+    segment_length = meta.get("segment_length", 3)
+    segment_stride = meta.get("segment_stride", 1)
+    use_mfcc = meta.get("use_mfcc", True)
+    mean_sub = meta.get("mean_sub", False)
+    use_mfcc = meta.get("use_mfcc", False)
+    hop_length = meta.get("hop_length", 281)
+    prob_thresh = meta.get("threshold", 0.7)
+    model_name = meta.get("name", False)
+    break_freq = meta.get("break_freq", 1000)
+    n_mels = meta.get("n_mels", 160)
+    normalize = meta.get("normalize", True)
+
+    remapped_labels = meta.get("remapped_labels", {})
+    power = meta.get("power", 2)
+    hop_length = 281
+    n_fft = 4096
+    fmin = 50
+    fmax = 11000
+    y_true = []
+    predicted = []
+    from audiodataset import load_data
+
+    for rec in test.recs.values():
+        frames, sr = load_recording(rec.filename)
+        file_y = []
+        file_data = []
+        for sample in rec.samples:
+
+            label = sample.tags[0]
+            if label in remapped_labels:
+                label_i = remapped_labels[label]
+                logging.info("%s becomes %s", label, labels[label_i])
+            else:
+                logging.info("%s not in remapped %s", rec.filename, label)
+                continue
+            file_y.append(label_i)
+            spec = load_data(
+                test.config, sample.start, frames, sr, end=sample.end, use_padding=False
+            )
+            print(spec.spectogram.shape)
+            data = mel_spec(
+                spec.spectogram,
+                sr,
+                n_fft,
+                hop_length,
+                n_mels,
+                fmin,
+                fmax,
+                break_freq,
+                power=power,
+            )
+            data = data[:, :, np.newaxis]
+            file_data.append(data)
+        file_data = np.array(file_data)
+        print(file_data.shape, " power is ", power)
+
+        if "efficientnet" in model_name.lower():
+            logging.info("Repeating input")
+            file_data = np.repeat(file_data, 3, -1)
+
+        predictions = model.predict(np.array(file_data))
+        pred = tf.argmax(predictions, axis=1)
+
+        # this is for multi label
+        print(file_y)
+        print(pred)
+        y_true.extend(file_y)
+        predicted.extend(pred)
+
+    y_true = np.array(y_true)
+    predicted = np.array(predicted)
+    cm = confusion_matrix(y_true, predicted, labels=np.arange(len(labels)))
+
+    from audiomodel import plot_confusion_matrix
+
+    figure = plot_confusion_matrix(cm, class_names=labels)
+    plt.savefig(confusion_file.with_suffix(".png"), format="png")
 
 
 def main():
     init_logging()
     args = parse_args()
+    predict_on_test(args.split_file, args.model, args.dir, args.confusion)
+    return
     if args.dir:
         predict_on_folder(args.model, args.dir)
         return
@@ -809,7 +927,7 @@ def main():
     frames = frames[: int(sr * end)]
     signals, _ = signal_noise(frames, sr)
 
-    tracks = get_tracks_from_signals(signals, end)[:1]
+    tracks = get_tracks_from_signals(signals, end)
     # track = tracks[0]
     # track.start = 28.06436538696289
     # track.end = 31.0
@@ -1068,14 +1186,20 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--confusion", help="Save confusion matrix for model")
     parser.add_argument("--file", help="Audio file to predict")
+
     parser.add_argument("--dataset", help="Dataset to predict")
     parser.add_argument("-d", "--dir", help="Directory to predict")
-
+    parser.add_argument(
+        "--split-file",
+        default=None,
+        help="Split the dataset using clip ids specified in this file",
+    )
     parser.add_argument("model", help="Run name")
     args = parser.parse_args()
     if args.dir:
         args.dir = Path(args.dir)
-
+    if args.split_file:
+        args.split_file = Path(args.split_file)
     return args
 
 
@@ -1186,24 +1310,24 @@ class ModelResult:
         return output
 
 
-@tf.keras.utils.register_keras_serializable(package="MyLayers", name="MagTransform")
-class MagTransform(tf.keras.layers.Layer):
-    def __init__(self, **kwargs):
-        super(MagTransform, self).__init__(**kwargs)
-        self.a = self.add_weight(
-            initializer=tf.keras.initializers.Constant(value=-1.0),
-            name="a-power",
-            dtype="float32",
-            shape=(),
-            trainable=True,
-            # constraint=tf.keras.constraints.MinMaxNorm(
-            #     min_value=-2.0, max_value=1.0, rate=1.0, axis=-1
-            # ),
-        )
+# @tf.keras.utils.register_keras_serializable(package="MyLayers", name="MagTransform")
+# class MagTransform(tf.keras.layers.Layer):
+#     def __init__(self, **kwargs):
+#         super(MagTransform, self).__init__(**kwargs)
+#         self.a = self.add_weight(
+#             initializer=tf.keras.initializers.Constant(value=-1.0),
+#             name="a-power",
+#             dtype="float32",
+#             shape=(),
+#             trainable=True,
+#             # constraint=tf.keras.constraints.MinMaxNorm(
+#             #     min_value=-2.0, max_value=1.0, rate=1.0, axis=-1
+#             # ),
+#         )
 
-    def call(self, inputs):
-        c = tf.math.pow(inputs, tf.math.sigmoid(self.a))
-        return c
+#     def call(self, inputs):
+#         c = tf.math.pow(inputs, tf.math.sigmoid(self.a))
+#         return c
 
 
 if __name__ == "__main__":
