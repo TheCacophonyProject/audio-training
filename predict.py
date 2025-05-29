@@ -5,6 +5,7 @@
 
 import argparse
 import os
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 import random
@@ -860,6 +861,13 @@ def predict_on_test(split_file, load_model, base_dir, confusion_file="confusion.
     from audiodataset import load_data
 
     for rec in test.recs.values():
+        found = False
+        for l in rec.human_tags:
+            if l in labels:
+                found = True
+                break
+        if not found:
+            continue
         frames, sr = load_recording(rec.filename)
         file_y = []
         file_data = []
@@ -868,6 +876,9 @@ def predict_on_test(split_file, load_model, base_dir, confusion_file="confusion.
             label = sample.tags[0]
             if label in remapped_labels:
                 label_i = remapped_labels[label]
+                if label_i == -1:
+                    logging.info("Ignoring %s", label)
+                    continue
                 logging.info("%s becomes %s", label, labels[label_i])
             else:
                 logging.info("%s not in remapped %s", rec.filename, label)
@@ -890,6 +901,8 @@ def predict_on_test(split_file, load_model, base_dir, confusion_file="confusion.
             )
             data = data[:, :, np.newaxis]
             file_data.append(data)
+        if len(file_data) == 0:
+            continue
         file_data = np.array(file_data)
         print(file_data.shape, " power is ", power)
 
