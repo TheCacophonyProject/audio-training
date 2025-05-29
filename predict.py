@@ -849,6 +849,7 @@ def predict_on_test(split_file, load_model, base_dir, confusion_file="confusion.
     break_freq = meta.get("break_freq", 1000)
     n_mels = meta.get("n_mels", 160)
     normalize = meta.get("normalize", True)
+    extra_label_map = meta.get("extra_label_map")
 
     remapped_labels = meta.get("remapped_labels", {})
     power = meta.get("power", 2)
@@ -877,8 +878,11 @@ def predict_on_test(split_file, load_model, base_dir, confusion_file="confusion.
             if label in remapped_labels:
                 label_i = remapped_labels[label]
                 if label_i == -1:
-                    logging.info("Ignoring %s", label)
-                    continue
+                    if label in extra_label_map:
+                        label_i = extra_label_map[label]
+                    if label_i == -1:
+                        logging.info("Ignoring %s", label)
+                        continue
                 logging.info("%s becomes %s", label, labels[label_i])
             else:
                 logging.info("%s not in remapped %s", rec.filename, label)
@@ -887,7 +891,6 @@ def predict_on_test(split_file, load_model, base_dir, confusion_file="confusion.
             spec = load_data(
                 test.config, sample.start, frames, sr, end=sample.end, use_padding=False
             )
-            print(spec.spectogram.shape)
             data = mel_spec(
                 spec.spectogram,
                 sr,

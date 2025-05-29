@@ -636,7 +636,6 @@ def get_a_dataset(dir, labels, args):
     remapped = args.get("remapped_labels", [])
     excluded_labels = args.get("excluded_labels", [])
     use_generic_bird = args.get("use_generic_bird", True)
-
     global extra_label_map
     global remapped_y
     if extra_label_dic is None:
@@ -1340,11 +1339,14 @@ def main():
         meta = json.load(f)
     labels.update(meta.get("labels", []))
     # labels.add("bird")
-    # labels.add("noise")
+    labels.add("noise")
     # labels = list(labels)
     set_specific_by_count(meta)
     excluded_labels = get_excluded_labels(labels)
-
+    remapped_labels = None
+    extra_label_map = None
+    labels = list(labels)
+    labels.sort()
     if args.model:
         file = Path(args.model).parent / "metadata.txt"
         with file.open("r") as f:
@@ -1420,7 +1422,7 @@ def main():
         load_raw=False,
         only_features=args.only_features,
         debug=True,
-        debug_bird="magpie",
+        # debug_bird="magpie",
         model_name="efficientnet",
         use_generic_bird=False,
         cache=True,
