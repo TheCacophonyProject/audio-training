@@ -717,6 +717,9 @@ class AudioModel:
             x = base_model(x)
             # , training=True)
 
+            if self.lme:
+                x = badwinner2.LMELayer(axis=1, sharpness=5)(x)
+                x = badwinner2.LMELayer(axis=2, sharpness=5)(x)
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
             activation = "softmax"
             if multi_label:
