@@ -5,6 +5,8 @@
 
 import argparse
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
 import random
 import datetime
 import logging
@@ -46,7 +48,7 @@ from plot_utils import plot_mel, plot_mel_signals, plot_spec
 import matplotlib.patches as patches
 import csv
 
-matplotlib.use("TkAgg")
+# matplotlib.use("TkAgg")
 
 CALL_LENGTH = 1
 

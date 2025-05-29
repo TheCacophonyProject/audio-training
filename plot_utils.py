@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import librosa
 
-matplotlib.use("TkAgg")
+# matplotlib.use("TkAgg")
 import numpy as np
 
 

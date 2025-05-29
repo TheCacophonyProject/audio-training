@@ -51,7 +51,7 @@ import soundfile as sf
 import matplotlib
 import librosa.display
 
-matplotlib.use("TkAgg")
+# matplotlib.use("TkAgg")
 
 import cv2
 from audiodataset import Recording
