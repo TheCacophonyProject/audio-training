@@ -540,7 +540,7 @@ noise_i = None
 bird_mask = None
 
 
-def get_dataset(dir, labels, **args):
+def get_dataset(dir, labels, global_epoch=None, **args):
     global FMAX, MEL_WEIGHTS, FMIN, NFFT, BREAK_FREQ, N_MELS
 
     if args.get("fmin") is not None:
@@ -591,7 +591,7 @@ def get_dataset(dir, labels, **args):
             train_ds = tf.data.Dataset.zip((ds_first, ds_second))
 
             dataset = train_ds.map(
-                lambda ds_one, ds_two: mix_up(ds_one, ds_two, alpha=0.5),
+                lambda ds_one, ds_two: mix_up(ds_one, ds_two, global_epoch, alpha=0.5),
                 num_parallel_calls=tf.data.AUTOTUNE,
                 deterministic=deterministic,
             )
@@ -690,32 +690,36 @@ def get_a_dataset(dir, labels, args):
         name="extra_label_map",
     )
 
+    load_seperate_ds = args.get("load_seperate_ds", False)
     num_labels = len(labels)
     datasets = []
     logging.info("Loading tf records from %s", dir)
     filenames = tf.io.gfile.glob(str(dir / "*.tfrecord"))
 
-    logging.info("Loading %s files from %s", len(filenames), dir)
-    our_dataset = load_dataset(filenames, num_labels, labels, args)
-    datasets.append(our_dataset)
     dataset_2 = None
-    filenames = []
     if args.get("second_dir") is not None:
         second_dir = Path(args.get("second_dir"))
 
         second_filenames = tf.io.gfile.glob(str(second_dir / "*.tfrecord"))
         logging.info(
             "Loading second files %s count: %s",
-            second_filenames[0],
+            second_filenames[:1],
             len(second_filenames),
         )
-        filenames.extend(second_filenames)
-
-        logging.info("Loading %s files from %s", len(filenames), dir)
-        dataset_2 = load_dataset(filenames, num_labels, labels, args)
+        if load_seperate_ds:
+            logging.info(
+                "Loading Second_ds %s files from %s", len(second_filenames), dir
+            )
+            dataset_2 = load_dataset(second_filenames, num_labels, labels, args)
+        else:
+            filenames.extend(second_filenames)
         # datasets.append(second_ds)
     else:
         logging.info("Not using second dataset")
+
+    logging.info("Loading %s files from %s", len(filenames), dir)
+
+    dataset = load_dataset(filenames, num_labels, labels, args)
 
     xeno_files = Path("/data/audio-data/xenocanto/xeno-training-data/")
     xeno_files = xeno_files / dir.name
@@ -757,18 +761,20 @@ def get_a_dataset(dir, labels, args):
     # # else:
     # #     logging.info("Not using second dataset")
 
-    if len(datasets) == 1:
-        dataset = datasets[0]
-    else:
-        logging.info("Stopping on empty? %s", args.get("resample", False))
-        dataset = tf.data.Dataset.sample_from_datasets(
-            datasets,
-            # stop_on_empty_dataset=False,
-            stop_on_empty_dataset=args.get(
-                "stop_on_empty", args.get("resample", False)
-            ),
-            rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
-        )
+    # if len(datasets) == 1:
+    #     dataset = datasets[0]
+    # else:
+    #     logging.info("Stopping on empty? %s", args.get("resample", False))
+    #     dataset = tf.data.Dataset.sample_from_datasets(
+    #         datasets,
+    #         # stop_on_empty_dataset=False,
+    #         stop_on_empty_dataset=args.get(
+    #             "stop_on_empty", args.get("resample", False)
+    #         ),
+    #         rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
+    #     )
+
+    # NOTE this is not impolemented for 2 datasets
     if args.get("no_low_samples", False):
         logging.info("Filtering out low samples")
         no_low_samples_filter = lambda x, y: tf.math.equal(
@@ -816,7 +822,8 @@ def get_a_dataset(dir, labels, args):
             )
             dataset = dataset.filter(debug_filter)
         batch_size = args.get("batch_size", None)
-        dataset = dataset.cache()
+        if args.get("cache", True):
+            dataset = dataset.cache()
 
         if batch_size is not None:
             dataset = dataset.batch(batch_size, drop_remainder=False)
@@ -848,7 +855,7 @@ def get_a_dataset(dir, labels, args):
                 )
 
     # try caching just our dataset
-    if True or args.get("cache", False) or dir.name != "train":
+    if args.get("cache", False) or dir.name != "train":
         logging.info("Caching to mem")
         dataset = dataset.cache()
     if args.get("shuffle", True):
@@ -938,12 +945,14 @@ def sample_beta_distribution(size, concentration_0=0.2, concentration_1=0.2):
 
 
 @tf.function
-def mix_up(ds_one, ds_two, alpha=0.2, chance=0.25):
+def mix_up(ds_one, ds_two, global_epoch, alpha=0.2, chance=0.25):
     # Unpack two datasets
     images_one, labels_one = ds_one
     images_two, labels_two = ds_two
 
-    # batch_size = 32
+    # go down 0.05 every 5 epochs
+    step = global_epoch.value() // 5
+    chance = chance - 0.05 * tf.cast(step, tf.float32)
     batch_size = tf.keras.ops.shape(images_one)[0]
     l = sample_beta_distribution(batch_size, alpha, alpha)
     aug_chance = tf.random.uniform((batch_size,))
@@ -1003,6 +1012,7 @@ def read_tfrecord(
     multi=True,
     load_raw=True,
     model_name="badwinner2",
+    global_epoch=None,
 ):
     tfrecord_format = {"audio/class/text": tf.io.FixedLenFeature((), tf.string)}
     tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
@@ -1192,6 +1202,7 @@ def read_tfrecord(
                 possible_labels = NZ_BIRD_LOSS_WEIGHTING
             else:
                 possible_labels = BIRD_WEIGHTING
+
         return spectogram, (
             label,
             embed_preds,
@@ -1405,6 +1416,7 @@ def main():
         # for l in labels:
         #     if l not in excluded_labels and l not in test_birds:
         #         excluded_labels.append(l)
+    global_epoch = tf.Variable(0, name="global_epoch", trainable=True, dtype=tf.int32)
 
     dataset, remapped, _, labels, _ = get_dataset(
         tf_dir,
@@ -1417,16 +1429,24 @@ def main():
         extra_label_map=extra_label_map,
         multi_label=args.multi_label,
         use_bird_tags=args.use_bird_tags,
-        load_all_y=True,
+        # load_all_y=True,
         shuffle=False,
-        load_raw=False,
+        load_raw=True,
         only_features=args.only_features,
-        debug=True,
+        # debug=True,
         # debug_bird="magpie",
         model_name="efficientnet",
         use_generic_bird=False,
-        cache=True,
+        cache=False,
+        global_epoch=global_epoch,
+        augment=True,
     )
+    # for epoch in range(5):
+    #     global_epoch.assign(epoch)
+    #     print("Global epoch assigned",global_epoch.value())
+    #     for x, y in dataset:
+    #         epoch_batch = y[-1]
+    #         print("Epoch is ", epoch, epoch_batch[0].numpy())
     # debug_labels(dataset, labels)
     # return
     # for batch_x, batch_y in dataset:
@@ -1516,8 +1536,10 @@ def main():
     for l, d in zip(labels, dist):
         print(f"{l} has {d}")
 
-    for e in range(1):
+    for e in range(2):
         batch = 0
+        global_epoch.assign(e)
+        print("EOCH", e)
         for x, y in dataset:
             batch += 1
 
@@ -1615,8 +1637,8 @@ def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
         img = image_batch[n]
         plot_mel(image_batch[n][:, :, 0], ax)
         # np.save(f"dataset-images/batch-{batch_i}-{rec}-{start_s:.1f}.npy",image_batch[n])
-    plt.savefig(f"dataset-images/batch-{batch_i}.png")
-    # plt.show()
+    # plt.savefig(f"dataset-images/batch-{batch_i}.png")
+    plt.show()
 
 
 def plot_mfcc(mfccs, ax):

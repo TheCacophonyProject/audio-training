@@ -386,6 +386,8 @@ class AudioModel:
                 # else:
                 #     json_history[key] = item
 
+    global_epoch = None
+
     def train_model(
         self,
         run_name="test",
@@ -393,6 +395,11 @@ class AudioModel:
         weights=None,
         **args,
     ):
+        global global_epoch
+        global_epoch = tf.Variable(
+            1, name="global_epoch", trainable=False, dtype=tf.int32
+        )
+
         self.log_dir = self.log_dir / run_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
         remapped, excluded_labels, extra_label_map = self.load_datasets(
@@ -832,6 +839,9 @@ class AudioModel:
                 profile_batch=(10, 30),
             )
             checks.append(tboard_callback)
+
+        epoch_updater = EpochUpdater()
+        checks.append(epoch_updater)
         return checks
 
     def load_datasets(self, labels, **args):
@@ -934,16 +944,19 @@ class AudioModel:
         second_dir = None
         if self.second_data_dir is not None:
             second_dir = self.second_data_dir / "train"
-
+        global global_epoch
         self.train, remapped, epoch_size, new_labels, extra_label_map = get_dataset(
             training_files_dir,
             self.labels,
+            global_epoch=global_epoch,
             batch_size=self.batch_size,
             image_size=self.input_shape,
-            augment=False,  # seems to perform worse
+            augment=True,  # seems to perform worse
             excluded_labels=excluded_labels,
             second_dir=second_dir,
             embeddings=self.model_name == "embeddings",
+            load_seperate_ds=True,
+            cache=True,
             **args,
         )
 
@@ -2237,6 +2250,13 @@ def tf_to_ydf(dataset):
     ydf_ds["f2"] = np.float32(ydf_ds["f2"])
     ydf_ds["y"] = np.int16(ydf_ds["y"])
     return ydf_ds
+
+
+class EpochUpdater(tf.keras.callbacks.Callback):
+    def on_epoch_end(self, epoch, logs=None, steps=50):
+        global global_epoch
+        # global_epoch = tf.Variable(1, name='global_epoch', trainable=False, dtype=tf.int32)
+        global_epoch.assign(epoch + 1)
 
 
 if __name__ == "__main__":
