@@ -712,9 +712,8 @@ def get_a_dataset(dir, labels, args):
     else:
         logging.info("Not using second dataset")
 
-    do_human_extra = False
     dataset_3 = None
-    if do_human_extra:
+    if args.get("human_dir") is not None:
         second_dir = Path(args.get("human_dir"))
 
         second_filenames = tf.io.gfile.glob(str(second_dir / "*.tfrecord"))
@@ -732,6 +731,7 @@ def get_a_dataset(dir, labels, args):
 
         else:
             filenames.extend(second_filenames)
+
     logging.info("Loading %s files from %s", len(filenames), dir)
 
     dataset = load_dataset(filenames, num_labels, labels, args)

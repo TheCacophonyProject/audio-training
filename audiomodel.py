@@ -873,6 +873,16 @@ class AudioModel:
                 second_meta = json.load(f)
             second_labels = set(second_meta.get("labels", []))
             labels.update(second_labels)
+        human_dataset_dir = None
+        if args.get("human_dataset_dir") is not None:
+            human_dataset_dir = args.get("human_dataset_dir")
+            logging.info("Loading second metadata %s", human_dataset_dir)
+            file = human_dataset_dir / "training-meta.json"
+            with open(file, "r") as f:
+                second_meta = json.load(f)
+            second_labels = set(second_meta.get("labels", []))
+            labels.update(second_labels)
+
         set_specific_by_count(meta)
         labels = list(labels)
         labels.sort()
@@ -977,6 +987,9 @@ class AudioModel:
         second_dir = None
         if self.second_data_dir is not None:
             second_dir = self.second_data_dir / "train"
+        human_dir = None
+        if human_dataset_dir is not None:
+            human_dir = human_dataset_dir / "train"
         global global_epoch
         self.train, remapped, epoch_size, new_labels, extra_label_map = get_dataset(
             training_files_dir,
@@ -990,6 +1003,7 @@ class AudioModel:
             embeddings=self.model_name == "embeddings",
             load_seperate_ds=True,
             cache=True,
+            human_dir=human_dir,
             **args,
         )
 
@@ -997,6 +1011,8 @@ class AudioModel:
         if self.second_data_dir is not None:
             second_dir = self.second_data_dir / "validation"
 
+        if human_dataset_dir is not None:
+            human_dir = human_dataset_dir / "validation"
         logging.info("Loading Val")
 
         self.validation, _, _, _, _ = get_dataset(
@@ -1007,6 +1023,7 @@ class AudioModel:
             excluded_labels=excluded_labels,
             second_dir=second_dir,
             embeddings=self.model_name == "embeddings",
+            human_dir=human_dir,
             **args,
         )
 
@@ -1772,6 +1789,12 @@ def parse_args():
         default=None,
         help="Secondary dataset directory to use",
     )
+    parser.add_argument(
+        "--human-dataset-dir",
+        type=none_or_str,
+        default=None,
+        help="Secondary dataset directory to use",
+    )
     parser.add_argument("--confusion", help="Save confusion matrix for model")
     parser.add_argument("--rf_model", help="RF Model to use")
     parser.add_argument("--cnn_model", help="CNN Model to use with val_acc weights")
@@ -1896,6 +1919,9 @@ def parse_args():
         args.dataset_dir = Path(args.dataset_dir)
     if args.second_dataset_dir is not None:
         args.second_dataset_dir = Path(args.second_dataset_dir)
+
+    if args.human_dataset_dir is not None:
+        args.human_dataset_dir = Path(args.human_dataset_dir)
     return args
 
 
