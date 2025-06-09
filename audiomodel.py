@@ -569,11 +569,17 @@ class AudioModel:
         model_stats["noise_labels"] = NOISE_LABELS
         model_stats["extra_labels"] = EXTRA_LABELS
         model_stats["other_labels"] = OTHER_LABELS
+        from tfdataset import FMIN, FMAX, NFFT
+
+        model_stats["fmin"] = FMIN
+        model_stats["fmax"] = FMAX
+
         if model_stats.get("n_mels") is None:
             model_stats["n_mels"] = N_MELS
         if model_stats.get("break_freq") is None:
             model_stats["break_freq"] = BREAK_FREQ
-        model_stats["power"] = 1
+        model_stats["power"] = 2
+        model_stats["n_fft"] = NFFT
         model_stats["lme"] = self.lme
         model_stats["db_scale"] = False
         # model_stats["hyperparams"] = self.params
@@ -910,6 +916,33 @@ class AudioModel:
             excluded_labels = ["false-positive"]
 
             set_merge_labels(merge_labels)
+        elif args.get("morepork_model", False):
+            from tfdataset import ANIMAL_LABELS, set_merge_labels
+
+            if "animal" not in self.labels:
+                self.labels.append("animal")
+            self.labels.sort()
+
+            merge_labels = {}
+            excluded_labels = []
+            for l in labels:
+                if l == "morepork":
+                    continue
+                elif l == "bird":
+                    continue
+                if l in SPECIFIC_BIRD_LABELS or l in GENERIC_BIRD_LABELS:
+                    print("Setting", l, " to bird")
+                    merge_labels[l] = "bird"
+                elif l in ANIMAL_LABELS:
+                    merge_labels[l] = "animal"
+                elif l == "insect":
+                    continue
+                    # merge_labels[l] = "insect"
+                elif l in NOISE_LABELS:
+                    merge_labels[l] = "noise"
+            excluded_labels = ["false-positive"]
+
+            set_merge_labels(merge_labels)
         else:
             test_birds = [
                 "bellbird",
@@ -951,7 +984,7 @@ class AudioModel:
             global_epoch=global_epoch,
             batch_size=self.batch_size,
             image_size=self.input_shape,
-            augment=True,  # seems to perform worse
+            augment=False,  # seems to perform worse
             excluded_labels=excluded_labels,
             second_dir=second_dir,
             embeddings=self.model_name == "embeddings",
@@ -1790,6 +1823,9 @@ def parse_args():
         "--one-hot", type=str2bool, default=True, help="One hot labeling "
     )
     parser.add_argument("--resample", default=False, action="count", help="Resample DS")
+    parser.add_argument(
+        "--morepork-model", default=False, action="store_true", help="Morepork model"
+    )
 
     parser.add_argument("--shuffle", type=str2bool, default=True, help="Shuffle DS")
     parser.add_argument(
@@ -1806,7 +1842,7 @@ def parse_args():
 
     parser.add_argument(
         "--model-name",
-        default="badwinner2",
+        default="efficientnetv2b3",
         help="Model to use badwinner, badwinner2, inc3",
     )
 

@@ -342,51 +342,38 @@ def weakly_lbled_data(base_dir):
         json.dump(meta_data, f, indent=4)
 
 
-def flickr_data():
+def flickr_data(flickr_dir):
     config = Config()
     dataset = AudioDataset("Flickr", config)
-    p = Path("/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/wavs")
+    p = Path(flickr_dir / "flickr_audio/wavs")
     # p = Path("./flickr/wavs")
-
     wav_files = list(p.glob("*.wav"))
-    noisy_p = Path(
-        "/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/noisy-wavs"
-    )
+    # noisy_p = Path(
+    #     "/data/audio-data/Flickr-Audio-Caption-Corpus/flickr_audio/noisy-wavs"
+    # )
     # noisy_p = Path("./flickr/noisy-wavs")
 
     # noisy_wav_files.extend(list(p.glob("*.wav")))
     random.shuffle(wav_files)
 
     for rec_name in wav_files:
-        rand_f = np.random.rand()
-        added = False
+        metadata_file = rec_name.with_suffix(".txt")
+        meta = {}
+        if metadata_file.exists():
+            with metadata_file.open("r") as f:
+                # add in some metadata stats
+                meta = json.load(f)
+        end = meta.get("end")
+        if not end:
+            y, sr = librosa.load(rec_name)
+            end = librosa.get_duration(y=y, sr=sr)
+            meta["end"] = end
+            with metadata_file.open("w") as f:
+                json.dump(meta, f)
         labels = ["human"]
-        # if rand_f > 0.7:
-        #     if rand_f > 0.85:
-        #         noisy_name = noisy_p / f"bird-{rec_name.name}"
-        #         if noisy_name.exists():
-        #             add_rec(
-        #                 dataset,
-        #                 noisy_name,
-        #                 ["human"],
-        #                 config,
-        #                 mixed_label="bird",
-        #             )
-        #             # logging.info("Adding %s from  %s", noisy_name, rec_name)
-        #             added = True
-        #             labels.append("bird")
-        #     else:
-        #         noisy_name = noisy_p / f"noise-{rec_name.name}"
-        #         print("looking for %s", noisy_name)
-        #         if noisy_name.exists():
-        #             add_rec(dataset, noisy_name, ["human"], config, mixed_label="noise")
-        #             # logging.info("Adding %s from  %s", noisy_name, rec_name)
-        #             added = True
-        #             labels.append("noise")
-        if not added:
-            add_rec(dataset, rec_name, labels, config)
-        if len(dataset.recs) > len(wav_files) / 3:
-            break
+        add_rec(dataset, rec_name, labels, config, end)
+        # if len(dataset.recs) > len(wav_files) / 3:
+        # break
 
     logging.info("Loaded samples mem %s", psutil.virtual_memory()[2])
     dataset.print_counts()
@@ -417,8 +404,7 @@ def flickr_data():
     all_labels.sort()
     for d in datasets:
         d.labels = all_labels
-    base_dir = Path("/data/audio-data/")
-    record_dir = base_dir / "flickr-training-data/"
+    record_dir = flickr_dir / "flickr-training-data/"
     print("saving to", record_dir)
     logging.info("Saving pre samples mem %s", psutil.virtual_memory()[2])
 
@@ -430,7 +416,7 @@ def flickr_data():
         dataset_counts[dataset.name] = dataset.get_counts()
         # dataset.saveto_numpy(os.path.join(base_dir))
     # dont need dataset anymore just need some meta
-    meta_filename = f"{base_dir}/flickr-training-data/training-meta.json"
+    meta_filename = record_dir / "training-meta.json"
     meta_data = {
         "labels": datasets[0].labels,
         "type": "audio",
@@ -443,7 +429,7 @@ def flickr_data():
         json.dump(meta_data, f, indent=4)
 
 
-def add_rec(dataset, rec_name, labels, config, mixed_label=None):
+def add_rec(dataset, rec_name, labels, config, end):
     id = None
     id, id_2, speaker = rec_name.stem.split("_")
     id = f"{id}-{id_2}-{speaker}"
@@ -460,18 +446,21 @@ def add_rec(dataset, rec_name, labels, config, mixed_label=None):
     #     sr = None
     # except:
     #     continue
-    t = Track({"id": id, "start": 0, "end": None, "tags": tags}, rec_name, r.id, r)
-    t.mixed_label = mixed_label
+    extra_audio = end - config.segment_length
+    offset = 0
+    if extra_audio > 0:
+        offset = np.random.random() * extra_audio
+    t_start = offset
+    t_end = offset + config.segment_length
+    t_end = min(t_end, end)
+    t = Track(
+        {"id": id, "start": t_start, "end": t_end, "tags": tags}, rec_name, r.id, r
+    )
     # r.load_samples()
     r.tracks.append(t)
-    sample = AudioSample(
-        r, r.human_tags, 0, None, [t.id], 1, None, mixed_label=mixed_label
-    )
-    r.samples = [sample]
+    r.signal_percent()
+    r.load_samples(dataset.config.segment_length, dataset.config.segment_stride)
     dataset.add_recording(r)
-    dataset.samples.extend(r.samples)
-    for l in labels:
-        dataset.labels.add(l)
 
 
 #  Child speech
@@ -1234,7 +1223,11 @@ def signal_length_for_segment(tracks, s_start, s_end):
 def main():
     init_logging()
     args = parse_args()
-    if args.tracks:
+    if args.flickr:
+        logging.info("Loading flickr")
+        flickr_data(args.dir)
+
+    elif args.tracks:
         logging.info("Adding best track estimates")
         generate_tracks_master(args.dir)
         return
@@ -1250,7 +1243,6 @@ def main():
     return
     # process_noise()
     # return
-    flickr_data()
     return
     chime_data()
     # return
@@ -1350,6 +1342,7 @@ def parse_args():
         default=None,
         help="Split the dataset using clip ids specified in this file",
     )
+    parser.add_argument("--flickr", action="store_true", help="Add flickr data")
     args = parser.parse_args()
     args.dir = Path(args.dir)
     return args

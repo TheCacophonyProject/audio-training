@@ -243,21 +243,22 @@ def load_samples(
     power=1,
     db_scale=False,
     normalize=True,
+    pad_short_tracks=True,
 ):
     filter_below = 1000
-    # logging.info(
-    #     "Loading samples with length %s stride %s hop length %s and mean_sub %s mfcc %s break %s htk %s n mels %s fmin %s fmax %s",
-    #     segment_length,
-    #     stride,
-    #     hop_length,
-    #     mean_sub,
-    #     use_mfcc,
-    #     mel_break,
-    #     htk,
-    #     n_mels,
-    #     fmin,
-    #     fmax,
-    # )
+    logging.info(
+        "Loading samples with length %s stride %s hop length %s and mean_sub %s mfcc %s break %s htk %s n mels %s fmin %s fmax %s",
+        segment_length,
+        stride,
+        hop_length,
+        mean_sub,
+        use_mfcc,
+        mel_break,
+        htk,
+        n_mels,
+        fmin,
+        fmax,
+    )
     mels = []
     i = 0
     # n_fft = sr // 10
@@ -270,29 +271,54 @@ def load_samples(
     end = segment_length
     mel_samples = []
     for t in tracks:
-        show_spec = False
-        track_data = []
+        show_spec = True
         track_data = []
         start = 0
         end = start + segment_length
-        end = min(end, t.length)
 
-        sr_end = min(int(end * sr), sample_size)
+        sr_end = int(t.end * sr)
+        sr_start = int(sr * t.start)
+
+        if pad_short_tracks:
+            end = min(end, t.length)
+            track_frames = frames[sr_start:sr_end]
+        else:
+            missing = sample_size - (sr_end - sr_start)
+            if missing > 0:
+                offset = np.random.randint(0, missing)
+                sr_start = sr_start - offset
+
+                if sr_start <= 0:
+                    sr_start = 0
+                    sr_end = sr_start + sample_size
+                    sr_end = min(sr_end, len(frames))
+                else:
+                    end_offset = sr_end + missing - offset
+                    if end_offset > len(frames):
+                        end_offset = len(frames)
+                        sr_start = end_offset - sample_size
+                        sr_start = max(sr_start, 0)
+                    sr_end = end_offset
+                assert sr_end - sr_start == sample_size
+            # print("Track ",t , " becomes ", sr_start/sr, sr_end / sr)
+            track_frames = frames[sr_start:sr_end]
+
         sr_start = 0
-        track_frames = frames[int(t.start * sr) : int(t.end * sr)]
+        sr_end = min(sr_end, sample_size)
         while True:
             data = track_frames[sr_start:sr_end]
             if len(data) != sample_size:
                 extra_frames = sample_size - len(data)
                 offset = np.random.randint(0, extra_frames)
                 data = np.pad(data, (offset, extra_frames - offset))
-                logging.info("PADDED")
             if filter_below and t.freq_end < filter_below:
                 logging.info(
                     "Filter freq below %s %s %s", filter_below, t.freq_start, t.freq_end
                 )
-                data = butter_bandpass_filter(data, t.freq_start, t.freq_end, sr)
+                # data = butter_bandpass_filter(data, t.freq_start, t.freq_end, sr)
 
+            if show_spec:
+                print("Showing spec for ", t)
             if normalize:
                 data = normalize_data(data)
             spect = get_spect(
@@ -317,8 +343,7 @@ def load_samples(
             # if t.start > 24 and t.start < 34:
             #     print(spect[:, :, 0].shape, "Spec for ", sr_start / sr, sr_end / sr)
             #     plot_spec(spect[:, :, 0])
-            if show_spec:
-                print("Showing spec for ", t)
+
             show_spec = False
             track_data.append(spect)
             start = start + stride
@@ -383,6 +408,8 @@ def get_spect(
         # if high_pass is not None:
         #     max_bin = high_pass // gap
         #     spectogram[int(max_bin) :] = 0
+        # print("F min is ",fmin)
+        # fmin =200
         mel = mel_spec(
             spectogram,
             sr,
@@ -446,7 +473,7 @@ def preprocess_file(
         break_freq,
         n_mels,
     )
-    logging.info("sample is %s", length)
+    # logging.info("sample is %s", length)
     mels = []
     i = 0
     n_fft = sr // 10
@@ -462,9 +489,9 @@ def preprocess_file(
         else:
             s_data = frames[start_offset : start_offset + sample_size]
         if len(s_data) < seg_length * sr:
-            print("data is", len(s_data) / sr)
+            # print("data is", len(s_data) / sr)
             s_data = np.pad(s_data, (0, int(1.5 * sr)))
-            print("data is now", len(s_data) / sr)
+            # print("data is now", len(s_data) / sr)
 
         spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
 
@@ -935,8 +962,8 @@ def predict_on_test(split_file, load_model, base_dir, confusion_file="confusion.
 def main():
     init_logging()
     args = parse_args()
-    predict_on_test(args.split_file, args.model, args.dir, args.confusion)
-    return
+    # predict_on_test(args.split_file, args.model, args.dir, args.confusion)
+    # return
     if args.dir:
         predict_on_folder(args.model, args.dir)
         return
@@ -946,7 +973,10 @@ def main():
     signals, _ = signal_noise(frames, sr)
 
     tracks = get_tracks_from_signals(signals, end)
-    # track = tracks[0]
+    track = tracks[0]
+    track.start = 0
+    track.end = 4
+    tracks = [track]
     # track.start = 28.06436538696289
     # track.end = 31.0
     # tracks = [track]
@@ -1026,6 +1056,10 @@ def main():
     n_mels = meta.get("n_mels", 160)
     normalize = meta.get("normalize", True)
     power = meta.get("power", 2)
+    fmin = meta.get("fmin", 50)
+    fmax = meta.get("fmax", 11000)
+    pad_short_tracks = meta.get("pad_short_tracks", True)
+
     hop_length = 281
     # print("stride is", segment_stride)
     # segment_length = 2
@@ -1104,6 +1138,9 @@ def main():
                 n_mels=n_mels,
                 normalize=normalize,
                 power=power,
+                fmin=fmin,
+                fmax=fmax,
+                pad_short_tracks=pad_short_tracks,
             )
         # data = np.array(data)
 

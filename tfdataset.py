@@ -183,6 +183,9 @@ FMAX = 11000
 # NOISE_LABELS.extend(OTHER_LABELS)
 # keep_excluded_in_extra = False
 
+MOREPORK_MAX = 1200
+# MAX_FREQ_BIN = 0
+
 
 def set_merge_labels(new_merge):
     global MERGE_LABELS
@@ -576,18 +579,8 @@ def get_dataset(dir, labels, global_epoch=None, **args):
         logging.info("Mapping raw to mel")
         if args.get("augment", False):
             logging.info("Mixing up")
-
-            # Cannot get this to work
-            # STFT is so slow to calculate on the fly mayaswell ust make an augmented dataset
-
-            if True:
-                ds_second, _, _, _, _ = get_a_dataset(dir, labels, args)
-            else:
-                pass
-                # dataset = ds_first.repeat(2)
-                # ds_fist = dataset.take(epoch_size)
-                # ds_second = dataset.take(epoch_size)
-                # ds_second =
+            args["cache"] = False
+            ds_second, _, _, _, _ = get_a_dataset(dir, labels, args)
             train_ds = tf.data.Dataset.zip((ds_first, ds_second))
 
             dataset = train_ds.map(
@@ -595,6 +588,7 @@ def get_dataset(dir, labels, global_epoch=None, **args):
                 num_parallel_calls=tf.data.AUTOTUNE,
                 deterministic=deterministic,
             )
+            dataset = dataset.map(lambda x, y: normalize(x, y))
 
             # dataset = dataset.map(lambda x, y: mix_up(x, y, dataset2))
 
@@ -711,15 +705,37 @@ def get_a_dataset(dir, labels, args):
                 "Loading Second_ds %s files from %s", len(second_filenames), dir
             )
             dataset_2 = load_dataset(second_filenames, num_labels, labels, args)
+            datasets.append(dataset_2)
         else:
             filenames.extend(second_filenames)
         # datasets.append(second_ds)
     else:
         logging.info("Not using second dataset")
 
+    do_human_extra = False
+    dataset_3 = None
+    if do_human_extra:
+        second_dir = Path(args.get("human_dir"))
+
+        second_filenames = tf.io.gfile.glob(str(second_dir / "*.tfrecord"))
+        logging.info(
+            "Loading human files %s count: %s",
+            second_filenames[:1],
+            len(second_filenames),
+        )
+        if load_seperate_ds:
+            logging.info(
+                "Loading third_ds %s files from %s", len(second_filenames), dir
+            )
+            dataset_3 = load_dataset(second_filenames, num_labels, labels, args)
+            datasets.append(dataset_3)
+
+        else:
+            filenames.extend(second_filenames)
     logging.info("Loading %s files from %s", len(filenames), dir)
 
     dataset = load_dataset(filenames, num_labels, labels, args)
+    datasets.append(dataset)
 
     xeno_files = Path("/data/audio-data/xenocanto/xeno-training-data/")
     xeno_files = xeno_files / dir.name
@@ -800,12 +816,13 @@ def get_a_dataset(dir, labels, args):
             )
         if not args.get("use_bird_tags", False):
             logging.info("Filtering out bird tags without specific bird")
-            dataset = dataset.filter(others_filter)
+            for i, ds in enumerate(datasets):
+                datasets[i] = ds.filter(others_filter)
 
     # bird_dataset = dataset.filter(bird_filter)
-    if args.get("filter_signal", False):
-        logging.info("Filtering signal by percent 0.0")
-        dataset = dataset.filter(filter_signal)
+    # if args.get("filter_signal", False):
+    #     logging.info("Filtering signal by percent 0.0")
+    #     dataset = dataset.filter(filter_signal)
 
     deterministic = args.get("deterministic", False)
 
@@ -842,39 +859,47 @@ def get_a_dataset(dir, labels, args):
                 deterministic=deterministic,
             )
         else:
-            dataset = dataset.map(
-                lambda x, y: (x, y[0]),
-                num_parallel_calls=tf.data.AUTOTUNE,
-                deterministic=deterministic,
-            )
-            if dataset_2 is not None:
-                dataset_2 = dataset_2.map(
+            for i, ds in enumerate(datasets):
+                datasets[i] = ds.map(
                     lambda x, y: (x, y[0]),
                     num_parallel_calls=tf.data.AUTOTUNE,
                     deterministic=deterministic,
                 )
+            # dataset = dataset.map(
+            #     lambda x, y: (x, y[0]),
+            #     num_parallel_calls=tf.data.AUTOTUNE,
+            #     deterministic=deterministic,
+            # )
+            # if dataset_2 is not None:
+            #     dataset_2 = dataset_2.map(
+            #         lambda x, y: (x, y[0]),
+            #         num_parallel_calls=tf.data.AUTOTUNE,
+            #         deterministic=deterministic,
+            #     )
 
     # try caching just our dataset
     if args.get("cache", False) or dir.name != "train":
         logging.info("Caching to mem")
-        dataset = dataset.cache()
+        datasets[0] = datasets[0].cache()
     if args.get("shuffle", True):
-        dataset = dataset.shuffle(
-            4096, reshuffle_each_iteration=args.get("reshuffle", True)
-        )
-        if dataset_2 is not None:
-            dataset_2 = dataset_2.shuffle(
+        for i, ds in enumerate(datasets):
+            datasets[i] = ds.shuffle(
                 4096, reshuffle_each_iteration=args.get("reshuffle", True)
             )
-    if dataset_2 is not None:
+        # if dataset_2 is not None:
+        #     dataset_2 = dataset_2.shuffle(
+        #         4096, reshuffle_each_iteration=args.get("reshuffle", True)
+        #     )
+    if len(datasets) > 0:
         # logging.info("Adding second dataset with weights [0.6,0.4]")
         dataset = tf.data.Dataset.sample_from_datasets(
-            [dataset, dataset_2],
+            datasets,
             # weights=[0.6, 0.4],
             stop_on_empty_dataset=False,
             rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
         )
-
+    else:
+        dataset = datasets[0]
     logging.info("Loss fn is %s", args.get("loss_fn"))
 
     epoch_size = args.get("epoch_size")
@@ -1429,9 +1454,12 @@ def main():
         extra_label_map=extra_label_map,
         multi_label=args.multi_label,
         use_bird_tags=args.use_bird_tags,
-        # load_all_y=True,
+        load_all_y=True,
         shuffle=False,
         load_raw=True,
+        n_fft=4096,
+        fmin=100,
+        fmax=MOREPORK_MAX,
         only_features=args.only_features,
         # debug=True,
         # debug_bird="magpie",
@@ -1439,7 +1467,7 @@ def main():
         use_generic_bird=False,
         cache=False,
         global_epoch=global_epoch,
-        augment=True,
+        augment=False,
     )
     # for epoch in range(5):
     #     global_epoch.assign(epoch)
@@ -1542,7 +1570,7 @@ def main():
         print("EOCH", e)
         for x, y in dataset:
             batch += 1
-
+            print(x[0].shape)
             show_batch(
                 x,
                 y,
@@ -1552,6 +1580,7 @@ def main():
                     preds[(batch - 1) * 32 : 32 * batch] if preds is not None else None
                 ),
             )
+        break
 
 
 import sys
@@ -1653,8 +1682,8 @@ def plot_mel(mel, ax):
         x_axis="time",
         y_axis="mel",
         sr=48000,
-        fmax=20000,
-        fmin=50,
+        fmax=11000,
+        fmin=100,
         ax=ax,
         hop_length=HOP_LENGTH,
     )
@@ -1918,6 +1947,7 @@ def raw_to_mel(x, y):
         NFFT,
         " STFT shape is ",
         stft.shape,
+        N_MELS,
     )
     stft = tf.math.pow(stft, 2)
     stft = tf.transpose(stft, [0, 2, 1])
