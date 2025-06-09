@@ -923,7 +923,7 @@ def load_data(
     end=None,
     min_freq=None,
     max_freq=None,
-    use_padding=True,
+    use_padding=False,
 ):
     segment_l = config.segment_length
     segment_stride = config.segment_stride
