@@ -944,7 +944,7 @@ class AudioModel:
                     print("Setting", l, " to bird")
                     merge_labels[l] = "bird"
                 elif l in ANIMAL_LABELS:
-                    merge_labels[l] = "animal"
+                    merge_labels[l] = "noise"
                 elif l == "insect":
                     continue
                     # merge_labels[l] = "insect"
