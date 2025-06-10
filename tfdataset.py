@@ -1391,7 +1391,7 @@ def main():
         excluded_labels = model_meta.get("excluded_labels")
         remapped_labels = model_meta.get("remapped_labels")
         extra_label_map = model_meta.get("extra_label_map")
-    if args.only_features:
+    elif args.only_features:
         merge_labels = {}
         excluded_labels = []
         for l in labels:
@@ -1462,7 +1462,7 @@ def main():
         fmax=MOREPORK_MAX,
         only_features=args.only_features,
         # debug=True,
-        # debug_bird="magpie",
+        debug_bird="morepork",
         model_name="efficientnet",
         use_generic_bird=False,
         cache=False,
