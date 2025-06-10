@@ -545,7 +545,12 @@ bird_mask = None
 
 def get_dataset(dir, labels, global_epoch=None, **args):
     global FMAX, MEL_WEIGHTS, FMIN, NFFT, BREAK_FREQ, N_MELS
+    if args.get("n_mels") != 160:
+        N_MELS = args.get("n_mels")
 
+        MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
+        MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
+        logging.info("Set mels to %s", N_MELS)
     if args.get("fmin") is not None:
         FMIN = args.get("fmin", FMIN)
         FMAX = args.get("fmax", FMAX)

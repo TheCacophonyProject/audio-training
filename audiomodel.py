@@ -406,6 +406,7 @@ class AudioModel:
             self.labels,
             **args,
         )
+
         from tfdataset import DIMENSIONS
 
         self.input_shape = DIMENSIONS
@@ -416,6 +417,8 @@ class AudioModel:
         elif self.model_name == "dual-badwinner2":
             self.input_shape = (96, 511, 1)
 
+        if args.get("n_mels") != 160:
+            self.input_shape = (args.get("n_mels"), self.input_shape[1], 3)
         args["excluded_labels"] = excluded_labels
         args["remapped_labels"] = remapped
         args["extra_label_map"] = extra_label_map
@@ -1897,6 +1900,11 @@ def parse_args():
         type=int,
     )
 
+    parser.add_argument(
+        "--n_mels",
+        default=160,
+        type=int,
+    )
     parser.add_argument(
         "--n_fft",
         default=None,
