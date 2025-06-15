@@ -922,6 +922,7 @@ class AudioModel:
                 elif l in ANIMAL_LABELS:
                     merge_labels[l] = "animal"
                 elif l == "insect":
+                    merge_labels[l] = "noise"
                     continue
                     # merge_labels[l] = "insect"
                 elif l in NOISE_LABELS:
@@ -949,6 +950,8 @@ class AudioModel:
                 elif l in ANIMAL_LABELS:
                     merge_labels[l] = "noise"
                 elif l == "insect":
+                    merge_labels[l] = "noise"
+
                     continue
                     # merge_labels[l] = "insect"
                 elif l in NOISE_LABELS:
