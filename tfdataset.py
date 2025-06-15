@@ -545,7 +545,7 @@ bird_mask = None
 
 def get_dataset(dir, labels, global_epoch=None, **args):
     global FMAX, MEL_WEIGHTS, FMIN, NFFT, BREAK_FREQ, N_MELS
-    if args.get("n_mels") != 160:
+    if args.get("n_mels"):
         N_MELS = args.get("n_mels")
 
         MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
@@ -837,6 +837,16 @@ def get_a_dataset(dir, labels, args):
     deterministic = args.get("deterministic", False)
 
     if args.get("debug"):
+        if len(datasets) > 0:
+            # logging.info("Adding second dataset with weights [0.6,0.4]")
+            dataset = tf.data.Dataset.sample_from_datasets(
+                datasets,
+                # weights=[0.6, 0.4],
+                stop_on_empty_dataset=False,
+                rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
+            )
+        else:
+            dataset = datasets[0]
         if args.get("debug_bird"):
             logging.info("Debugging on %s", args.get("debug_bird"))
             debug_i = labels.index(args.get("debug_bird"))
@@ -858,6 +868,7 @@ def get_a_dataset(dir, labels, args):
             logging.info("Normalizing input")
             dataset = dataset.map(lambda x, y: normalize(x, y))
         logging.info("Returning debug data")
+
         return dataset, remapped, None, labels, extra_label_dic
 
     if not args.get("load_all_y", False):
@@ -1326,7 +1337,7 @@ def parse_args():
         "--only-features", default=False, action="count", help="Train on features"
     )
     parser.add_argument(
-        "--multi-label", type=str2bool, default=True, help="Multi label"
+        "--multi-label", type=str2bool, default=False, help="Multi label"
     )
     parser.add_argument(
         "--use_bird_tags",
@@ -1393,6 +1404,8 @@ def main():
     extra_label_map = None
     labels = list(labels)
     labels.sort()
+    fmin = FMIN
+    fmax = FMAX
     if args.model:
         file = Path(args.model).parent / "metadata.txt"
         with file.open("r") as f:
@@ -1401,6 +1414,8 @@ def main():
         excluded_labels = model_meta.get("excluded_labels")
         remapped_labels = model_meta.get("remapped_labels")
         extra_label_map = model_meta.get("extra_label_map")
+        fmin = model_meta.get("fmin", FMIN)
+        fmax = model_meta.get("fmax", FMAX)
     elif args.only_features:
         merge_labels = {}
         excluded_labels = []
@@ -1466,16 +1481,17 @@ def main():
         use_bird_tags=args.use_bird_tags,
         load_all_y=True,
         shuffle=False,
-        load_raw=True,
+        load_raw=False,
         n_fft=4096,
-        fmin=100,
-        fmax=MOREPORK_MAX,
+        fmin=fmin,
+        fmax=fmax,
+        # MOREPORK_MAX,
         only_features=args.only_features,
-        # debug=True,
+        debug=True,
         debug_bird="morepork",
         model_name="efficientnet",
         use_generic_bird=False,
-        cache=False,
+        cache=True,
         global_epoch=global_epoch,
         augment=False,
     )
@@ -1542,6 +1558,8 @@ def main():
             )
         )
         index = 0
+        total_more = 0
+        correct = 0
         for _, y_b in dataset:
 
             recs = y_b[3]
@@ -1554,19 +1572,25 @@ def main():
                 conf = pred[max_i]
                 p_label = labels[max_i]
                 y_true = tf.argmax(y)
-                print("Y true is ", y_true, y)
                 y_label = labels[y_true]
 
+                index += 1
+                if y_label != tf.constant("morepork"):
+                    continue
+
+                total_more += 1
                 rec = rec.numpy().decode("utf8")
                 track = track.numpy().decode("utf8")
                 start = start.numpy()
-
-                print(
-                    f"{y_label} predicted as {p_label} with {round(100*conf)}% id: {rec}-{track} at {start}"
-                )
-                index += 1
+                if max_i != y_true:
+                    print(
+                        f"{y_label} predicted as {p_label} with {round(100*conf)}% id: {rec}-{track} at {start}"
+                    )
+                else:
+                    correct += 1
         # filenames.extend(tf.io.gfile.glob(f"{d}/test/**/*.tfrecord"))
-    print("labels are ", labels)
+        print("Correct out of total ", correct, " / ", total_more)
+    # return
     global NZ_BIRD_LOSS_WEIGHTING, BIRD_WEIGHTING, SPECIFIC_BIRD_MASK, GENERIC_BIRD_MASK
 
     dist, _ = get_distribution(dataset, len(labels), batched=True, one_hot=True)
@@ -1574,6 +1598,7 @@ def main():
     for l, d in zip(labels, dist):
         print(f"{l} has {d}")
 
+    return
     for e in range(2):
         batch = 0
         global_epoch.assign(e)
