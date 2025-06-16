@@ -6,7 +6,7 @@
 import argparse
 import os
 
-TRAINING = False
+TRAINING = True
 
 # https://www.tensorflow.org/guide/profiler#improve_device_performance
 # dont know if does anything
@@ -876,6 +876,13 @@ class AudioModel:
                 second_meta = json.load(f)
             second_labels = set(second_meta.get("labels", []))
             labels.update(second_labels)
+        if args.get("extra_datasets"):
+            for extra_ds in args["extra_datasets"]:
+                logging.info("Loading second metadata %s", extra_ds)
+                with open(file, "r") as f:
+                    second_meta = json.load(f)
+                second_labels = set(second_meta.get("labels", []))
+                labels.update(second_labels)
         human_dataset_dir = None
         if args.get("human_dataset_dir") is not None:
             human_dataset_dir = args.get("human_dataset_dir")
@@ -1612,10 +1619,6 @@ def main():
     init_logging()
     args = parse_args()
 
-    args["extra_datasets"]=[
-        "/data/audio-data/ambientsounds/training-data/",
-        "/data/audio-data/ESC-50-master/training-data/"
-    ]
     # ktest()
     # return
     if args.confusion is not None:
@@ -1787,6 +1790,15 @@ def str2bool(v):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=100, help="Epochs to use")
+    parser.add_argument(
+        "--extra-datasets",
+        default=[
+            "/data/audio-data/ambientsounds/training-data/",
+            "/data/audio-data/ESC-50-master/training-data/",
+        ],
+        help="Dataset directory to use",
+    )
+
     parser.add_argument(
         "--dataset-dir",
         type=str,

@@ -813,7 +813,7 @@ def get_a_dataset(dir, labels, args):
     if args.get("extra_datasets") is not None:
         for dataset in args["extra_datasets"]:
 
-            dataset_dir = Path(dataset) /  dir.name
+            dataset_dir = Path(dataset) / dir.name
 
             extra_files = tf.io.gfile.glob(str(dataset_dir / "*.tfrecord"))
             random.shuffle(extra_files)
@@ -824,15 +824,12 @@ def get_a_dataset(dir, labels, args):
                 len(extra_files),
             )
             if load_seperate_ds:
-                logging.info(
-                    "Loading third_ds %s files from %s", len(extra_files), dir
-                )
+                logging.info("Loading third_ds %s files from %s", len(extra_files), dir)
                 dataset_extra = load_dataset(extra_files, num_labels, labels, args)
                 datasets.append(dataset_extra)
 
             else:
                 filenames.extend(extra_files)
-
 
     logging.info("Loading %s files from %s", len(filenames), dir)
 
