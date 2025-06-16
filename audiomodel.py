@@ -879,6 +879,7 @@ class AudioModel:
         if args.get("extra_datasets"):
             for extra_ds in args["extra_datasets"]:
                 logging.info("Loading second metadata %s", extra_ds)
+                file = Path(extra_ds) / "training-meta.json"
                 with open(file, "r") as f:
                     second_meta = json.load(f)
                 second_labels = set(second_meta.get("labels", []))
