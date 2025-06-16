@@ -39,20 +39,60 @@ NOISE_LABELS = [
     "insect",
     "wind",
     "vehicle",
-    "dog",
     "rain",
     "static",
     "noise",
-    "cat",
-    "cow",
-    "chicken",
     "water",
-    "sheep",
+    # "cat",
+    # "cow",
+    # "chicken",
+    # "dog",
 ]
 
+OTHER_NOISE = [
+    "Acoustic_guitar",
+    "Bass_guitar",
+    "Clapping",
+    "Coin_(dropping)",
+    "Crash_cymbal",
+    "Dishes_and_pots_and_pans",
+    "Engine",
+    "Fart",
+    "Fire",
+    "Fireworks",
+    "Glass",
+    "Hi-hat",
+    "Piano",
+    "Rain",
+    "Slam",
+    "Squeak",
+    "Tearing",
+    "Walk_or_footsteps",
+    "Wind",
+    "Writing",
+]
 
-ANIMAL_LABELS = ["cat", "cow", "chicken", "dog", "sheep", "possum", "rodent"]
+NOISE_LABELS.extend(OTHER_NOISE)
 
+
+# ANIMAL_LABELS = ["cat", "cow", "chicken", "dog", "sheep", "possum", "rodent"]
+ANIMAL_LABELS = [
+    "bear",
+    "cat",
+    "chicken",
+    "cow",
+    "dog",
+    "dolphin",
+    "donkey",
+    "elephant",
+    "frog",
+    "horse",
+    "lion",
+    "monkey",
+    "possum",
+    "rodent",
+    "sheep",
+]
 # SPECIFIC_BIRD_LABELS = [
 #     "bird",
 #     "whistler",

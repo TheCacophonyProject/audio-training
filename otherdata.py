@@ -379,7 +379,7 @@ def csv_dataset(base_dir):
             )
             audio_file = base_dir.parent / Path(name)
             labels = [audio_file.parent.name.lower()]
-            add_rec(dataset, audio_file, labels, config, min(3, float(duration)), id=id)
+            add_rec(dataset, audio_file, labels, config, float(duration), id=id)
     write_dataset(dataset, base_dir.parent)
 
 
