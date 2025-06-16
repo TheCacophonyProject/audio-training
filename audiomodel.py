@@ -963,6 +963,8 @@ class AudioModel:
                     merge_labels[l] = "noise"
                 elif l in HUMAN_LABELS:
                     merge_labels[l] = "human"
+                elif l in INSECT_LABELS:
+                    merge_labels[l] = "noise"
             excluded_labels = ["false-positive"]
 
             set_merge_labels(merge_labels)

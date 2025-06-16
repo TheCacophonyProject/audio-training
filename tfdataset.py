@@ -99,43 +99,28 @@ OTHER_NOISE.extend(
         "brushing_teeth",
         "can_opening",
         "car_horn",
-        "cat",
         "chainsaw",
         "chirping_birds",
         "church_bells",
         "clapping",
         "clock_alarm",
         "clock_tick",
-        "coughing",
-        "cow",
         "crackling_fire",
-        "crickets",
-        "crow",
-        "crying_baby",
-        "dog",
         "door_wood_creaks",
         "door_wood_knock",
         "drinking_sipping",
         "engine",
         "fireworks",
         "footsteps",
-        "frog",
         "glass_breaking",
         "hand_saw",
         "helicopter",
-        "hen",
-        "insects",
         "keyboard_typing",
-        "laughing",
         "mouse_click",
-        "pig",
         "pouring_water",
         "rain",
-        "rooster",
         "sea_waves",
-        "sheep",
         "siren",
-        "sneezing",
         "snoring",
         "thunderstorm",
         "toilet_flush",
@@ -146,6 +131,8 @@ OTHER_NOISE.extend(
         "wind",
     ]
 )
+
+
 NOISE_LABELS.extend(OTHER_NOISE)
 
 NOISE_LABELS = list(set(NOISE_LABELS))
@@ -167,9 +154,23 @@ ANIMAL_LABELS = [
     "possum",
     "rodent",
     "sheep",
+    "pig",
+    "hen",
 ]
 
-HUMAN_LABELS = ["Crying baby", "Sneezing", "Breathing", "Coughing", "Laughing"]
+INSECT_LABELS = ["crickets", "insects"]
+
+HUMAN_LABELS = [
+    "Crying baby",
+    "Sneezing",
+    "Breathing",
+    "Coughing",
+    "Laughing",
+    "crying_baby",
+    "sneezing",
+    "laughing",
+    "coughing",
+]
 # SPECIFIC_BIRD_LABELS = [
 #     "bird",
 #     "whistler",
