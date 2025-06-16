@@ -70,11 +70,33 @@ OTHER_NOISE = [
     "Walk_or_footsteps",
     "Wind",
     "Writing",
+    "beach",
+    "brown",
+    "campfire",
+    "city",
+    "construction",
+    "engine",
+    "factory",
+    "fan",
+    "forest",
+    "library",
+    "planecabin",
+    "rain",
+    "rainforest",
+    "river",
+    "starship",
+    "static",
+    "thunderstorm",
+    "train",
+    "water",
+    "white",
+    "wind",
 ]
 
 NOISE_LABELS.extend(OTHER_NOISE)
 
-
+NOISE_LABELS = list(set(NOISE_LABELS))
+NOISE_LABELS.sort()
 # ANIMAL_LABELS = ["cat", "cow", "chicken", "dog", "sheep", "possum", "rodent"]
 ANIMAL_LABELS = [
     "bear",
@@ -93,6 +115,8 @@ ANIMAL_LABELS = [
     "rodent",
     "sheep",
 ]
+
+HUMAN_LABELS = ["Crying baby", "Sneezing", "Breathing", "Coughing", "Laughing"]
 # SPECIFIC_BIRD_LABELS = [
 #     "bird",
 #     "whistler",
@@ -547,6 +571,10 @@ def get_remappings(
             if "noise" in new_labels:
                 remap_label = "noise"
                 extra_label_map[l] = new_labels.index("noise")
+            continue
+        elif l in HUMAN_LABELS:
+            if "human" in new_labels:
+                extra_label_map[l] = new_labels.index("human")
             continue
         elif l in OTHER_LABELS:
             if "other" in new_labels:
@@ -1472,6 +1500,8 @@ def main():
                 # merge_labels[l] = "insect"
             elif l in NOISE_LABELS:
                 merge_labels[l] = "noise"
+            elif l in HUMAN_LABELS:
+                merge_labels[l] = "human"
         set_merge_labels(merge_labels)
         args.use_bird_tags = True
     else:

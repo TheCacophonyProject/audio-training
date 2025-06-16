@@ -930,7 +930,7 @@ class AudioModel:
 
             set_merge_labels(merge_labels)
         elif args.get("morepork_model", False):
-            from tfdataset import ANIMAL_LABELS, set_merge_labels
+            from tfdataset import ANIMAL_LABELS, set_merge_labels, HUMAN_LABELS
 
             if "animal" not in self.labels:
                 self.labels.append("animal")
@@ -953,6 +953,8 @@ class AudioModel:
                     # merge_labels[l] = "insect"
                 elif l in NOISE_LABELS:
                     merge_labels[l] = "noise"
+                elif l in HUMAN_LABELS:
+                    merge_labels[l] = "human"
             excluded_labels = ["false-positive"]
 
             set_merge_labels(merge_labels)

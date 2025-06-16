@@ -343,51 +343,85 @@ def weakly_lbled_data(base_dir):
 
 
 # fix badly made csv files
-# def redo_csv():
-#        with base_dir.open("r") as f:
-#         dreader = csv.reader(f, delimiter=",", quotechar="|")
-#         with open('fixed.csv', 'w', newline='') as csvfile:
-#             fixedwriter = csv.writer(csvfile, delimiter=' ',
-#                             quotechar='|', quoting=csv.QUOTE_MINIMAL)
-#             fixedwriter.writerow(dreader.__next__())
+def redo_csv(file_dir,base_dir,writer):
+    with base_dir.open("r") as f:
+        dreader = csv.reader(f, delimiter=",", quotechar="|")
 
+        dreader.__next__()
+        for row in dreader:
+         
+            audio_file = file_dir / row[0]
+            row[0] = audio_file
+            test_f = base_dir.parent / row[0]
 
-#             for row in dreader:
-#                 file_folder = row[0][:row[0].index("_")]
-#                 other_path = Path(row[1])
-#                 row[0] = str(Path(other_path.name) / file_folder/ row[0])
-#                 test_f = base_dir.parent / row[0]
-#                 if test_f.exists():
-#                     print(test_f, " exists")
-#                 else:
-#                     print(test_f)
-#                     1 /0
-#                 row[1] = test_f.parent
-#                 fixedwriter.writerow(row)
-#                 # name,path,channels,sample_width,frame_rate,nframes,duration,size = row
+            audio_file = base_dir.parent.parent / row[0]
+            if not audio_file.exists():
+                raise Exception("FAILED")
+            y, sr = librosa.load(audio_file)
+            duration = librosa.get_duration(y=y, sr=sr)
+            row.insert(3,duration)
+
+            writer.writerow(row)
 def csv_dataset(base_dir):
     config = Config()
     dataset = AudioDataset("CSVData", config)
     id = 0
+    wav_files = list(base_dir.glob("*.wav"))
+    # with open(base_dir / "meta.csv", 'w', newline='') as csvfile:
+    #     fixedwriter = csv.writer(csvfile, delimiter=',')
+    #     fixedwriter.writerow(["id","file","label","duration"])
+    #     for wav in wav_files:
+    #         id+=1
+    #         y, sr = librosa.load(wav)
+    #         duration = librosa.get_duration(y=y, sr=sr)
+    #         fixedwriter.writerow([id,wav.name, wav.stem,duration])
+    # return
+    # csv_files = ["test.csv","train.csv"]
+    # file_dir = ["FSDnoisy18k.audio_test","FSDnoisy18k.audio_train"]
+    #with open('fixed.csv', 'w', newline='') as csvfile:
+    #    fixedwriter = csv.writer(csvfile, delimiter=',')
+    #    for csv_f,file_dir in zip(csv_files,file_dir):
+    #        print("Redo ", base_dir/csv_f)
+    #        redo_csv(Path(file_dir),base_dir/csv_f,fixedwriter)
+    #return
+    multiple_samples = "ambient" in str(base_dir)
     with base_dir.open("r") as f:
-        dreader = csv.reader(f, delimiter=" ", quotechar="|")
+        dreader = csv.reader(f, delimiter=",", quotechar="|")
         dreader.__next__()
         for row in dreader:
             id += 1
-            name, path, channels, sample_width, frame_rate, nframes, duration, size = (
-                row
-            )
-            audio_file = base_dir.parent / Path(name)
-            labels = [audio_file.parent.name.lower()]
-            add_rec(dataset, audio_file, labels, config, float(duration), id=id)
-    write_dataset(dataset, base_dir.parent)
+            if "FSDnoisy" in str(base_dir):
+                name = row[0]
+                labels = [row[1]]
+                duration = row[3]
+                audio_file = base_dir.parent/ name
+            elif "ESC-50" in str(base_dir):
+                audio_file = base_dir.parent.parent / "audio"/row[0]
+                labels = [row[3]]
+                if
+                duration = 5
+            elif "ambient" in str(base_dir):
+                id = int(row[0])
+                audio_file = base_dir.parent /row[1]
+                labels = [row[2]]
+                duration = row[3]
+            else:
+                name, path, channels, sample_width, frame_rate, nframes, duration, size = (
+                    row
+                )
+                audio_file = base_dir.parent / Path(name)
+                labels = [audio_file.parent.name.lower()]
+            add_rec(dataset, audio_file, labels, config,  float(duration), id=id,multiple_samples = multiple_samples)
+    write_dataset(dataset, base_dir.parent, split = "ambient" not in str(base_dir))
 
 
-def write_dataset(dataset, base_dir):
+def write_dataset(dataset, base_dir,split=True):
     dataset.print_counts()
-
-    datasets = split_randomly(dataset, no_test=False)
-
+    if split:
+        datasets = split_randomly(dataset, no_test=True)
+    else:
+        dataset.name = "train"
+        datasets = [dataset]
     all_labels = set()
     for d in datasets:
         logging.info("%s Dataset", d.name)
@@ -511,7 +545,7 @@ def flickr_data(flickr_dir):
         json.dump(meta_data, f, indent=4)
 
 
-def add_rec(dataset, rec_name, labels, config, end, id=None):
+def add_rec(dataset, rec_name, labels, config, end, id=None,multiple_samples = False):
     if id is None:
         id, id_2, speaker = rec_name.stem.split("_")
         id = f"{id}-{id_2}-{speaker}"
@@ -528,13 +562,18 @@ def add_rec(dataset, rec_name, labels, config, end, id=None):
     #     sr = None
     # except:
     #     continue
-    extra_audio = end - config.segment_length
-    offset = 0
-    if extra_audio > 0:
-        offset = np.random.random() * extra_audio
-    t_start = offset
-    t_end = offset + config.segment_length
-    t_end = min(t_end, end)
+    if multiple_samples:
+        t_start = 0
+        t_end = end
+    else:
+        extra_audio = end - config.segment_length
+        offset = 0
+        if extra_audio > 0:
+            offset = np.random.random() * extra_audio
+        t_start = offset
+        t_end = offset + config.segment_length
+        t_end = min(t_end, end)
+
     t = Track(
         {"id": id, "start": t_start, "end": t_end, "tags": tags}, rec_name, r.id, r
     )

@@ -316,7 +316,7 @@ def load_samples(
                     "Filter freq below %s %s %s", filter_below, t.freq_start, t.freq_end
                 )
                 # data = butter_bandpass_filter(data, t.freq_start, t.freq_end, sr)
-
+                # 1/0
             if show_spec:
                 print("Showing spec for ", t)
             if normalize:
@@ -973,7 +973,8 @@ def main():
     signals, _ = signal_noise(frames, sr)
 
     tracks = get_tracks_from_signals(signals, end)
-    # track.start = 28.06436538696289
+    # tracks = [track for track in tracks if track.start > 18 and track.end < 21]
+    # track.start = 28.0p6436538696289
     # track.end = 31.0
     # tracks = [track]
     # for s in tracks:
@@ -1149,27 +1150,46 @@ def main():
         d = np.repeat(d, 3, -1)
         predictions = model.predict(np.array(d))
 
+        previous_pred = None
+        print("Predictin", t)
         for start_i, p in enumerate(predictions):
-            print(
-                "Pred for start ", t.start + start_i * segment_stride, np.round(p * 100)
-            )
-            for i, percent in enumerate(p):
-                if percent >= prob_thresh:
-                    pred_counts[i] += 1
-                    # print(
-                    #     "For track",
-                    #     t.start + start_i * segment_stride,
-                    #     " have ",
-                    #     labels[i],
-                    #     " ",
-                    #     np.round(100 * percent),
-                    # )
-        pred_labels = []
+            max_p = np.argmax(p)
+            conf = p[max_p]
+            print("At ", start_i, " this is now ", t.start + start_i * segment_stride)
+            # print("Current is ",max_p, conf, " previous was ", previous_pred)
+            if conf >= prob_thresh:
+                if previous_pred == max_p or len(predictions) == 1:
+                    print(
+                        "Pred for ", t.start + start_i * segment_stride, labels[max_p]
+                    )
+                previous_pred = max_p
+                pred_counts[max_p] += 1
+            else:
+                previous_pred = None
+            # print(
+            #     "Pred for start ", t.start + start_i * segment_stride, np.round(p * 100)
+            # )
+
+        #     for i, percent in enumerate(p):
+        #         if percent >= prob_thresh:
+        #             pred_counts[i] += 1
+        #             # print(
+        #             #     "For track",
+        #             #     t.start + start_i * segment_stride,
+        #             #     " have ",
+        #             #     labels[i],
+        #             #     " ",
+        #             #     np.round(100 * percent),
+        #             # )
+        # pred_labels = []
         # print("COUNTS are", pred_counts, " more than ", len(predictions) // 2)
 
         prediction = np.mean(predictions, axis=0)
         print("Prediction is", np.round(100 * prediction))
-        print("count pred is ", pred_labels)
+        for i, count in enumerate(pred_counts):
+            if count > 0:
+                print(f"{labels[i]}: {count}")
+        # print("count pred is ", pred_labels)
         result = ModelResult(model_name)
         t.predictions.append(result)
         max_p = None
