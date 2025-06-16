@@ -20,16 +20,16 @@ def plot_mfcc(mfcc):
 import matplotlib.patches as patches
 
 
-def plot_mel_signals(mel, signals, signals2=[], i=0, colours=None):
+def plot_mel_signals(mel, signals, signals2=[], i=0, colours=None,fmin = 50, fmax = 11000):
     fig = plt.figure(figsize=(10, 10))
     ax = plt.subplot(1, 1, 1)
     img = librosa.display.specshow(
         librosa.amplitude_to_db(mel, ref=np.max),
         x_axis="time",
-        y_axis="linear",
+        y_axis="mel",
         sr=48000,
-        fmax=11000,
-        fmin=50,
+        fmax=fmax,
+        fmin=fmin,
         ax=ax,
         hop_length=281,
     )
@@ -46,7 +46,7 @@ def plot_mel_signals(mel, signals, signals2=[], i=0, colours=None):
         if colours is not None and len(colours) > 0:
             edge_color = colours[signal_i % len(colours)]
         rect = patches.Rectangle(
-            (start_x, s.freq_start),
+            (start_x, s.freq_start ),
             end_x - start_x,
             s.freq_range,
             linewidth=1,
@@ -113,7 +113,7 @@ def plot_mel_weights(weights):
     plt.show()
 
 
-def plot_mel(mel, filename="mel"):
+def plot_mel(mel, filename="mel", fmin = 50, fmax = 24000):
     fig = plt.figure(figsize=(10, 10))
     ax = plt.subplot(1, 1, 1)
     img = librosa.display.specshow(
@@ -122,8 +122,8 @@ def plot_mel(mel, filename="mel"):
         x_axis="time",
         y_axis="mel",
         sr=48000,
-        fmax=24000,
-        fmin=50,
+        fmax=fmax,
+        fmin=fmin,
         ax=ax,
         hop_length=281,
     )
