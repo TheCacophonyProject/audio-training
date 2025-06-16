@@ -342,6 +342,88 @@ def weakly_lbled_data(base_dir):
         json.dump(meta_data, f, indent=4)
 
 
+# fix badly made csv files
+# def redo_csv():
+#        with base_dir.open("r") as f:
+#         dreader = csv.reader(f, delimiter=",", quotechar="|")
+#         with open('fixed.csv', 'w', newline='') as csvfile:
+#             fixedwriter = csv.writer(csvfile, delimiter=' ',
+#                             quotechar='|', quoting=csv.QUOTE_MINIMAL)
+#             fixedwriter.writerow(dreader.__next__())
+
+
+#             for row in dreader:
+#                 file_folder = row[0][:row[0].index("_")]
+#                 other_path = Path(row[1])
+#                 row[0] = str(Path(other_path.name) / file_folder/ row[0])
+#                 test_f = base_dir.parent / row[0]
+#                 if test_f.exists():
+#                     print(test_f, " exists")
+#                 else:
+#                     print(test_f)
+#                     1 /0
+#                 row[1] = test_f.parent
+#                 fixedwriter.writerow(row)
+#                 # name,path,channels,sample_width,frame_rate,nframes,duration,size = row
+def csv_dataset(base_dir):
+    config = Config()
+    dataset = AudioDataset("CSVData", config)
+    id = 0
+    with base_dir.open("r") as f:
+        dreader = csv.reader(f, delimiter=" ", quotechar="|")
+        dreader.__next__()
+        for row in dreader:
+            id += 1
+            name, path, channels, sample_width, frame_rate, nframes, duration, size = (
+                row
+            )
+            audio_file = base_dir.parent / Path(name)
+            labels = [audio_file.parent.name.lower()]
+            add_rec(dataset, audio_file, labels, config, min(3, float(duration)), id=id)
+    write_dataset(dataset, base_dir.parent)
+
+
+def write_dataset(dataset, base_dir):
+    dataset.print_counts()
+
+    datasets = split_randomly(dataset, no_test=False)
+
+    all_labels = set()
+    for d in datasets:
+        logging.info("%s Dataset", d.name)
+        d.print_sample_counts()
+
+        all_labels.update(d.labels)
+    # return
+    all_labels = list(all_labels)
+    all_labels.sort()
+    for d in datasets:
+        d.labels = all_labels
+    record_dir = base_dir / "training-data/"
+    print("saving to", record_dir)
+    logging.info("Saving pre samples mem %s", psutil.virtual_memory()[2])
+
+    dataset_counts = {}
+    for dataset in datasets:
+        dir = record_dir / dataset.name
+        print("saving to ", dir)
+        create_tf_records(dataset, dir, datasets[0].labels, num_shards=100)
+        dataset_counts[dataset.name] = dataset.get_counts()
+        # dataset.saveto_numpy(os.path.join(base_dir))
+    # dont need dataset anymore just need some meta
+    meta_filename = record_dir / "training-meta.json"
+    meta_data = {
+        "labels": datasets[0].labels,
+        "type": "audio",
+        "counts": dataset_counts,
+        "by_label": False,
+        "relabbled": RELABEL,
+    }
+    meta_data.update(dataset.config.__dict__)
+    with open(meta_filename, "w") as f:
+        json.dump(meta_data, f, indent=4)
+
+
 def flickr_data(flickr_dir):
     config = Config()
     dataset = AudioDataset("Flickr", config)
@@ -429,10 +511,10 @@ def flickr_data(flickr_dir):
         json.dump(meta_data, f, indent=4)
 
 
-def add_rec(dataset, rec_name, labels, config, end):
-    id = None
-    id, id_2, speaker = rec_name.stem.split("_")
-    id = f"{id}-{id_2}-{speaker}"
+def add_rec(dataset, rec_name, labels, config, end, id=None):
+    if id is None:
+        id, id_2, speaker = rec_name.stem.split("_")
+        id = f"{id}-{id_2}-{speaker}"
     r = Recording({"id": id, "tracks": []}, rec_name, config)
     tags = []
     for l in labels:
@@ -1226,7 +1308,9 @@ def main():
     if args.flickr:
         logging.info("Loading flickr")
         flickr_data(args.dir)
-
+    elif args.csv:
+        logging.info("Loading data divided by folder")
+        csv_dataset(args.dir)
     elif args.tracks:
         logging.info("Adding best track estimates")
         generate_tracks_master(args.dir)
@@ -1342,6 +1426,8 @@ def parse_args():
         default=None,
         help="Split the dataset using clip ids specified in this file",
     )
+    parser.add_argument("--csv", action="store_true", help="Add data from csv file")
+
     parser.add_argument("--flickr", action="store_true", help="Add flickr data")
     args = parser.parse_args()
     args.dir = Path(args.dir)

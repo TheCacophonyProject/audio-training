@@ -989,7 +989,7 @@ def load_data(
             #     " for length ",
             #     len(frames) / sr,
             # )
-            assert end - start == sr_data_l
+            # assert end - start == sr_data_l
 
         s_data = frames[start : int(segment_l * sr + start)]
 

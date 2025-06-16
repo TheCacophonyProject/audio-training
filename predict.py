@@ -271,7 +271,7 @@ def load_samples(
     end = segment_length
     mel_samples = []
     for t in tracks:
-        show_spec = True
+        show_spec = False
         track_data = []
         start = 0
         end = start + segment_length
@@ -973,10 +973,6 @@ def main():
     signals, _ = signal_noise(frames, sr)
 
     tracks = get_tracks_from_signals(signals, end)
-    track = tracks[0]
-    track.start = 0
-    track.end = 4
-    tracks = [track]
     # track.start = 28.06436538696289
     # track.end = 31.0
     # tracks = [track]

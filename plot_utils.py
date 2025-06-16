@@ -20,7 +20,7 @@ def plot_mfcc(mfcc):
 import matplotlib.patches as patches
 
 
-def plot_mel_signals(mel, signals, signals2=[], i=0, colours=None,fmin = 50, fmax = 11000):
+def plot_mel_signals(mel, signals, signals2=[], i=0, colours=None, fmin=50, fmax=11000):
     fig = plt.figure(figsize=(10, 10))
     ax = plt.subplot(1, 1, 1)
     img = librosa.display.specshow(
@@ -46,7 +46,7 @@ def plot_mel_signals(mel, signals, signals2=[], i=0, colours=None,fmin = 50, fma
         if colours is not None and len(colours) > 0:
             edge_color = colours[signal_i % len(colours)]
         rect = patches.Rectangle(
-            (start_x, s.freq_start ),
+            (start_x, s.freq_start),
             end_x - start_x,
             s.freq_range,
             linewidth=1,
@@ -113,7 +113,7 @@ def plot_mel_weights(weights):
     plt.show()
 
 
-def plot_mel(mel, filename="mel", fmin = 50, fmax = 24000):
+def plot_mel(mel, filename="mel", fmin=50, fmax=24000):
     fig = plt.figure(figsize=(10, 10))
     ax = plt.subplot(1, 1, 1)
     img = librosa.display.specshow(
