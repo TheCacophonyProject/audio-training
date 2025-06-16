@@ -1611,6 +1611,11 @@ def ktest():
 def main():
     init_logging()
     args = parse_args()
+
+    args["extra_datasets"]=[
+        "/data/audio-data/ambientsounds/training-data/",
+        "/data/audio-data/ESC-50-master/training-data/"
+    ]
     # ktest()
     # return
     if args.confusion is not None:
