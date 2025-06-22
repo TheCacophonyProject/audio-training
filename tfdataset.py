@@ -256,7 +256,6 @@ GENERIC_BIRD_LABELS = [
     "eurasian blackbird",
     "european goldfinch",
     "european greenfinch",
-    "frog",
     "greenfinch",
     "gull",
     "harrier",
