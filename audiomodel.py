@@ -6,7 +6,7 @@
 import argparse
 import os
 
-TRAINING = True
+TRAINING = False
 
 # https://www.tensorflow.org/guide/profiler#improve_device_performance
 # dont know if does anything

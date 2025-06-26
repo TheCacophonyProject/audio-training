@@ -410,6 +410,7 @@ def get_spect(
         #     spectogram[int(max_bin) :] = 0
         # print("F min is ",fmin)
         # fmin =200
+        print("Power ?,", power, fmin, fmax)
         mel = mel_spec(
             spectogram,
             sr,

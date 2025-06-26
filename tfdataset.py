@@ -706,6 +706,8 @@ def get_dataset(dir, labels, global_epoch=None, **args):
         if args.get("augment", False):
             logging.info("Mixing up")
             args["cache"] = False
+            args["extra_label_map"] = extra_label_dic
+            args["remapped_labels"] = remapped
             ds_second, _, _, _, _ = get_a_dataset(dir, labels, args)
             train_ds = tf.data.Dataset.zip((ds_first, ds_second))
 
@@ -762,6 +764,13 @@ def get_a_dataset(dir, labels, args):
         extra_label_dic, remapped, labels = get_remappings(
             labels, excluded_labels, use_generic_bird=use_generic_bird
         )
+        logging.info(
+            "Remapped %s extra mapping %s new labels %s Use gen bird %s",
+            remapped,
+            extra_label_dic,
+            labels,
+            use_generic_bird,
+        )
     else:
         logging.info(
             "Load with predefined extra label dic %s remapped %s excluded %s",
@@ -778,13 +787,7 @@ def get_a_dataset(dir, labels, args):
         default_value=tf.constant(-1),
         name="remapped_y",
     )
-    logging.info(
-        "Remapped %s extra mapping %s new labels %s Use gen bird %s",
-        remapped,
-        extra_label_dic,
-        labels,
-        use_generic_bird,
-    )
+
     global bird_i
     global noise_i
     global human_i
@@ -1000,6 +1003,12 @@ def get_a_dataset(dir, labels, args):
                 tf.math.equal(y[0], debug_mask)
             )
             dataset = dataset.filter(debug_filter)
+        if args.get("signal_less_than") is not None:
+            logging.info(
+                "Getting tracks with signal less than %s", args.get("signal_less_than")
+            )
+            less_than = lambda x, y: tf.math.less(y[2], args.get("signal_less_than"))
+            dataset = dataset.filter(less_than)
         batch_size = args.get("batch_size", None)
         if args.get("cache", True):
             dataset = dataset.cache()
@@ -1632,12 +1641,13 @@ def main():
         # MOREPORK_MAX,
         only_features=args.only_features,
         debug=True,
-        debug_bird="morepork",
+        debug_bird="whistler",
         model_name="efficientnet",
         use_generic_bird=False,
         cache=True,
         global_epoch=global_epoch,
         augment=False,
+        # signal_less_than = 0.1
     )
     # for epoch in range(5):
     #     global_epoch.assign(epoch)
@@ -1737,19 +1747,18 @@ def main():
     # return
     global NZ_BIRD_LOSS_WEIGHTING, BIRD_WEIGHTING, SPECIFIC_BIRD_MASK, GENERIC_BIRD_MASK
 
-    dist, _ = get_distribution(dataset, len(labels), batched=True, one_hot=True)
-    print("Dist is ", dist)
-    for l, d in zip(labels, dist):
-        print(f"{l} has {d}")
+    # dist, _ = get_distribution(dataset, len(labels), batched=True, one_hot=True)
+    # print("Dist is ", dist)
+    # for l, d in zip(labels, dist):
+    #     print(f"{l} has {d}")
 
-    return
-    for e in range(2):
+    # return
+    for e in range(1):
         batch = 0
         global_epoch.assign(e)
-        print("EOCH", e)
+        print("EPOCH", e)
         for x, y in dataset:
             batch += 1
-            print(x[0].shape)
             show_batch(
                 x,
                 y,
@@ -1799,6 +1808,7 @@ def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
     starts = None
     prob_thresh = 0.7
     if isinstance(label_batch, tuple):
+        signal_batch = label_batch[2]
         recs = label_batch[3]
         tracks = label_batch[4]
         starts = label_batch[7]
@@ -1840,13 +1850,14 @@ def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
             track = tracks[n].numpy().decode("utf8")
             rec = recs[n].numpy().decode("utf8")
             start_s = np.round(starts[n].numpy(), 1)
-            plot_title = f"{plot_title} - {rec}:{track} at {start_s:.1f}"
+            signal_percent = np.round(signal_batch[n].numpy(), 1)
+            plot_title = f"{plot_title} - {rec}:{track} at {start_s:.1f} sig {signal_percent:.1f}"
         plt.title(f"{plot_title}\n{predicted}")
         img = image_batch[n]
         plot_mel(image_batch[n][:, :, 0], ax)
         # np.save(f"dataset-images/batch-{batch_i}-{rec}-{start_s:.1f}.npy",image_batch[n])
-    # plt.savefig(f"dataset-images/batch-{batch_i}.png")
-    plt.show()
+    plt.savefig(f"dataset-images/batch-{batch_i}.png")
+    # plt.show()
 
 
 def plot_mfcc(mfccs, ax):
