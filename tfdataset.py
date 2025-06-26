@@ -206,6 +206,7 @@ SPECIFIC_BIRD_LABELS = [
     "new zealand fantail",
 ]
 GENERIC_BIRD_LABELS = [
+    "crow",
     "new zealand fantail",
     "australian magpie",
     "bellbird",
@@ -846,6 +847,7 @@ def get_a_dataset(dir, labels, args):
         second_dir = Path(args.get("human_dir"))
 
         second_filenames = tf.io.gfile.glob(str(second_dir / "*.tfrecord"))
+        # this wont work with mix up unless you choose the same files
         random.shuffle(second_filenames)
         reduce_by = 0.03
         second_files = int(len(second_filenames) * reduce_by)
