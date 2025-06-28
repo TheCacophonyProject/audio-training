@@ -343,13 +343,13 @@ def weakly_lbled_data(base_dir):
 
 
 # fix badly made csv files
-def redo_csv(file_dir,base_dir,writer):
+def redo_csv(file_dir, base_dir, writer):
     with base_dir.open("r") as f:
         dreader = csv.reader(f, delimiter=",", quotechar="|")
 
         dreader.__next__()
         for row in dreader:
-         
+
             audio_file = file_dir / row[0]
             row[0] = audio_file
             test_f = base_dir.parent / row[0]
@@ -359,9 +359,11 @@ def redo_csv(file_dir,base_dir,writer):
                 raise Exception("FAILED")
             y, sr = librosa.load(audio_file)
             duration = librosa.get_duration(y=y, sr=sr)
-            row.insert(3,duration)
+            row.insert(3, duration)
 
             writer.writerow(row)
+
+
 def csv_dataset(base_dir):
     config = Config()
     dataset = AudioDataset("CSVData", config)
@@ -378,12 +380,12 @@ def csv_dataset(base_dir):
     # return
     # csv_files = ["test.csv","train.csv"]
     # file_dir = ["FSDnoisy18k.audio_test","FSDnoisy18k.audio_train"]
-    #with open('fixed.csv', 'w', newline='') as csvfile:
+    # with open('fixed.csv', 'w', newline='') as csvfile:
     #    fixedwriter = csv.writer(csvfile, delimiter=',')
     #    for csv_f,file_dir in zip(csv_files,file_dir):
     #        print("Redo ", base_dir/csv_f)
     #        redo_csv(Path(file_dir),base_dir/csv_f,fixedwriter)
-    #return
+    # return
     multiple_samples = "ambient" in str(base_dir)
     with base_dir.open("r") as f:
         dreader = csv.reader(f, delimiter=",", quotechar="|")
@@ -394,28 +396,42 @@ def csv_dataset(base_dir):
                 name = row[0]
                 labels = [row[1]]
                 duration = row[3]
-                audio_file = base_dir.parent/ name
+                audio_file = base_dir.parent / name
             elif "ESC-50" in str(base_dir):
-                audio_file = base_dir.parent.parent / "audio"/row[0]
+                audio_file = base_dir.parent.parent / "audio" / row[0]
                 labels = [row[3]]
-                if
                 duration = 5
             elif "ambient" in str(base_dir):
                 id = int(row[0])
-                audio_file = base_dir.parent /row[1]
+                audio_file = base_dir.parent / row[1]
                 labels = [row[2]]
                 duration = row[3]
             else:
-                name, path, channels, sample_width, frame_rate, nframes, duration, size = (
-                    row
-                )
+                (
+                    name,
+                    path,
+                    channels,
+                    sample_width,
+                    frame_rate,
+                    nframes,
+                    duration,
+                    size,
+                ) = row
                 audio_file = base_dir.parent / Path(name)
                 labels = [audio_file.parent.name.lower()]
-            add_rec(dataset, audio_file, labels, config,  float(duration), id=id,multiple_samples = multiple_samples)
-    write_dataset(dataset, base_dir.parent, split = "ambient" not in str(base_dir))
+            add_rec(
+                dataset,
+                audio_file,
+                labels,
+                config,
+                float(duration),
+                id=id,
+                multiple_samples=multiple_samples,
+            )
+    write_dataset(dataset, base_dir.parent, split="ambient" not in str(base_dir))
 
 
-def write_dataset(dataset, base_dir,split=True):
+def write_dataset(dataset, base_dir, split=True):
     dataset.print_counts()
     if split:
         datasets = split_randomly(dataset, no_test=True)
@@ -545,7 +561,7 @@ def flickr_data(flickr_dir):
         json.dump(meta_data, f, indent=4)
 
 
-def add_rec(dataset, rec_name, labels, config, end, id=None,multiple_samples = False):
+def add_rec(dataset, rec_name, labels, config, end, id=None, multiple_samples=False):
     if id is None:
         id, id_2, speaker = rec_name.stem.split("_")
         id = f"{id}-{id_2}-{speaker}"
@@ -1063,6 +1079,110 @@ def signal_noise(file, hop_length=281):
     return signals, noise, spectogram, frames, end
 
 
+def add_rms_meta(dir):
+
+    meta_files = dir.glob("**/*.txt")
+    with Pool(processes=8) as pool:
+        [0 for x in pool.imap_unordered(process_rms, meta_files, chunksize=8)]
+
+
+def process_rms(metadata_file):
+    from tfdataset import SPECIFIC_BIRD_LABELS, GENERIC_BIRD_LABELS
+
+    try:
+        metadata_file = metadata_file.with_suffix(".txt")
+        if metadata_file.exists():
+            with metadata_file.open("r") as f:
+                # add in some metadata stats
+                meta = json.load(f)
+        else:
+            meta = {}
+
+        file = metadata_file.with_suffix(".m4a")
+        if not file.exists():
+            file = metadata_file.with_suffix(".wav")
+        if not file.exists():
+            file = metadata_file.with_suffix(".mp3")
+        if not file.exists():
+            file = metadata_file.with_suffix(".flac")
+        if not file.exists():
+            logging.info("Not recording for %s", metadata_file)
+            return
+
+        logging.info("Calcing %s", file)
+        # do per track so can be more precise with the frequencies?
+        tracks = meta.get("tracks", [])
+        y, sr = load_recording(file)
+
+        n_fft = 4096
+        hop_length = 281
+        freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
+        below_freq = 500
+        morepork_max_freq = 1200
+        noise_upper_bin = 0
+        morepork_upper_bin = 0
+        max_bin = 0
+        for i, f in enumerate(freqs):
+            if f < below_freq:
+                noise_upper_bin = i
+            elif f > morepork_max_freq:
+                morepork_upper_bin = i
+                break
+
+        for t in tracks:
+            track = Track(t, None, 0, None)
+            # start = t["start"]
+            # end = t["end"]
+            track_frames = y[int(sr * track.start) : int(sr * track.end)]
+            stft = librosa.stft(track_frames, n_fft=n_fft, hop_length=hop_length)
+
+            # bird_tag = False
+            # for tag in track.human_tags:
+            #     if tag in SPECIFIC_BIRD_LABELS or tag in GENERIC_BIRD_LABELS:
+            #         bird_tag = True
+            noise_rms = None
+            if "morepork" in track.human_tags:
+                # choose different bins depending
+                t["bird_rms_bin"] = [noise_upper_bin + 1, morepork_upper_bin]
+                stft[:noise_upper_bin, :] = 0
+                stft[morepork_upper_bin:, :] = 0
+                S, phase = librosa.magphase(stft)
+                bird_rms = librosa.feature.rms(
+                    S=S, frame_length=n_fft, hop_length=hop_length
+                )
+            else:
+                t["bird_rms_bin"] = [noise_upper_bin + 1]
+
+                noise_stft = stft.copy()
+                noise_stft[noise_upper_bin + 1 :, :] = 0
+                S, phase = librosa.magphase(noise_stft)
+                noise_rms = librosa.feature.rms(
+                    S=S, frame_length=n_fft, hop_length=hop_length
+                )
+
+                stft[:noise_upper_bin:, :] = 0
+                S, phase = librosa.magphase(stft)
+                bird_rms = librosa.feature.rms(
+                    S=S, frame_length=n_fft, hop_length=hop_length
+                )
+                # noise or human
+            t["noise_rms"] = list(noise_rms[0])
+            t["bird_rms"] = list(bird_rms[0])
+
+        meta["file"] = str(file)
+        meta["rms_version"] = 1.0
+        with metadata_file.open("w") as f:
+            json.dump(
+                meta,
+                f,
+                indent=4,
+            )
+        logging.info("Updated %s", metadata_file)
+    except:
+        logging.error("Error processing %s", metadata_file, exc_info=True)
+    return
+
+
 def add_signal_meta(dir):
 
     test_labels = [
@@ -1341,12 +1461,63 @@ def signal_length_for_segment(tracks, s_start, s_end):
     return signal_length
 
 
+def load_rms_meta(file):
+    y, sr = load_recording(file)
+    metadata_file = file.with_suffix(".txt")
+    with metadata_file.open("r") as f:
+        # add in some metadata stats
+        meta = json.load(f)
+
+    tracks = meta.get("tracks", [])
+    import matplotlib.pyplot as plt
+
+    n_fft = 4096
+    hop_length = 281
+    for t in tracks:
+        print(t["tags"])
+        track = Track(t, None, 0, None)
+        track_frames = y[int(sr * track.start) : int(sr * track.end)]
+        stft = librosa.stft(track_frames, n_fft=n_fft, hop_length=hop_length)
+        fig, ax = plt.subplots(nrows=3, sharex=True)
+        rms = np.array(t["bird_rms"])
+        print(track.human_tags)
+        times = librosa.times_like(rms, sr=sr, n_fft=n_fft, hop_length=hop_length)
+        ax[0].semilogy(times, rms, label="RMS Energy")
+        ax[0].set(xticks=[])
+        ax[0].legend()
+        ax[0].label_outer()
+        ax[0].set_title("Bird RMS")
+        noise_rms = np.array(t["noise_rms"])
+        ax[1].semilogy(times, noise_rms, label="RMS Energy")
+        ax[1].set(xticks=[])
+        ax[1].legend()
+        ax[1].label_outer()
+
+        librosa.display.specshow(
+            librosa.amplitude_to_db(stft, ref=np.max),
+            y_axis="log",
+            x_axis="time",
+            ax=ax[2],
+            sr=sr,
+            hop_length=hop_length,
+            n_fft=n_fft,
+        )
+        ax[2].set(title="log Power spectrogram")
+        plt.show()
+        plt.clf()
+
+
 def main():
     init_logging()
     args = parse_args()
+    # load_rms_meta(Path(args.dir))
+    # return
     if args.flickr:
         logging.info("Loading flickr")
         flickr_data(args.dir)
+    elif args.rms:
+        logging.info("Adding rms data")
+        add_rms_meta(args.dir)
     elif args.csv:
         logging.info("Loading data divided by folder")
         csv_dataset(args.dir)
@@ -1457,6 +1628,7 @@ def parse_args():
     parser.add_argument(
         "-s", "--signal", action="store_true", help="Add signal data to dir"
     )
+    parser.add_argument("--rms", action="store_true", help="Add RMS track data")
     parser.add_argument(
         "-t", "--tracks", action="store_true", help="Add best track data"
     )

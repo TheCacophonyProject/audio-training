@@ -849,10 +849,83 @@ def birdnet_mel(sr, data, frame_length, hop_length=281, mel_weights=None):
     return spec.numpy()
 
 
+def best_rms(rms, window_size):
+
+    print("Std dev is ", np.std(rms))
+    window_size = int(window_size)
+    first_window = np.sum(rms[:window_size])
+    print("Rms is ", len(rms), " window size is ", window_size)
+    rolling_sum = first_window
+    print("At ", 0, " sum is ", first_window)
+    max_index = (0, first_window)
+    for i in range(1, len(rms) - window_size):
+        rolling_sum = rolling_sum - rms[i - 1] + rms[i + window_size]
+        if rolling_sum > max_index[1]:
+            max_index = (i, rolling_sum)
+        print("At ", i * 281 / 48000, " sum is ", 1000 * rolling_sum)
+
+    min_stddev = 0.0001
+    print("Max index ", max_index)
+    return max_index
+
+
+def rms(args):
+    start = 5
+    end = 12
+    y, sr = load_recording(args.file)
+    y = y[int(start * sr) : int(end * sr)]
+    n_fft = 4096
+    hop_length = 281
+    stft = librosa.stft(y, n_fft=n_fft, hop_length=hop_length)
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
+    below_freq = 500
+    above_freq = 1200
+    above_bin = 0
+    max_bin = 0
+    for i, f in enumerate(freqs):
+        if f < below_freq:
+            max_bin = i
+        elif f > above_freq:
+            above_bin = i
+            break
+    print("Above bin", above_bin, max_bin)
+    NOISE = True
+    if NOISE:
+        stft[max_bin + 1 :, :] = 0
+    else:
+        stft[:max_bin, :] = 0
+        # stft[above_bin:,:]=0
+    print(stft.shape)
+    S, phase = librosa.magphase(stft)
+    rms = librosa.feature.rms(S=S, frame_length=n_fft, hop_length=hop_length)
+    best_offset, sum = best_rms(rms[0], sr * 3 / hop_length)
+    print("Track start is ", round(best_offset * hop_length / sr, 2))
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(nrows=2, sharex=True)
+    times = librosa.times_like(rms, sr=sr, n_fft=n_fft, hop_length=hop_length)
+    ax[0].semilogy(times, rms[0], label="RMS Energy")
+    ax[0].set(xticks=[])
+    ax[0].legend()
+    ax[0].label_outer()
+    librosa.display.specshow(
+        librosa.amplitude_to_db(stft, ref=np.max),
+        y_axis="log",
+        x_axis="time",
+        ax=ax[1],
+        sr=sr,
+        hop_length=hop_length,
+        n_fft=n_fft,
+    )
+    ax[1].set(title="log Power spectrogram")
+    plt.show()
+
+
 def main():
     init_logging()
-
     args = parse_args()
+    rms(args)
+    return
     n_fft = 4096
     hop_length = 281
     N_MELS = 160
