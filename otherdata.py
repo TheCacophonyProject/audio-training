@@ -1186,14 +1186,19 @@ def process_rms(metadata_file):
         freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
         below_freq = 500
         morepork_max_freq = 1200
-        noise_upper_bin = 0
+        upper_max_freq = 5000
+        lower_noise_bin = 0
         morepork_upper_bin = 0
+        upper_noise_bin = 0
+
         max_bin = 0
         for i, f in enumerate(freqs):
             if f < below_freq:
-                noise_upper_bin = i
+                lower_noise_bin = i
             elif f > morepork_max_freq:
                 morepork_upper_bin = i
+            elif f > upper_max_freq:
+                upper_noise_bin = i
                 break
 
         for t in tracks:
@@ -1207,37 +1212,47 @@ def process_rms(metadata_file):
             # for tag in track.human_tags:
             #     if tag in SPECIFIC_BIRD_LABELS or tag in GENERIC_BIRD_LABELS:
             #         bird_tag = True
-            noise_rms = None
+
+            noise_stft = stft.copy()
+            noise_stft[lower_noise_bin + 1 :, :] = 0
+            S, phase = librosa.magphase(noise_stft)
+            noise_rms = librosa.feature.rms(
+                S=S, frame_length=n_fft, hop_length=hop_length
+            )
+            t["lower_nose_bin"] = lower_noise_bin + 1
+
+            upper_stft = stft.copy()
+            upper_stft[:upper_noise_bin, :] = 0
+            S, phase = librosa.magphase(upper_stft)
+            upper_rms = librosa.feature.rms(
+                S=S, frame_length=n_fft, hop_length=hop_length
+            )
+            t["upper_noise_bin"] = upper_noise_bin
+
             if "morepork" in track.human_tags:
                 # choose different bins depending
-                t["bird_rms_bin"] = [noise_upper_bin + 1, morepork_upper_bin]
-                stft[:noise_upper_bin, :] = 0
+                t["bird_rms_bin"] = [lower_noise_bin + 1, morepork_upper_bin]
+                stft[:lower_noise_bin, :] = 0
                 stft[morepork_upper_bin:, :] = 0
                 S, phase = librosa.magphase(stft)
                 bird_rms = librosa.feature.rms(
                     S=S, frame_length=n_fft, hop_length=hop_length
                 )
             else:
-                t["bird_rms_bin"] = [noise_upper_bin + 1]
+                t["bird_rms_bin"] = [lower_noise_bin + 1]
 
-                noise_stft = stft.copy()
-                noise_stft[noise_upper_bin + 1 :, :] = 0
-                S, phase = librosa.magphase(noise_stft)
-                noise_rms = librosa.feature.rms(
-                    S=S, frame_length=n_fft, hop_length=hop_length
-                )
-
-                stft[:noise_upper_bin:, :] = 0
+                stft[:lower_noise_bin:, :] = 0
                 S, phase = librosa.magphase(stft)
                 bird_rms = librosa.feature.rms(
                     S=S, frame_length=n_fft, hop_length=hop_length
                 )
                 # noise or human
+            t["upper_rms"] = list(upper_rms[0])
             t["noise_rms"] = list(noise_rms[0])
             t["bird_rms"] = list(bird_rms[0])
 
         meta["file"] = str(file)
-        meta["rms_version"] = 1.0
+        meta["rms_version"] = 1.1
         with metadata_file.open("w") as f:
             json.dump(
                 meta,

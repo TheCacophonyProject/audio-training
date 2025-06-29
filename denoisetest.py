@@ -2,6 +2,7 @@
 # Segment headers will be extracted from a track database and balanced
 # according to class. Some filtering occurs at this stage as well, for example
 # tracks with low confidence are excluded.
+import scipy
 import json
 import argparse
 import os
@@ -862,7 +863,7 @@ def best_rms(rms, window_size):
         rolling_sum = rolling_sum - rms[i - 1] + rms[i + window_size]
         if rolling_sum > max_index[1]:
             max_index = (i, rolling_sum)
-        print("At ", i * 281 / 48000, " sum is ", 1000 * rolling_sum)
+        # print("At ", i * 281 / 48000, " sum is ", 1000 * rolling_sum)
 
     min_stddev = 0.0001
     print("Max index ", max_index)
@@ -870,8 +871,8 @@ def best_rms(rms, window_size):
 
 
 def rms(args):
-    start = 5
-    end = 12
+    start = 35
+    end = 42
     y, sr = load_recording(args.file)
     y = y[int(start * sr) : int(end * sr)]
     n_fft = 4096
@@ -880,39 +881,83 @@ def rms(args):
     freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
     below_freq = 500
     above_freq = 1200
+    above_freq_2 = 5000
     above_bin = 0
+    above_bin_2 = 0
     max_bin = 0
     for i, f in enumerate(freqs):
         if f < below_freq:
             max_bin = i
         elif f > above_freq:
             above_bin = i
+        elif f > above_freq_2:
+            above_bin_2 = i
             break
     print("Above bin", above_bin, max_bin)
-    NOISE = True
-    if NOISE:
-        stft[max_bin + 1 :, :] = 0
-    else:
-        stft[:max_bin, :] = 0
-        # stft[above_bin:,:]=0
+    noise_stft = stft.copy()
+    upper_stft = stft.copy()
+    upper_stft[:above_bin_2, :] = 0
+    noise_stft[max_bin + 1 :, :] = 0
+    stft[:max_bin, :] = 0
+    # stft[above_bin:,:]=0
     print(stft.shape)
     S, phase = librosa.magphase(stft)
     rms = librosa.feature.rms(S=S, frame_length=n_fft, hop_length=hop_length)
-    best_offset, sum = best_rms(rms[0], sr * 3 / hop_length)
+    S, phase = librosa.magphase(noise_stft)
+    noise_rms = librosa.feature.rms(S=S, frame_length=n_fft, hop_length=hop_length)
+
+    best_offset, sum = best_rms(rms[0], sr * 2 / hop_length)
+
+    noise_best_offset, sum = best_rms(noise_rms[0], sr * 2 / hop_length)
+    print(
+        "Best rms small window is ",
+        best_offset * hop_length / sr,
+        noise_best_offset * hop_length / sr,
+    )
+    rms_peaks = scipy.signal.find_peaks(rms[0], threshold=0.00001, prominence=0.001)[0]
+    noise_peaks = scipy.signal.find_peaks(
+        noise_rms[0], threshold=0.00001, prominence=0.001
+    )[0]
+
+    S, phase = librosa.magphase(upper_stft)
+    upper_rms = librosa.feature.rms(S=S, frame_length=n_fft, hop_length=hop_length)
+    upper_peaks = scipy.signal.find_peaks(
+        noise_rms[0], threshold=0.00001, prominence=0.001
+    )[0]
+
+    rms_peaks = rms_peaks * hop_length / sr
+    noise_peaks = noise_peaks * hop_length / sr
+    upper_peaks = upper_peaks * hop_length / sr
+    print("Upper peaks", upper_peaks)
+    print("Rms peaks are ", rms_peaks)
+    # return
+    print("Noise peaks are ", noise_peaks)
+    # return
     print("Track start is ", round(best_offset * hop_length / sr, 2))
+    # return
     import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots(nrows=2, sharex=True)
+    fig, ax = plt.subplots(nrows=4, sharex=True)
     times = librosa.times_like(rms, sr=sr, n_fft=n_fft, hop_length=hop_length)
     ax[0].semilogy(times, rms[0], label="RMS Energy")
     ax[0].set(xticks=[])
     ax[0].legend()
     ax[0].label_outer()
+
+    ax[1].semilogy(times, noise_rms[0], label="Noise Energy")
+    ax[1].set(xticks=[])
+    ax[1].legend()
+    ax[1].label_outer()
+
+    ax[2].semilogy(times, upper_rms[0], label="Noise Energy")
+    ax[2].set(xticks=[])
+    ax[2].legend()
+    ax[2].label_outer()
     librosa.display.specshow(
         librosa.amplitude_to_db(stft, ref=np.max),
         y_axis="log",
         x_axis="time",
-        ax=ax[1],
+        ax=ax[3],
         sr=sr,
         hop_length=hop_length,
         n_fft=n_fft,
