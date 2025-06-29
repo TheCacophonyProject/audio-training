@@ -1079,11 +1079,79 @@ def signal_noise(file, hop_length=281):
     return signals, noise, spectogram, frames, end
 
 
-def add_rms_meta(dir):
-
+def add_rms_meta(dir, analyse=False):
+    func = process_rms
+    if analyse:
+        func = analyze_rms
     meta_files = dir.glob("**/*.txt")
     with Pool(processes=8) as pool:
-        [0 for x in pool.imap_unordered(process_rms, meta_files, chunksize=8)]
+        [0 for x in pool.imap_unordered(func, meta_files, chunksize=8)]
+
+
+def analyze_rms(metadata_file):
+    from tfdataset import SPECIFIC_BIRD_LABELS, GENERIC_BIRD_LABELS
+
+    metadata_file = metadata_file.with_suffix(".txt")
+    if metadata_file.exists():
+        with metadata_file.open("r") as f:
+            # add in some metadata stats
+            meta = json.load(f)
+    else:
+        logging.error("No metadata for %s", metadata_file)
+    tracks = meta.get("tracks", [])
+    MIN_STDDEV = 0.0001
+
+    for t in tracks:
+        track = Track(t, None, 0, None)
+        rms = t["bird_rms"]
+        noise_rms = t["noise_rms"]
+        bird_tag = False
+        if len(track.human_tags) == 0:
+            continue
+        for tag in track.human_tags:
+            if tag in SPECIFIC_BIRD_LABELS or tag in GENERIC_BIRD_LABELS:
+                bird_tag = True
+        if bird_tag:
+            rms = t["bird_rms"]
+            logging.info("Using bird for %s", track.human_tags)
+        else:
+            rms = t["noise_rms"]
+            logging.info("Using noise for %s", track.human_tags)
+        rms = np.array(rms)
+        std_dev = np.std(rms)
+        if std_dev < MIN_STDDEV:
+            logging.error(
+                "RMS below std %s for rec %s track at %s - %s id %s",
+                std_dev,
+                meta["id"],
+                track.start,
+                track.end,
+                track.id,
+            )
+        best_offset, sum = best_rms(rms)
+        logging.error(
+            "For rec %s track at %s - %s id %s best rms track is %s",
+            meta["id"],
+            track.start,
+            track.end,
+            track.id,
+            round(best_offset * 281 / 48000, 2),
+        )
+
+
+def best_rms(rms):
+    sr = 48000
+    window_size = sr * 3 / 281
+    window_size = int(window_size)
+    first_window = np.sum(rms[:window_size])
+    rolling_sum = first_window
+    max_index = (0, first_window)
+    for i in range(1, len(rms) - window_size):
+        rolling_sum = rolling_sum - rms[i - 1] + rms[i + window_size]
+        if rolling_sum > max_index[1]:
+            max_index = (i, rolling_sum)
+
+    return max_index
 
 
 def process_rms(metadata_file):
@@ -1097,7 +1165,6 @@ def process_rms(metadata_file):
                 meta = json.load(f)
         else:
             meta = {}
-
         file = metadata_file.with_suffix(".m4a")
         if not file.exists():
             file = metadata_file.with_suffix(".wav")
@@ -1516,8 +1583,8 @@ def main():
         logging.info("Loading flickr")
         flickr_data(args.dir)
     elif args.rms:
-        logging.info("Adding rms data")
-        add_rms_meta(args.dir)
+        logging.info("Adding rms data %s", args.analyse)
+        add_rms_meta(args.dir, args.analyse)
     elif args.csv:
         logging.info("Loading data divided by folder")
         csv_dataset(args.dir)
@@ -1629,6 +1696,9 @@ def parse_args():
         "-s", "--signal", action="store_true", help="Add signal data to dir"
     )
     parser.add_argument("--rms", action="store_true", help="Add RMS track data")
+    parser.add_argument(
+        "--analyse", action="store_true", help="analyse best track data"
+    )
     parser.add_argument(
         "-t", "--tracks", action="store_true", help="Add best track data"
     )
