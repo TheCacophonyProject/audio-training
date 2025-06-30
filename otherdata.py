@@ -1091,10 +1091,19 @@ def add_rms_meta(dir, analyse=False):
 
 # look for peaks which occur in all 3 rms data and remove them by setting them to the average rms
 def remove_rms_noise(
-    rms, rms_peaks, rms_meta, noise_peaks, upper_peaks, sr=48000, hop_length=281
+    rms,
+    rms_peaks,
+    rms_meta,
+    noise_peaks,
+    noise_meta,
+    upper_peaks,
+    sr=48000,
+    hop_length=281,
 ):
-    max_time_diff = 0.15 * sr / hop_length
-    for n_p in noise_peaks:
+    percent_diff = 0.55
+
+    max_time_diff = 0.1 * sr / hop_length
+    for n_i, n_p in enumerate(noise_peaks):
         rms_found = None
         rms_index = None
         upper_found = None
@@ -1110,6 +1119,26 @@ def remove_rms_noise(
                 upper_found = u_p
                 break
         if rms_found is not None and upper_found is not None:
+            lower_bound = int(rms_meta["left_ips"][rms_index])
+            upper_bound = int(rms_meta["right_ips"][rms_index])
+            rms_width = upper_bound - lower_bound
+
+            noise_lower_bound = int(noise_meta["left_ips"][n_i])
+            noise_upper_bound = int(noise_meta["right_ips"][n_i])
+            noise_width = noise_upper_bound - noise_lower_bound
+
+            rms_height = rms_meta["peak_heights"][rms_index]
+            noise_height = noise_meta["peak_heights"][n_i]
+
+            width_percent = min(rms_width, noise_width) / max(rms_width, noise_width)
+            height_percent = min(rms_height, noise_height) / max(
+                rms_height, noise_height
+            )
+            # print(height_percent, width_percent)
+            # print(rms_height,noise_height,"Height percent",noise_height / rms_height, " RMs ", rms_width, " noise ",noise_width,  " width ratio ",noise_width/ rms_width)
+            if width_percent < percent_diff or height_percent < percent_diff:
+                continue
+
             logging.info("Full noise at %s  ", n_p * hop_length / sr)
             lower_bound = int(rms_meta["left_ips"][rms_index])
             upper_bound = int(rms_meta["right_ips"][rms_index])
@@ -1118,7 +1147,7 @@ def remove_rms_noise(
 
             rms[lower_bound:upper_bound] = 0
     non_zero_mean = np.mean(rms[rms != 0])
-    # rms[rms==0]= non_zero_mean
+    rms[rms == 0] = non_zero_mean
 
 
 def analyze_rms(metadata_file):
@@ -1133,13 +1162,14 @@ def analyze_rms(metadata_file):
         logging.error("No metadata for %s", metadata_file)
     tracks = meta.get("tracks", [])
     MIN_STDDEV = 0.0001
-
+    rms_thresh = 0.00001
+    rms_height = 0.001
     for t in tracks:
         track = Track(t, None, 0, None)
         upper_rms = t["upper_rms"]
 
         upper_peaks, _ = scipy.signal.find_peaks(
-            upper_rms, threshold=0.00001, prominence=0.001, width=2
+            upper_rms, threshold=rms_thresh / 10, height=rms_height / 10, width=2
         )
         bird_tag = False
         if len(track.human_tags) == 0:
@@ -1161,12 +1191,12 @@ def analyze_rms(metadata_file):
         rms = np.array(rms)
 
         rms_peaks, rms_meta = scipy.signal.find_peaks(
-            rms, threshold=0.00001, prominence=0.001, width=2
+            rms, threshold=rms_thresh, height=rms_height, width=2
         )
         noise_peaks, noise_meta = scipy.signal.find_peaks(
-            noise_rms, threshold=0.00001, prominence=0.001, width=2
+            noise_rms, threshold=rms_thresh, height=rms_height, width=2
         )
-        remove_rms_noise(rms, rms_peaks, rms_meta, noise_peaks, upper_peaks)
+        remove_rms_noise(rms, rms_peaks, rms_meta, noise_peaks, noise_meta, upper_peaks)
         std_dev = np.std(rms)
         if std_dev < MIN_STDDEV:
             logging.error(
