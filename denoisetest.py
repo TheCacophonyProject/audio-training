@@ -851,8 +851,12 @@ def birdnet_mel(sr, data, frame_length, hop_length=281, mel_weights=None):
 
 
 def best_rms(rms, window_size):
-
+    std_dev = np.std(rms)
     print("Std dev is ", np.std(rms))
+
+    mean = np.mean(rms)
+    percent_of_mean = std_dev /mean
+    print("Std dev percent is ",percent_of_mean, " std ", std_dev)
     window_size = int(window_size)
     first_window = np.sum(rms[:window_size])
     print("Rms is ", len(rms), " window size is ", window_size)
@@ -871,8 +875,8 @@ def best_rms(rms, window_size):
 
 
 def rms(args):
-    start = 35
-    end = 42
+    start = 54.9
+    end = 57.2
     y, sr = load_recording(args.file)
     y = y[int(start * sr) : int(end * sr)]
     n_fft = 4096
@@ -953,7 +957,6 @@ def rms(args):
     upper_peaks, upper_meta = scipy.signal.find_peaks(
         upper_rms[0], threshold=thresh / 10, height=height / 10
     )
-    print("Uper meta", upper_meta)
 
     rms_peaks = rms_peaks * hop_length / sr
     noise_peaks = noise_peaks * hop_length / sr
@@ -1040,7 +1043,7 @@ def rms(args):
     ax[2].legend()
     ax[2].label_outer()
     librosa.display.specshow(
-        librosa.amplitude_to_db(upper_stft, ref=np.max),
+        librosa.amplitude_to_db(stft, ref=np.max),
         y_axis="log",
         x_axis="time",
         ax=ax[3],

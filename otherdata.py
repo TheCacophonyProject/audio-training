@@ -1161,7 +1161,7 @@ def analyze_rms(metadata_file):
     else:
         logging.error("No metadata for %s", metadata_file)
     tracks = meta.get("tracks", [])
-    MIN_STDDEV = 0.0001
+    MIN_STDDEV_PERCENT = 0.15
     rms_thresh = 0.00001
     rms_height = 0.001
     for t in tracks:
@@ -1198,7 +1198,10 @@ def analyze_rms(metadata_file):
         )
         remove_rms_noise(rms, rms_peaks, rms_meta, noise_peaks, noise_meta, upper_peaks)
         std_dev = np.std(rms)
-        if std_dev < MIN_STDDEV:
+        mean = np.mean(rms)
+        percent_of_mean = std_dev /mean
+        logging.info("Std dev percent is %s",percent_of_mean,std_dev)
+        if percent_of_mean < MIN_STDDEV_PERCENT:
             logging.error(
                 "RMS below std %s for rec %s track at %s - %s id %s",
                 std_dev,
