@@ -1249,7 +1249,7 @@ def process_rms(metadata_file):
             if f > upper_max_freq:
                 upper_noise_bin = i
                 break
-
+        # print("Bins", lower_noise_bin, morepork_upper_bin,upper_noise_bin)
         for t in tracks:
             track = Track(t, None, 0, None)
             # start = t["start"]
@@ -1290,7 +1290,7 @@ def process_rms(metadata_file):
             else:
                 t["bird_rms_bin"] = [lower_noise_bin + 1]
 
-                stft[:lower_noise_bin:, :] = 0
+                stft[:lower_noise_bin, :] = 0
                 S, phase = librosa.magphase(stft)
                 bird_rms = librosa.feature.rms(
                     S=S, frame_length=n_fft, hop_length=hop_length
