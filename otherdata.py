@@ -16,6 +16,7 @@ from multiprocessing import Pool
 from identifytracks import signal_noise, get_tracks_from_signals, get_end, Signal
 import argparse
 import matplotlib.pyplot as plt
+import scipy
 
 
 def load_recording(file, resample=48000):
@@ -1088,6 +1089,38 @@ def add_rms_meta(dir, analyse=False):
         [0 for x in pool.imap_unordered(func, meta_files, chunksize=8)]
 
 
+# look for peaks which occur in all 3 rms data and remove them by setting them to the average rms
+def remove_rms_noise(
+    rms, rms_peaks, rms_meta, noise_peaks, upper_peaks, sr=48000, hop_length=281
+):
+    max_time_diff = 0.15 * sr / hop_length
+    for n_p in noise_peaks:
+        rms_found = None
+        rms_index = None
+        upper_found = None
+        for i, b_p in enumerate(rms_peaks):
+            if abs(b_p - n_p) < max_time_diff:
+                rms_found = b_p
+                rms_index = i
+                break
+        if not rms_found:
+            continue
+        for u_p in upper_peaks:
+            if abs(u_p - n_p) < max_time_diff:
+                upper_found = u_p
+                break
+        if rms_found is not None and upper_found is not None:
+            logging.info("Full noise at %s  ", n_p * hop_length / sr)
+            lower_bound = int(rms_meta["left_ips"][rms_index])
+            upper_bound = int(rms_meta["right_ips"][rms_index])
+
+            # upper_slice = upper_rms[0][ lower_bound: upper_bound]
+
+            rms[lower_bound:upper_bound] = 0
+    non_zero_mean = np.mean(rms[rms != 0])
+    # rms[rms==0]= non_zero_mean
+
+
 def analyze_rms(metadata_file):
     from tfdataset import SPECIFIC_BIRD_LABELS, GENERIC_BIRD_LABELS
 
@@ -1103,8 +1136,11 @@ def analyze_rms(metadata_file):
 
     for t in tracks:
         track = Track(t, None, 0, None)
-        rms = t["bird_rms"]
-        noise_rms = t["noise_rms"]
+        upper_rms = t["upper_rms"]
+
+        upper_peaks, _ = scipy.signal.find_peaks(
+            upper_rms, threshold=0.00001, prominence=0.001, width=2
+        )
         bird_tag = False
         if len(track.human_tags) == 0:
             continue
@@ -1113,11 +1149,24 @@ def analyze_rms(metadata_file):
                 bird_tag = True
         if bird_tag:
             rms = t["bird_rms"]
+            noise_rms = t["noise_rms"]
+
+            rms = t["bird_rms"]
             logging.info("Using bird for %s", track.human_tags)
         else:
             rms = t["noise_rms"]
+            noise_rms = t["bird_rms"]
+
             logging.info("Using noise for %s", track.human_tags)
         rms = np.array(rms)
+
+        rms_peaks, rms_meta = scipy.signal.find_peaks(
+            rms, threshold=0.00001, prominence=0.001, width=2
+        )
+        noise_peaks, noise_meta = scipy.signal.find_peaks(
+            noise_rms, threshold=0.00001, prominence=0.001, width=2
+        )
+        remove_rms_noise(rms, rms_peaks, rms_meta, noise_peaks, upper_peaks)
         std_dev = np.std(rms)
         if std_dev < MIN_STDDEV:
             logging.error(
@@ -1186,7 +1235,7 @@ def process_rms(metadata_file):
         freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
         below_freq = 500
         morepork_max_freq = 1200
-        upper_max_freq = 5000
+        upper_max_freq = 3000
         lower_noise_bin = 0
         morepork_upper_bin = 0
         upper_noise_bin = 0
@@ -1195,9 +1244,9 @@ def process_rms(metadata_file):
         for i, f in enumerate(freqs):
             if f < below_freq:
                 lower_noise_bin = i
-            elif f > morepork_max_freq:
-                morepork_upper_bin = i
-            elif f > upper_max_freq:
+            if f < morepork_max_freq:
+                morepork_upper_bin = i + 1
+            if f > upper_max_freq:
                 upper_noise_bin = i
                 break
 

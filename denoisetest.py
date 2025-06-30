@@ -878,26 +878,35 @@ def rms(args):
     n_fft = 4096
     hop_length = 281
     stft = librosa.stft(y, n_fft=n_fft, hop_length=hop_length)
+    og_stft = stft.copy()
     freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
     below_freq = 500
     above_freq = 1200
-    above_freq_2 = 5000
+    above_freq_2 = 3000
     above_bin = 0
     above_bin_2 = 0
     max_bin = 0
     for i, f in enumerate(freqs):
         if f < below_freq:
             max_bin = i
-        elif f > above_freq:
+
+        if f < above_freq:
             above_bin = i
-        elif f > above_freq_2:
+
+        if f > above_freq_2:
             above_bin_2 = i
             break
+
+    above_bin += 1
     print("Above bin", above_bin, max_bin)
+    print("Upper stft above ", above_bin_2)
+
+    # 1/0
     noise_stft = stft.copy()
     upper_stft = stft.copy()
     upper_stft[:above_bin_2, :] = 0
-    noise_stft[max_bin + 1 :, :] = 0
+    print("Upper stft above ", above_bin_2)
+    noise_stft[max_bin:, :] = 0
     stft[:max_bin, :] = 0
     # stft[above_bin:,:]=0
     print(stft.shape)
@@ -914,32 +923,109 @@ def rms(args):
         best_offset * hop_length / sr,
         noise_best_offset * hop_length / sr,
     )
-    rms_peaks = scipy.signal.find_peaks(rms[0], threshold=0.00001, prominence=0.001)[0]
-    noise_peaks = scipy.signal.find_peaks(
-        noise_rms[0], threshold=0.00001, prominence=0.001
-    )[0]
+
+    # noise_rms -= np.mean(noise_rms)
+    # noise_rms[noise_rms<0] = 0
+
+    # peak_rms = rms[0].copy()
+    # peak_rms -= np.mean(peak_rms)
+    rms = rms[0]
+    noise_rms[noise_rms < np.mean(noise_rms)] = np.mean(noise_rms)
+
+    rms[rms < np.mean(rms)] = np.mean(rms)
+    print("Average rms ", np.mean(rms[0]))
+    # rms[0] = peak_rms
+    thresh = 0.00001
+    height = 0.001
+    rms_peaks = scipy.signal.find_peaks(rms, threshold=thresh, height=height, width=2)
+    # print(rms_peaks)
+    rms_meta = rms_peaks[1]
+    rms_peaks = rms_peaks[0]
+    # return
+    noise_peaks, noise_meta = scipy.signal.find_peaks(
+        noise_rms[0], threshold=thresh, height=height, width=2
+    )
 
     S, phase = librosa.magphase(upper_stft)
     upper_rms = librosa.feature.rms(S=S, frame_length=n_fft, hop_length=hop_length)
-    upper_peaks = scipy.signal.find_peaks(
-        noise_rms[0], threshold=0.00001, prominence=0.001
-    )[0]
+    # upper_rms -= np.mean(upper_rms)
+    upper_rms[upper_rms < np.mean(upper_rms)] = np.mean(upper_rms)
+    upper_peaks, upper_meta = scipy.signal.find_peaks(
+        upper_rms[0], threshold=thresh / 10, height=height / 10
+    )
+    print("Uper meta", upper_meta)
 
     rms_peaks = rms_peaks * hop_length / sr
     noise_peaks = noise_peaks * hop_length / sr
     upper_peaks = upper_peaks * hop_length / sr
+
+    for noise_index, n_p in enumerate(noise_peaks):
+        rms_found = None
+        rms_index = None
+        upper_found = None
+        for i, b_p in enumerate(rms_peaks):
+            if abs(b_p - n_p) < 0.05:
+                rms_found = b_p
+                rms_index = i
+                break
+        if not rms_found:
+            continue
+        for u_p in upper_peaks:
+            if abs(u_p - n_p) < 0.05:
+                upper_found = u_p
+                break
+        if rms_found is not None and upper_found is not None:
+            lower_bound = int(rms_meta["left_ips"][rms_index])
+            upper_bound = int(rms_meta["right_ips"][rms_index])
+            rms_width = upper_bound - lower_bound
+
+            noise_lower_bound = int(noise_meta["left_ips"][noise_index])
+            noise_upper_bound = int(noise_meta["right_ips"][noise_index])
+            noise_width = noise_upper_bound - noise_lower_bound
+
+            rms_height = rms_meta["peak_heights"][rms_index]
+            noise_height = noise_meta["peak_heights"][noise_index]
+
+            width_percent = min(rms_width, noise_width) / max(rms_width, noise_width)
+            height_percent = min(rms_height, noise_height) / max(
+                rms_height, noise_height
+            )
+            percent_diff = 0.55
+            # print(height_percent, width_percent)
+            # print(rms_height,noise_height,"Height percent",noise_height / rms_height, " RMs ", rms_width, " noise ",noise_width,  " width ratio ",noise_width/ rms_width)
+            if width_percent < percent_diff or height_percent < percent_diff:
+                continue
+            print(
+                lower_bound,
+                "-",
+                upper_bound,
+                "Full noise at ",
+                n_p,
+                rms_found,
+                upper_found,
+                rms_meta["left_ips"][rms_index] * hop_length / sr,
+                rms_meta["right_ips"][rms_index] * hop_length / sr,
+            )
+
+            rms[lower_bound:upper_bound] = 0
+    # return
+    non_zero_mean = np.mean(rms[rms != 0])
+    rms[rms == 0] = non_zero_mean
     print("Upper peaks", upper_peaks)
     print("Rms peaks are ", rms_peaks)
     # return
     print("Noise peaks are ", noise_peaks)
     # return
     print("Track start is ", round(best_offset * hop_length / sr, 2))
+
+    best_offset, sum = best_rms(rms, sr * 2 / hop_length)
+    print("After peak best time is now ", best_offset * hop_length / sr)
     # return
     import matplotlib.pyplot as plt
 
     fig, ax = plt.subplots(nrows=4, sharex=True)
     times = librosa.times_like(rms, sr=sr, n_fft=n_fft, hop_length=hop_length)
-    ax[0].semilogy(times, rms[0], label="RMS Energy")
+    ax[0].semilogy(times, rms, label="RMS Energy")
     ax[0].set(xticks=[])
     ax[0].legend()
     ax[0].label_outer()
@@ -954,7 +1040,7 @@ def rms(args):
     ax[2].legend()
     ax[2].label_outer()
     librosa.display.specshow(
-        librosa.amplitude_to_db(stft, ref=np.max),
+        librosa.amplitude_to_db(upper_stft, ref=np.max),
         y_axis="log",
         x_axis="time",
         ax=ax[3],
