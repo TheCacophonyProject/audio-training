@@ -1112,32 +1112,8 @@ def analyze_rms(metadata_file):
     except:
         logging.error("Failed to load meta ", exc_info=True)
         return
-    tracks = meta.get("tracks", [])
-    other_tracks = meta.get("Tracks", [])
+    tracks = meta.get("Tracks", [])
 
-    for track in tracks:
-        found = False
-        t_id = track["id"]
-        if "upper_rms" not in track:
-            continue
-        for other in other_tracks:
-            if t_id == other["id"]:
-                other["upper_rms"] = track["upper_rms"]
-                other["noise_rms"] = track["noise_rms"]
-                other["bird_rms"] = track["bird_rms"]
-                found = True
-                break
-        if not found:
-            logging.info(
-                "COuld not find matching track %s %s ", metadata_file, track["id"]
-            )
-    with metadata_file.open("w") as f:
-        json.dump(
-            meta,
-            f,
-            indent=4,
-        )
-    return
     MIN_STDDEV_PERCENT = 0.15
     rms_thresh = 0.00001
     rms_height = 0.001
@@ -1222,7 +1198,7 @@ def process_rms(metadata_file):
 
         logging.info("Calcing %s", file)
         # do per track so can be more precise with the frequencies?
-        tracks = meta.get("tracks", [])
+        tracks = meta.get("Tracks", [])
         y, sr = load_recording(file)
 
         n_fft = 4096

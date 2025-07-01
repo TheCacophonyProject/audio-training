@@ -501,29 +501,39 @@ class Recording:
         else:
             tracks = [t for t in self.tracks if for_label in t.human_tags]
 
-        tracks = [t for t in self.tracks if not t.rms_filtered]
+        # tracks = [t for t in self.tracks if not t.rms_filtered]
 
         bin_id = f"{self.id}-0"
         for track in tracks:
-
+            if track.bird_track and (track.noise_track or track.animal_track):
+                logging.info("SKipping track as is noise/animal and bird")
+                continue
+            adjusted = False
             # dont do noise tracks that happen at the same time as bird tracks
             if not track.bird_track:
                 for other_track in tracks:
                     if track == other_track:
                         continue
-                    if other_track.bird_track and track.overlaps(other_track):
-                        if track.start > other_track.start:
-                            track.start = other_track.end
+                    if other_track.bird_track and segment_overlap(
+                        [track.og_start, track.og_end],
+                        [other_track.og_start, other_track.og_end],
+                    ):
+                        # check track is still valid i.e. has over x seconds
+                        if track.og_start > other_track.og_start:
+                            track.start = other_track.og_end
                             track.end = max(track.start, track.end)
-                        elif other_track.end > track.end:
-                            track.end = other_track.start
+                        elif other_track.og_end > track.end:
+                            track.end = other_track.og_start
                         else:
-                            start_section = other_track.start - track.start
-                            end_section = track.end - other_track.end
+                            start_section = other_track.og_start - track.start
+                            end_section = track.end - other_track.og_end
                             if start_section > end_section:
-                                track.end = other_track.start
+                                track.end = other_track.og_start
                             else:
-                                track.start = other_track.end
+                                track.start = other_track.og_end
+                        track.start = min(track.og_end, track.start)
+                        track.end = min(track.end, track.og_end)
+
                         logging.info(
                             "Rec %s Track %s overlaps a bird track %s adjusted track times to %s-%s",
                             self.id,
@@ -532,6 +542,12 @@ class Recording:
                             track.start,
                             track.end,
                         )
+                        adjusted = True
+            if adjusted and track.length < 1:
+                logging.error(
+                    "Skipping noise track as too short %s-%s", self.id, track.id
+                )
+                continue
 
             start_stride = segment_stride
             max_samples = (track.length - segment_length) / segment_stride
@@ -689,7 +705,6 @@ class Recording:
                         # might not be a good idea
                         bin_id = f"{self.id}-{track.id}"
                         # {int(start // segment_length)}"
-
                     sample = AudioSample(
                         self,
                         labels,
@@ -790,8 +805,11 @@ class Track:
         self.rec = rec
         self.filename = filename
         self.rec_id = rec_id
+
         self.start = metadata["start"]
         self.end = metadata["end"]
+        self.og_start = self.start
+        self.og_end = self.end
         self.id = metadata.get("id")
         positions = metadata.get("positions", [])
         self.min_freq = metadata.get("minFreq", None)
@@ -818,12 +836,23 @@ class Track:
         tags = metadata.get("tags", [])
         for tag in tags:
             self.add_tag(tag)
-        from tfdataset import SPECIFIC_BIRD_LABELS, GENERIC_BIRD_LABELS
+        from tfdataset import (
+            SPECIFIC_BIRD_LABELS,
+            GENERIC_BIRD_LABELS,
+            ANIMAL_LABELS,
+            NOISE_LABELS,
+        )
 
         self.bird_track = False
+        self.animal_track = False
+        self.noise_track = False
         for tag in self.human_tags:
             if tag in SPECIFIC_BIRD_LABELS or tag in GENERIC_BIRD_LABELS:
                 self.bird_track = True
+            if tag in ANIMAL_LABELS:
+                self.animal_track = True
+            elif tag in NOISE_LABELS:
+                self.noise_track = True
         self.tighten_track(metadata, segment_length)
 
     def tighten_track(self, metadata, segment_length):
@@ -833,7 +862,6 @@ class Track:
             return
         if "upper_rms" not in metadata:
             self.rms_filtered = True
-            print(metadata)
             logging.info(
                 "Missing rms %s human tag %s id is %s",
                 self.filename,
@@ -909,6 +937,7 @@ class Track:
             self.human_tags.add(t.what)
 
     def overlaps(self, other):
+        return segment_overlap([self.start, self.end], [other.start, other.end])
         return (
             (self.length)
             + (other.length)
@@ -1348,3 +1377,11 @@ def best_rms(rms, segment_length=3, sr=48000, hop_length=281):
             max_index = (i, rolling_sum)
 
     return max_index
+
+
+def segment_overlap(first, second):
+    return (
+        (first[1] - first[0])
+        + (second[1] - second[0])
+        - (max(first[1], second[1]) - min(first[0], second[0]))
+    )
