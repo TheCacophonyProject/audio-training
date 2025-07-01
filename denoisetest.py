@@ -855,8 +855,8 @@ def best_rms(rms, window_size):
     print("Std dev is ", np.std(rms))
 
     mean = np.mean(rms)
-    percent_of_mean = std_dev /mean
-    print("Std dev percent is ",percent_of_mean, " std ", std_dev)
+    percent_of_mean = std_dev / mean
+    print("Std dev percent is ", percent_of_mean, " std ", std_dev)
     window_size = int(window_size)
     first_window = np.sum(rms[:window_size])
     print("Rms is ", len(rms), " window size is ", window_size)

@@ -3,7 +3,16 @@ import csv
 import logging
 import sys
 from pathlib import Path
-from audiodataset import Track, Recording, AudioDataset, RELABEL, AudioSample, Config
+from audiodataset import (
+    Track,
+    Recording,
+    AudioDataset,
+    RELABEL,
+    AudioSample,
+    Config,
+    best_rms,
+    remove_rms_noise,
+)
 from build import split_randomly, validate_datasets
 import psutil
 import random
@@ -1089,78 +1098,46 @@ def add_rms_meta(dir, analyse=False):
         [0 for x in pool.imap_unordered(func, meta_files, chunksize=8)]
 
 
-# look for peaks which occur in all 3 rms data and remove them by setting them to the average rms
-def remove_rms_noise(
-    rms,
-    rms_peaks,
-    rms_meta,
-    noise_peaks,
-    noise_meta,
-    upper_peaks,
-    sr=48000,
-    hop_length=281,
-):
-    percent_diff = 0.55
-
-    max_time_diff = 0.1 * sr / hop_length
-    for n_i, n_p in enumerate(noise_peaks):
-        rms_found = None
-        rms_index = None
-        upper_found = None
-        for i, b_p in enumerate(rms_peaks):
-            if abs(b_p - n_p) < max_time_diff:
-                rms_found = b_p
-                rms_index = i
-                break
-        if not rms_found:
-            continue
-        for u_p in upper_peaks:
-            if abs(u_p - n_p) < max_time_diff:
-                upper_found = u_p
-                break
-        if rms_found is not None and upper_found is not None:
-            lower_bound = int(rms_meta["left_ips"][rms_index])
-            upper_bound = int(rms_meta["right_ips"][rms_index])
-            rms_width = upper_bound - lower_bound
-
-            noise_lower_bound = int(noise_meta["left_ips"][n_i])
-            noise_upper_bound = int(noise_meta["right_ips"][n_i])
-            noise_width = noise_upper_bound - noise_lower_bound
-
-            rms_height = rms_meta["peak_heights"][rms_index]
-            noise_height = noise_meta["peak_heights"][n_i]
-
-            width_percent = min(rms_width, noise_width) / max(rms_width, noise_width)
-            height_percent = min(rms_height, noise_height) / max(
-                rms_height, noise_height
-            )
-            # print(height_percent, width_percent)
-            # print(rms_height,noise_height,"Height percent",noise_height / rms_height, " RMs ", rms_width, " noise ",noise_width,  " width ratio ",noise_width/ rms_width)
-            if width_percent < percent_diff or height_percent < percent_diff:
-                continue
-
-            logging.info("Full noise at %s  ", n_p * hop_length / sr)
-            lower_bound = int(rms_meta["left_ips"][rms_index])
-            upper_bound = int(rms_meta["right_ips"][rms_index])
-
-            # upper_slice = upper_rms[0][ lower_bound: upper_bound]
-
-            rms[lower_bound:upper_bound] = 0
-    non_zero_mean = np.mean(rms[rms != 0])
-    rms[rms == 0] = non_zero_mean
-
-
 def analyze_rms(metadata_file):
     from tfdataset import SPECIFIC_BIRD_LABELS, GENERIC_BIRD_LABELS
 
-    metadata_file = metadata_file.with_suffix(".txt")
-    if metadata_file.exists():
-        with metadata_file.open("r") as f:
-            # add in some metadata stats
-            meta = json.load(f)
-    else:
-        logging.error("No metadata for %s", metadata_file)
+    try:
+        metadata_file = metadata_file.with_suffix(".txt")
+        if metadata_file.exists():
+            with metadata_file.open("r") as f:
+                # add in some metadata stats
+                meta = json.load(f)
+        else:
+            logging.error("No metadata for %s", metadata_file)
+    except:
+        logging.error("Failed to load meta ", exc_info=True)
+        return
     tracks = meta.get("tracks", [])
+    other_tracks = meta.get("Tracks", [])
+
+    for track in tracks:
+        found = False
+        t_id = track["id"]
+        if "upper_rms" not in track:
+            continue
+        for other in other_tracks:
+            if t_id == other["id"]:
+                other["upper_rms"] = track["upper_rms"]
+                other["noise_rms"] = track["noise_rms"]
+                other["bird_rms"] = track["bird_rms"]
+                found = True
+                break
+        if not found:
+            logging.info(
+                "COuld not find matching track %s %s ", metadata_file, track["id"]
+            )
+    with metadata_file.open("w") as f:
+        json.dump(
+            meta,
+            f,
+            indent=4,
+        )
+    return
     MIN_STDDEV_PERCENT = 0.15
     rms_thresh = 0.00001
     rms_height = 0.001
@@ -1199,8 +1176,8 @@ def analyze_rms(metadata_file):
         remove_rms_noise(rms, rms_peaks, rms_meta, noise_peaks, noise_meta, upper_peaks)
         std_dev = np.std(rms)
         mean = np.mean(rms)
-        percent_of_mean = std_dev /mean
-        logging.info("Std dev percent is %s",percent_of_mean,std_dev)
+        percent_of_mean = std_dev / mean
+        logging.info("Std dev percent is %s", percent_of_mean, std_dev)
         if percent_of_mean < MIN_STDDEV_PERCENT:
             logging.error(
                 "RMS below std %s for rec %s track at %s - %s id %s",
@@ -1219,21 +1196,6 @@ def analyze_rms(metadata_file):
             track.id,
             round(best_offset * 281 / 48000, 2),
         )
-
-
-def best_rms(rms):
-    sr = 48000
-    window_size = sr * 3 / 281
-    window_size = int(window_size)
-    first_window = np.sum(rms[:window_size])
-    rolling_sum = first_window
-    max_index = (0, first_window)
-    for i in range(1, len(rms) - window_size):
-        rolling_sum = rolling_sum - rms[i - 1] + rms[i + window_size]
-        if rolling_sum > max_index[1]:
-            max_index = (i, rolling_sum)
-
-    return max_index
 
 
 def process_rms(metadata_file):

@@ -14,7 +14,7 @@ import tensorflow as tf
 import numpy as np
 import math
 import librosa.display
-
+import scipy
 import audioread.ffdec  # Use ffmpeg decoder
 from custommel import mel_spec
 import sys
@@ -29,7 +29,7 @@ sys.path.append("../pyAudioAnalysis")
 # FMIN = 50
 # FMAX = 11000
 # N_MELS = 120
-REJECT_TAGS = ["unidentified", "other", "mammal", "sheep"]
+REJECT_TAGS = ["unidentified", "other", "mammal"]
 MAX_TRACK_SAMPLES = 4
 
 ACCEPT_TAGS = None
@@ -500,8 +500,39 @@ class Recording:
             tracks = self.tracks
         else:
             tracks = [t for t in self.tracks if for_label in t.human_tags]
+
+        tracks = [t for t in self.tracks if not t.rms_filtered]
+
         bin_id = f"{self.id}-0"
         for track in tracks:
+
+            # dont do noise tracks that happen at the same time as bird tracks
+            if not track.bird_track:
+                for other_track in tracks:
+                    if track == other_track:
+                        continue
+                    if other_track.bird_track and track.overlaps(other_track):
+                        if track.start > other_track.start:
+                            track.start = other_track.end
+                            track.end = max(track.start, track.end)
+                        elif other_track.end > track.end:
+                            track.end = other_track.start
+                        else:
+                            start_section = other_track.start - track.start
+                            end_section = track.end - other_track.end
+                            if start_section > end_section:
+                                track.end = other_track.start
+                            else:
+                                track.start = other_track.end
+                        logging.info(
+                            "Rec %s Track %s overlaps a bird track %s adjusted track times to %s-%s",
+                            self.id,
+                            track.id,
+                            other_track.id,
+                            track.start,
+                            track.end,
+                        )
+
             start_stride = segment_stride
             max_samples = (track.length - segment_length) / segment_stride
             if track.length > 3:
@@ -755,7 +786,7 @@ def load_features(signal, sr):
 
 
 class Track:
-    def __init__(self, metadata, filename, rec_id, rec):
+    def __init__(self, metadata, filename, rec_id, rec, segment_length=3):
         self.rec = rec
         self.filename = filename
         self.rec_id = rec_id
@@ -783,9 +814,80 @@ class Track:
         self.mid_features = None
         self.short_features = None
         self.mixed_label = None
+        self.rms_filtered = False
         tags = metadata.get("tags", [])
         for tag in tags:
             self.add_tag(tag)
+        from tfdataset import SPECIFIC_BIRD_LABELS, GENERIC_BIRD_LABELS
+
+        self.bird_track = False
+        for tag in self.human_tags:
+            if tag in SPECIFIC_BIRD_LABELS or tag in GENERIC_BIRD_LABELS:
+                self.bird_track = True
+        self.tighten_track(metadata, segment_length)
+
+    def tighten_track(self, metadata, segment_length):
+
+        if not self.bird_track:
+            # dont do anything for noisy tracks
+            return
+        if "upper_rms" not in metadata:
+            self.rms_filtered = True
+            print(metadata)
+            logging.info(
+                "Missing rms %s human tag %s id is %s",
+                self.filename,
+                self.human_tags,
+                self.id,
+            )
+            return
+        MIN_STDDEV_PERCENT = 0.15
+        rms_thresh = 0.00001
+        rms_height = 0.001
+        upper_rms = metadata["upper_rms"]
+        rms_hop = metadata.get("rms_hop_length", 281)
+        rms_sr = metadata.get("rms_sr", 48000)
+
+        upper_peaks, _ = scipy.signal.find_peaks(
+            upper_rms, threshold=rms_thresh / 10, height=rms_height / 10, width=2
+        )
+        if len(self.human_tags) == 0:
+            return
+
+        if self.bird_track:
+            rms = metadata["bird_rms"]
+            noise_rms = metadata["noise_rms"]
+            rms = metadata["bird_rms"]
+        else:
+            rms = metadata["noise_rms"]
+            noise_rms = metadata["bird_rms"]
+        rms = np.array(rms)
+        rms_peaks, rms_meta = scipy.signal.find_peaks(
+            rms, threshold=rms_thresh, height=rms_height, width=2
+        )
+        noise_peaks, noise_meta = scipy.signal.find_peaks(
+            noise_rms, threshold=rms_thresh, height=rms_height, width=2
+        )
+        remove_rms_noise(rms, rms_peaks, rms_meta, noise_peaks, noise_meta, upper_peaks)
+        std_dev = np.std(rms)
+        mean = np.mean(rms)
+        percent_of_mean = std_dev / mean
+        if percent_of_mean < MIN_STDDEV_PERCENT:
+            logging.error(
+                "RMS below std %s for rec %s track at %s - %s id %s",
+                std_dev,
+                self.rec.id if self.rec is not None else "",
+                self.start,
+                self.end,
+                self.id,
+            )
+            self.rms_filtered = True
+        best_offset, _ = best_rms(rms, segment_length, rms_sr, rms_hop)
+        start = self.start + best_offset * rms_hop / rms_sr
+        end = min(start + segment_length, self.end)
+        logging.info("Track %s - %s becomes %s - %s", self.start, self.end, start, end)
+        self.start = start
+        self.end = end
 
     def ensure_track_length(self, rec_duration):
         start, end = ensure_track_length(
@@ -805,6 +907,13 @@ class Track:
         else:
             self.original_tags.add(t.original)
             self.human_tags.add(t.what)
+
+    def overlaps(self, other):
+        return (
+            (self.length)
+            + (other.length)
+            - (max(self.end, other.end) - min(self.start, other.start))
+        )
 
     #
     # def get_data(self, resample=None):
@@ -1163,3 +1272,79 @@ def ensure_track_length(start, end, min_length, track_end=None):
         end = min(end, track_end)
 
     return start, end
+
+
+# look for peaks which occur in all 3 rms data and remove them by setting them to the average rms
+def remove_rms_noise(
+    rms,
+    rms_peaks,
+    rms_meta,
+    noise_peaks,
+    noise_meta,
+    upper_peaks,
+    sr=48000,
+    hop_length=281,
+):
+    percent_diff = 0.55
+
+    max_time_diff = 0.1 * sr / hop_length
+    for n_i, n_p in enumerate(noise_peaks):
+        rms_found = None
+        rms_index = None
+        upper_found = None
+        for i, b_p in enumerate(rms_peaks):
+            if abs(b_p - n_p) < max_time_diff:
+                rms_found = b_p
+                rms_index = i
+                break
+        if not rms_found:
+            continue
+        for u_p in upper_peaks:
+            if abs(u_p - n_p) < max_time_diff:
+                upper_found = u_p
+                break
+        if rms_found is not None and upper_found is not None:
+            lower_bound = int(rms_meta["left_ips"][rms_index])
+            upper_bound = int(rms_meta["right_ips"][rms_index])
+            rms_width = upper_bound - lower_bound
+
+            noise_lower_bound = int(noise_meta["left_ips"][n_i])
+            noise_upper_bound = int(noise_meta["right_ips"][n_i])
+            noise_width = noise_upper_bound - noise_lower_bound
+
+            rms_height = rms_meta["peak_heights"][rms_index]
+            noise_height = noise_meta["peak_heights"][n_i]
+
+            width_percent = min(rms_width, noise_width) / max(rms_width, noise_width)
+            height_percent = min(rms_height, noise_height) / max(
+                rms_height, noise_height
+            )
+            # print(height_percent, width_percent)
+            # print(rms_height,noise_height,"Height percent",noise_height / rms_height, " RMs ", rms_width, " noise ",noise_width,  " width ratio ",noise_width/ rms_width)
+            if width_percent < percent_diff or height_percent < percent_diff:
+                continue
+
+            logging.info("Full noise at %s  ", n_p * hop_length / sr)
+            lower_bound = int(rms_meta["left_ips"][rms_index])
+            upper_bound = int(rms_meta["right_ips"][rms_index])
+
+            # upper_slice = upper_rms[0][ lower_bound: upper_bound]
+
+            rms[lower_bound:upper_bound] = 0
+    non_zero_mean = np.mean(rms[rms != 0])
+    rms[rms == 0] = non_zero_mean
+
+
+def best_rms(rms, segment_length=3, sr=48000, hop_length=281):
+    sr = 48000
+    window_size = sr * 3 / hop_length
+    window_size = int(window_size)
+    first_window = np.sum(rms[:window_size])
+    rolling_sum = first_window
+    max_index = (0, first_window)
+    for i in range(1, len(rms) - window_size):
+        rolling_sum = rolling_sum - rms[i - 1] + rms[i + window_size]
+        if rolling_sum > max_index[1]:
+            max_index = (i, rolling_sum)
+
+    return max_index
