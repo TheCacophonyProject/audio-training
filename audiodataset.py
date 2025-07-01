@@ -501,7 +501,7 @@ class Recording:
         else:
             tracks = [t for t in self.tracks if for_label in t.human_tags]
 
-        # tracks = [t for t in self.tracks if not t.rms_filtered]
+        tracks = [t for t in self.tracks if not t.rms_filtered]
 
         bin_id = f"{self.id}-0"
         for track in tracks:
@@ -514,10 +514,11 @@ class Recording:
                 for other_track in tracks:
                     if track == other_track:
                         continue
-                    if other_track.bird_track and segment_overlap(
+                    overlap = segment_overlap(
                         [track.og_start, track.og_end],
                         [other_track.og_start, other_track.og_end],
-                    ):
+                    )
+                    if other_track.bird_track and overlap > 0:
                         # check track is still valid i.e. has over x seconds
                         if track.og_start > other_track.og_start:
                             track.start = other_track.og_end
@@ -913,7 +914,7 @@ class Track:
         best_offset, _ = best_rms(rms, segment_length, rms_sr, rms_hop)
         start = self.start + best_offset * rms_hop / rms_sr
         end = min(start + segment_length, self.end)
-        logging.info("Track %s - %s becomes %s - %s", self.start, self.end, start, end)
+        # logging.info("Track %s - %s becomes %s - %s", self.start, self.end, start, end)
         self.start = start
         self.end = end
 
