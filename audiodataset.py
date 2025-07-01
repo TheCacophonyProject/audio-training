@@ -870,7 +870,7 @@ class Track:
                 self.id,
             )
             return
-        MIN_STDDEV_PERCENT = 0.15
+        MIN_STDDEV_PERCENT = 0.10
         rms_thresh = 0.00001
         rms_height = 0.001
         upper_rms = metadata["upper_rms"]
@@ -898,25 +898,30 @@ class Track:
             noise_rms, threshold=rms_thresh, height=rms_height, width=2
         )
         remove_rms_noise(rms, rms_peaks, rms_meta, noise_peaks, noise_meta, upper_peaks)
-        std_dev = np.std(rms)
-        mean = np.mean(rms)
-        percent_of_mean = std_dev / mean
-        if percent_of_mean < MIN_STDDEV_PERCENT:
-            logging.error(
-                "RMS below std %s for rec %s track at %s - %s id %s",
-                std_dev,
-                self.rec.id if self.rec is not None else "",
-                self.start,
-                self.end,
-                self.id,
-            )
-            self.rms_filtered = True
+
         best_offset, _ = best_rms(rms, segment_length, rms_sr, rms_hop)
         start = self.start + best_offset * rms_hop / rms_sr
         end = min(start + segment_length, self.end)
         # logging.info("Track %s - %s becomes %s - %s", self.start, self.end, start, end)
         self.start = start
         self.end = end
+
+        track_rms = rms[best_offset : int(self.end * rms_sr / rms_hop)]
+        std_dev = np.std(track_rms)
+        mean = np.mean(track_rms)
+
+        percent_of_mean = std_dev / mean
+        if percent_of_mean < MIN_STDDEV_PERCENT:
+            logging.error(
+                "RMS below std %s percent of mean %s for rec %s track at %s - %s id %s",
+                std_dev,
+                percent_of_mean,
+                self.rec.id if self.rec is not None else "",
+                self.start,
+                self.end,
+                self.id,
+            )
+            self.rms_filtered = True
 
     def ensure_track_length(self, rec_duration):
         start, end = ensure_track_length(
@@ -1354,7 +1359,7 @@ def remove_rms_noise(
             if width_percent < percent_diff or height_percent < percent_diff:
                 continue
 
-            logging.info("Full noise at %s  ", n_p * hop_length / sr)
+            # logging.info("Full noise at %s  ", n_p * hop_length / sr)
             lower_bound = int(rms_meta["left_ips"][rms_index])
             upper_bound = int(rms_meta["right_ips"][rms_index])
 
