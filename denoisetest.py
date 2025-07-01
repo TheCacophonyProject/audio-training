@@ -875,8 +875,8 @@ def best_rms(rms, window_size):
 
 
 def rms(args):
-    start = 54.9
-    end = 57.2
+    start = 19.3
+    end = 20.6
     y, sr = load_recording(args.file)
     y = y[int(start * sr) : int(end * sr)]
     n_fft = 4096
@@ -916,6 +916,10 @@ def rms(args):
     print(stft.shape)
     S, phase = librosa.magphase(stft)
     rms = librosa.feature.rms(S=S, frame_length=n_fft, hop_length=hop_length)
+    std_dev = np.std(rms)
+    rms_mean = np.mean(rms)
+    print("Mean percent", std_dev / rms_mean, std_dev, rms_mean)
+    1 / 0
     S, phase = librosa.magphase(noise_stft)
     noise_rms = librosa.feature.rms(S=S, frame_length=n_fft, hop_length=hop_length)
 

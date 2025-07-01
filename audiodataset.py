@@ -870,7 +870,8 @@ class Track:
                 self.id,
             )
             return
-        MIN_STDDEV_PERCENT = 0.10
+        # probably not doing anything so put very low
+        MIN_STDDEV_PERCENT = 0.01
         rms_thresh = 0.00001
         rms_height = 0.001
         upper_rms = metadata["upper_rms"]
