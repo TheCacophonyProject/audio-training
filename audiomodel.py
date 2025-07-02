@@ -938,7 +938,12 @@ class AudioModel:
 
             set_merge_labels(merge_labels)
         elif args.get("morepork_model", False):
-            from tfdataset import ANIMAL_LABELS, set_merge_labels, HUMAN_LABELS
+            from tfdataset import (
+                ANIMAL_LABELS,
+                set_merge_labels,
+                HUMAN_LABELS,
+                INSECT_LABELS,
+            )
 
             if "animal" not in self.labels:
                 self.labels.append("animal")
