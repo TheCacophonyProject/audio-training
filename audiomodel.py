@@ -51,6 +51,11 @@ import tensorflow as tf
 from tensorflow.keras import layers
 import ydf
 
+
+MIXED_PRECISION = True
+
+if MIXED_PRECISION:
+    tf.keras.mixed_precision.set_global_policy("mixed_float16")
 #
 #
 # physical_devices = tf.config.list_physical_devices("GPU")
@@ -508,6 +513,8 @@ class AudioModel:
             return
             # history = self.model.fit(self.train, validation_data=self.validation)
         else:
+            policy = tf.keras.mixed_precision.global_policy()
+            logging.info("Policy is %s", policy)
             history = self.model.fit(
                 self.train,
                 validation_data=self.validation,
@@ -741,8 +748,10 @@ class AudioModel:
             if multi_label:
                 activation = "sigmoid"
             logging.info("Using %s activation", activation)
-            birds = tf.keras.layers.Dense(
-                num_labels, activation=activation, name="prediction"
+            x = tf.keras.layers.Dense(num_labels, name="prediction")(x)
+
+            birds = tf.keras.layers.Activation(
+                activation, dtype="float32", name="predictions"
             )(x)
 
             outputs = [birds]
@@ -945,8 +954,8 @@ class AudioModel:
                 INSECT_LABELS,
             )
 
-            if "animal" not in self.labels:
-                self.labels.append("animal")
+            # if "animal" not in self.labels:
+            #     self.labels.append("animal")
             self.labels.sort()
 
             merge_labels = {}
@@ -1945,6 +1954,7 @@ def parse_args():
     )
 
     args = parser.parse_args()
+    args.extra_datasets = None
     # args.multi = args.multi > 0
     args.resample = args.resample > 0
     args.only_features = args.only_features > 0

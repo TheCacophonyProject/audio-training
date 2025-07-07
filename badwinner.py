@@ -81,11 +81,14 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False):
     # x = tf.keras.layers.Dense(32, activation=tf.keras.layers.LeakyReLU())(x)
     # x = tf.keras.layers.Dropout(0.5)(x)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
+
+    logging.info("Using %s activation", activation)
+    x = tf.keras.layers.Dense(num_labels)(x)
     activation = "softmax"
     if multi_label:
         activation = "sigmoid"
-    logging.info("Using %s activation", activation)
-    x = tf.keras.layers.Dense(num_labels, activation=activation)(x)
+
+    x = tf.keras.layers.Activation(activation, dtype="float32", name="predictions")(x)
 
     model = tf.keras.models.Model(input, outputs=x)
     return model

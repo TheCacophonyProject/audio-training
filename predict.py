@@ -245,6 +245,7 @@ def load_samples(
     normalize=True,
     pad_short_tracks=True,
 ):
+    # pad_short_tracks = False
     filter_below = 1000
     logging.info(
         "Loading samples with length %s stride %s hop length %s and mean_sub %s mfcc %s break %s htk %s n mels %s fmin %s fmax %s",
@@ -307,6 +308,7 @@ def load_samples(
         sr_end = min(sr_end, sample_size)
         while True:
             data = track_frames[sr_start:sr_end]
+            print("Data size for track ", t, data.shape)
             if len(data) != sample_size:
                 extra_frames = sample_size - len(data)
                 offset = np.random.randint(0, extra_frames)
@@ -321,6 +323,7 @@ def load_samples(
                 print("Showing spec for ", t)
             if normalize:
                 data = normalize_data(data)
+                print("NORMALIZED")
             spect = get_spect(
                 data,
                 sr,
@@ -383,10 +386,11 @@ def get_spect(
             sr=sr,
             n_fft=n_fft,
             hop_length=hop_length,
-            fmin=50,
-            fmax=11000,
+            fmin=fmin,
+            fmax=fmax,
             n_mels=n_mels,
         )
+        print("HTK")
     else:
         butter = False
         if butter:
@@ -422,8 +426,8 @@ def get_spect(
             mel_break,
             power=power,
         )
-        if show_spec:
-            plot_mel(mel)
+    if show_spec:
+        plot_mel(mel, fmin=fmin, fmax=fmax)
     if db_scale:
         mel = librosa.power_to_db(mel, ref=np.max)
     mel = tf.expand_dims(mel, axis=2)
@@ -1021,7 +1025,7 @@ def main():
     # return
     # model = tf.keras.models.load_model(str(load_model))
 
-    # model.load_weights(load_model.parent / "val_categorical_accuracy.weights.h5")
+    # model.load_weights(load_model.parent / "val_loss.weights.h5")
     # save_dir = Path("frozen_model")
 
     # model.save(save_dir / load_model.parent.name/ load_model.name)
@@ -1055,6 +1059,7 @@ def main():
     normalize = meta.get("normalize", True)
     power = meta.get("power", 2)
     fmin = meta.get("fmin", 50)
+    # fmin = 1000
     fmax = meta.get("fmax", 11000)
     pad_short_tracks = meta.get("pad_short_tracks", True)
 
