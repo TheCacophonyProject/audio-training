@@ -55,7 +55,7 @@ import ydf
 MIXED_PRECISION = True
 
 if MIXED_PRECISION:
-    tf.keras.mixed_precision.set_global_policy("mixed_float16")
+    tf.keras.mixed_precision.set_global_policy("mixed_bfloat16")
 #
 #
 # physical_devices = tf.config.list_physical_devices("GPU")
@@ -1207,6 +1207,16 @@ class AudioModel:
                     weights=weights,
                     include_top=False,
                     input_shape=input_shape,
+                ),
+                None,
+            )
+        elif pretrained_model == "efficientnetv2b0":
+            return (
+                tf.keras.applications.EfficientNetV2B0(
+                    weights=weights,
+                    include_top=False,
+                    input_shape=input_shape,
+                    include_preprocessing=False,
                 ),
                 None,
             )

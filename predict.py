@@ -1024,8 +1024,13 @@ def main():
     # model_pop(model)
     # return
     # model = tf.keras.models.load_model(str(load_model))
-
-    # model.load_weights(load_model.parent / "val_loss.weights.h5")
+    if args.weights is not None:
+        if args.weights == "loss":
+            model.load_weights(load_model.parent / "val_loss.weights.h5")
+            print("loading val_loss")
+        else:
+            model.load_weights(load_model.parent / "val_categorical_accuracy.weights.h5")
+            print("Loading val_categorical_accuracy.weights.h5")
     # save_dir = Path("frozen_model")
 
     # model.save(save_dir / load_model.parent.name/ load_model.name)
@@ -1263,6 +1268,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--confusion", help="Save confusion matrix for model")
     parser.add_argument("--file", help="Audio file to predict")
+    parser.add_argument("--weights", help="loss or accuracy")
 
     parser.add_argument("--dataset", help="Dataset to predict")
     parser.add_argument("-d", "--dir", help="Directory to predict")
