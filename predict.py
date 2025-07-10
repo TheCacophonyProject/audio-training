@@ -1029,7 +1029,9 @@ def main():
             model.load_weights(load_model.parent / "val_loss.weights.h5")
             print("loading val_loss")
         else:
-            model.load_weights(load_model.parent / "val_categorical_accuracy.weights.h5")
+            model.load_weights(
+                load_model.parent / "val_categorical_accuracy.weights.h5"
+            )
             print("Loading val_categorical_accuracy.weights.h5")
     # save_dir = Path("frozen_model")
 

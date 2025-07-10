@@ -26,10 +26,10 @@ def plot_mel_signals(mel, signals, signals2=[], i=0, colours=None, fmin=50, fmax
     img = librosa.display.specshow(
         librosa.amplitude_to_db(mel, ref=np.max),
         x_axis="time",
-        y_axis="mel",
+        y_axis="linear",
         sr=48000,
-        fmax=fmax,
-        fmin=fmin,
+        # fmax=fmax,
+        # fmin=fmin,
         ax=ax,
         hop_length=281,
     )

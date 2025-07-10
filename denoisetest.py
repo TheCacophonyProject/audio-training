@@ -1062,8 +1062,8 @@ def rms(args):
 def main():
     init_logging()
     args = parse_args()
-    rms(args)
-    return
+    # rms(args)
+    # return
     n_fft = 4096
     hop_length = 281
     N_MELS = 160
@@ -1111,7 +1111,7 @@ def main():
         total_signal += s.length
     print("Sig percent ", 100 * total_signal / len(frames) / sr)
 
-    # plot_mel_signals(np.abs(spectogram), signals, noise)
+    plot_mel_signals(np.abs(spectogram), signals, noise)
     # return
     # print(signals)
     # means_merge(spectogram,signals)
@@ -1167,14 +1167,14 @@ def main():
         else:
             best_segment = (start, signal_length, signal_length)
             # print(length_score)
-        print(f"Signal length at {start}-{s_end} is {signal_length}")
+        # print(f"Signal length at {start}-{s_end} is {signal_length}")
 
         length_per_segment.append(signal_length)
 
     print("Best signal is ", best_segment)
     for t in tracks:
         print("Track is ", t)
-    plot_mel_signals(np.abs(spectogram), tracks, noise)
+    plot_mel_signals(np.abs(spectogram), tracks, noise, fmin=0, fmax=22000)
 
     # tracks = merge_again(tracks)
     # ,time_overlap_percent = 0.5, freq_overlap_percent = 0.5)
@@ -1189,7 +1189,7 @@ def main():
 
     #         continue
     #     overlap = current_track.time_overlap(t)
-    #     percent_overlap = overlap / t.length
+    #     percent_overlap = overlap / t.lenrmsgth
     #     percent_overlap_2 = overlap/ current_track.length
 
     #     f_overlap = current_track.mel_freq_overlap(t)

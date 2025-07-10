@@ -835,6 +835,15 @@ def get_a_dataset(dir, labels, args):
                 "Loading Second_ds %s files from %s", len(second_filenames), dir
             )
             dataset_2 = load_dataset(second_filenames, num_labels, labels, args)
+            morepork_mask = np.zeros(num_labels, dtype=bool)
+            morepork_mask[labels.index("morepork")] = 1
+            morepork_mask = tf.constant(morepork_mask)
+
+            others_filter = lambda x, y: not tf.math.reduce_all(
+                tf.math.equal(tf.cast(y[0], tf.bool), morepork_mask)
+            )
+            dataset_2.filter(others_filter)
+            logging.info("filtering morepork from second ds")
             datasets.append(dataset_2)
         else:
             filenames.extend(second_filenames)

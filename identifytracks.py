@@ -216,8 +216,9 @@ def get_tracks_from_signals(signals, end, filter_short=True):
             if filter_short:
                 to_delete.append(s)
             continue
-        # s.enlarge(1.4, min_track_length=min_track_length)
-
+        s.enlarge(1.4, min_track_length=min_track_length)
+        if end is not None:
+            s.end = min(end, s.end)
         # s.end = min(end, s.end)
         for s2 in signals:
             if s2 in to_delete:
@@ -239,7 +240,7 @@ def get_tracks_from_signals(signals, end, filter_short=True):
             #     overlap / min_length,
             #     mel_overlap,
             # )
-            if overlap > 0.7 * min_length and abs(mel_overlap) < 2200:
+            if overlap > 0.7 * min_length:
                 s.merge(s2)
                 to_delete.append(s2)
                 continue
@@ -253,7 +254,7 @@ def get_tracks_from_signals(signals, end, filter_short=True):
     for s in to_delete:
         signals.remove(s)
     for s in signals:
-        s.enlarge(1.4, min_track_length=min_track_length)
+        # s.enlarge(1.4, min_track_length=min_track_length)
         if end is not None:
             s.end = min(end, s.end)
     to_delete = []
