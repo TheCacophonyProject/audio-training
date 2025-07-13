@@ -820,12 +820,12 @@ class AudioModel:
             checks.append(m_check)
         earlyStopping = tf.keras.callbacks.EarlyStopping(
             patience=22,
-            monitor=accuracy,
+            monitor="loss",
             mode="max",
         )
         checks.append(earlyStopping)
         reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor=accuracy, verbose=1, mode="max"
+            monitor="loss", verbose=1, mode="max"
         )
         checks.append(reduce_lr_callback)
         # file_writer_cm = tf.summary.create_file_writer(str(self.log_dir / "cm"))
