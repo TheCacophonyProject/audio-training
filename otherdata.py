@@ -879,6 +879,7 @@ def tier1_data(base_dir, split_file=None):
 
                 if not audio_file.exists():
                     continue
+
                 metadata_file = audio_file.with_suffix(".txt")
                 if metadata_file.exists():
                     with metadata_file.open("r") as f:
@@ -886,60 +887,60 @@ def tier1_data(base_dir, split_file=None):
                         meta = json.load(f)
                 else:
                     meta = {}
-                y, sr = librosa.load(audio_file)
-                duration = librosa.get_duration(y=y, sr=sr)
-                meta["file"] = str(audio_file)
-                meta["rec_end"] = duration
-                meta["id"] = id
+                    y, sr = librosa.load(audio_file)
+                    duration = librosa.get_duration(y=y, sr=sr)
+                    meta["file"] = str(audio_file)
+                    meta["rec_end"] = duration
+                    meta["id"] = id
 
-                tag = {"automatic": False, "what": label, "ebird_id": ebird_id}
+                    tag = {"automatic": False, "what": label, "ebird_id": ebird_id}
 
-                track_meta = {
-                    "id": f"{id}_1",
-                    "start": 0,
-                    "end": duration,
-                    "tags": [tag],
-                }
-                meta["tracks"] = [track_meta]
-                with open(metadata_file, "w") as f:
-                    logging.info("Writing metadata %s", metadata_file)
-                    json.dump(meta, f, indent=4)
-                continue
+                    track_meta = {
+                        "id": f"{id}_1",
+                        "start": 0,
+                        "end": duration,
+                        "tags": [tag],
+                    }
+                    meta["tracks"] = [track_meta]
+                    with open(metadata_file, "w") as f:
+                        logging.info("Writing metadata %s", metadata_file)
+                        json.dump(meta, f, indent=4)
+
                 r = Recording(
                     meta,
                     audio_file,
                     dataset.config,
-                    load_samples=False,
+                    load_samples=True,
                 )
                 assert r.id not in dataset.recs
-                track_length = end - start
-                t_start = 0
-                t_end = min(track_length, 5)
+                # track_length = end - start
+                # t_start = 0
+                # t_end = min(track_length, 5)
 
-                if label != "banded dotterel" and track_length >= 4:
-                    # just choose 1 track in centre
-                    t_start = 1
-                    t_end = 4
-                if "best_track" not in meta:
-                    print("No best track", audio_file)
-                    continue
-                meta["best_track"]["id"] = id
+                # if label != "banded dotterel" and track_length >= 4:
+                #     # just choose 1 track in centre
+                #     t_start = 1
+                #     t_end = 4
+                # if "best_track" not in meta:
+                #     print("No best track", audio_file)
+                #     continue
+                # meta["best_track"]["id"] = id
 
-                track_meta = meta["best_track"]
-                track_meta["tags"][0]["what"] = label
-                meta_length = track_meta["end"] - track_meta["start"]
-                if meta_length > length:
-                    track_meta["end"] = end
-                    # print("Adjusted end of ", filename, track_meta)
-                    # return
-                t = Track(
-                    track_meta,
-                    r.filename,
-                    r.id,
-                    r,
-                )
-                r.tracks = [t]
-                r.signal_percent()
+                # track_meta = meta["best_track"]
+                # track_meta["tags"][0]["what"] = label
+                # meta_length = track_meta["end"] - track_meta["start"]
+                # if meta_length > length:
+                #     track_meta["end"] = end
+                #     # print("Adjusted end of ", filename, track_meta)
+                #     # return
+                # t = Track(
+                #     track_meta,
+                #     r.filename,
+                #     r.id,
+                #     r,
+                # )
+                # r.tracks = [t]
+                # r.signal_percent()
 
                 if plot_signal:
                     if label not in label_percents:
