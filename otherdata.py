@@ -782,7 +782,7 @@ def tier1_data(base_dir, split_file=None):
         "banded dotterel",
         "australasian bittern",
     ]
-    only_test_labels = True
+    only_test_labels = False
     ebird_map = {}
     first = True
     with open("eBird_taxonomy_v2024.csv") as f:
@@ -830,10 +830,10 @@ def tier1_data(base_dir, split_file=None):
                     continue
 
                 if len(row) == 6:
-                    id, filename, label, other_labels, start, end = row
+                    id, filename, ebird_id, other_labels, start, end = row
                 else:
                     id = f"{folder}-{i}"
-                    filename, label, other_labels, start, end = row
+                    filename, ebird_id, other_labels, start, end = row
 
                 start = float(start)
                 end = float(end)
@@ -841,11 +841,11 @@ def tier1_data(base_dir, split_file=None):
 
                 # if label != "dobplo1":
                 # continue
-                primary_label = ebird_map.get(label)
+                primary_label = ebird_map.get(ebird_id)
 
                 # print("Dot mapped too",primary_label)
                 if primary_label is None:
-                    print("No Mapping for ", label)
+                    print("No Mapping for ", ebird_id)
                     continue
 
                 if primary_label[0] in test_labels:
@@ -886,9 +886,25 @@ def tier1_data(base_dir, split_file=None):
                         meta = json.load(f)
                 else:
                     meta = {}
+                y, sr = librosa.load(audio_file)
+                duration = librosa.get_duration(y=y, sr=sr)
+                meta["file"] = str(audio_file)
+                meta["rec_end"] = duration
                 meta["id"] = id
-                meta["tracks"] = []
 
+                tag = {"automatic": False, "what": label, "ebird_id": ebird_id}
+
+                track_meta = {
+                    "id": f"{id}_1",
+                    "start": 0,
+                    "end": duration,
+                    "tags": [tag],
+                }
+                meta["tracks"] = [track_meta]
+                with open(metadata_file, "w") as f:
+                    logging.info("Writing metadata %s", metadata_file)
+                    json.dump(meta, f, indent=4)
+                continue
                 r = Recording(
                     meta,
                     audio_file,
@@ -1174,7 +1190,7 @@ def analyze_rms(metadata_file):
         )
 
 
-def process_rms(metadata_file):
+def process_rms(metadata_file, tier1=False):
     from tfdataset import SPECIFIC_BIRD_LABELS, GENERIC_BIRD_LABELS
 
     try:
@@ -1198,7 +1214,7 @@ def process_rms(metadata_file):
 
         logging.info("Calcing %s", file)
         # do per track so can be more precise with the frequencies?
-        tracks = meta.get("Tracks", [])
+        tracks = meta.get("tracks", [])
         y, sr = load_recording(file)
 
         n_fft = 4096
@@ -1221,8 +1237,11 @@ def process_rms(metadata_file):
                 upper_noise_bin = i
                 break
         # print("Bins", lower_noise_bin, morepork_upper_bin,upper_noise_bin)
+
         for t in tracks:
+
             track = Track(t, None, 0, None)
+
             # start = t["start"]
             # end = t["end"]
             track_frames = y[int(sr * track.start) : int(sr * track.end)]
@@ -1267,12 +1286,12 @@ def process_rms(metadata_file):
                     S=S, frame_length=n_fft, hop_length=hop_length
                 )
                 # noise or human
-            t["upper_rms"] = list(upper_rms[0])
-            t["noise_rms"] = list(noise_rms[0])
-            t["bird_rms"] = list(bird_rms[0])
-
+            t["upper_rms"] = upper_rms[0].tolist()
+            t["noise_rms"] = noise_rms[0].tolist()
+            t["bird_rms"] = bird_rms[0].tolist()
         meta["file"] = str(file)
         meta["rms_version"] = 1.1
+
         with metadata_file.open("w") as f:
             json.dump(
                 meta,
@@ -1631,7 +1650,7 @@ def main():
         print("Adding signal data to ", args.dir)
         add_signal_meta(args.dir)
         return
-    else:
+    elif args.tier1:
         print("Doing tier 1 data")
         tier1_data(args.dir, args.split_file)
     return
@@ -1730,6 +1749,10 @@ def parse_args():
     parser.add_argument(
         "-s", "--signal", action="store_true", help="Add signal data to dir"
     )
+    parser.add_argument(
+        "--tier1", action="store_true", help="Add tier1 data track data"
+    )
+
     parser.add_argument("--rms", action="store_true", help="Add RMS track data")
     parser.add_argument(
         "--analyse", action="store_true", help="analyse best track data"
