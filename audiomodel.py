@@ -878,6 +878,7 @@ class AudioModel:
             meta = json.load(f)
 
         labels.update(meta.get("labels", []))
+        second_meta = None
         if self.second_data_dir is not None:
             logging.info("Loading second metadata %s", self.second_data_dir)
             file = self.second_data_dir / "training-meta.json"
@@ -885,13 +886,14 @@ class AudioModel:
                 second_meta = json.load(f)
             second_labels = set(second_meta.get("labels", []))
             labels.update(second_labels)
+
         if args.get("extra_datasets"):
             for extra_ds in args["extra_datasets"]:
                 logging.info("Loading second metadata %s", extra_ds)
                 file = Path(extra_ds) / "training-meta.json"
                 with open(file, "r") as f:
-                    second_meta = json.load(f)
-                second_labels = set(second_meta.get("labels", []))
+                    extra_meta = json.load(f)
+                second_labels = set(extra_meta.get("labels", []))
                 labels.update(second_labels)
         human_dataset_dir = None
         if args.get("human_dataset_dir") is not None:
@@ -899,11 +901,14 @@ class AudioModel:
             logging.info("Loading second metadata %s", human_dataset_dir)
             file = human_dataset_dir / "training-meta.json"
             with open(file, "r") as f:
-                second_meta = json.load(f)
-            second_labels = set(second_meta.get("labels", []))
+                extra_meta = json.load(f)
+            second_labels = set(extra_meta.get("labels", []))
             labels.update(second_labels)
 
         set_specific_by_count(meta)
+        if second_meta is not None:
+            set_specific_by_count(second_meta)
+
         labels = list(labels)
         labels.sort()
         self.labels = labels
