@@ -1160,7 +1160,8 @@ def main():
         pred_counts = [0] * len(labels)
         print("Predicting", t, " samples are ", len(d))
         # print(np.array(d).shape)
-        d = np.repeat(d, 3, -1)
+        if "efficientnet" in model_name:
+            d = np.repeat(d, 3, -1)
         predictions = model.predict(np.array(d))
 
         previous_pred = None

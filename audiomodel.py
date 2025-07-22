@@ -983,6 +983,7 @@ class AudioModel:
 
             set_merge_labels(merge_labels)
         else:
+            all_birds = True
             test_birds = [
                 "bellbird",
                 "bird",
@@ -1007,11 +1008,17 @@ class AudioModel:
                 "new zealand fantail",
                 # "thrush"
             ]
-            for l in self.labels:
-                if l not in excluded_labels and l not in test_birds:
-                    excluded_labels.append(l)
-                elif l in excluded_labels and l in test_birds:
-                    excluded_labels.remove(l)
+            if not all_birds:
+                for l in self.labels:
+                    if l not in excluded_labels and l not in test_birds:
+                        excluded_labels.append(l)
+                    elif l in excluded_labels and l in test_birds:
+                        excluded_labels.remove(l)
+            if "human" not in excluded_labels:
+                excluded_labels.append("human")
+            if "noise" not in excluded_labels:
+                excluded_labels.append("noise")
+
         logging.info("labels are %s Excluding %s", self.labels, excluded_labels)
         second_dir = None
         if self.second_data_dir is not None:
