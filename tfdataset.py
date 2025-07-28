@@ -215,6 +215,9 @@ SPECIFIC_BIRD_LABELS = [
     "norfolk silvereye",
     "australian magpie",
     "new zealand fantail",
+    "new-zealand-fernbird",
+    "black-swan",
+    "marsh-crake",
 ]
 GENERIC_BIRD_LABELS = [
     "crow",
