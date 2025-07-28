@@ -19,7 +19,9 @@ import audioread.ffdec  # Use ffmpeg decoder
 from custommel import mel_spec
 import sys
 
-sys.path.append("../pyAudioAnalysis")
+DO_AUDIO_FEATURES = False
+if DO_AUDIO_FEATURES:
+    sys.path.append("../pyAudioAnalysis")
 #
 # SEGMENT_LENGTH = 2.5  # seconds
 # SEGMENT_STRIDE = 1  # of a second
@@ -854,6 +856,7 @@ class Track:
                 self.animal_track = True
             elif tag in NOISE_LABELS:
                 self.noise_track = True
+
         self.tighten_track(metadata, segment_length)
 
     def tighten_track(self, metadata, segment_length):
@@ -1170,19 +1173,20 @@ def load_data(
     #     s_data = frames[start:end]
     short_f = None
     mid_f = None
-    try:
-        short_f, mid_f = load_features(s_data, sr)
-        windows = short_f.shape[1]
-        if windows < 60:
-            short_f = np.pad(short_f, ((0, 0), (0, 60 - windows)))
-        windows = mid_f.shape[1]
-        if windows < 3:
-            mid_f = np.pad(mid_f, ((0, 0), (0, 3 - windows)))
+    if DO_AUDIO_FEATURES:
+        try:
+            short_f, mid_f = load_features(s_data, sr)
+            windows = short_f.shape[1]
+            if windows < 60:
+                short_f = np.pad(short_f, ((0, 0), (0, 60 - windows)))
+            windows = mid_f.shape[1]
+            if windows < 3:
+                mid_f = np.pad(mid_f, ((0, 0), (0, 3 - windows)))
 
-        assert short_f.shape == (68, 60)
-        assert mid_f.shape == (136, 3)
-    except:
-        logging.info("Error loading features", exc_info=True)
+            assert short_f.shape == (68, 60)
+            assert mid_f.shape == (136, 3)
+        except:
+            logging.info("Error loading features", exc_info=True)
     if len(s_data) < int(segment_l * sr):
         extra_frames = int(segment_l * sr) - len(s_data)
         offset = np.random.randint(0, extra_frames)
