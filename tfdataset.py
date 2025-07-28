@@ -27,6 +27,17 @@ MERGE_LABELS = {
     "new zealand fantail": "fantail",
     "australian magpie": "magpie",
     "norfolk silvereye": "silvereye",
+    "graylag-goose-(domestic-type)": "goose",
+    "canada-goose": "goose",
+    "grey-or-mallard-duck": "duck",
+    "mallard-duck": "duck",
+    "california-quail": "california quail",
+    "domesz3tic-chicken": "chicken",
+    "yellow-eyed-penguin": "penguin",
+    "little-blue-penguin": "penguin",
+    # "rosella": "rosella",
+    # "eastern rosella": "rosella",
+    # "crimson rosella": "rosella",
 }
 
 # seed = 1341
@@ -382,9 +393,9 @@ tier1_birds = [
     "yellowhammer",
 ]
 
-SPECIFIC_BIRD_LABELS.extend(tier1_birds)
-SPECIFIC_BIRD_LABELS.sort()
-SPECIFIC_BIRD_LABELS = list(set(SPECIFIC_BIRD_LABELS))
+GENERIC_BIRD_LABELS.extend(tier1_birds)
+GENERIC_BIRD_LABELS.sort()
+GENERIC_BIRD_LABELS = list(set(GENERIC_BIRD_LABELS))
 EXTRA_LABELS = ["rooster", "frog", "insect", "human", "noise"]
 OTHER_LABELS = []
 

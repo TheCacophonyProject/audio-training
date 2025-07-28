@@ -821,7 +821,7 @@ class AudioModel:
         earlyStopping = tf.keras.callbacks.EarlyStopping(
             patience=22,
             monitor="loss",
-            mode="max",
+            mode="min",
         )
         checks.append(earlyStopping)
         reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
