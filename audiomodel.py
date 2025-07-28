@@ -407,9 +407,24 @@ class AudioModel:
 
         self.log_dir = self.log_dir / run_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
-        remapped, excluded_labels, extra_label_map = self.load_datasets(
+
+        labels, excluded_labels, self.training_data_meta = init_labels(
+            self.data_dir, **args
+        )
+
+        (
+            self.train,
+            self.validation,
             self.labels,
-            **args,
+            remapped,
+            excluded_labels,
+            extra_label_map,
+        ) = load_datasets(
+            labels,
+            excluded_labels,
+            self.data_dir,
+            self.batch_size,
+            self.model_name**args,
         )
 
         from tfdataset import DIMENSIONS
@@ -861,229 +876,6 @@ class AudioModel:
         epoch_updater = EpochUpdater()
         checks.append(epoch_updater)
         return checks
-
-    def load_datasets(self, labels, **args):
-        logging.info(
-            "Loading datasets with %s and secondary dir %s generic bird %s",
-            self.data_dir,
-            self.second_data_dir,
-            args.get("use_generic_bird"),
-        )
-        # labels = set()
-
-        # training_files_dir = self.data_dir / "train"
-
-        # file = f"{self.data_dir}/training-meta.json"
-        # with open(file, "r") as f:
-        #     meta = json.load(f)
-
-        # labels.update(meta.get("labels", []))
-        # second_meta = None
-        # if self.second_data_dir is not None:
-        #     logging.info("Loading second metadata %s", self.second_data_dir)
-        #     file = self.second_data_dir / "training-meta.json"
-        #     with open(file, "r") as f:
-        #         second_meta = json.load(f)
-        #     second_labels = set(second_meta.get("labels", []))
-        #     labels.update(second_labels)
-
-        # if args.get("extra_datasets"):
-        #     for extra_ds in args["extra_datasets"]:
-        #         logging.info("Loading second metadata %s", extra_ds)
-        #         file = Path(extra_ds) / "training-meta.json"
-        #         with open(file, "r") as f:
-        #             extra_meta = json.load(f)
-        #         second_labels = set(extra_meta.get("labels", []))
-        #         labels.update(second_labels)
-        # human_dataset_dir = None
-        # if args.get("human_dataset_dir") is not None:
-        #     human_dataset_dir = args.get("human_dataset_dir")
-        #     logging.info("Loading second metadata %s", human_dataset_dir)
-        #     file = human_dataset_dir / "training-meta.json"
-        #     with open(file, "r") as f:
-        #         extra_meta = json.load(f)
-        #     second_labels = set(extra_meta.get("labels", []))
-        #     labels.update(second_labels)
-
-        # set_specific_by_count(meta)
-        # if second_meta is not None:
-        #     set_specific_by_count(second_meta)
-
-        # labels = list(labels)
-        # labels.sort()
-        # self.labels = labels
-        # if not args.get("use_generic_bird", False):
-        #     if "bird" in self.labels:
-        #         self.labels.remove("bird")
-        # elif "bird" not in self.labels:
-        #     self.labels.append("bird")
-        # if "noise" not in self.labels:
-        #     self.labels.append("noise")
-
-        # # if "other" not in self.labels:
-        # # self.labels.append("other")
-        # self.labels.sort()
-        # logging.info("Loading train")
-        # excluded_labels = get_excluded_labels(self.labels)
-
-        # if args.get("only_features", False):
-        #     from tfdataset import ANIMAL_LABELS, set_merge_labels
-
-        #     if "animal" not in self.labels:
-        #         self.labels.append("animal")
-        #     self.labels.sort()
-
-        #     merge_labels = {}
-        #     excluded_labels = []
-        #     for l in labels:
-        #         if l == "bird":
-        #             continue
-        #         if l in SPECIFIC_BIRD_LABELS or l in GENERIC_BIRD_LABELS:
-        #             print("Setting", l, " to bird")
-        #             merge_labels[l] = "bird"
-        #         elif l in ANIMAL_LABELS:
-        #             merge_labels[l] = "animal"
-        #         elif l == "insect":
-        #             merge_labels[l] = "noise"
-        #             # merge_labels[l] = "insect"
-        #         elif l in NOISE_LABELS:
-        #             merge_labels[l] = "noise"
-        #     excluded_labels = ["false-positive"]
-
-        #     set_merge_labels(merge_labels)
-        # elif args.get("morepork_model", False):
-        #     from tfdataset import (
-        #         ANIMAL_LABELS,
-        #         set_merge_labels,
-        #         HUMAN_LABELS,
-        #         INSECT_LABELS,
-        #     )
-
-        #     # if "animal" not in self.labels:
-        #     #     self.labels.append("animal")
-        #     self.labels.sort()
-
-        #     merge_labels = {}
-        #     excluded_labels = []
-        #     for l in labels:
-        #         if l == "morepork":
-        #             continue
-        #         elif l == "bird":
-        #             continue
-        #         if l in SPECIFIC_BIRD_LABELS or l in GENERIC_BIRD_LABELS:
-        #             print("Setting", l, " to bird")
-        #             merge_labels[l] = "bird"
-        #         elif l in ANIMAL_LABELS:
-        #             merge_labels[l] = "noise"
-        #         elif l == "insect":
-        #             merge_labels[l] = "noise"
-        #             # merge_labels[l] = "insect"
-        #         elif l in NOISE_LABELS:
-        #             merge_labels[l] = "noise"
-        #         elif l in HUMAN_LABELS:
-        #             merge_labels[l] = "human"
-        #         elif l in INSECT_LABELS:
-        #             merge_labels[l] = "noise"
-        #     excluded_labels = ["false-positive"]
-
-        #     set_merge_labels(merge_labels)
-        # else:
-        #     all_birds = True
-        #     test_birds = [
-        #         "bellbird",
-        #         "bird",
-        #         "fantail",
-        #         "morepork",
-        #         "noise",
-        #         "human",
-        #         "grey warbler",
-        #         "insect",
-        #         "kiwi",
-        #         "magpie",
-        #         "tui",
-        #         "house sparrow",
-        #         "blackbird",
-        #         "sparrow",
-        #         "song thrush",
-        #         "whistler",
-        #         "rooster",
-        #         "silvereye",
-        #         "norfolk silvereye",
-        #         "australian magpie",
-        #         "new zealand fantail",
-        #         # "thrush"
-        #     ]
-        #     if not all_birds:
-        #         for l in self.labels:
-        #             if l not in excluded_labels and l not in test_birds:
-        #                 excluded_labels.append(l)
-        #             elif l in excluded_labels and l in test_birds:
-        #                 excluded_labels.remove(l)
-        #     if "human" not in excluded_labels:
-        #         excluded_labels.append("human")
-        #     if "noise" not in excluded_labels:
-        #         excluded_labels.append("noise")
-
-        # logging.info("labels are %s Excluding %s", self.labels, excluded_labels)
-        labels, excluded_labels = init_labels(self.data_dir, self.second_data_dir, args)
-        self.labels = labels
-        second_dir = None
-
-        training_files_dir = self.data_dir / "train"
-
-        if self.second_data_dir is not None:
-            second_dir = self.second_data_dir / "train"
-        human_dir = None
-
-        human_dataset_dir = None
-        if args.get("human_dataset_dir") is not None:
-            human_dataset_dir = args.get("human_dataset_dir")
-
-        if human_dataset_dir is not None:
-            human_dir = human_dataset_dir / "train"
-        global global_epoch
-        self.train, remapped, epoch_size, new_labels, extra_label_map = get_dataset(
-            training_files_dir,
-            self.labels,
-            global_epoch=global_epoch,
-            batch_size=self.batch_size,
-            image_size=self.input_shape,
-            augment=False,  # seems to perform worse
-            excluded_labels=excluded_labels,
-            second_dir=second_dir,
-            embeddings=self.model_name == "embeddings",
-            load_seperate_ds=True,
-            cache=True,
-            human_dir=human_dir,
-            **args,
-        )
-        if args.get("only_load_train", False):
-            return remapped, excluded_labels, extra_label_map
-
-        self.num_train_instance = epoch_size
-        if self.second_data_dir is not None:
-            second_dir = self.second_data_dir / "validation"
-
-        if human_dataset_dir is not None:
-            human_dir = human_dataset_dir / "validation"
-        logging.info("Loading Val")
-
-        self.validation, _, _, _, _ = get_dataset(
-            self.data_dir / "validation",
-            self.labels,
-            batch_size=self.batch_size,
-            image_size=self.input_shape,
-            excluded_labels=excluded_labels,
-            second_dir=second_dir,
-            embeddings=self.model_name == "embeddings",
-            human_dir=human_dir,
-            **args,
-        )
-
-        self.labels = new_labels
-        self.training_data_meta = meta
-
-        return remapped, excluded_labels, extra_label_map
 
     def load_test_set(self, **args):
         logging.info("Loading test")
@@ -1666,11 +1458,73 @@ def ktest():
     print("Result is ", metric.result())
 
 
-def init_labels(data_dir, second_data_dir, **args):
-    labels = set()
+def load_datasets(labels, excluded_labels, data_dir, batch_size, model_name, **args):
+    second_data_dir = None
+    second_dir = None
+    if args.get("second_dataset_dir") is not None:
+        second_data_dir = args.get("second_dataset_dir")
+        second_dir = second_data_dir / "train"
+
+    human_dir = None
+    human_dataset_dir = None
+    if args.get("human_dataset_dir") is not None:
+        human_dataset_dir = args.get("human_dataset_dir")
+        human_dir = human_dataset_dir / "train"
+
+    logging.info(
+        "Loading datasets with %s and secondary dir %s human dir %s generic bird %s",
+        data_dir,
+        second_data_dir,
+        human_dataset_dir,
+        args.get("use_generic_bird"),
+    )
 
     training_files_dir = data_dir / "train"
 
+    global global_epoch
+    train, remapped, epoch_size, new_labels, extra_label_map = get_dataset(
+        training_files_dir,
+        labels,
+        global_epoch=global_epoch,
+        batch_size=batch_size,
+        augment=False,  # seems to perform worse
+        excluded_labels=excluded_labels,
+        second_dir=second_dir,
+        embeddings=model_name == "embeddings",
+        load_seperate_ds=True,
+        cache=True,
+        human_dir=human_dir,
+        **args,
+    )
+    if args.get("only_load_train", False):
+        return remapped, excluded_labels, extra_label_map
+
+    if second_data_dir is not None:
+        second_dir = second_data_dir / "validation"
+
+    if human_dataset_dir is not None:
+        human_dir = human_dataset_dir / "validation"
+    logging.info("Loading Val")
+
+    validation, _, _, _, _ = get_dataset(
+        data_dir / "validation",
+        labels,
+        batch_size=batch_size,
+        excluded_labels=excluded_labels,
+        second_dir=second_dir,
+        embeddings=model_name == "embeddings",
+        human_dir=human_dir,
+        **args,
+    )
+
+    return train, validation, new_labels, remapped, extra_label_map
+
+
+def init_labels(data_dir, **args):
+    labels = set()
+
+    training_files_dir = data_dir / "train"
+    second_data_dir = args.get("second_dataset_dir")
     file = f"{data_dir}/training-meta.json"
     with open(file, "r") as f:
         meta = json.load(f)
@@ -1856,21 +1710,8 @@ def main():
             )
 
             model.summary()
-            # if not multi:
-            #     popped = model.layers.pop()
-            #     logging.info("Replacing softmax with sigmoid")
-            #     popped.activation = tf.keras.activations.sigmoid
-            #     model = tf.keras.models.Model(model.input, outputs=popped.output)
-            #     model.summary()
         labels = meta_data.get("labels")
-        print("model labels are", labels)
-
         base_dir = Path(args.dataset_dir)
-        meta_f = base_dir / "training-meta.json"
-
-        labels, excluded_labels, meta = init_labels(
-            args.dataset_dir, args.second_dataset_dir, **args.__dict__
-        )
         second_dir = None
         if args.second_dataset_dir is not None:
             second_dir = args.second_dataset_dir / "test"
