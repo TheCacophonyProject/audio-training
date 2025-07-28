@@ -460,7 +460,7 @@ def set_specific_by_count(meta):
         if label not in validation:
             continue
         val_count = validation[label]
-        if count > 100 and rec_count > 50 and val_count > 2:
+        if count > 50 and rec_count > 50 and val_count > 2:
             labels_with_data.append(label)
             if label not in GENERIC_BIRD_LABELS:
                 logging.info("Have data for %s but not included ", label)
