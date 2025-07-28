@@ -869,166 +869,176 @@ class AudioModel:
             self.second_data_dir,
             args.get("use_generic_bird"),
         )
-        labels = set()
+        # labels = set()
+
+        # training_files_dir = self.data_dir / "train"
+
+        # file = f"{self.data_dir}/training-meta.json"
+        # with open(file, "r") as f:
+        #     meta = json.load(f)
+
+        # labels.update(meta.get("labels", []))
+        # second_meta = None
+        # if self.second_data_dir is not None:
+        #     logging.info("Loading second metadata %s", self.second_data_dir)
+        #     file = self.second_data_dir / "training-meta.json"
+        #     with open(file, "r") as f:
+        #         second_meta = json.load(f)
+        #     second_labels = set(second_meta.get("labels", []))
+        #     labels.update(second_labels)
+
+        # if args.get("extra_datasets"):
+        #     for extra_ds in args["extra_datasets"]:
+        #         logging.info("Loading second metadata %s", extra_ds)
+        #         file = Path(extra_ds) / "training-meta.json"
+        #         with open(file, "r") as f:
+        #             extra_meta = json.load(f)
+        #         second_labels = set(extra_meta.get("labels", []))
+        #         labels.update(second_labels)
+        # human_dataset_dir = None
+        # if args.get("human_dataset_dir") is not None:
+        #     human_dataset_dir = args.get("human_dataset_dir")
+        #     logging.info("Loading second metadata %s", human_dataset_dir)
+        #     file = human_dataset_dir / "training-meta.json"
+        #     with open(file, "r") as f:
+        #         extra_meta = json.load(f)
+        #     second_labels = set(extra_meta.get("labels", []))
+        #     labels.update(second_labels)
+
+        # set_specific_by_count(meta)
+        # if second_meta is not None:
+        #     set_specific_by_count(second_meta)
+
+        # labels = list(labels)
+        # labels.sort()
+        # self.labels = labels
+        # if not args.get("use_generic_bird", False):
+        #     if "bird" in self.labels:
+        #         self.labels.remove("bird")
+        # elif "bird" not in self.labels:
+        #     self.labels.append("bird")
+        # if "noise" not in self.labels:
+        #     self.labels.append("noise")
+
+        # # if "other" not in self.labels:
+        # # self.labels.append("other")
+        # self.labels.sort()
+        # logging.info("Loading train")
+        # excluded_labels = get_excluded_labels(self.labels)
+
+        # if args.get("only_features", False):
+        #     from tfdataset import ANIMAL_LABELS, set_merge_labels
+
+        #     if "animal" not in self.labels:
+        #         self.labels.append("animal")
+        #     self.labels.sort()
+
+        #     merge_labels = {}
+        #     excluded_labels = []
+        #     for l in labels:
+        #         if l == "bird":
+        #             continue
+        #         if l in SPECIFIC_BIRD_LABELS or l in GENERIC_BIRD_LABELS:
+        #             print("Setting", l, " to bird")
+        #             merge_labels[l] = "bird"
+        #         elif l in ANIMAL_LABELS:
+        #             merge_labels[l] = "animal"
+        #         elif l == "insect":
+        #             merge_labels[l] = "noise"
+        #             # merge_labels[l] = "insect"
+        #         elif l in NOISE_LABELS:
+        #             merge_labels[l] = "noise"
+        #     excluded_labels = ["false-positive"]
+
+        #     set_merge_labels(merge_labels)
+        # elif args.get("morepork_model", False):
+        #     from tfdataset import (
+        #         ANIMAL_LABELS,
+        #         set_merge_labels,
+        #         HUMAN_LABELS,
+        #         INSECT_LABELS,
+        #     )
+
+        #     # if "animal" not in self.labels:
+        #     #     self.labels.append("animal")
+        #     self.labels.sort()
+
+        #     merge_labels = {}
+        #     excluded_labels = []
+        #     for l in labels:
+        #         if l == "morepork":
+        #             continue
+        #         elif l == "bird":
+        #             continue
+        #         if l in SPECIFIC_BIRD_LABELS or l in GENERIC_BIRD_LABELS:
+        #             print("Setting", l, " to bird")
+        #             merge_labels[l] = "bird"
+        #         elif l in ANIMAL_LABELS:
+        #             merge_labels[l] = "noise"
+        #         elif l == "insect":
+        #             merge_labels[l] = "noise"
+        #             # merge_labels[l] = "insect"
+        #         elif l in NOISE_LABELS:
+        #             merge_labels[l] = "noise"
+        #         elif l in HUMAN_LABELS:
+        #             merge_labels[l] = "human"
+        #         elif l in INSECT_LABELS:
+        #             merge_labels[l] = "noise"
+        #     excluded_labels = ["false-positive"]
+
+        #     set_merge_labels(merge_labels)
+        # else:
+        #     all_birds = True
+        #     test_birds = [
+        #         "bellbird",
+        #         "bird",
+        #         "fantail",
+        #         "morepork",
+        #         "noise",
+        #         "human",
+        #         "grey warbler",
+        #         "insect",
+        #         "kiwi",
+        #         "magpie",
+        #         "tui",
+        #         "house sparrow",
+        #         "blackbird",
+        #         "sparrow",
+        #         "song thrush",
+        #         "whistler",
+        #         "rooster",
+        #         "silvereye",
+        #         "norfolk silvereye",
+        #         "australian magpie",
+        #         "new zealand fantail",
+        #         # "thrush"
+        #     ]
+        #     if not all_birds:
+        #         for l in self.labels:
+        #             if l not in excluded_labels and l not in test_birds:
+        #                 excluded_labels.append(l)
+        #             elif l in excluded_labels and l in test_birds:
+        #                 excluded_labels.remove(l)
+        #     if "human" not in excluded_labels:
+        #         excluded_labels.append("human")
+        #     if "noise" not in excluded_labels:
+        #         excluded_labels.append("noise")
+
+        # logging.info("labels are %s Excluding %s", self.labels, excluded_labels)
+        labels, excluded_labels = init_labels(self.data_dir, self.second_data_dir, args)
+        self.labels = labels
+        second_dir = None
 
         training_files_dir = self.data_dir / "train"
 
-        file = f"{self.data_dir}/training-meta.json"
-        with open(file, "r") as f:
-            meta = json.load(f)
-
-        labels.update(meta.get("labels", []))
-        second_meta = None
-        if self.second_data_dir is not None:
-            logging.info("Loading second metadata %s", self.second_data_dir)
-            file = self.second_data_dir / "training-meta.json"
-            with open(file, "r") as f:
-                second_meta = json.load(f)
-            second_labels = set(second_meta.get("labels", []))
-            labels.update(second_labels)
-
-        if args.get("extra_datasets"):
-            for extra_ds in args["extra_datasets"]:
-                logging.info("Loading second metadata %s", extra_ds)
-                file = Path(extra_ds) / "training-meta.json"
-                with open(file, "r") as f:
-                    extra_meta = json.load(f)
-                second_labels = set(extra_meta.get("labels", []))
-                labels.update(second_labels)
-        human_dataset_dir = None
-        if args.get("human_dataset_dir") is not None:
-            human_dataset_dir = args.get("human_dataset_dir")
-            logging.info("Loading second metadata %s", human_dataset_dir)
-            file = human_dataset_dir / "training-meta.json"
-            with open(file, "r") as f:
-                extra_meta = json.load(f)
-            second_labels = set(extra_meta.get("labels", []))
-            labels.update(second_labels)
-
-        set_specific_by_count(meta)
-        if second_meta is not None:
-            set_specific_by_count(second_meta)
-
-        labels = list(labels)
-        labels.sort()
-        self.labels = labels
-        if not args.get("use_generic_bird", False):
-            if "bird" in self.labels:
-                self.labels.remove("bird")
-        elif "bird" not in self.labels:
-            self.labels.append("bird")
-        if "noise" not in self.labels:
-            self.labels.append("noise")
-
-        # if "other" not in self.labels:
-        # self.labels.append("other")
-        self.labels.sort()
-        logging.info("Loading train")
-        excluded_labels = get_excluded_labels(self.labels)
-
-        if args.get("only_features", False):
-            from tfdataset import ANIMAL_LABELS, set_merge_labels
-
-            if "animal" not in self.labels:
-                self.labels.append("animal")
-            self.labels.sort()
-
-            merge_labels = {}
-            excluded_labels = []
-            for l in labels:
-                if l == "bird":
-                    continue
-                if l in SPECIFIC_BIRD_LABELS or l in GENERIC_BIRD_LABELS:
-                    print("Setting", l, " to bird")
-                    merge_labels[l] = "bird"
-                elif l in ANIMAL_LABELS:
-                    merge_labels[l] = "animal"
-                elif l == "insect":
-                    merge_labels[l] = "noise"
-                    # merge_labels[l] = "insect"
-                elif l in NOISE_LABELS:
-                    merge_labels[l] = "noise"
-            excluded_labels = ["false-positive"]
-
-            set_merge_labels(merge_labels)
-        elif args.get("morepork_model", False):
-            from tfdataset import (
-                ANIMAL_LABELS,
-                set_merge_labels,
-                HUMAN_LABELS,
-                INSECT_LABELS,
-            )
-
-            # if "animal" not in self.labels:
-            #     self.labels.append("animal")
-            self.labels.sort()
-
-            merge_labels = {}
-            excluded_labels = []
-            for l in labels:
-                if l == "morepork":
-                    continue
-                elif l == "bird":
-                    continue
-                if l in SPECIFIC_BIRD_LABELS or l in GENERIC_BIRD_LABELS:
-                    print("Setting", l, " to bird")
-                    merge_labels[l] = "bird"
-                elif l in ANIMAL_LABELS:
-                    merge_labels[l] = "noise"
-                elif l == "insect":
-                    merge_labels[l] = "noise"
-                    # merge_labels[l] = "insect"
-                elif l in NOISE_LABELS:
-                    merge_labels[l] = "noise"
-                elif l in HUMAN_LABELS:
-                    merge_labels[l] = "human"
-                elif l in INSECT_LABELS:
-                    merge_labels[l] = "noise"
-            excluded_labels = ["false-positive"]
-
-            set_merge_labels(merge_labels)
-        else:
-            all_birds = True
-            test_birds = [
-                "bellbird",
-                "bird",
-                "fantail",
-                "morepork",
-                "noise",
-                "human",
-                "grey warbler",
-                "insect",
-                "kiwi",
-                "magpie",
-                "tui",
-                "house sparrow",
-                "blackbird",
-                "sparrow",
-                "song thrush",
-                "whistler",
-                "rooster",
-                "silvereye",
-                "norfolk silvereye",
-                "australian magpie",
-                "new zealand fantail",
-                # "thrush"
-            ]
-            if not all_birds:
-                for l in self.labels:
-                    if l not in excluded_labels and l not in test_birds:
-                        excluded_labels.append(l)
-                    elif l in excluded_labels and l in test_birds:
-                        excluded_labels.remove(l)
-            if "human" not in excluded_labels:
-                excluded_labels.append("human")
-            if "noise" not in excluded_labels:
-                excluded_labels.append("noise")
-
-        logging.info("labels are %s Excluding %s", self.labels, excluded_labels)
-        second_dir = None
         if self.second_data_dir is not None:
             second_dir = self.second_data_dir / "train"
         human_dir = None
+
+        human_dataset_dir = None
+        if args.get("human_dataset_dir") is not None:
+            human_dataset_dir = args.get("human_dataset_dir")
+
         if human_dataset_dir is not None:
             human_dir = human_dataset_dir / "train"
         global global_epoch
@@ -1047,6 +1057,8 @@ class AudioModel:
             human_dir=human_dir,
             **args,
         )
+        if args.get("only_load_train", False):
+            return remapped, excluded_labels, extra_label_map
 
         self.num_train_instance = epoch_size
         if self.second_data_dir is not None:
@@ -1654,12 +1666,172 @@ def ktest():
     print("Result is ", metric.result())
 
 
+def init_labels(data_dir, second_data_dir, **args):
+    labels = set()
+
+    training_files_dir = data_dir / "train"
+
+    file = f"{data_dir}/training-meta.json"
+    with open(file, "r") as f:
+        meta = json.load(f)
+
+    labels.update(meta.get("labels", []))
+    second_meta = None
+    if second_data_dir is not None:
+        logging.info("Loading second metadata %s", second_data_dir)
+        file = second_data_dir / "training-meta.json"
+        with open(file, "r") as f:
+            second_meta = json.load(f)
+        second_labels = set(second_meta.get("labels", []))
+        labels.update(second_labels)
+
+    if args.get("extra_datasets"):
+        for extra_ds in args["extra_datasets"]:
+            logging.info("Loading second metadata %s", extra_ds)
+            file = Path(extra_ds) / "training-meta.json"
+            with open(file, "r") as f:
+                extra_meta = json.load(f)
+            second_labels = set(extra_meta.get("labels", []))
+            labels.update(second_labels)
+    human_dataset_dir = None
+    if args.get("human_dataset_dir") is not None:
+        human_dataset_dir = args.get("human_dataset_dir")
+        logging.info("Loading second metadata %s", human_dataset_dir)
+        file = human_dataset_dir / "training-meta.json"
+        with open(file, "r") as f:
+            extra_meta = json.load(f)
+        second_labels = set(extra_meta.get("labels", []))
+        labels.update(second_labels)
+
+    set_specific_by_count(meta)
+    if second_meta is not None:
+        set_specific_by_count(second_meta)
+
+    labels = list(labels)
+    labels.sort()
+    if not args.get("use_generic_bird", False):
+        if "bird" in labels:
+            labels.remove("bird")
+    elif "bird" not in labels:
+        labels.append("bird")
+    if "noise" not in labels:
+        labels.append("noise")
+
+    # if "other" not in labels:
+    # labels.append("other")
+    labels.sort()
+    logging.info("Loading train")
+    excluded_labels = get_excluded_labels(labels)
+
+    if args.get("only_features", False):
+        from tfdataset import ANIMAL_LABELS, set_merge_labels
+
+        if "animal" not in labels:
+            labels.append("animal")
+        labels.sort()
+
+        merge_labels = {}
+        excluded_labels = []
+        for l in labels:
+            if l == "bird":
+                continue
+            if l in SPECIFIC_BIRD_LABELS or l in GENERIC_BIRD_LABELS:
+                print("Setting", l, " to bird")
+                merge_labels[l] = "bird"
+            elif l in ANIMAL_LABELS:
+                merge_labels[l] = "animal"
+            elif l == "insect":
+                merge_labels[l] = "noise"
+                # merge_labels[l] = "insect"
+            elif l in NOISE_LABELS:
+                merge_labels[l] = "noise"
+        excluded_labels = ["false-positive"]
+
+        set_merge_labels(merge_labels)
+    elif args.get("morepork_model", False):
+        from tfdataset import (
+            ANIMAL_LABELS,
+            set_merge_labels,
+            HUMAN_LABELS,
+            INSECT_LABELS,
+        )
+
+        # if "animal" not in labels:
+        #     labels.append("animal")
+        labels.sort()
+
+        merge_labels = {}
+        excluded_labels = []
+        for l in labels:
+            if l == "morepork":
+                continue
+            elif l == "bird":
+                continue
+            if l in SPECIFIC_BIRD_LABELS or l in GENERIC_BIRD_LABELS:
+                print("Setting", l, " to bird")
+                merge_labels[l] = "bird"
+            elif l in ANIMAL_LABELS:
+                merge_labels[l] = "noise"
+            elif l == "insect":
+                merge_labels[l] = "noise"
+                # merge_labels[l] = "insect"
+            elif l in NOISE_LABELS:
+                merge_labels[l] = "noise"
+            elif l in HUMAN_LABELS:
+                merge_labels[l] = "human"
+            elif l in INSECT_LABELS:
+                merge_labels[l] = "noise"
+        excluded_labels = ["false-positive"]
+
+        set_merge_labels(merge_labels)
+    else:
+        all_birds = True
+        test_birds = [
+            "bellbird",
+            "bird",
+            "fantail",
+            "morepork",
+            "noise",
+            "human",
+            "grey warbler",
+            "insect",
+            "kiwi",
+            "magpie",
+            "tui",
+            "house sparrow",
+            "blackbird",
+            "sparrow",
+            "song thrush",
+            "whistler",
+            "rooster",
+            "silvereye",
+            "norfolk silvereye",
+            "australian magpie",
+            "new zealand fantail",
+            # "thrush"
+        ]
+        if not all_birds:
+            for l in labels:
+                if l not in excluded_labels and l not in test_birds:
+                    excluded_labels.append(l)
+                elif l in excluded_labels and l in test_birds:
+                    excluded_labels.remove(l)
+        if "human" not in excluded_labels:
+            excluded_labels.append("human")
+        if "noise" not in excluded_labels:
+            excluded_labels.append("noise")
+
+    logging.info("labels are %s Excluding %s", labels, excluded_labels)
+    return labels, excluded_labels
+
+
 def main():
     init_logging()
     args = parse_args()
 
     # ktest()
     # return
+
     if args.confusion is not None:
         model_path = Path(args.name)
         if model_path.is_dir():
@@ -1700,10 +1872,17 @@ def main():
             dataset_meta = json.load(f)
         labels = meta_data.get("labels")
 
-        set_specific_by_count(dataset_meta)
+        labels, excluded_labels = init_labels(
+            args.dataset_dir, args.second_dataset_dir, args
+        )
+        second_dir = None
+        if args.second_dataset_dir is not None:
+            second_dir = args.second_dataset_dir / "test"
+
         dataset, _, _, _, _ = get_dataset(
             base_dir / "test",
             labels,
+            second_dir=second_dir,
             image_size=DIMENSIONS,
             shuffle=False,
             deterministic=True,
