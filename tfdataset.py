@@ -589,7 +589,6 @@ def load_dataset(filenames, num_labels, labels, args):
         ignore_order
     )  # uses data as soon as it streams in, rather than in its original order
 
-    image_size = args["image_size"]
     labeled = args.get("labeled", True)
     augment = args.get("augment", False)
     preprocess_fn = args.get("preprocess_fn")
@@ -622,7 +621,6 @@ def load_dataset(filenames, num_labels, labels, args):
         partial(
             read_record,
             num_labels=num_labels,
-            image_size=image_size,
             labeled=labeled,
             augment=augment,
             preprocess_fn=preprocess_fn,
@@ -1323,7 +1321,6 @@ def mix_up(ds_one, ds_two, global_epoch, alpha=0.2, chance=0.25):
 @tf.function
 def read_tfrecord(
     example,
-    image_size,
     num_labels,
     labeled,
     augment=False,
@@ -1584,7 +1581,6 @@ def calc_mean():
         filenames,
         labels,
         batch_size=32,
-        image_size=DIMENSIONS,
         augment=False,
         resample=False,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
@@ -1757,7 +1753,6 @@ def main():
         labels,
         deterministic=True,
         batch_size=32,
-        image_size=DIMENSIONS,
         excluded_labels=excluded_labels,
         remapped_labels=remapped_labels,
         extra_label_map=extra_label_map,

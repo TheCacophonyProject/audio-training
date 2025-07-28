@@ -52,7 +52,7 @@ from tensorflow.keras import layers
 import ydf
 
 
-MIXED_PRECISION = True
+MIXED_PRECISION = False
 
 if MIXED_PRECISION:
     tf.keras.mixed_precision.set_global_policy("mixed_bfloat16")
@@ -417,14 +417,13 @@ class AudioModel:
             self.validation,
             self.labels,
             remapped,
-            excluded_labels,
             extra_label_map,
         ) = load_datasets(
             labels,
             excluded_labels,
             self.data_dir,
             self.batch_size,
-            self.model_name**args,
+            **args,
         )
 
         from tfdataset import DIMENSIONS
@@ -1458,7 +1457,7 @@ def ktest():
     print("Result is ", metric.result())
 
 
-def load_datasets(labels, excluded_labels, data_dir, batch_size, model_name, **args):
+def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
     second_data_dir = None
     second_dir = None
     if args.get("second_dataset_dir") is not None:
@@ -1480,6 +1479,7 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, model_name, **a
     )
 
     training_files_dir = data_dir / "train"
+    model_name = args.get("model_name")
 
     global global_epoch
     train, remapped, epoch_size, new_labels, extra_label_map = get_dataset(
