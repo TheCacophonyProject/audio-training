@@ -1822,7 +1822,7 @@ def init_labels(data_dir, second_data_dir, **args):
             excluded_labels.append("noise")
 
     logging.info("labels are %s Excluding %s", labels, excluded_labels)
-    return labels, excluded_labels
+    return labels, excluded_labels, meta
 
 
 def main():
@@ -1867,13 +1867,9 @@ def main():
 
         base_dir = Path(args.dataset_dir)
         meta_f = base_dir / "training-meta.json"
-        dataset_meta = None
-        with open(meta_f, "r") as f:
-            dataset_meta = json.load(f)
-        labels = meta_data.get("labels")
 
-        labels, excluded_labels = init_labels(
-            args.dataset_dir, args.second_dataset_dir, args
+        labels, excluded_labels, meta = init_labels(
+            args.dataset_dir, args.second_dataset_dir, **args.__dict__
         )
         second_dir = None
         if args.second_dataset_dir is not None:
