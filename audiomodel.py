@@ -482,22 +482,30 @@ class AudioModel:
                     tf.keras.losses.Huber(),
                 ],
             )
+
+            if weights is not None:
+                self.load_weights(weights)
         else:
             # can use for 2 gpus, but seems to be much slower on our setup
             # strategy = tf.distribute.MirroredStrategy()
             # with strategy.scope():
-
+            if weights is not None:
+                weights_metadata = Path(weights).parent / "metadata.txt"
+                if weights_metadata.exists():
+                    with weights_metadata.open("r") as f:
+                        weights_meta = json.load(f)
+                    weights_labels = weights_meta.get("labels")
+                    print("Weight labels are ", weights_labels)
             self.build_model(
                 multi_label=args.get("multi_label", True),
                 loss_fn=args.get("loss_fn", "keras"),
+                weight_labels=weights_labels,
+                weights=weights,
             )
             (self.checkpoint_folder / run_name).mkdir(parents=True, exist_ok=True)
             if self.model_name != "rf-features":
                 self.model.save(self.checkpoint_folder / run_name / f"{run_name}.keras")
             self.save_metadata(run_name, None, None, **args)
-
-        if weights is not None:
-            self.load_weights(weights)
 
         checkpoints = self.checkpoints(
             run_name, multi_label=args.get("multi_label", True)
@@ -636,8 +644,20 @@ class AudioModel:
             cls=MetaJSONEncoder,
         )
 
-    def build_model(self, multi_label=False, loss_fn="keras"):
-        num_labels = len(self.labels)
+    def build_model(
+        self, multi_label=False, loss_fn="keras", weight_labels=None, weights=None
+    ):
+        if weights is not None and weight_labels is not None:
+            # build model wight these labels then pop the dense layer and add a new one for our labels
+            labels = weight_labels
+        else:
+            labels = self.labels
+
+        num_labels = len(labels)
+
+        activation = "softmax"
+        if multi_label:
+            activation = "sigmoid"
         if self.model_name == "merge":
             inputs = []
 
@@ -668,8 +688,9 @@ class AudioModel:
             # rather than dense could just weight each output with a learnable weight and then average
             #  i think this should learn it the same but allow for more complex patterns
             output = layers.Dense(num_labels)(output)
-            output = tf.keras.activations.sigmoid(output)
-
+            output = tf.keras.layers.Activation(
+                activation, dtype="float32", name="predictions"
+            )(output)
             self.model = tf.keras.models.Model(inputs, outputs=output)
             self.model.summary()
         elif self.model_name == "dual-badwinner2":
@@ -698,8 +719,9 @@ class AudioModel:
 
             #  i think this should learn it the same but allow for more complex patterns
             output = layers.Dense(num_labels)(output)
-            output = tf.keras.activations.sigmoid(output)
-
+            output = tf.keras.layers.Activation(
+                activation, dtype="float32", name="predictions"
+            )(output)
             self.model = tf.keras.models.Model(inputs, outputs=output)
             self.model.summary()
             print("MODEL MADE")
@@ -720,8 +742,9 @@ class AudioModel:
             short, mid = feature_cnn(inputs[0], inputs[1], num_labels)
             output = tf.keras.layers.Concatenate()([short, mid])
             output = layers.Dense(num_labels)(output)
-            output = tf.keras.activations.sigmoid(output)
-
+            output = tf.keras.layers.Activation(
+                activation, dtype="float32", name="predictions"
+            )(output)
             self.model = tf.keras.models.Model(inputs, outputs=output)
             self.model.summary()
         elif self.model_name == "rf-features":
@@ -736,11 +759,11 @@ class AudioModel:
             )
 
         elif self.model_name == "embeddings":
-            self.model = get_linear_model(self.input_shape, len(self.labels))
+            self.model = get_linear_model(self.input_shape, len(labels))
         elif self.model_name == "wr-resnet":
             self.model = wr_resnet.WRResNet(
                 self.input_shape,
-                len(self.labels),
+                len(labels),
             )
         else:
             # norm_layer = tf.keras.layers.Normalization()
@@ -777,12 +800,37 @@ class AudioModel:
             acc = tf.metrics.categorical_accuracy
         if loss_fn == "WeightedCrossEntropy":
             logging.info("Using weighted cross entropy")
-            loss_fn = WeightedCrossEntropy(self.labels)
+            loss_fn = WeightedCrossEntropy(labels)
         else:
             logging.info("Using cross entropy")
             loss_fn = loss(multi_label)
 
         self.loss_fn = loss_fn.name
+
+        if weights is not None:
+            logging.info("Loading weights %s", weights)
+            self.model.load_weights(weights)
+            if weight_labels is not None and len(weight_labels) != len(self.labels):
+                logging.info(
+                    "Changing final layer as number of labels differs from loaded weights"
+                )
+                self.model = tf.keras.Model(
+                    inputs=self.model.input, outputs=self.model.layers[-3].output
+                )
+                num_labels = len(self.labels)
+                self.model.summary()
+                logging.info("Using %s activation", activation)
+                x = tf.keras.layers.Dense(num_labels, name="prediction")(
+                    self.model.output
+                )
+
+                birds = tf.keras.layers.Activation(
+                    activation, dtype="float32", name="predictions"
+                )(x)
+
+                outputs = [birds]
+                self.model = tf.keras.models.Model(input, outputs=outputs)
+
         self.model.compile(
             optimizer=optimizer(lr=self.learning_rate),
             loss=loss_fn,
