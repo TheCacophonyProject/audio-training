@@ -810,7 +810,7 @@ class AudioModel:
         if weights is not None:
             logging.info("Loading weights %s", weights)
             self.model.load_weights(weights)
-            if weight_labels is not None and len(weight_labels) != len(self.labels):
+            if weight_labels is not None:
                 logging.info(
                     "Changing final layer as number of labels differs from loaded weights"
                 )

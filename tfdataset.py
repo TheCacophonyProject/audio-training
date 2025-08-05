@@ -488,6 +488,9 @@ def get_excluded_labels(labels):
 
         if l not in SPECIFIC_BIRD_LABELS and l not in EXTRA_LABELS:
             excluded_labels.append(l)
+    for k, v in MERGE_LABELS.items():
+        if v not in excluded_labels and k in excluded_labels:
+            excluded_labels.remove(k)
     return excluded_labels
 
 
