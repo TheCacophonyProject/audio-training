@@ -489,6 +489,7 @@ class AudioModel:
             # can use for 2 gpus, but seems to be much slower on our setup
             # strategy = tf.distribute.MirroredStrategy()
             # with strategy.scope():
+            weights_labels = None
             if weights is not None:
                 weights_metadata = Path(weights).parent / "metadata.txt"
                 if weights_metadata.exists():
@@ -881,13 +882,13 @@ class AudioModel:
             )
             checks.append(m_check)
         earlyStopping = tf.keras.callbacks.EarlyStopping(
-            patience=22,
-            monitor="loss",
+            patience=10,
+            monitor="val_loss",
             mode="min",
         )
         checks.append(earlyStopping)
         reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor="loss", verbose=1, mode="max"
+            monitor="val_loss", verbose=1, mode="max"
         )
         checks.append(reduce_lr_callback)
         # file_writer_cm = tf.summary.create_file_writer(str(self.log_dir / "cm"))
@@ -1086,6 +1087,26 @@ class AudioModel:
         elif pretrained_model == "efficientnetv2b3":
             return (
                 tf.keras.applications.EfficientNetV2B3(
+                    weights=weights,
+                    include_top=False,
+                    input_shape=input_shape,
+                    include_preprocessing=False,
+                ),
+                None,
+            )
+        elif pretrained_model == "efficientnetv2bs":
+            return (
+                tf.keras.applications.EfficientNetV2S(
+                    weights=weights,
+                    include_top=False,
+                    input_shape=input_shape,
+                    include_preprocessing=False,
+                ),
+                None,
+            )
+        elif pretrained_model == "efficientnetv2bm":
+            return (
+                tf.keras.applications.EfficientNetV2M(
                     weights=weights,
                     include_top=False,
                     input_shape=input_shape,
@@ -1540,7 +1561,7 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
         second_dir=second_dir,
         embeddings=model_name == "embeddings",
         load_seperate_ds=True,
-        cache=True,
+        cache=False,
         human_dir=human_dir,
         **args,
     )
