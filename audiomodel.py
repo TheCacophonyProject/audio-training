@@ -1318,6 +1318,7 @@ def confusion(
     cm = confusion_matrix(y_true, predicted_categories, labels=np.arange(len(labels)))
     figure = plot_confusion_matrix(cm, class_names=labels)
     plt.savefig(filename.with_suffix(".png"), format="png")
+    np.save(str(filename.with_suffix(".npy")), cm)
 
     # plt.savefig(f"./confusions/{filename}", format="png")
 
