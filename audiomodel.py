@@ -1557,7 +1557,7 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
         labels,
         global_epoch=global_epoch,
         batch_size=batch_size,
-        augment=False,  # seems to perform worse
+        augment=True,  # seems to perform worse
         excluded_labels=excluded_labels,
         second_dir=second_dir,
         embeddings=model_name == "embeddings",

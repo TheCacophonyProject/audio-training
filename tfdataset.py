@@ -1277,7 +1277,7 @@ def sample_beta_distribution(size, concentration_0=0.2, concentration_1=0.2):
 
 
 @tf.function
-def mix_up(ds_one, ds_two, global_epoch, alpha=0.2, chance=0.25):
+def mix_up(ds_one, ds_two, global_epoch, alpha=0.2, chance=0.25, single_label=True):
     # Unpack two datasets
     images_one, labels_one = ds_one
     images_two, labels_two = ds_two
@@ -1294,6 +1294,10 @@ def mix_up(ds_one, ds_two, global_epoch, alpha=0.2, chance=0.25):
     y_l = tf.keras.ops.reshape(l, (batch_size, 1))
 
     images = images_one * x_l + images_two * (1 - x_l)
+    if single_label:
+        logging.info("Mixing up on single label, so taking maximum label")
+        y_l = tf.cast(y_l > 0.5, dtype=tf.float32)
+
     labels = labels_one * y_l + labels_two * (1 - y_l)
     # possible_labels = tf.clip_by_value(labels_one[1] + labels_two[1], 0, 1)
     return (images, labels)
