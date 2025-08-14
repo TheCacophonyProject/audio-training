@@ -1834,6 +1834,7 @@ def main():
                 weight_files = [None]
             else:
                 weight_files = [
+                    "final",
                     "val_loss.weights.h5",
                     # "val_precK.weights.h5",
                     (
@@ -1843,19 +1844,20 @@ def main():
                     ),
                 ]
             weight_base_path = model_path.parent
-            logging.info("Using %s weights", weight_base_path / weight_files[1])
-            model.load_weights(weight_base_path / weight_files[1])
+            logging.info("Using %s weights", weight_base_path / weight_files[-1])
+            model.load_weights(weight_base_path / weight_files[-1])
             best_threshold(model, labels, dataset, args.confusion)
             # return
 
             args.confusion = Path(args.confusion)
 
             for w in weight_files:
-                if w is not None:
+                file_prefix = "final"
+                if w != "final":
                     logging.info("Using %s weights", weight_base_path / w)
                     model.load_weights(weight_base_path / w)
-
-                file_prefix = "final" if w is None else w[:-11]
+                    index = w.index(".weights")
+                    file_prefix = w[:index]
                 confusion_file = (
                     Path("./confusions")
                     / model_path.stem
