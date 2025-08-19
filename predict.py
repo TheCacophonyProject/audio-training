@@ -674,8 +674,10 @@ def normalize_data(x):
 def add_ebird_mappings(labels):
     from audiodataset import RELABEL
 
+    space_seperated = []
     ebird_map = {}
     for l in labels:
+        space_seperated.append(l.replace("-", " "))
         ebird_map[l] = []
 
     with open("eBird_taxonomy_v2024.csv") as f:
@@ -683,12 +685,18 @@ def add_ebird_mappings(labels):
             split_l = line.split(",")
             model_label = None
             # 1/0
-            if split_l[4].lower() in RELABEL.keys():
+            ebird_label = split_l[4].replace("-", " ")
+            ebird_label = ebird_label.lower()
+            if ebird_label in space_seperated:
+                index = space_seperated.index(ebird_label)
+                model_label = labels[index]
+            if model_label is None and split_l[4].lower() in RELABEL.keys():
                 lbl_check = RELABEL[split_l[4].lower()]
                 if lbl_check in labels:
                     model_label = lbl_check
             if model_label is None and split_l[4].lower() in labels:
                 model_label = split_l[4].lower()
+
             # if split_l[9].lower() in labels:
             # model_label = split_l[9].lower()
             if "kiwi" in split_l[4].lower() and "kiwi" in labels:
@@ -1045,13 +1053,13 @@ def main():
     for l in labels:
         list_mappings.append(ebirds[l])
     for label, ids in zip(labels, ebird_ids):
-        print(label, "Have ", ids, " now calced ", ebirds[label])
+        if len(ids) == 0:
+            print(label, "Have ", ids, " now calced ", ebirds[label])
 
     meta["ebird_ids"] = list_mappings
     with open(load_model.parent / "metadata.txt", "w") as f:
         json.dump(meta, f, indent=4)
     assert len(ebirds) == len(labels)
-
     multi_label = meta.get("multi_label", True)
     segment_length = meta.get("segment_length", 3)
     segment_stride = meta.get("segment_stride", 1)

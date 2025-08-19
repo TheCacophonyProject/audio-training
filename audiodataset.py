@@ -46,8 +46,16 @@ ACCEPT_TAGS = None
 # ]
 
 RELABEL = {}
+RELABEL["mohoua novaeseelandiae"] = "brown-creeper"
 RELABEL["new zealand fantail"] = "fantail"
-
+RELABEL["shining bronze-cuckoo"] = "shining-cuckoo"
+RELABEL["long-tailed koel"] = "long-tailed-cuckoo"
+RELABEL["masked lapwing"] = "spur-winged-plover"
+RELABEL["sacred kingfisher (new zealand)"] = "new-zealand-kingfisher"
+RELABEL["norfolk island gerygone"] = "norfolk gerygone"
+RELABEL["kelp gull"] = "southern-black-backed-gull"
+RELABEL["common myna"] = "indian-myna"
+RELABEL["baillon's crake"] = "marsh-crake"
 RELABEL["north island brown kiwi"] = "kiwi"
 RELABEL["great spotted kiwi"] = "kiwi"
 RELABEL["norfolk morepork"] = "morepork"

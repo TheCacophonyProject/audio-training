@@ -592,6 +592,8 @@ class AudioModel:
         model_stats.update(self.training_data_meta)
         model_stats.update(args)
         model_stats["name"] = self.model_name
+        model_stats["magv2"] = True
+        model_stats["bird_thresh"] = 1
         model_stats["use_generic_bird"] = args.get("use_generic_bird", False)
         # model_stats["filter_freq"] = args.get("filter_freq", False)
         model_stats["labels"] = self.labels
