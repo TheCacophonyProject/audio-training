@@ -1293,7 +1293,13 @@ def log_confusion_matrix(epoch, logs, model, dataset, writer, labels):
 
 
 def confusion(
-    model, labels, dataset, filename="confusion.png", one_hot=True, model_name=None,model_2 is None
+    model,
+    labels,
+    dataset,
+    filename="confusion.png",
+    one_hot=True,
+    model_name=None,
+    model_2=None,
 ):
     true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
     true_categories = tf.concat(true_categories, axis=0)
@@ -1308,8 +1314,9 @@ def confusion(
     y_pred = model.predict(dataset)
     if model_2 is not None:
         y_pred_2 = model_2.predict(dataset)
-        logging.info("Taking mean of model 1 and model 2")
-        y_pred =(y_pred + y_pred_2) / 2.0
+        logging.info("Taking max of model 1 and model 2")
+        # y_pred =(y_pred + y_pred_2) / 2.0
+        y_pred = np.maximum(y_pred, y_pred_2)
     # y_pred = np.int64(tf.argmax(y_pred, axis=1))
 
     predicted_categories = []
@@ -1773,7 +1780,7 @@ def main():
             meta_data = json.load(f)
         model_name = meta_data.get("name")
         multi = meta_data.get("multi_label", True)
-
+        model_2 = None
         if model_name == "rf-features":
             model = ydf.load_model(str(model_path.parent))
         else:
@@ -1791,7 +1798,9 @@ def main():
                 model_2_path = Path(args.model_2)
                 if model_2_path.is_dir():
                     model_2_path = model_2_path / f"{model_2_path.stem}.keras"
-                logging.info("Loading second model %s with weights %s", model_2_path, "val_acc")
+                logging.info(
+                    "Loading second model %s with weights %s", model_2_path, "val_acc"
+                )
                 model_2 = tf.keras.models.load_model(
                     str(model_2_path),
                     compile=False,
@@ -1876,7 +1885,7 @@ def main():
                     index = w.index(".weights")
                     file_prefix = w[:index]
                     if model_2 is not None:
-                        model_2.load_weights(model_2_path.parent/w)
+                        model_2.load_weights(model_2_path.parent / w)
                 confusion_file = (
                     Path("./confusions")
                     / model_path.stem
@@ -1900,7 +1909,7 @@ def main():
                         confusion_file,
                         one_hot=not meta_data.get("only_features"),
                         model_name=model_name,
-                        model_2 = model_2
+                        model_2=model_2,
                     )
 
     else:
