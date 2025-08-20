@@ -1293,7 +1293,7 @@ def log_confusion_matrix(epoch, logs, model, dataset, writer, labels):
 
 
 def confusion(
-    model, labels, dataset, filename="confusion.png", one_hot=True, model_name=None
+    model, labels, dataset, filename="confusion.png", one_hot=True, model_name=None,model_2 is None
 ):
     true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
     true_categories = tf.concat(true_categories, axis=0)
@@ -1306,6 +1306,10 @@ def confusion(
     if model_name == "rf-features":
         dataset = tf_to_ydf(dataset)
     y_pred = model.predict(dataset)
+    if model_2 is not None:
+        y_pred_2 = model_2.predict(dataset)
+        logging.info("Taking mean of model 1 and model 2")
+        y_pred =(y_pred + y_pred_2) / 2.0
     # y_pred = np.int64(tf.argmax(y_pred, axis=1))
 
     predicted_categories = []
@@ -1782,6 +1786,17 @@ def main():
             )
 
             model.summary()
+
+            if args.model_2 is not None:
+                model_2_path = Path(args.model_2)
+                if model_2_path.is_dir():
+                    model_2_path = model_2_path / f"{model_2_path.stem}.keras"
+                logging.info("Loading second model %s with weights %s", model_2_path, "val_acc")
+                model_2 = tf.keras.models.load_model(
+                    str(model_2_path),
+                    compile=False,
+                )
+                model_2.summary()
         labels = meta_data.get("labels")
         base_dir = Path(args.dataset_dir)
         second_dir = None
@@ -1847,8 +1862,8 @@ def main():
                 ]
             weight_base_path = model_path.parent
             logging.info("Using %s weights", weight_base_path / weight_files[-1])
-            model.load_weights(weight_base_path / weight_files[-1])
-            best_threshold(model, labels, dataset, args.confusion)
+            # model.load_weights(weight_base_path / weight_files[-1])
+            # best_threshold(model, labels, dataset, args.confusion)
             # return
 
             args.confusion = Path(args.confusion)
@@ -1860,6 +1875,8 @@ def main():
                     model.load_weights(weight_base_path / w)
                     index = w.index(".weights")
                     file_prefix = w[:index]
+                    if model_2 is not None:
+                        model_2.load_weights(model_2_path.parent/w)
                 confusion_file = (
                     Path("./confusions")
                     / model_path.stem
@@ -1883,6 +1900,7 @@ def main():
                         confusion_file,
                         one_hot=not meta_data.get("only_features"),
                         model_name=model_name,
+                        model_2 = model_2
                     )
 
     else:
@@ -2034,6 +2052,8 @@ def parse_args():
     )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
+    parser.add_argument("--model_2", help="Second model for mean model confusions")
+
     parser.add_argument("name", help="Run name")
 
     parser.add_argument(
