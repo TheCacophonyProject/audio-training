@@ -570,11 +570,13 @@ SPECIFIC_BIRD_MASK = []
 
 
 def load_dataset(filenames, num_labels, labels, args):
-    random.shuffle(filenames)
+    deterministic = args.get("deterministic", False)
+    if not deterministic:
+        logging.info("Shuffling filenames")
+        random.shuffle(filenames)
     read_record = args.get("read_record", read_tfrecord)
     #
     #     image_size,
-    deterministic = args.get("deterministic", False)
     #     labeled=True,
     #     augment=False,
     #     preprocess_fn=None,
