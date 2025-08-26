@@ -1299,8 +1299,9 @@ def confusion(
     filename="confusion.png",
     one_hot=True,
     model_name=None,
-    model_2=None,
+    other_models=None,
 ):
+    labels = labels.copy()
     true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
     true_categories = tf.concat(true_categories, axis=0)
     y_true = []
@@ -1312,15 +1313,23 @@ def confusion(
     if model_name == "rf-features":
         dataset = tf_to_ydf(dataset)
     y_pred = model.predict(dataset)
-    if model_2 is not None:
-        y_pred_2 = model_2.predict(dataset)
-        logging.info("Taking max of model 1 and model 2")
+    if other_models is not None:
+        all_preds = [y_pred]
+        for other in other_models:
+            y_pred_2 = other.predict(dataset)
+            all_preds.append(y_pred_2)
+        logging.info("Taking max all models")
+        all_preds = np.array(all_preds)
         # y_pred =(y_pred + y_pred_2) / 2.0
-        y_pred = np.maximum(y_pred, y_pred_2)
+        logging.info("All preds is %s", all_preds.shape)
+
+        y_pred = np.maximum(all_preds)
+        logging.info("y_pred preds is %s", y_pred.shape)
     # y_pred = np.int64(tf.argmax(y_pred, axis=1))
 
     predicted_categories = []
-    labels.append("None")
+    if "None" not in labels:
+        labels.append("None")
     for pred in y_pred:
         max_i = np.argmax(pred)
         max_p = pred[max_i]
@@ -1780,7 +1789,7 @@ def main():
             meta_data = json.load(f)
         model_name = meta_data.get("name")
         multi = meta_data.get("multi_label", True)
-        model_2 = None
+        other_models = None
         if model_name == "rf-features":
             model = ydf.load_model(str(model_path.parent))
         else:
@@ -1794,18 +1803,22 @@ def main():
 
             model.summary()
 
-            if args.model_2 is not None:
-                model_2_path = Path(args.model_2)
-                if model_2_path.is_dir():
-                    model_2_path = model_2_path / f"{model_2_path.stem}.keras"
-                logging.info(
-                    "Loading second model %s with weights %s", model_2_path, "val_acc"
-                )
-                model_2 = tf.keras.models.load_model(
-                    str(model_2_path),
-                    compile=False,
-                )
-                model_2.summary()
+            if args.model_2 is not None and len(args.model_2) > 0:
+                other_models = []
+                for other_model in other_models:
+                    model_2_path = Path(other_model)
+                    if model_2_path.is_dir():
+                        model_2_path = model_2_path / f"{model_2_path.stem}.keras"
+                    logging.info(
+                        "Loading other model model %s with weights %s",
+                        model_2_path,
+                        "val_acc",
+                    )
+                    model_2 = tf.keras.models.load_model(
+                        str(model_2_path),
+                        compile=False,
+                    )
+                    other_models.append(model_2)
         labels = meta_data.get("labels")
         base_dir = Path(args.dataset_dir)
         second_dir = None
@@ -1884,8 +1897,10 @@ def main():
                     model.load_weights(weight_base_path / w)
                     index = w.index(".weights")
                     file_prefix = w[:index]
-                    if model_2 is not None:
-                        model_2.load_weights(model_2_path.parent / w)
+                    if other_models is not None:
+                        for model_dir, other_model in zip(args.model_2, other_models):
+                            model_dir = Path(model_dir)
+                            other_model.load_weights(model_dir.parent / w)
                 confusion_file = (
                     Path("./confusions")
                     / model_path.stem
@@ -1909,7 +1924,7 @@ def main():
                         confusion_file,
                         one_hot=not meta_data.get("only_features"),
                         model_name=model_name,
-                        model_2=model_2,
+                        other_models=other_models,
                     )
 
     else:
@@ -2061,7 +2076,9 @@ def parse_args():
     )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
-    parser.add_argument("--model_2", help="Second model for mean model confusions")
+    parser.add_argument(
+        "--model_2", nargs="+", help="Second model for mean model confusions"
+    )
 
     parser.add_argument("name", help="Run name")
 

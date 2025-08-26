@@ -35,28 +35,60 @@ def main():
 
     first_labels = first_meta["labels"]
     second_labels = second_meta["labels"]
+    print(second_labels)
     print("Comparing confusions ", first_labels, " vs ", second_labels)
+    print(len(first_labels), len(second_labels))
+    incorrect_score = 0
+    first_inccorect = 0
+    second_incorrect = 0
     total = 0
+
+    for label in first_labels:
+        if label not in second_labels:
+            print("First label has ", label, " second does not")
+
+    for label in second_labels:
+        if label not in first_labels:
+            print("Second label has ", label, " first does not")
+    # return
+    # due to a bug some cms have None twice as last columns but last column should have the actual percentages
+    # assert len(first_cm) == len(first_labels)+1, f"First cm is len {len(first_cm)} while labels {len(first_labels)}"
+    # assert len(second_cm) == len(second_labels)+1, f"Second cm is len {len(second_cm)} while labels {len(second_labels)}"
+    total_samples = 0
     for i, label in enumerate(first_labels):
-        first_acc = first_cm[i][i]
+        first_count = first_cm[i][i]
         first_none = first_cm[i][-1]
         first_total = np.sum(first_cm[i])
+        label_total = np.sum(first_cm[i])
+        total_samples += label_total
         if label in second_labels:
             second_i = second_labels.index(label)
-            second_acc = second_cm[second_i][second_i]
+            second_count = second_cm[second_i][second_i]
+
             second_none = second_cm[second_i][-1]
             second_total = np.sum(second_cm[second_i])
-            assert second_total == first_total
-            first_acc = round(100 * first_acc / first_total)
+            if second_total != first_total:
+                print(f"{label} First total is {first_total} second is {second_total}")
+            # assert second_total == first_total, f"{label} First total is {first_total} second is {second_total}"
 
-            second_acc = round(100 * second_acc / second_total)
+            first_inccorect += first_count - first_none
+            second_incorrect += second_count - second_none
+
+            first_acc = round(100 * first_count / first_total)
+            first_none = round(100 * first_none / first_total)
+            second_acc = round(100 * second_count / second_total)
+            second_none = round(100 * second_none / second_total)
             print(
-                f"For {label} have {first_acc-second_acc} from  {first_acc} vs {second_acc} None accuracies are {round(100*first_none/first_total)} vs {round(100*second_none/second_total)} total is {first_total} "
+                f"For {label} have {first_acc-second_acc} from  {first_acc} vs {second_acc} None accuracies are {first_none} vs {second_none} total is {first_total} "
             )
-            total += first_acc - second_acc
+            total += first_count - second_count
+
         else:
             print(f"Label {label} only in first")
-    print("Total diff is ", total)
+    print(
+        f"Total diff is {total} ( {round(100* total/ total_samples,1)}) first inccorect {first_inccorect} second incorrect {second_incorrect} score diff {round(100* (first_inccorect - second_incorrect) / total_samples,1)}"
+    )
+    print("Total samples are ", total_samples)
 
 
 if __name__ == "__main__":

@@ -38,6 +38,7 @@ MERGE_LABELS = {
     "yellow-crowned-parakeet": "parakeet",
     "red-crowned parakeet": "parakeet",
     "red-crowned-parakeet": "parakeet",
+    "brown-creeper": "brown creeper",
     # "rosella": "rosella",
     # "eastern rosella": "rosella",
     # "crimson rosella": "rosella",
