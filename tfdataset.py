@@ -1287,7 +1287,8 @@ def mix_up(ds_one, ds_two, global_epoch, alpha=0.2, chance=0.25, single_label=Tr
 
     # go down 0.05 every 5 epochs
     step = global_epoch.value() // 5
-    chance = chance - 0.05 * tf.cast(step, tf.float32)
+    logging.info("NOt decreasing aug change")
+    # chance = chance - 0.05 * tf.cast(step, tf.float32)
     batch_size = tf.keras.ops.shape(images_one)[0]
     l = sample_beta_distribution(batch_size, alpha, alpha)
     aug_chance = tf.random.uniform((batch_size,))
