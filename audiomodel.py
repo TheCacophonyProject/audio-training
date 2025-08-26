@@ -1313,30 +1313,63 @@ def confusion(
     if model_name == "rf-features":
         dataset = tf_to_ydf(dataset)
     y_pred = model.predict(dataset)
+    all_preds = None
+    weighted_max = True
+    weights = [0.6, 0.4]
+
     if other_models is not None:
         all_preds = [y_pred]
+
         for other in other_models:
             y_pred_2 = other.predict(dataset)
-            all_preds.append(y_pred_2)
-        logging.info("Taking max all models")
-        all_preds = np.array(all_preds)
-        # y_pred =(y_pred + y_pred_2) / 2.0
-        logging.info("All preds is %s", all_preds.shape)
+            # y_pred = np.where(y_pred[0] * weights[1] >= y_pred_2 * weights[1], y_pred, y_pred_2)
+            # y_pred = np.maximum(y_pred_2,y_pred)
 
-        y_pred = np.maximum(all_preds)
-        logging.info("y_pred preds is %s", y_pred.shape)
-    # y_pred = np.int64(tf.argmax(y_pred, axis=1))
+            all_preds.append(y_pred_2)
+        all_preds = np.array(all_preds)
+        logging.info("Taking weighted average all models %s", weights)
+        if not weighted_max:
+            # Calculate the weighted average
+            y_pred = np.average(all_preds, axis=0, weights=weights)
+
+            # y_pred =(y_pred + y_pred_2) / 2.0
+            # logging.info("All preds is %s", all_preds.shape)
+
+            # y_pred = np.maximum(all_preds)
+            logging.info("y_pred preds is %s", y_pred.shape)
+        # y_pred = np.int64(tf.argmax(y_pred, axis=1))
 
     predicted_categories = []
     if "None" not in labels:
         labels.append("None")
-    for pred in y_pred:
-        max_i = np.argmax(pred)
-        max_p = pred[max_i]
-        if max_p > 0.7:
-            predicted_categories.append(max_i)
-        else:
-            predicted_categories.append(len(labels) - 1)
+
+    if all_preds is not None and weighted_max:
+        logging.info("Running weighted max")
+        for row, pred in enumerate(all_preds[0]):
+            max_i = np.argmax(pred)
+            max_p = pred[max_i]
+            max_p_weighted = max_p * weights[0]
+            weights_i = 1
+            for other_preds in all_preds[1:]:
+                pred_2 = other_preds[row]
+                max_2 = np.argmax(pred_2)
+                max_2_p = pred_2[max_2] * weights[weights_i]
+                if max_2_p >= max_p_weighted:
+                    max_p_weighted = max_2_p
+                    max_p = pred_2[max_2]
+                    max_i = max_2
+            if max_p > 0.7:
+                predicted_categories.append(max_i)
+            else:
+                predicted_categories.append(len(labels) - 1)
+    else:
+        for pred in y_pred:
+            max_i = np.argmax(pred)
+            max_p = pred[max_i]
+            if max_p > 0.7:
+                predicted_categories.append(max_i)
+            else:
+                predicted_categories.append(len(labels) - 1)
     cm = confusion_matrix(y_true, predicted_categories, labels=np.arange(len(labels)))
     figure = plot_confusion_matrix(cm, class_names=labels)
     plt.savefig(filename.with_suffix(".png"), format="png")
@@ -1805,7 +1838,7 @@ def main():
 
             if args.model_2 is not None and len(args.model_2) > 0:
                 other_models = []
-                for other_model in other_models:
+                for other_model in args.model_2:
                     model_2_path = Path(other_model)
                     if model_2_path.is_dir():
                         model_2_path = model_2_path / f"{model_2_path.stem}.keras"

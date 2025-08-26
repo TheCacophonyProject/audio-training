@@ -71,9 +71,16 @@ def main():
                 print(f"{label} First total is {first_total} second is {second_total}")
             # assert second_total == first_total, f"{label} First total is {first_total} second is {second_total}"
 
-            first_inccorect += first_count - first_none
-            second_incorrect += second_count - second_none
-
+            first_inccorect += first_total - first_count - first_none
+            second_incorrect += second_total - second_count - second_none
+            print(
+                second_total,
+                "correct ",
+                second_count,
+                " none ",
+                second_none,
+                second_total - second_count - second_none,
+            )
             first_acc = round(100 * first_count / first_total)
             first_none = round(100 * first_none / first_total)
             second_acc = round(100 * second_count / second_total)
