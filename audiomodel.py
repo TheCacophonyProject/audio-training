@@ -1378,6 +1378,121 @@ def confusion(
     # plt.savefig(f"./confusions/{filename}", format="png")
 
 
+def confusion_with_pre(
+    model,
+    labels,
+    dataset,
+    filename="confusion.png",
+    one_hot=True,
+    model_name=None,
+    other_models=None,
+    pre_model=None,
+    pre_labels=None,
+):
+    labels = labels.copy()
+    true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
+    true_categories = tf.concat(true_categories, axis=0)
+    y_true = []
+    if one_hot:
+        y_true = np.int64(tf.argmax(true_categories, axis=1))
+    else:
+        y_true = np.array(true_categories)
+
+    if model_name == "rf-features":
+        dataset = tf_to_ydf(dataset)
+    if pre_model:
+        pre_model_pred = model.predict(dataset)
+
+        for l in pre_labels:
+            if l not in labels:
+                labels.append(l)
+    y_pred = model.predict(dataset)
+    all_preds = None
+    weighted_max = False
+    weights = [0.6, 0.4]
+
+    if other_models is not None:
+        all_preds = [y_pred]
+
+        for other in other_models:
+            y_pred_2 = other.predict(dataset)
+            all_preds.append(y_pred_2)
+        all_preds = np.array(all_preds)
+        if not weighted_max:
+            logging.info("Taking average all models")
+
+            # Calculate the weighted average
+            y_pred = np.mean(all_preds, axis=0)
+            logging.info("y_pred preds is %s", y_pred.shape)
+
+    predicted_categories = []
+
+    if "None" not in labels:
+        labels.append("None")
+
+    morepork_i = labels.index("morepork")
+    if all_preds is not None and weighted_max:
+        logging.info("Running weighted max")
+        for row, pred in enumerate(all_preds[0]):
+            max_i = np.argmax(pred)
+            max_p = pred[max_i]
+            max_p_weighted = max_p * weights[0]
+            weights_i = 1
+            for other_preds in all_preds[1:]:
+                pred_2 = other_preds[row]
+                max_2 = np.argmax(pred_2)
+                max_2_p = pred_2[max_2] * weights[weights_i]
+                if max_2_p >= max_p_weighted:
+                    max_p_weighted = max_2_p
+                    max_p = pred_2[max_2]
+                    max_i = max_2
+            if max_p > 0.7:
+                predicted_categories.append(max_i)
+            else:
+                predicted_categories.append(len(labels) - 1)
+    else:
+        for i, pred in enumerate(y_pred):
+            max_i = np.argmax(pred)
+            max_p = pred[max_i]
+            lbl = labels[max_i]
+            if pre_model is not None:
+                pre_pred = pre_model_pred[i]
+                pre_max_i = np.argmax(pre_pred)
+                pre_max_p = pre_pred[pre_max_i]
+
+                pre_lbl = pre_labels[pre_max_i]
+                pre_max_i = labels.index(pre_lbl)
+
+                filter_moreporks = False
+                if pre_max_p > 0.7:
+                    if pre_lbl == "noise":
+                        if lbl not in ["insect", "tree-weta"]:
+                            max_i = pre_max_i
+                            max_p = pre_max_p
+                    elif pre_lbl in ["morepork", "human"]:
+                        max_i = pre_max_i
+                        max_p = pre_max_p
+                    else:
+                        filter_moreporks = True
+                        if max_i == morepork_i:
+                            max_i = pre_max_i
+                            max_p = pre_max_p
+                elif pre_max_p > 0.5 and pre_lbl in ["noise", "human"]:
+                    if max_i == morepork_i:
+                        predicted_categories.append(len(labels) - 1)
+                        continue
+            if max_p > 0.7:
+                predicted_categories.append(max_i)
+            else:
+                predicted_categories.append(len(labels) - 1)
+    cm = confusion_matrix(y_true, predicted_categories, labels=np.arange(len(labels)))
+    figure = plot_confusion_matrix(cm, class_names=labels)
+    plt.savefig(filename.with_suffix(".png"), format="png")
+    np.save(str(filename.with_suffix(".npy")), cm)
+
+    # plt.savefig(f"./confusions/{filename}", format="png")
+
+
 def multi_confusion_single(
     model,
     labels,
@@ -1822,6 +1937,7 @@ def main():
             meta_data = json.load(f)
         model_name = meta_data.get("name")
         multi = meta_data.get("multi_label", True)
+        labels = meta_data.get("labels")
         other_models = None
         if model_name == "rf-features":
             model = ydf.load_model(str(model_path.parent))
@@ -1835,7 +1951,8 @@ def main():
             )
 
             model.summary()
-
+            excluded_labels = meta_data.get("excluded_labels")
+            remapped_labels = meta_data.get("remapped_labels")
             if args.model_2 is not None and len(args.model_2) > 0:
                 other_models = []
                 for other_model in args.model_2:
@@ -1852,7 +1969,34 @@ def main():
                         compile=False,
                     )
                     other_models.append(model_2)
-        labels = meta_data.get("labels")
+            if args.pre_model is not None:
+                pre_model_path = Path(args.pre_model)
+                if pre_model_path.is_dir():
+                    pre_model_path = pre_model_path / f"{pre_model_path.stem}.keras"
+
+                pre_model = tf.keras.models.load_model(
+                    str(pre_model_path),
+                    compile=False,
+                )
+                pre_meta_f = pre_model_path.parent / "metadata.txt"
+
+                with pre_meta_f.open("r") as f:
+                    pre_meta = json.load(f)
+                pre_labels = pre_meta["labels"]
+                pre_remapped = meta_data.get("remapped_labels")
+
+                for l in pre_labels:
+                    if l in excluded_labels:
+                        excluded_labels.remove(l)
+                    if l not in labels:
+                        labels.append(l)
+                for k, v in pre_remapped.items():
+                    if v != -1:
+                        if k in excluded_labels:
+                            excluded_labels.remove(k)
+                        pre_lbl = pre_labels[v]
+                        remapped_labels[k] = labels.index(pre_lbl)
+
         base_dir = Path(args.dataset_dir)
         second_dir = None
         if args.second_dataset_dir is not None:
@@ -1867,8 +2011,6 @@ def main():
             deterministic=True,
             batch_size=64,
             mean_sub=meta_data.get("mean_sub", False),
-            excluded_labels=meta_data.get("excluded_labels"),
-            remapped_labels=meta_data.get("remapped_labels"),
             extra_label_map=meta_data.get("extra_label_map"),
             stop_on_empty=False,
             one_hot=args.one_hot,
@@ -1950,7 +2092,7 @@ def main():
                         model_name=model_name,
                     )
                 else:
-                    confusion(
+                    confusion_with_pre(
                         model,
                         labels,
                         dataset,
@@ -1958,6 +2100,8 @@ def main():
                         one_hot=not meta_data.get("only_features"),
                         model_name=model_name,
                         other_models=other_models,
+                        pre_model=pre_model,
+                        pre_labels=pre_labels,
                     )
 
     else:
@@ -2112,7 +2256,7 @@ def parse_args():
     parser.add_argument(
         "--model_2", nargs="+", help="Second model for mean model confusions"
     )
-
+    parser.add_argument("--pre_model", help="Pre model for confusions")
     parser.add_argument("name", help="Run name")
 
     parser.add_argument(
