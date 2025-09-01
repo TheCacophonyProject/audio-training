@@ -797,10 +797,13 @@ def tier1_data(base_dir, split_file=None):
         filtered_stats = {}
         # ignore_long_tracks = folder == "Train_002"
         dataset_dir = base_dir / folder
-        metadata = dataset_dir / "001_metadata.csv"
-        if not metadata.exists():
-            logging.warning("No metadata at %s", metadata)
+
+        csv_files = list(dataset_dir.glob("*.csv"))
+        if len(csv_files) != 1:
+            logging.error("Could not find csv file in %s", folder)
             continue
+        metadata = csv_files[0]
+
         logging.info("Loading from %s", dataset_dir)
         with open(metadata, newline="") as csvfile:
             dreader = csv.reader(csvfile, delimiter=",", quotechar='"')
@@ -822,27 +825,16 @@ def tier1_data(base_dir, split_file=None):
 
                 # if label != "dobplo1":
                 # continue
-                primary_label = ebird_map.get(ebird_id)
-
-                # print("Dot mapped too",primary_label)
-                if primary_label is None:
+                label = ebird_id_to_labels(ebird_id, ebird_map)
+                if label is None:
                     print("No Mapping for ", ebird_id)
                     continue
 
-                if primary_label[0] in test_labels:
-                    label = primary_label[0]
-                elif primary_label[1] in test_labels:
-                    label = primary_label[1]
-                elif "kiwi" in primary_label[0]:
-                    label = "kiwi"
-                else:
-                    label = primary_label[0].replace(" ", "-")
-
-                if only_test_labels and label not in test_labels:
-                    if label not in filtered_stats:
-                        filtered_stats[label] = 0
-                    filtered_stats[label] += 1
-                    continue
+                # if only_test_labels and label not in test_labels:
+                #     if label not in filtered_stats:
+                #         filtered_stats[label] = 0
+                #     filtered_stats[label] += 1
+                #     continue
                 if label not in counts:
                     counts[label] = 0
                 counts[label] += 1
