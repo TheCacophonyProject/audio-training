@@ -188,6 +188,7 @@ def labels_with_one_samples(grid_file):
         if found:
             print( f"https://maps.google.com/?q={square["bounds"][1]},{square["bounds"][0]}")
             print(square["bounds"], " total birds ", total_birds)
+
     print("Low ids are ",low_data_birds)
 def merge_neighbours(square, species_meta):
     species_per_month = square["species_per_month"].copy()
@@ -204,10 +205,14 @@ def merge_neighbours(square, species_meta):
                 species_per_month[species][m] += c
     return species_per_month
 
+def birds_at_location(grid_file,lat,lng):
+        with open(grid_file,"r") as f:
+            metadata = json.load(f)
+        grid_data = metadata["grid_meta"]
 
 def main():
-    labels_with_one_samples("species_per_square.json")
-    1/0
+    # labels_with_one_samples("species_per_square.json")
+    # 1/0
     fmt = "%(process)d %(thread)s:%(levelname)7s %(message)s"
     logging.basicConfig(
         stream=sys.stderr, level=logging.INFO, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"

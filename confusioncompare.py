@@ -55,32 +55,36 @@ def main():
     # assert len(first_cm) == len(first_labels)+1, f"First cm is len {len(first_cm)} while labels {len(first_labels)}"
     # assert len(second_cm) == len(second_labels)+1, f"Second cm is len {len(second_cm)} while labels {len(second_labels)}"
     total_samples = 0
+    first_correct = 0
+    second_correct = 0
+    second_total_samples = 0
     for i, label in enumerate(first_labels):
         first_count = first_cm[i][i]
         first_none = first_cm[i][-1]
         first_total = np.sum(first_cm[i])
         label_total = np.sum(first_cm[i])
         total_samples += label_total
+        first_correct += first_count
         if label in second_labels:
             second_i = second_labels.index(label)
             second_count = second_cm[second_i][second_i]
-
+            second_correct += second_count
             second_none = second_cm[second_i][-1]
             second_total = np.sum(second_cm[second_i])
             if second_total != first_total:
                 print(f"{label} First total is {first_total} second is {second_total}")
             # assert second_total == first_total, f"{label} First total is {first_total} second is {second_total}"
-
+            second_total_samples += second_total
             first_inccorect += first_total - first_count - first_none
             second_incorrect += second_total - second_count - second_none
-            print(
-                second_total,
-                "correct ",
-                second_count,
-                " none ",
-                second_none,
-                second_total - second_count - second_none,
-            )
+            # print(
+            #     second_total,
+            #     "correct ",
+            #     second_count,
+            #     " none ",
+            #     second_none,
+            #     second_total - second_count - second_none,
+            # )
             first_acc = round(100 * first_count / first_total)
             first_none = round(100 * first_none / first_total)
             second_acc = round(100 * second_count / second_total)
@@ -96,6 +100,11 @@ def main():
         f"Total diff is {total} ( {round(100* total/ total_samples,1)}) first inccorect {first_inccorect} second incorrect {second_incorrect} score diff {round(100* (first_inccorect - second_incorrect) / total_samples,1)}"
     )
     print("Total samples are ", total_samples)
+    print(first_correct / total_samples, " vs ", second_correct / second_total_samples)
+    if total > 0:
+        print("Better model is ", args.first_confusion)
+    else:
+        print("Better model is ", args.second_confusion)
 
 
 if __name__ == "__main__":

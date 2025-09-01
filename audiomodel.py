@@ -1401,7 +1401,7 @@ def confusion_with_pre(
     if model_name == "rf-features":
         dataset = tf_to_ydf(dataset)
     if pre_model:
-        pre_model_pred = model.predict(dataset)
+        pre_model_pred = pre_model.predict(dataset)
 
         for l in pre_labels:
             if l not in labels:
@@ -1462,11 +1462,17 @@ def confusion_with_pre(
 
                 pre_lbl = pre_labels[pre_max_i]
                 pre_max_i = labels.index(pre_lbl)
-
+                logging.info(
+                    "Pre labl is %s- %s max is %s - %s",
+                    pre_lbl,
+                    pre_max_p,
+                    labels[max_i],
+                    max_p,
+                )
                 filter_moreporks = False
                 if pre_max_p > 0.7:
                     if pre_lbl == "noise":
-                        if lbl not in ["insect", "tree-weta"]:
+                        if lbl not in ["insect", "tree-weta"] or max_p <= 0.7:
                             max_i = pre_max_i
                             max_p = pre_max_p
                     elif pre_lbl in ["morepork", "human"]:
@@ -1474,16 +1480,21 @@ def confusion_with_pre(
                         max_p = pre_max_p
                     else:
                         filter_moreporks = True
-                        if max_i == morepork_i:
+                        if max_i == morepork_i or max_p <= 0.7:
                             max_i = pre_max_i
                             max_p = pre_max_p
                 elif pre_max_p > 0.5 and pre_lbl in ["noise", "human"]:
                     if max_i == morepork_i:
                         predicted_categories.append(len(labels) - 1)
+                        logging.info("Unknown")
                         continue
             if max_p > 0.7:
+                # logging.info(
+                #     "Final result is %s true %s", labels[max_i], labels[y_true[i]]
+                # )
                 predicted_categories.append(max_i)
             else:
+                # logging.info("Final unknown")
                 predicted_categories.append(len(labels) - 1)
     cm = confusion_matrix(y_true, predicted_categories, labels=np.arange(len(labels)))
     figure = plot_confusion_matrix(cm, class_names=labels)
@@ -1983,7 +1994,7 @@ def main():
                 with pre_meta_f.open("r") as f:
                     pre_meta = json.load(f)
                 pre_labels = pre_meta["labels"]
-                pre_remapped = meta_data.get("remapped_labels")
+                pre_remapped = pre_meta.get("remapped_labels")
 
                 for l in pre_labels:
                     if l in excluded_labels:
@@ -1994,6 +2005,8 @@ def main():
                     if v != -1:
                         if k in excluded_labels:
                             excluded_labels.remove(k)
+                        if k in remapped_labels and remapped_labels[k] != -1:
+                            continue
                         pre_lbl = pre_labels[v]
                         remapped_labels[k] = labels.index(pre_lbl)
 
@@ -2005,6 +2018,8 @@ def main():
         dataset, _, _, _, _ = get_dataset(
             base_dir / "test",
             labels,
+            excluded_labels=excluded_labels,
+            remapped_labels=remapped_labels,
             second_dir=second_dir,
             image_size=DIMENSIONS,
             shuffle=False,
@@ -2075,7 +2090,11 @@ def main():
                     if other_models is not None:
                         for model_dir, other_model in zip(args.model_2, other_models):
                             model_dir = Path(model_dir)
-                            other_model.load_weights(model_dir.parent / w)
+                            other_model.load_weights(model_dir / w)
+                    if pre_model is not None:
+                        pre_path = Path(args.pre_model)
+                        pre_model.load_weights(pre_path / w)
+
                 confusion_file = (
                     Path("./confusions")
                     / model_path.stem

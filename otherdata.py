@@ -783,27 +783,8 @@ def tier1_data(base_dir, split_file=None):
         "australasian bittern",
     ]
     only_test_labels = False
-    ebird_map = {}
+    ebird_map = get_ebird_map()
     first = True
-    with open("eBird_taxonomy_v2024.csv") as f:
-        for line in f:
-            if first:
-                first = False
-                continue
-            split_l = line.split(",")
-            # for i,split in enumerate(split_l):
-            # print(i,split)
-            ebird_map[split_l[2]] = (split_l[4].lower(), split_l[8].lower())
-
-    with open("classes.csv", newline="") as csvfile:
-        dreader = csv.reader(csvfile, delimiter=",", quotechar="|")
-        i = -1
-        for row in dreader:
-            i += 1
-            if i == 0:
-                continue
-            # ebird = (common, extra)
-            ebird_map[row[2]] = (row[1].lower(), row[4].lower())
     config = Config()
     plot_signal = False
     signal_scale = 100
@@ -913,34 +894,6 @@ def tier1_data(base_dir, split_file=None):
                     load_samples=True,
                 )
                 assert r.id not in dataset.recs
-                # track_length = end - start
-                # t_start = 0
-                # t_end = min(track_length, 5)
-
-                # if label != "banded dotterel" and track_length >= 4:
-                #     # just choose 1 track in centre
-                #     t_start = 1
-                #     t_end = 4
-                # if "best_track" not in meta:
-                #     print("No best track", audio_file)
-                #     continue
-                # meta["best_track"]["id"] = id
-
-                # track_meta = meta["best_track"]
-                # track_meta["tags"][0]["what"] = label
-                # meta_length = track_meta["end"] - track_meta["start"]
-                # if meta_length > length:
-                #     track_meta["end"] = end
-                #     # print("Adjusted end of ", filename, track_meta)
-                #     # return
-                # t = Track(
-                #     track_meta,
-                #     r.filename,
-                #     r.id,
-                #     r,
-                # )
-                # r.tracks = [t]
-                # r.signal_percent()
 
                 if plot_signal:
                     if label not in label_percents:
@@ -1218,78 +1171,7 @@ def process_rms(metadata_file, tier1=False):
         tracks = meta.get("tracks", [])
         y, sr = load_recording(file)
 
-        n_fft = 4096
-        hop_length = 281
-        freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
-        below_freq = 500
-        morepork_max_freq = 1200
-        upper_max_freq = 3000
-        lower_noise_bin = 0
-        morepork_upper_bin = 0
-        upper_noise_bin = 0
-
-        max_bin = 0
-        for i, f in enumerate(freqs):
-            if f < below_freq:
-                lower_noise_bin = i
-            if f < morepork_max_freq:
-                morepork_upper_bin = i + 1
-            if f > upper_max_freq:
-                upper_noise_bin = i
-                break
-        # print("Bins", lower_noise_bin, morepork_upper_bin,upper_noise_bin)
-
-        for t in tracks:
-
-            track = Track(t, None, 0, None)
-
-            # start = t["start"]
-            # end = t["end"]
-            track_frames = y[int(sr * track.start) : int(sr * track.end)]
-            stft = librosa.stft(track_frames, n_fft=n_fft, hop_length=hop_length)
-
-            # bird_tag = False
-            # for tag in track.human_tags:
-            #     if tag in SPECIFIC_BIRD_LABELS or tag in GENERIC_BIRD_LABELS:
-            #         bird_tag = True
-
-            noise_stft = stft.copy()
-            noise_stft[lower_noise_bin + 1 :, :] = 0
-            S, phase = librosa.magphase(noise_stft)
-            noise_rms = librosa.feature.rms(
-                S=S, frame_length=n_fft, hop_length=hop_length
-            )
-            t["lower_nose_bin"] = lower_noise_bin + 1
-
-            upper_stft = stft.copy()
-            upper_stft[:upper_noise_bin, :] = 0
-            S, phase = librosa.magphase(upper_stft)
-            upper_rms = librosa.feature.rms(
-                S=S, frame_length=n_fft, hop_length=hop_length
-            )
-            t["upper_noise_bin"] = upper_noise_bin
-
-            if "morepork" in track.human_tags:
-                # choose different bins depending
-                t["bird_rms_bin"] = [lower_noise_bin + 1, morepork_upper_bin]
-                stft[:lower_noise_bin, :] = 0
-                stft[morepork_upper_bin:, :] = 0
-                S, phase = librosa.magphase(stft)
-                bird_rms = librosa.feature.rms(
-                    S=S, frame_length=n_fft, hop_length=hop_length
-                )
-            else:
-                t["bird_rms_bin"] = [lower_noise_bin + 1]
-
-                stft[:lower_noise_bin, :] = 0
-                S, phase = librosa.magphase(stft)
-                bird_rms = librosa.feature.rms(
-                    S=S, frame_length=n_fft, hop_length=hop_length
-                )
-                # noise or human
-            t["upper_rms"] = upper_rms[0].tolist()
-            t["noise_rms"] = noise_rms[0].tolist()
-            t["bird_rms"] = bird_rms[0].tolist()
+        add_rms_data_to_tracks(y, sr, tracks)
         meta["file"] = str(file)
         meta["rms_version"] = 1.1
 
@@ -1303,6 +1185,78 @@ def process_rms(metadata_file, tier1=False):
     except:
         logging.error("Error processing %s", metadata_file, exc_info=True)
     return
+
+
+def add_rms_data_to_tracks(y, sr, tracks):
+
+    n_fft = 4096
+    hop_length = 281
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
+    below_freq = 500
+    morepork_max_freq = 1200
+    upper_max_freq = 3000
+    lower_noise_bin = 0
+    morepork_upper_bin = 0
+    upper_noise_bin = 0
+
+    max_bin = 0
+    for i, f in enumerate(freqs):
+        if f < below_freq:
+            lower_noise_bin = i
+        if f < morepork_max_freq:
+            morepork_upper_bin = i + 1
+        if f > upper_max_freq:
+            upper_noise_bin = i
+            break
+    # print("Bins", lower_noise_bin, morepork_upper_bin,upper_noise_bin)
+
+    for t in tracks:
+
+        track = Track(t, None, 0, None)
+
+        # start = t["start"]
+        # end = t["end"]
+        track_frames = y[int(sr * track.start) : int(sr * track.end)]
+        stft = librosa.stft(track_frames, n_fft=n_fft, hop_length=hop_length)
+
+        # bird_tag = False
+        # for tag in track.human_tags:
+        #     if tag in SPECIFIC_BIRD_LABELS or tag in GENERIC_BIRD_LABELS:
+        #         bird_tag = True
+
+        noise_stft = stft.copy()
+        noise_stft[lower_noise_bin + 1 :, :] = 0
+        S, phase = librosa.magphase(noise_stft)
+        noise_rms = librosa.feature.rms(S=S, frame_length=n_fft, hop_length=hop_length)
+        t["lower_nose_bin"] = lower_noise_bin + 1
+
+        upper_stft = stft.copy()
+        upper_stft[:upper_noise_bin, :] = 0
+        S, phase = librosa.magphase(upper_stft)
+        upper_rms = librosa.feature.rms(S=S, frame_length=n_fft, hop_length=hop_length)
+        t["upper_noise_bin"] = upper_noise_bin
+
+        if "morepork" in track.human_tags:
+            # choose different bins depending
+            t["bird_rms_bin"] = [lower_noise_bin + 1, morepork_upper_bin]
+            stft[:lower_noise_bin, :] = 0
+            stft[morepork_upper_bin:, :] = 0
+            S, phase = librosa.magphase(stft)
+            bird_rms = librosa.feature.rms(
+                S=S, frame_length=n_fft, hop_length=hop_length
+            )
+        else:
+            t["bird_rms_bin"] = [lower_noise_bin + 1]
+
+            stft[:lower_noise_bin, :] = 0
+            S, phase = librosa.magphase(stft)
+            bird_rms = librosa.feature.rms(
+                S=S, frame_length=n_fft, hop_length=hop_length
+            )
+            # noise or human
+        t["upper_rms"] = upper_rms[0].tolist()
+        t["noise_rms"] = noise_rms[0].tolist()
+        t["bird_rms"] = bird_rms[0].tolist()
 
 
 def add_signal_meta(dir):
@@ -1629,6 +1583,165 @@ def load_rms_meta(file):
         plt.clf()
 
 
+def generate_tier_metadata_file(audio_file):
+    metadata_file = audio_file.with_suffix(".txt")
+
+    if not audio_file.exists():
+        logging.info("Not recording for %s", metadata_file)
+        return
+    if not metadata_file.exists():
+        logging.error("No metadata for %s", audio_file)
+        return
+    with metadata_file.open("r") as f:
+        # add in some metadata stats
+        meta = json.load(f)
+    if meta["state"] == "complete":
+        logging.error("Already in complete state %s", audio_file)
+        return
+
+    frames, sr = load_recording(audio_file)
+    duration = librosa.get_duration(y=frames, sr=sr)
+    meta["rec_end"] = duration
+    for t in meta.get("tracks", []):
+        t["end"] = duration
+    # signal data
+    signals, spectogram = track_signals(frames, sr, min_width=0, min_height=0)
+    signals = [s.to_array(decimals=2) for s in signals]
+    meta["signal"] = signals
+    meta["signal_version"] = 1.0
+
+    tracks = meta.get("tracks", [])
+    add_rms_data_to_tracks(frames, sr, tracks)
+    meta["rms_version"] = 1.1
+    meta["state"] = "complete"
+    with open(metadata_file, "w") as f:
+        json.dump(meta, f, indent=4)
+
+
+def get_ebird_map():
+    ebird_map = {}
+    first = True
+    with open("classes.csv", newline="") as csvfile:
+        dreader = csv.reader(csvfile, delimiter=",", quotechar="|")
+        i = -1
+        for row in dreader:
+            i += 1
+            if i == 0:
+                continue
+            # ebird = (common, extra)
+            ebird_map[row[2]] = (row[1].lower(), row[4].lower())
+    with open("eBird_taxonomy_v2024.csv") as f:
+        for line in f:
+            if first:
+                first = False
+                continue
+            split_l = line.split(",")
+            # for i,split in enumerate(split_l):
+            # print(i,split)
+            ebird_map[split_l[2]] = (split_l[4].lower(), split_l[8].lower())
+
+    return ebird_map
+
+
+def ebird_id_to_labels(ebird_id, ebird_map):
+    primary_label = ebird_map.get(ebird_id)
+    if primary_label is None:
+        print("No Mapping for ", ebird_id)
+        return None
+
+    if "kiwi" in primary_label[0]:
+        label = "kiwi"
+    else:
+        label = primary_label[0].replace(" ", "-")
+    return label
+
+
+def generate_tier_metadata_folder(dir):
+    folders = ["Train_001", "Train_002", "Train_003"]
+    ebird_map = get_ebird_map()
+    for folder in folders:
+        folder = dir / folder
+        csv_files = list(folder.glob("*.csv"))
+        if len(csv_files) != 1:
+            logging.error("Could not find csv file in %s", folder)
+            continue
+        metadata_f = csv_files[0]
+        logging.info("Loading %s", metadata_f)
+        with open(metadata_f, newline="") as csvfile:
+            dreader = csv.reader(csvfile, delimiter=",", quotechar='"')
+            i = -1
+            for row in dreader:
+                i += 1
+                if i == 0:
+                    continue
+
+                if len(row) == 6:
+                    id, filename, ebird_id, other_labels, start, end = row
+                else:
+                    id = f"{folder}-{i}"
+                    filename, ebird_id, other_labels, start, end = row
+                try:
+                    other_labels = json.loads(other_labels.replace("'", '"'))
+                except:
+                    logging.error("Could not load other labels %s", other_labels)
+                    other_labels = []
+
+                start = float(start)
+                end = float(end)
+
+                audio_file = folder / "train_audio" / filename
+                if not audio_file.exists():
+                    # logging.error("Could not find %s",audio_file)
+                    continue
+                metadata_file = audio_file.with_suffix(".txt")
+                if metadata_file.exists():
+                    logging.info("Meta already exists %s", metadata_file)
+                    continue
+                # print("Dot mapped too",primary_label)
+                label = ebird_id_to_labels(ebird_id, ebird_map)
+                if label is None:
+                    print("No Mapping for ", ebird_id)
+                    continue
+
+                meta = {}
+                meta["file"] = str(audio_file)
+                meta["id"] = id
+                tag = {"automatic": False, "what": label, "ebird_id": ebird_id}
+                meta["tag"] = tag
+                meta["state"] = "initial"
+                track_meta = {
+                    "id": f"{id}_1",
+                    "start": 0,
+                    "tags": [tag],
+                }
+                meta["tracks"] = [track_meta]
+                other_tags = []
+                for other_ebird_id in other_labels:
+                    other_label = ebird_id_to_labels(other_ebird_id, ebird_map)
+
+                    tag = {
+                        "automatic": False,
+                        "what": other_label,
+                        "ebird_id": other_ebird_id,
+                    }
+                    other_tags.append(tag)
+                meta["other_tags"] = other_tags
+
+                with open(metadata_file, "w") as f:
+                    logging.info("Writing metadata %s", metadata_file)
+                    json.dump(meta, f, indent=4)
+    meta_files = dir.glob("**/*.flac")
+    first = True
+
+    with Pool(processes=1) as pool:
+        [
+            0
+            for x in pool.imap_unordered(
+                generate_tier_metadata_file, meta_files, chunksize=8
+            )
+        ]
+
+
 def main():
     init_logging()
     args = parse_args()
@@ -1637,6 +1750,13 @@ def main():
     if args.flickr:
         logging.info("Loading flickr")
         flickr_data(args.dir)
+    elif args.tier1:
+        if args.tracks:
+            print("Generating tier1 tracks")
+            generate_tier_metadata_folder(args.dir)
+        else:
+            print("Doing tier 1 training data")
+            tier1_data(args.dir, args.split_file)
     elif args.rms:
         logging.info("Adding rms data %s", args.analyse)
         add_rms_meta(args.dir, args.analyse)
@@ -1651,9 +1771,6 @@ def main():
         print("Adding signal data to ", args.dir)
         add_signal_meta(args.dir)
         return
-    elif args.tier1:
-        print("Doing tier 1 data")
-        tier1_data(args.dir, args.split_file)
     return
     # weakly_lbled_data(args.dir)
     return
