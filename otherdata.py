@@ -1576,38 +1576,41 @@ def load_rms_meta(file):
 
 
 def generate_tier_metadata_file(audio_file):
-    metadata_file = audio_file.with_suffix(".txt")
+    try:
+        metadata_file = audio_file.with_suffix(".txt")
 
-    if not audio_file.exists():
-        logging.info("Not recording for %s", metadata_file)
-        return
-    if not metadata_file.exists():
-        logging.error("No metadata for %s", audio_file)
-        return
-    with metadata_file.open("r") as f:
-        # add in some metadata stats
-        meta = json.load(f)
-    if meta["state"] == "complete":
-        logging.error("Already in complete state %s", audio_file)
-        return
+        if not audio_file.exists():
+            logging.info("Not recording for %s", metadata_file)
+            return
+        if not metadata_file.exists():
+            logging.error("No metadata for %s", audio_file)
+            return
+        with metadata_file.open("r") as f:
+            # add in some metadata stats
+            meta = json.load(f)
+        if meta["state"] == "complete":
+            logging.error("Already in complete state %s", audio_file)
+            return
 
-    frames, sr = load_recording(audio_file)
-    duration = librosa.get_duration(y=frames, sr=sr)
-    meta["rec_end"] = duration
-    for t in meta.get("tracks", []):
-        t["end"] = duration
-    # signal data
-    signals, spectogram = track_signals(frames, sr, min_width=0, min_height=0)
-    signals = [s.to_array(decimals=2) for s in signals]
-    meta["signal"] = signals
-    meta["signal_version"] = 1.0
+        frames, sr = load_recording(audio_file)
+        duration = librosa.get_duration(y=frames, sr=sr)
+        meta["rec_end"] = duration
+        for t in meta.get("tracks", []):
+            t["end"] = duration
+        # signal data
+        signals, spectogram = track_signals(frames, sr, min_width=0, min_height=0)
+        signals = [s.to_array(decimals=2) for s in signals]
+        meta["signal"] = signals
+        meta["signal_version"] = 1.0
 
-    tracks = meta.get("tracks", [])
-    add_rms_data_to_tracks(frames, sr, tracks)
-    meta["rms_version"] = 1.1
-    meta["state"] = "complete"
-    with open(metadata_file, "w") as f:
-        json.dump(meta, f, indent=4)
+        tracks = meta.get("tracks", [])
+        add_rms_data_to_tracks(frames, sr, tracks)
+        meta["rms_version"] = 1.1
+        meta["state"] = "complete"
+        with open(metadata_file, "w") as f:
+            json.dump(meta, f, indent=4)
+    except:
+        logging.error("Coudl not load %s", audio_file, exc_info=True)
 
 
 def get_ebird_map():
@@ -1723,9 +1726,8 @@ def generate_tier_metadata_folder(dir):
                     logging.info("Writing metadata %s", metadata_file)
                     json.dump(meta, f, indent=4)
     meta_files = dir.glob("**/*.flac")
-    first = True
 
-    with Pool(processes=1) as pool:
+    with Pool(processes=8) as pool:
         [
             0
             for x in pool.imap_unordered(
