@@ -74,6 +74,8 @@ def main():
             if second_total != first_total:
                 print(f"{label} First total is {first_total} second is {second_total}")
             # assert second_total == first_total, f"{label} First total is {first_total} second is {second_total}"
+            if first_total == 0:
+                continue
             second_total_samples += second_total
             first_inccorect += first_total - first_count - first_none
             second_incorrect += second_total - second_count - second_none
@@ -90,7 +92,7 @@ def main():
             second_acc = round(100 * second_count / second_total)
             second_none = round(100 * second_none / second_total)
             print(
-                f"For {label} have {first_acc-second_acc} from  {first_acc} vs {second_acc} None accuracies are {first_none} vs {second_none} total is {first_total} "
+                f"For {label} have {first_count-second_count} from  {first_count} vs {second_count} None accuracies are {first_none} vs {second_none} total is {first_total} "
             )
             total += first_count - second_count
 

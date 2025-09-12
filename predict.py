@@ -1188,9 +1188,12 @@ def main():
                 pred_counts[max_p] += 1
             else:
                 previous_pred = None
-            # print(
-            #     "Pred for start ", t.start + start_i * segment_stride, np.round(p * 100)
-            # )
+            print(
+                labels[max_p],
+                "Pred for start ",
+                t.start + start_i * segment_stride,
+                np.round(p * 100),
+            )
 
         #     for i, percent in enumerate(p):
         #         if percent >= prob_thresh:
