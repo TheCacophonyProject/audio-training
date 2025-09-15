@@ -70,15 +70,15 @@ def set_specific_by_count(meta):
     ebird_id_to_labels = {}
     for label, ebird_id in zip(meta["labels"], ebird_ids):
         if ebird_id in ebird_id_to_labels:
-            ebird_id_to_labels.append(label)
+            ebird_id_to_labels[ebird_id].append(label)
         else:
             ebird_id_to_labels[ebird_id] = [label]
 
     for k, v in ebird_id_to_labels.items():
         if len(v) > 1:
             for l in v:
-                MERGE_LABELS[v] = k
-                print("Adding ", v, " to ", k)
+                MERGE_LABELS[l] = k
+                print("Adding ", l, " to ", k)
 
     # set counts to be counts of all merged labels
     for k, v in MERGE_LABELS.items():
@@ -329,13 +329,13 @@ def get_remappings(
         labels = new_labels
 
     ebird_map = get_ebird_ids_to_labels()
-    for l in labels:
+    for l_index, l in enumerate(labels):
         print("Remapping", l)
         # until we rewrite records if ebird ids need to remape all labels to ebird ids
         text_labels = ebird_map.get(l.lower().replace(" ", "-"))
         if text_labels is not None:
             for text_l in text_labels:
-                re_dic[text_l] = l
+                re_dic[text_l] = l_index
                 logging.info("Adding remap %s to %s", text_l, l)
 
         if l in NOISE_LABELS:
@@ -496,7 +496,6 @@ def get_a_dataset(dir, labels, args):
             remapped,
             excluded_labels,
         )
-
     remapped_y = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(list(remapped.keys())),
@@ -553,7 +552,7 @@ def get_a_dataset(dir, labels, args):
             )
             dataset_2 = load_dataset(second_filenames, num_labels, labels, args)
             morepork_mask = np.zeros(num_labels, dtype=bool)
-            morepork_mask[labels.index("morepork")] = 1
+            morepork_mask[labels.index("morepo2")] = 1
             morepork_mask = tf.constant(morepork_mask)
 
             others_filter = lambda x, y: not tf.math.reduce_all(

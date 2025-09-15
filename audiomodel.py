@@ -1821,7 +1821,7 @@ def init_labels(data_dir, **args):
     ebird_labels = []
     for l in labels:
         ebird_labels.append(get_ebird_id(l, ebird_map))
-    labels = ebird_labels
+    labels = list(set(ebird_labels))
     labels.sort()
     if not args.get("use_generic_bird", False):
         if "bird" in labels:
