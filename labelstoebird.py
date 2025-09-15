@@ -12,6 +12,7 @@ def main():
 
     ebird_map = get_ebird_map()
     ebird_ids = []
+    print("Migrating old meta to new meta")
     for l in metadata["labels"]:
         l = l.replace(" ", "-")
         if l not in ebird_map:
@@ -23,33 +24,24 @@ def main():
             # print(f"{l} = {ebird_map[l]}")
     counts = metadata["counts"]
 
-    for dataset in ["train", "validation", "test"]:
-        training = counts[dataset]["sample_counts"]
-        new_training = {}
-        for k, v in training.items():
-            ebird_label = get_ebird_id(k, ebird_map)
-            new_training[ebird_label] = v
-        counts[dataset]["sample_counts"] = new_training
-        training = counts[dataset]["rec_counts"]
-        new_training = {}
-        for k, v in training.items():
-            ebird_label = get_ebird_id(k, ebird_map)
-            new_training[ebird_label] = v
-        counts[dataset]["rec_counts"] = new_training
+    #
+    # for dataset in ["train", "validation", "test"]:
+    #     training = counts[dataset]["sample_counts"]
+    #     new_training = {}
+    #     for k, v in training.items():
+    #         ebird_label = get_ebird_id(k, ebird_map)
+    #         new_training[ebird_label] = v
+    #     counts[dataset]["sample_counts"] = new_training
+    #     training = counts[dataset]["rec_counts"]
+    #     new_training = {}
+    #     for k, v in training.items():
+    #         ebird_label = get_ebird_id(k, ebird_map)
+    #         new_training[ebird_label] = v
+    #     counts[dataset]["rec_counts"] = new_training
 
     metadata["ebird_ids"] = ebird_ids
     with metadata_f.open("w") as f:
         json.dump(metadata, f, indent=4)
-
-    from birdsconfig import BIRD_TRAIN_LABELS
-
-    ids = []
-    for lbl in BIRD_TRAIN_LABELS:
-        ids.append(ebird_map.get(lbl.replace(" ", "-"), "NOT FOUND " + lbl))
-    ids = list(set(ids))
-    ids.sort()
-    for e_id in ids:
-        print(f'"{e_id}",')
 
 
 if __name__ == "__main__":

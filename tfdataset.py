@@ -67,23 +67,26 @@ def set_specific_by_count(meta):
     validation = counts["validation"]["sample_counts"]
     ebird_ids = meta["ebird_ids"]
 
+    # just for until dataset is build with ebird ids
     ebird_id_to_labels = {}
     for label, ebird_id in zip(meta["labels"], ebird_ids):
         if ebird_id in ebird_id_to_labels:
             ebird_id_to_labels[ebird_id].append(label)
         else:
             ebird_id_to_labels[ebird_id] = [label]
+    #        logging.info("Adding %s for %s",ebird_id,label)
 
     for k, v in ebird_id_to_labels.items():
-        if len(v) > 1:
+        if len(v) >= 1:
             for l in v:
                 MERGE_LABELS[l] = k
-                print("Adding ", l, " to ", k)
 
     # set counts to be counts of all merged labels
     for k, v in MERGE_LABELS.items():
         for dataset in [counts, training, training_rec, validation]:
             if k in dataset:
+                if v not in dataset:
+                    dataset[v] = 0
                 total_count = dataset[k]
                 if v in dataset:
                     total_count += dataset[v]
@@ -336,7 +339,7 @@ def get_remappings(
         if text_labels is not None:
             for text_l in text_labels:
                 re_dic[text_l] = l_index
-                logging.info("Adding remap %s to %s", text_l, l)
+                # logging.info("Adding remap %s to %s", text_l, l)
 
         if l in NOISE_LABELS:
             if "noise" in new_labels:
@@ -785,10 +788,7 @@ def get_a_dataset(dir, labels, args):
             datasets[i] = ds.shuffle(
                 4096, reshuffle_each_iteration=args.get("reshuffle", True)
             )
-        # if dataset_2 is not None:
-        #     dataset_2 = dataset_2.shuffle(
-        #         4096, reshuffle_each_iteration=args.get("reshuffle", True)
-        #     )
+
     if len(datasets) > 0:
         # logging.info("Adding second dataset with weights [0.6,0.4]")
         dataset = tf.data.Dataset.sample_from_datasets(
