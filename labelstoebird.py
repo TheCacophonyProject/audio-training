@@ -2,17 +2,50 @@ import sys
 import json
 from pathlib import Path
 import csv
-from utils import get_ebird_map, get_ebird_id
+from utils import get_ebird_map, get_ebird_id, get_ebird_ids_to_labels
+
+# def debug_labels():
+#     ebird_map = get_ebird_map()
+#     existing_ids = []
+#     for lbl in existing_labels:
+#         ebird_id = get_ebird_id(lbl, ebird_map)
+#         if ebird_id in existing_ids:
+#             print("Added ", ebird_id, " twice ", lbl)
+#         existing_ids.append(ebird_id)
+#     global train_labels
+#     existing_ids = set(existing_ids)
+#     train_labels = set(train_labels)
+
+#     diff = existing_ids - train_labels
+#     ids_to_lbls = get_ebird_ids_to_labels()
+
+#     for e_id in diff:
+#         print(e_id, " Missing in new but in old ", ids_to_lbls.get(e_id, e_id))
+
+#     diff = train_labels - existing_ids
+#     for e_id in diff:
+#         print(e_id, " Missing in old but in new", ids_to_lbls.get(e_id, e_id))
+
+#     print("Diff in old and not in new ", existing_ids - train_labels)
+#     print("Diff in new and not in old", train_labels - existing_ids)
+#     1 / 0
+
+#     text_labels = []
+#     for l in train_labels:
+#         lbls = ids_to_lbls.get(l, [f"{l} not matched"])
+#         text_labels.append(lbls[0])
+#     text_labels.sort()
+#     print(text_labels)
 
 
 def main():
+    ebird_map = get_ebird_map()
+
     metadata_f = Path(sys.argv[1])
     with metadata_f.open("r") as f:
         metadata = json.load(f)
 
-    ebird_map = get_ebird_map()
     ebird_ids = []
-    print("Migrating old meta to new meta")
     for l in metadata["labels"]:
         l = l.replace(" ", "-")
         if l not in ebird_map:
@@ -24,7 +57,6 @@ def main():
             # print(f"{l} = {ebird_map[l]}")
     counts = metadata["counts"]
 
-    #
     # for dataset in ["train", "validation", "test"]:
     #     training = counts[dataset]["sample_counts"]
     #     new_training = {}
@@ -42,6 +74,16 @@ def main():
     metadata["ebird_ids"] = ebird_ids
     with metadata_f.open("w") as f:
         json.dump(metadata, f, indent=4)
+
+    from birdsconfig import BIRD_TRAIN_LABELS
+
+    ids = []
+    for lbl in BIRD_TRAIN_LABELS:
+        ids.append(ebird_map.get(lbl.replace(" ", "-"), "NOT FOUND " + lbl))
+    ids = list(set(ids))
+    ids.sort()
+    for e_id in ids:
+        print(f'"{e_id}",')
 
 
 if __name__ == "__main__":

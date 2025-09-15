@@ -1850,7 +1850,7 @@ def init_labels(data_dir, **args):
         for l in labels:
             if l == "bird":
                 continue
-            if l in SPECIFIC_BIRD_LABELS or l in GENERIC_BIRD_LABELS:
+            if l in ALL_BIRDS:
                 print("Setting", l, " to bird")
                 merge_labels[l] = "bird"
             elif l in ANIMAL_LABELS:
@@ -1882,7 +1882,7 @@ def init_labels(data_dir, **args):
                 continue
             elif l == "bird":
                 continue
-            if l in SPECIFIC_BIRD_LABELS or l in GENERIC_BIRD_LABELS:
+            if l in ALL_BIRDS:
                 print("Setting", l, " to bird")
                 merge_labels[l] = "bird"
             elif l in ANIMAL_LABELS:

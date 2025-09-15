@@ -76,14 +76,35 @@ def set_specific_by_count(meta):
             ebird_id_to_labels[ebird_id] = [label]
     #        logging.info("Adding %s for %s",ebird_id,label)
 
-    for k, v in ebird_id_to_labels.items():
-        if len(v) >= 1:
-            for l in v:
-                MERGE_LABELS[l] = k
+    dataset_lbls = ["total", "train samples", "rec counts", "validation sample"]
+    count_dics = [counts, training, training_rec, validation]
+    for v, lbl_list in ebird_id_to_labels.items():
+        for k in lbl_list:
+            for dataset_lbl, dataset in zip(dataset_lbls, count_dics):
+                if k in dataset:
+                    if v not in dataset:
+                        dataset[v] = 0
+                    total_count = dataset[k]
+                    if v in dataset:
+                        total_count += dataset[v]
+                    dataset[k] = total_count
+                    logging.info(
+                        "%s - Adding samples of %s to  %s for a total of %s",
+                        dataset_lbl,
+                        k,
+                        v,
+                        total_count,
+                    )
+
+                    if v in dataset:
+                        dataset[v] = total_count
+                    logging.info(
+                        "%s Setting total of %s to %s", dataset_lbl, v, total_count
+                    )
 
     # set counts to be counts of all merged labels
     for k, v in MERGE_LABELS.items():
-        for dataset in [counts, training, training_rec, validation]:
+        for dataset_lbl, dataset in zip(dataset_lbls, count_dics):
             if k in dataset:
                 if v not in dataset:
                     dataset[v] = 0
@@ -92,12 +113,18 @@ def set_specific_by_count(meta):
                     total_count += dataset[v]
                 dataset[k] = total_count
                 logging.info(
-                    "Adding samples of %s to  %s for a total of %s", k, v, total_count
+                    "%s - Adding samples of %s to  %s for a total of %s",
+                    dataset_lbl,
+                    k,
+                    v,
+                    total_count,
                 )
 
                 if v in dataset:
                     dataset[v] = total_count
-                    logging.info("Setting total of %s to %s", v, total_count)
+                    logging.info(
+                        "%s Setting total of %s to %s", dataset_lbl, v, total_count
+                    )
 
     labels_with_data = []
     for label, count in training.items():

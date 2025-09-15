@@ -6,10 +6,14 @@ MERGE_LABELS = {
     "yefpar3": "parake",
     "refpar4": "parake",
     "nezrob2": "nezrob3",
+    "redpol1": "comred",
 }
 
 
+# add labels you want regardless of number of samples
+# birds from all birds will be added if they have over 50 records and 2 validation samples
 BIRD_TRAIN_LABELS = [
+    "ausbit1",
     "ausmag2",
     "baicra4",
     "blkswa",
@@ -53,6 +57,7 @@ ALL_BIRDS = [
     "comcha",
     "commyn",
     "compea",
+    "comred",
     "coopet",
     "criros2",
     "dobplo1",
