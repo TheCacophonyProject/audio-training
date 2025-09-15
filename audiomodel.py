@@ -50,7 +50,7 @@ import tensorflow as tf
 # import tensorflow_decision_forests as tfdf
 from tensorflow.keras import layers
 import ydf
-
+from utils import get_ebird_map, get_ebird_id
 
 MIXED_PRECISION = False
 
@@ -1813,6 +1813,12 @@ def init_labels(data_dir, **args):
         set_specific_by_count(second_meta)
 
     labels = list(labels)
+
+    ebird_map = get_ebird_map()
+    ebird_labels = []
+    for l in labels:
+        ebird_labels.append(get_ebird_id(l, ebird_map))
+    labels = ebird_labels
     labels.sort()
     if not args.get("use_generic_bird", False):
         if "bird" in labels:
@@ -1826,6 +1832,7 @@ def init_labels(data_dir, **args):
     # labels.append("other")
     labels.sort()
     logging.info("Loading train")
+
     excluded_labels = get_excluded_labels(labels)
 
     if args.get("only_features", False):
@@ -1868,7 +1875,7 @@ def init_labels(data_dir, **args):
         merge_labels = {}
         excluded_labels = []
         for l in labels:
-            if l == "morepork":
+            if l == "morepo2":
                 continue
             elif l == "bird":
                 continue
@@ -1891,36 +1898,6 @@ def init_labels(data_dir, **args):
         set_merge_labels(merge_labels)
     else:
         all_birds = True
-        test_birds = [
-            "bellbird",
-            "bird",
-            "fantail",
-            "morepork",
-            "noise",
-            "human",
-            "grey warbler",
-            "insect",
-            "kiwi",
-            "magpie",
-            "tui",
-            "house sparrow",
-            "blackbird",
-            "sparrow",
-            "song thrush",
-            "whistler",
-            "rooster",
-            "silvereye",
-            "norfolk silvereye",
-            "australian magpie",
-            "new zealand fantail",
-            # "thrush"
-        ]
-        if not all_birds:
-            for l in labels:
-                if l not in excluded_labels and l not in test_birds:
-                    excluded_labels.append(l)
-                elif l in excluded_labels and l in test_birds:
-                    excluded_labels.remove(l)
         if "human" not in excluded_labels:
             excluded_labels.append("human")
         if "noise" not in excluded_labels:

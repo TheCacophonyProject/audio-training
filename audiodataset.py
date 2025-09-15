@@ -4,6 +4,7 @@ from pathlib import Path
 from collections import namedtuple
 
 from dateutil.parser import parse as parse_date
+from utils import get_ebird_map, get_ebird_id
 import soundfile as sf
 
 import librosa
@@ -19,6 +20,7 @@ import audioread.ffdec  # Use ffmpeg decoder
 from custommel import mel_spec
 import sys
 
+ebird_map = get_ebird_map
 DO_AUDIO_FEATURES = False
 if DO_AUDIO_FEATURES:
     sys.path.append("../pyAudioAnalysis")
@@ -62,6 +64,9 @@ RELABEL["norfolk morepork"] = "morepork"
 RELABEL["golden whistler"] = "whistler"
 RELABEL["norfolk golden whistler"] = "whistler"
 RELABEL["golden-backed whistler"] = "whistler"
+
+# GP TO DO should make sure labels that point to same ebird id are put together
+
 SAMPLE_GROUP_ID = 0
 MIN_TRACK_LENGTH = 1.5
 
@@ -310,7 +315,8 @@ class AudioSample:
         self.low_sample = low_sample
         self.mixed_label = mixed_label
         self.tags = list(tags)
-        non_bird = [t for t in tags if t not in ["noirse", "bird"]]
+        self.ebird_ids = labels_to_ebird(self.tags)
+        non_bird = [t for t in tags if t not in ["noise", "bird"]]
         if len(non_bird) > 0:
             self.first_tag = non_bird[0]
         else:
@@ -338,6 +344,7 @@ class AudioSample:
         cloned = AudioSample(
             rec=None,
             tags=self.tags,
+            ebird_ids=self.ebird_ids,
             start=self.start,
             end=self.end,
             track_ids=self.track_ids,
@@ -1404,3 +1411,11 @@ def segment_overlap(first, second):
         + (second[1] - second[0])
         - (max(first[1], second[1]) - min(first[0], second[0]))
     )
+
+
+def labels_to_ebird(labels):
+    ebird_ids = []
+    for lbl in labels:
+        ebird_ids.append(get_ebird_id(lbl, ebird_map))
+    logging.info("Labels %s become %s", labels, ebird_ids)
+    return ebird_ids

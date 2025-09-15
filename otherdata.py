@@ -1634,6 +1634,38 @@ def get_ebird_map():
             # for i,split in enumerate(split_l):
             # print(i,split)
             ebird_map[split_l[2]] = (split_l[4].lower(), split_l[8].lower())
+            ebird_map["norfolk-silvereye"] = "silver3"
+            ebird_map["norfolk-gerygone"] = "noiger1"
+            ebird_map["whistler"] = "y01193"
+            ebird_map["common-starling"] = "eursta"
+
+    #           bird is missing from ebird map
+    # common-starling is missing from ebird map
+    # cow is missing from ebird map
+    # dog is missing from ebird map
+    # dove is missing from ebird map
+    # false-positive is missing from ebird map
+    # frog is missing from ebird map
+    # human is missing from ebird map
+    # insect is missing from ebird map
+    # kiwi is missing from ebird map
+    # noise is missing from ebird map
+    # norfolk-gerygone is missing from ebird map
+    # norfolk-parrot is missing from ebird map
+    # norfolk-silkeye is missing from ebird map
+    # norfolk-silvereye is missing from ebird map
+    # pigeon is missing from ebird map
+    # possum is missing from ebird map
+    # rain is missing from ebird map
+    # rodent is missing from ebird map
+    # rooster is missing from ebird map
+    # sheep is missing from ebird map
+    # static is missing from ebird map
+    # turkey is missing from ebird map
+    # vehicle is missing from ebird map
+    # water is missing from ebird map
+    # whistler is missing from ebird map
+    # wind is missing from ebird map
 
     return ebird_map
 

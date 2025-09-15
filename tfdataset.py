@@ -17,394 +17,14 @@ import tensorflow_io as tfio
 from audiomentations import AddBackgroundNoise, PolarityInversion, Compose
 import soundfile as sf
 from badwinner2 import MagTransform
+from birdsconfig import ANIMAL_LABELS,ALL_BIRDS, MERGE_LABELS, BIRD_TRAIN_LABELS,EXTRA_LABELS,OTHER_LABELS,HUMAN_LABELS,NOISE_LABELS
 
+from utils import get_ebird_map,get_ebird_ids_to_labels
 BIRD_PATH = []
 NOISE_PATH = []
 NZ_BOX = [166.509144322, -34.4506617165, 178.517093541, -46.641235447]
 
-MERGE_LABELS = {
-    "house sparrow": "sparrow",
-    "new zealand fantail": "fantail",
-    "australian magpie": "magpie",
-    "norfolk silvereye": "silvereye",
-    "graylag-goose-(domestic-type)": "goose",
-    "canada-goose": "goose",
-    "grey-or-mallard-duck": "duck",
-    "mallard-duck": "duck",
-    "california-quail": "california quail",
-    "domesz3tic-chicken": "chicken",
-    "yellow-eyed-penguin": "penguin",
-    "little-blue-penguin": "penguin",
-    "yellow-crowned-parakeet": "parakeet",
-    "red-crowned parakeet": "parakeet",
-    "red-crowned-parakeet": "parakeet",
-    "brown-creeper": "brown creeper",
-    # "rosella": "rosella",
-    # "eastern rosella": "rosella",
-    # "crimson rosella": "rosella",
-}
-
-# seed = 1341
-# tf.random.set_seed(seed)
-# np.random.seed(seed)
 AUTOTUNE = tf.data.AUTOTUNE
-# IMAGE_SIZE = [256, 256]
-# BATCH_SIZE = 64
-NOISE_LABELS = [
-    "insect",
-    "wind",
-    "vehicle",
-    "rain",
-    "static",
-    "noise",
-    "water",
-    # "cat",
-    # "cow",
-    # "chicken",
-    # "dog",
-]
-
-OTHER_NOISE = [
-    "Acoustic_guitar",
-    "Bass_guitar",
-    "Clapping",
-    "Coin_(dropping)",
-    "Crash_cymbal",
-    "Dishes_and_pots_and_pans",
-    "Engine",
-    "Fart",
-    "Fire",
-    "Fireworks",
-    "Glass",
-    "Hi-hat",
-    "Piano",
-    "Rain",
-    "Slam",
-    "Squeak",
-    "Tearing",
-    "Walk_or_footsteps",
-    "Wind",
-    "Writing",
-    "beach",
-    "brown",
-    "campfire",
-    "city",
-    "construction",
-    "engine",
-    "factory",
-    "fan",
-    "forest",
-    "library",
-    "planecabin",
-    "rain",
-    "rainforest",
-    "river",
-    "starship",
-    "static",
-    "thunderstorm",
-    "train",
-    "water",
-    "white",
-    "wind",
-]
-OTHER_NOISE.extend(
-    [
-        "airplane",
-        "breathing",
-        "brushing_teeth",
-        "can_opening",
-        "car_horn",
-        "chainsaw",
-        "chirping_birds",
-        "church_bells",
-        "clapping",
-        "clock_alarm",
-        "clock_tick",
-        "crackling_fire",
-        "door_wood_creaks",
-        "door_wood_knock",
-        "drinking_sipping",
-        "engine",
-        "fireworks",
-        "footsteps",
-        "glass_breaking",
-        "hand_saw",
-        "helicopter",
-        "keyboard_typing",
-        "mouse_click",
-        "pouring_water",
-        "rain",
-        "sea_waves",
-        "siren",
-        "snoring",
-        "thunderstorm",
-        "toilet_flush",
-        "train",
-        "vacuum_cleaner",
-        "washing_machine",
-        "water_drops",
-        "wind",
-    ]
-)
-
-
-NOISE_LABELS.extend(OTHER_NOISE)
-
-NOISE_LABELS = list(set(NOISE_LABELS))
-NOISE_LABELS.sort()
-# ANIMAL_LABELS = ["cat", "cow", "chicken", "dog", "sheep", "possum", "rodent"]
-ANIMAL_LABELS = [
-    "bear",
-    "cat",
-    "chicken",
-    "cow",
-    "dog",
-    "dolphin",
-    "donkey",
-    "elephant",
-    "frog",
-    "horse",
-    "lion",
-    "monkey",
-    "possum",
-    "rodent",
-    "sheep",
-    "pig",
-    "hen",
-]
-
-INSECT_LABELS = ["crickets", "insects"]
-
-HUMAN_LABELS = [
-    "Crying baby",
-    "Sneezing",
-    "Breathing",
-    "Coughing",
-    "Laughing",
-    "crying_baby",
-    "sneezing",
-    "laughing",
-    "coughing",
-]
-# SPECIFIC_BIRD_LABELS = [
-#     "bird",
-#     "whistler",
-#     "kiwi",
-#     "morepork",
-#     "rifleman",
-#     "sparrow",
-#     "fantail",
-#     "australasian bittern",
-#     "banded dotterel",
-#     "tui",
-# ]
-SPECIFIC_BIRD_LABELS = [
-    "bird",
-    "fantail",
-    "morepork",
-    # "noise",
-    # "human",
-    "grey warbler",
-    # "insect",
-    "kiwi",
-    "magpie",
-    "tui",
-    "house sparrow",
-    "blackbird",
-    "sparrow",
-    "song thrush",
-    "whistler",
-    "rooster",
-    "silvereye",
-    "norfolk silvereye",
-    "australian magpie",
-    "new zealand fantail",
-    "new-zealand-fernbird",
-    "black-swan",
-    "marsh-crake",
-]
-GENERIC_BIRD_LABELS = [
-    "crow",
-    "new zealand fantail",
-    "australian magpie",
-    "bellbird",
-    "bird",
-    "black noddy",
-    "blackbird",
-    "california quail",
-    "canada goose",
-    "common starling",
-    "crimson rosella",
-    "dunnock",
-    "fantail",
-    "grey warbler",
-    "goldfinch",
-    "house sparrow",
-    "kiwi",
-    "little owl",
-    "magpie",
-    "morepork",
-    "norfolk gerygone",
-    "norfolk parrot",
-    "norfolk robin",
-    "norfolk silvereye",
-    "north island robin",
-    "parakeet",
-    "red-crowned parakeet",
-    "rifleman",
-    "robin",
-    "sacred kingfisher",
-    "silvereye",
-    "slender-billed white-eye",
-    "song thrush",
-    "sooty tern",
-    "sparrow",
-    "spur-winged plover",
-    "starling",
-    "thrush",
-    "tui",
-    "whistler",
-    "white tern",
-    "australasian bittern",
-    "banded dotterel",
-    "brown creeper",
-    "chaffinch",
-    "common pheasant",
-    "dove",
-    "eastern rosella",
-    "eurasian blackbird",
-    "european goldfinch",
-    "european greenfinch",
-    "greenfinch",
-    "gull",
-    "harrier",
-    "kaka",
-    "kea",
-    "kereru",
-    "kingfisher",
-    "masked booby",
-    "norfolk silkeye",
-    "owl",
-    "paradise shelduck",
-    "pheasant",
-    "pigeon",
-    "red-tailed tropicbird",
-    "redpoll",
-    "rosella",
-    "southern black-backed gull",
-    "swamp harrier",
-    "tomtit",
-    "turkey",
-    "yellowhammer",
-]
-tier1_birds = [
-    "australasian bittern",
-    "australasian-harrier",
-    "australasian-shoveler",
-    "australian magpie",
-    "banded dotterel",
-    "barbary-partridge",
-    "bellbird",
-    "black-billed-gull",
-    "black-fronted-tern",
-    "black-petrel",
-    "black-swan",
-    "blackbird",
-    "blue-whio",
-    "brown-creeper",
-    "buff-banded-rail",
-    "california-quail",
-    "canada-goose",
-    "chaffinch",
-    "chatham-island-warbler",
-    "chatham-islands-pigeon",
-    "chatham-robin",
-    "chukor",
-    "common-diving-petrel",
-    "common-pheasant",
-    "cook's-petrel",
-    "domesz3tic-chicken",
-    "dunnock",
-    "eastern-rosella",
-    "eurasian-coot",
-    "fantail",
-    "goldfinch",
-    "gray-faced-petrel",
-    "graylag-goose-(domestic-type)",
-    "greenfinch",
-    "grey warbler",
-    "grey-or-mallard-duck",
-    "grey-teal",
-    "gull",
-    "house sparrow",
-    "hutton's-shearwater",
-    "indian-myna",
-    "kea",
-    "kereru",
-    "kiwi",
-    "little-blue-penguin",
-    "little-owl",
-    "long-tailed-cuckoo",
-    "mallard-duck",
-    "marsh-crake",
-    "mohua",
-    "morepork",
-    "mottled-petrel",
-    "new-zealand-falcon",
-    "new-zealand-fernbird",
-    "new-zealand-kaka",
-    "new-zealand-kingfisher",
-    "new-zealand-pipit",
-    "north-island-kokako",
-    "north-island-robin",
-    "oystercatcher",
-    "paradise-shelduck",
-    "parakeet",
-    "peafowl",
-    "pied-stilt",
-    "pukeko",
-    "red-billed-gull",
-    "red-crowned-parakeet",
-    "redpoll",
-    "rifleman",
-    "rock-wren",
-    "shining-cuckoo",
-    "silvereye",
-    "skylark",
-    "song thrush",
-    "sooty-shearwater",
-    "south-island-oystercatcher",
-    "south-island-robin",
-    "south-polar-skua",
-    "southern-black-backed-gull",
-    "southern-royal-albatross",
-    "spotless-crake",
-    "spotted-crake",
-    "spur-winged-plover",
-    "starling",
-    "stitchbird",
-    "tomtit",
-    "tree-weta",
-    "tui",
-    "variable-oystercatcher",
-    "weka",
-    "welcome-swallow",
-    "western-cattle-egret",
-    "white-capped-albatross",
-    "white-faced-heron",
-    "white-fronted-tern",
-    "whitehead",
-    "wild-turkey",
-    "yellow-crowned-parakeet",
-    "yellow-eyed-penguin",
-    "yellowhammer",
-]
-
-GENERIC_BIRD_LABELS.extend(tier1_birds)
-GENERIC_BIRD_LABELS.sort()
-GENERIC_BIRD_LABELS = list(set(GENERIC_BIRD_LABELS))
-EXTRA_LABELS = ["rooster", "frog", "insect", "human", "noise"]
-OTHER_LABELS = []
 
 
 insect = None
@@ -419,14 +39,8 @@ MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 
 FMIN = 50
 FMAX = 11000
-# JUST FOR HUMAN OR NOT MODEL
-# NOISE_LABELS.extend(SPECIFIC_BIRD_LABELS)
-# NOISE_LABELS.extend(GENERIC_BIRD_LABELS)
-# NOISE_LABELS.extend(OTHER_LABELS)
-# keep_excluded_in_extra = False
 
 MOREPORK_MAX = 1200
-# MAX_FREQ_BIN = 0
 
 
 def set_merge_labels(new_merge):
@@ -441,6 +55,20 @@ def set_specific_by_count(meta):
     training_rec = counts["train"]["rec_counts"]
 
     validation = counts["validation"]["sample_counts"]
+    ebird_ids = meta["ebird_ids"]
+
+    ebird_id_to_labels = {}
+    for label, ebird_id in zip(meta["labels"], ebird_ids):
+        if ebird_id in ebird_id_to_labels:
+            ebird_id_to_labels.append(label)
+        else:
+            ebird_id_to_labels[ebird_id] = [label]
+
+    for k, v in ebird_id_to_labels.items():
+        if len(v) > 1:
+            for l in v:
+                MERGE_LABELS[v] = k
+                print("Adding ", v, " to ", k)
 
     # set counts to be counts of all merged labels
     for k, v in MERGE_LABELS.items():
@@ -466,16 +94,16 @@ def set_specific_by_count(meta):
         val_count = validation[label]
         if count > 50 and rec_count > 50 and val_count > 2:
             labels_with_data.append(label)
-            if label not in GENERIC_BIRD_LABELS:
+            if label not in ALL_BIRDS:
                 logging.info("Have data for %s but not included ", label)
-            if label in GENERIC_BIRD_LABELS and label not in SPECIFIC_BIRD_LABELS:
-                SPECIFIC_BIRD_LABELS.append(label)
+            if label in ALL_BIRDS and label not in BIRD_TRAIN_LABELS:
+                BIRD_TRAIN_LABELS.append(label)
                 logging.info(
                     "Using %s because have data samples: %s and recs %s val samples %s:",
                     label,
                     count,
                     rec_count,
-                    val_count,
+                    not val_count,
                 )
 
 
@@ -487,41 +115,13 @@ def get_excluded_labels(labels):
         #     excluded_labels.append(l)
         # continue
 
-        if l not in SPECIFIC_BIRD_LABELS and l not in EXTRA_LABELS:
+        if l not in BIRD_TRAIN_LABELS and l not in EXTRA_LABELS:
             excluded_labels.append(l)
     for k, v in MERGE_LABELS.items():
         if v not in excluded_labels and k in excluded_labels:
             excluded_labels.remove(k)
     return excluded_labels
 
-
-# signals = Path("./signal-data/train")
-# wavs = list(signals.glob("*.wav"))
-# for w in wavs:
-#     if "bird" in w.stem:
-#         BIRD_PATH.append(w)
-#     else:
-#         for noise in NOISE_LABELS:
-#             if noise in w.stem:
-#                 NOISE_PATH.append(w)
-#                 break
-# BIRD_LABELS = ["bird"]
-# NOISE_LABELS = []
-# NOISE_PATH = NOISE_PATH[:2]
-# BIRD_PATH = BIRD_PATH[:2]
-# NOISE_LABELS = []
-# ALTERNATIVE WEIGHTS FOR DUAL MODEL
-# N_MELS = 96
-
-# MEL_WEIGHTS = mel_f(48000, N_MELS, 0, 3000, 2048, BREAK_FREQ)
-# MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
-
-# MEL_WEIGHTS_2 = mel_f(48000, N_MELS, 500, 15000, 1024, BREAK_FREQ)
-# MEL_WEIGHTS_2 = tf.constant(MEL_WEIGHTS_2)
-
-# MEL_WEIGHTS = tf.expand_dims(MEL_WEIGHTS, 0)
-
-# MEL_WEIGHTS = tf.expand_dims(MEL_WEIGHTS, 0)
 
 DIMENSIONS = (160, 188)
 
@@ -531,36 +131,8 @@ mfcc_s = (20, 188)
 DIMENSIONS = (*mel_s, 1)
 YAMNET_EMBEDDING_SHAPE = (6, 1024)
 EMBEDDING_SHAPE = (1280,)
-# TEST STUFF to blockout frequencies
-# mel_bins = librosa.mel_frequencies(128, fmax=48000 / 2)
-# human_lowest = np.where(mel_bins < 60)[-1][-1]
-# human_max = np.where(mel_bins > 180)[0][0]
 
-#
-# # 60-180hz
-# human_mel = (human_lowest, human_max)
-# human_mask = np.zeros((mel_s), dtype=bool)
-# human_mask[human_mel[0] : human_mel[0] + human_mel[1]] = 1
 
-# 600-1200
-# frequency_min = 600
-# frequency_max = 1200
-# more_lower = np.where(mel_bins < 600)[-1][-1]
-# more_max = np.where(mel_bins > 1200)[0][0]
-#
-#
-# morepork_mel = (more_lower, more_max)
-#
-# morepork_mask = np.zeros((mel_s), dtype=bool)
-# morepork_mask[morepork_mel[0] : morepork_mel[0] + morepork_mel[1]] = 1
-#
-# with open(str("zvalues.txt"), "r") as f:
-#     zvals = json.load(f)
-#
-# zvals["mean"] = np.array(zvals["mean"])
-# zvals["std"] = np.array(zvals["std"])
-Z_NORM = False
-# Z_NORM = True
 import random
 
 # labels to apply weighting to if  y true is generic "bird"
@@ -619,7 +191,7 @@ def load_dataset(filenames, num_labels, labels, args):
         GENERIC_BIRD_MASK[labels.index("bird")] = 1
 
     for i, l in enumerate(labels):
-        if (l in GENERIC_BIRD_LABELS or l in SPECIFIC_BIRD_LABELS) and l != "bird":
+        if (l in ALL_BIRDS or l in BIRD_TRAIN_LABELS) and l != "bird":
             SPECIFIC_BIRD_MASK[i] = 1
     SPECIFIC_BIRD_MASK = tf.constant(SPECIFIC_BIRD_MASK, dtype=tf.float32)
     BIRD_WEIGHTING = tf.constant(BIRD_WEIGHTING, dtype=tf.float32)
@@ -711,6 +283,8 @@ def get_remappings(
     # remapped = {}
     re_dic = {}
     new_labels = labels.copy()
+    # for l in new_labels:
+
     for excluded in excluded_labels:
         if excluded in labels:
             new_labels.remove(excluded)
@@ -740,14 +314,21 @@ def get_remappings(
             # values.append(new_labels.index(l))
     if not use_generic_bird:
         re_dic["bird"] = -1
-    # re_dic["slender-billed white-eye"] = -1
 
-    master_keys = []
-    master_values = []
     if not keep_excluded_in_extra:
         labels = new_labels
+
+    ebird_map = get_ebird_ids_to_labels()
     for l in labels:
         print("Remapping", l)
+        # until we rewrite records if ebird ids need to remape all labels to ebird ids
+        text_labels = ebird_map.get(l.lower().replace(" ","-"))
+        if text_labels is not None:
+            for text_l in text_labels
+                re_dic[text_l] = l
+                logging.info("Adding remap %s to %s",text_l,  l)
+
+
         if l in NOISE_LABELS:
             if "noise" in new_labels:
                 remap_label = "noise"
@@ -761,7 +342,7 @@ def get_remappings(
             if "other" in new_labels:
                 extra_label_map[l] = new_labels.index("other")
             continue
-        elif l in SPECIFIC_BIRD_LABELS:
+        elif l in BIRD_TRAIN_LABELS:
             if not use_generic_bird:
                 continue
             if "bird" in new_labels:
@@ -769,7 +350,7 @@ def get_remappings(
                     extra_label_map[l] = new_labels.index("bird")
             # or l == "human":
             continue
-        elif l in GENERIC_BIRD_LABELS:
+        elif l in ALL_BIRDS:
             if not use_generic_bird:
                 continue
             remap_label = "bird"
@@ -1714,7 +1295,7 @@ def main():
         for l in labels:
             if l == "bird":
                 continue
-            if l in SPECIFIC_BIRD_LABELS or l in GENERIC_BIRD_LABELS:
+            if l in BIRD_TRAIN_LABELS or l in ALL_BIRDS:
                 print("Setting", l, " to bird")
                 merge_labels[l] = "bird"
             elif l in ANIMAL_LABELS:
