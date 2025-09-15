@@ -61,17 +61,20 @@ if MIXED_PRECISION:
 # physical_devices = tf.config.list_physical_devices("GPU")
 # tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
+from birdsconfig import (
+    NOISE_LABELS,
+    BIRD_TRAIN_LABELS,
+    ALL_BIRDS,
+    EXTRA_LABELS,
+    OTHER_LABELS,
+)
+
 from tfdataset import (
     get_dataset,
     DIMENSIONS,
     get_weighting,
-    NOISE_LABELS,
-    SPECIFIC_BIRD_LABELS,
     get_excluded_labels,
     EMBEDDING_SHAPE,
-    GENERIC_BIRD_LABELS,
-    EXTRA_LABELS,
-    OTHER_LABELS,
     set_specific_by_count,
     N_MELS,
     BREAK_FREQ,
@@ -600,7 +603,7 @@ class AudioModel:
         # model_stats["multi_label"] = args.get("multi_label", False)
         model_stats["mean_sub"] = self.mean_sub
         model_stats["loss_fn"] = self.loss_fn
-        model_stats["bird_labels"] = SPECIFIC_BIRD_LABELS
+        model_stats["bird_labels"] = BIRD_TRAIN_LABELS
         model_stats["noise_labels"] = NOISE_LABELS
         model_stats["extra_labels"] = EXTRA_LABELS
         model_stats["other_labels"] = OTHER_LABELS
