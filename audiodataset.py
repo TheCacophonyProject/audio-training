@@ -409,7 +409,11 @@ class Recording:
 
         self.tracks = []
         self.human_tags = set()
-        for track in metadata.get("Tracks", []):
+        tracks_meta = metadata.get("Tracks")
+        if tracks_meta is None:
+            tracks_meta = metadata.get("tracks", [])
+
+        for track in tracks_meta:
             t = Track(track, self.filename, self.id, self)
             if filter_track(t):
                 continue
