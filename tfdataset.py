@@ -1302,7 +1302,7 @@ def main():
     file = tf_dir.parent / "training-meta.json"
     with file.open("r") as f:
         meta = json.load(f)
-    labels.update(meta.get("labels", []))
+    labels.update(meta.get("ebird_ids", []))
     # labels.add("bird")
     labels.add("noise")
     # labels = list(labels)
@@ -1344,38 +1344,7 @@ def main():
                 merge_labels[l] = "human"
         set_merge_labels(merge_labels)
         args.use_bird_tags = True
-    else:
-        test_birds = [
-            "bellbird",
-            "fantail",
-            "morepork",
-            "noise",
-            "human",
-            "grey warbler",
-            "insect",
-            "kiwi",
-            "magpie",
-            "tui",
-            "house sparrow",
-            "blackbird",
-            "sparrow",
-            "song thrush",
-            "whistler",
-            "rooster",
-            "silvereye",
-            "norfolk silvereye",
-            "australian magpie",
-            "new zealand fantail",
-            # "thrush"
-        ]
-        for l in labels:
-            if l not in excluded_labels and l not in test_birds:
-                excluded_labels.append(l)
-            elif l in excluded_labels and l in test_birds:
-                excluded_labels.remove(l)
-        # for l in labels:
-        #     if l not in excluded_labels and l not in test_birds:
-        #         excluded_labels.append(l)
+
     global_epoch = tf.Variable(0, name="global_epoch", trainable=True, dtype=tf.int32)
 
     dataset, remapped, _, labels, _ = get_dataset(
@@ -1405,6 +1374,7 @@ def main():
         augment=False,
         # signal_less_than = 0.1
     )
+    return
     # for epoch in range(5):
     #     global_epoch.assign(epoch)
     #     print("Global epoch assigned",global_epoch.value())
