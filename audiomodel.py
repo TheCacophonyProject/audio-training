@@ -1826,8 +1826,7 @@ def init_labels(data_dir, **args):
 
     if args.get("use_generic_bird", False) and "bird" not in labels:
         labels.append("bird")
-    if "noise" not in labels:
-        labels.append("noise")
+
 
     # if "other" not in labels:
     # labels.append("other")
