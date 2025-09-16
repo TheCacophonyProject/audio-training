@@ -124,15 +124,16 @@ def create_tf_example(sample):
         ),
         "audio/raw_length": tfrecord_util.float_feature(data.raw_length),
         "audio/start_s": tfrecord_util.float_feature(sample.start),
-        "audio/class/text": tfrecord_util.bytes_feature(tags.encode("utf8")),
-        "audio/class/ebird": tfrecord_util.bytes_feature(
-            sample.ebird_ids.encode("utf8")
+        "audio/class/text": tfrecord_util.bytes_feature(
+            sample.text_tags_s.encode("utf8")
         ),
+        "audio/class/ebird": tfrecord_util.bytes_feature(tags.encode("utf8")),
         "audio/spectogram": tfrecord_util.float_list_feature(
             np.float32(data.spectogram.ravel())
         ),
         "audio/raw": tfrecord_util.float_list_feature(np.float32(data.raw.ravel())),
     }
+    print("Writing ", sample.text_tags_s, sample.tags_s)
     if data.short_features is not None:
         feature_dict["audio/short_f"] = tfrecord_util.float_list_feature(
             np.float32(data.short_features.ravel())

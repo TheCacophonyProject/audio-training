@@ -28,7 +28,7 @@ from birdsconfig import (
     NOISE_LABELS,
 )
 
-from utils import get_ebird_map, get_ebird_ids_to_labels
+from utils import get_label_to_ebird_map, get_ebird_ids_to_labels
 
 BIRD_PATH = []
 NOISE_PATH = []

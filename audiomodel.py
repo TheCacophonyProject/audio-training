@@ -50,7 +50,7 @@ import tensorflow as tf
 # import tensorflow_decision_forests as tfdf
 from tensorflow.keras import layers
 import ydf
-from utils import get_ebird_map, get_ebird_id
+from utils import get_label_to_ebird_map, get_ebird_id
 
 MIXED_PRECISION = False
 
@@ -1817,7 +1817,7 @@ def init_labels(data_dir, **args):
 
     labels = list(labels)
 
-    ebird_map = get_ebird_map()
+    ebird_map = get_label_to_ebird_map()
     ebird_labels = []
     for l in labels:
         ebird_labels.append(get_ebird_id(l, ebird_map))

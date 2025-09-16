@@ -758,31 +758,31 @@ def chime_data():
 def tier1_data(base_dir, split_file=None):
     print("Loading tier1")
     test_labels = [
-        "bellbird",
-        "bird",
-        "fantail",
-        "morepork",
-        "noise",
-        "human",
-        "grey warbler",
-        "insect",
-        "kiwi",
-        "magpie",
-        "tui",
-        "house sparrow",
-        "blackbird",
-        "sparrow",
-        "song thrush",
-        "whistler",
-        "rooster",
-        "silvereye",
-        "norfolk silvereye",
-        "australian magpie",
-        "new zealand fantail",
-        "banded dotterel",
+        # "bellbird",
+        # "bird",
+        # "fantail",
+        # "morepork",
+        # "noise",
+        # "human",
+        # "grey warbler",
+        # "insect",
+        # "kiwi",
+        # "magpie",
+        # "tui",
+        # "house sparrow",
+        # "blackbird",
+        # "sparrow",
+        # "song thrush",
+        # "whistler",
+        # "rooster",
+        # "silvereye",
+        # "norfolk silvereye",
+        # "australian magpie",
+        # "new zealand fantail",
+        # "banded dotterel",
         "australasian bittern",
     ]
-    only_test_labels = False
+    only_test_labels = True
     ebird_map = get_ebird_map()
     first = True
     config = Config()
@@ -830,11 +830,11 @@ def tier1_data(base_dir, split_file=None):
                     print("No Mapping for ", ebird_id)
                     continue
 
-                # if only_test_labels and label not in test_labels:
-                #     if label not in filtered_stats:
-                #         filtered_stats[label] = 0
-                #     filtered_stats[label] += 1
-                #     continue
+                if only_test_labels and label not in test_labels:
+                    if label not in filtered_stats:
+                        filtered_stats[label] = 0
+                    filtered_stats[label] += 1
+                    continue
                 if label not in counts:
                     counts[label] = 0
                 counts[label] += 1
@@ -907,6 +907,7 @@ def tier1_data(base_dir, split_file=None):
         tootal = list(counts.values())
         print("total is ", np.sum(tootal))
         counts = {}
+        1 / 0
         if plot_signal:
             save_dir = dataset_dir / "signal-graphs"
             save_dir.mkdir(parents=True, exist_ok=True)

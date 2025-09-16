@@ -4,7 +4,7 @@ from pathlib import Path
 from collections import namedtuple
 
 from dateutil.parser import parse as parse_date
-from utils import get_ebird_map, get_ebird_id
+from utils import get_label_to_ebird_map, get_ebird_id, get_ebird_ids_to_labels
 import soundfile as sf
 
 import librosa
@@ -20,7 +20,9 @@ import audioread.ffdec  # Use ffmpeg decoder
 from custommel import mel_spec
 import sys
 
-ebird_map = get_ebird_map
+labels_to_ebird_map = get_label_to_ebird_map()
+ebird_to_labels_map = get_ebird_ids_to_labels()
+
 DO_AUDIO_FEATURES = False
 if DO_AUDIO_FEATURES:
     sys.path.append("../pyAudioAnalysis")
@@ -47,23 +49,34 @@ ACCEPT_TAGS = None
 #     "norfolk golden whistler",
 # ]
 
-RELABEL = {}
-RELABEL["mohoua novaeseelandiae"] = "brown-creeper"
-RELABEL["new zealand fantail"] = "fantail"
-RELABEL["shining bronze-cuckoo"] = "shining-cuckoo"
-RELABEL["long-tailed koel"] = "long-tailed-cuckoo"
-RELABEL["masked lapwing"] = "spur-winged-plover"
-RELABEL["sacred kingfisher (new zealand)"] = "new-zealand-kingfisher"
-RELABEL["norfolk island gerygone"] = "norfolk gerygone"
-RELABEL["kelp gull"] = "southern-black-backed-gull"
-RELABEL["common myna"] = "indian-myna"
-RELABEL["baillon's crake"] = "marsh-crake"
-RELABEL["north island brown kiwi"] = "kiwi"
-RELABEL["great spotted kiwi"] = "kiwi"
-RELABEL["norfolk morepork"] = "morepork"
-RELABEL["golden whistler"] = "whistler"
-RELABEL["norfolk golden whistler"] = "whistler"
-RELABEL["golden-backed whistler"] = "whistler"
+RELABEL = {
+    "mohoua novaeseelandiae": "pipipi1",
+    "sackin1": "sackin3",
+    "baicra1": "baicra4",
+    "nibkiw1": "kiwi",
+    "grskiw1": "kiwi",
+    "norfolk morepork": "morepo2",
+    "y01193": "y01193",
+    "norfolk golden whistler": "y01193",
+    "gobwhi1": "y01193",
+}
+
+# RELABEL["mohoua novaeseelandiae"] = "brown-creeper"
+# RELABEL["new zealand fantail"] = "fantail"
+# RELABEL["shining bronze-cuckoo"] = "shining-cuckoo"
+# RELABEL["long-tailed koel"] = "long-tailed-cuckoo"
+# RELABEL["masked lapwing"] = "spur-winged-plover"
+# RELABEL["sacred kingfisher (new zealand)"] = "new-zealand-kingfisher"
+# RELABEL["norfolk island gerygone"] = "norfolk gerygone"
+# RELABEL["kelp gull"] = "southern-black-backed-gull"
+# RELABEL["common myna"] = "indian-myna"
+# RELABEL["baillon's crake"] = "marsh-crake"
+# RELABEL["north island brown kiwi"] = "kiwi"
+# RELABEL["great spotted kiwi"] = "kiwi"
+# RELABEL["norfolk morepork"] = "morepork"
+# RELABEL["golden whistler"] = "whistler"
+# RELABEL["norfolk golden whistler"] = "whistler"
+# RELABEL["golden-backed whistler"] = "whistler"
 
 # GP TO DO should make sure labels that point to same ebird id are put together
 
@@ -293,6 +306,7 @@ class AudioSample:
         self,
         rec,
         tags,
+        text_tags,
         start,
         end,
         track_ids,
@@ -315,7 +329,8 @@ class AudioSample:
         self.low_sample = low_sample
         self.mixed_label = mixed_label
         self.tags = list(tags)
-        self.ebird_ids = labels_to_ebird(self.tags)
+        self.text_tags = list(text_tags)
+        # self.ebird_ids = labels_to_ebird(self.tags)
         non_bird = [t for t in tags if t not in ["noise", "bird"]]
         if len(non_bird) > 0:
             self.first_tag = non_bird[0]
@@ -344,7 +359,7 @@ class AudioSample:
         cloned = AudioSample(
             rec=None,
             tags=self.tags,
-            ebird_ids=self.ebird_ids,
+            text_tags=self.text_tags,
             start=self.start,
             end=self.end,
             track_ids=self.track_ids,
@@ -368,6 +383,10 @@ class AudioSample:
     @property
     def tags_s(self):
         return "\n".join(self.tags)
+
+    @property
+    def text_tags_s(self):
+        return "\n".join(self.text_tags)
 
     @property
     def track_id(self):
@@ -684,6 +703,7 @@ class Recording:
                     min_freq = track.min_freq
                     max_freq = track.max_freq
                     labels = set(track.human_tags)
+                    text_labels = set(track.human_text_tags)
 
                     other_tracks = []
                     if do_overlap:
@@ -710,6 +730,7 @@ class Recording:
                             if overlap >= min_overlap:
                                 other_tracks.append(other_track)
                                 labels = labels | other_track.human_tags
+                                text_labels = text_labels | other_track.human_text_tags
                                 if min_freq is not None:
                                     if other_track.min_freq is None:
                                         min_freq = None
@@ -730,6 +751,7 @@ class Recording:
                     sample = AudioSample(
                         self,
                         labels,
+                        text_labels,
                         start,
                         end,
                         [track.id for t in other_tracks],
@@ -848,6 +870,7 @@ class Track:
 
         self.automatic_tags = set()
         self.human_tags = set()
+        self.human_text_tags = set()
         self.automatic = metadata.get("automatic")
         self.original_tags = set()
         self.signal_percent = None
@@ -858,9 +881,8 @@ class Track:
         tags = metadata.get("tags", [])
         for tag in tags:
             self.add_tag(tag)
-        from tfdataset import (
-            SPECIFIC_BIRD_LABELS,
-            GENERIC_BIRD_LABELS,
+        from birdsconfig import (
+            ALL_BIRDS,
             ANIMAL_LABELS,
             NOISE_LABELS,
         )
@@ -869,7 +891,7 @@ class Track:
         self.animal_track = False
         self.noise_track = False
         for tag in self.human_tags:
-            if tag in SPECIFIC_BIRD_LABELS or tag in GENERIC_BIRD_LABELS:
+            if tag in ALL_BIRDS:
                 self.bird_track = True
             if tag in ANIMAL_LABELS:
                 self.animal_track = True
@@ -954,24 +976,26 @@ class Track:
         self.end = end
 
     def add_tag(self, tag):
-        what = tag.get("what")
-        original = what
-        if what in RELABEL:
-            what = RELABEL[what]
-        t = Tag(what, tag.get("confidence"), tag.get("automatic"), original)
+        text_label = tag.get("what")
+        ebird_id = get_ebird_id(text_label, labels_to_ebird_map)
+
+        original = ebird_id
+        if ebird_id in RELABEL:
+            ebird_id = RELABEL[ebird_id]
+
+            text_label = ebird_to_labels_map.get(ebird_id, [ebird_id])[0]
+        t = Tag(
+            text_label, ebird_id, tag.get("confidence"), tag.get("automatic"), original
+        )
         if t.automatic:
-            self.automatic_tags.add(t.what)
+            self.automatic_tags.add(t.ebird_id)
         else:
             self.original_tags.add(t.original)
-            self.human_tags.add(t.what)
+            self.human_tags.add(t.ebird_id)
+            self.human_text_tags.add(text_label)
 
     def overlaps(self, other):
         return segment_overlap([self.start, self.end], [other.start, other.end])
-        return (
-            (self.length)
-            + (other.length)
-            - (max(self.end, other.end) - min(self.start, other.start))
-        )
 
     #
     # def get_data(self, resample=None):
@@ -1078,7 +1102,7 @@ SpectrogramData = namedtuple(
     "SpectrogramData", "raw spectogram raw_length buttered short_features,mid_features"
 )
 
-Tag = namedtuple("Tag", "what confidence automatic original")
+Tag = namedtuple("Tag", "what ebird_id confidence automatic original")
 
 
 def load_data(
@@ -1417,9 +1441,9 @@ def segment_overlap(first, second):
     )
 
 
-def labels_to_ebird(labels):
-    ebird_ids = []
-    for lbl in labels:
-        ebird_ids.append(get_ebird_id(lbl, ebird_map))
-    logging.info("Labels %s become %s", labels, ebird_ids)
-    return ebird_ids
+# def labels_to_ebird(labels):
+#     ebird_ids = []
+#     for lbl in labels:
+#         ebird_ids.append(get_ebird_id(lbl, ebird_map))
+#     logging.info("Labels %s become %s", labels, ebird_ids)
+#     return ebird_ids

@@ -2,7 +2,7 @@ import sys
 import json
 from pathlib import Path
 import csv
-from utils import get_ebird_map, get_ebird_id, get_ebird_ids_to_labels
+from utils import get_label_to_ebird_map, get_ebird_id, get_ebird_ids_to_labels
 
 # def debug_labels():
 #     ebird_map = get_ebird_map()
@@ -39,7 +39,7 @@ from utils import get_ebird_map, get_ebird_id, get_ebird_ids_to_labels
 
 
 def main():
-    ebird_map = get_ebird_map()
+    ebird_map = get_label_to_ebird_map()
 
     metadata_f = Path(sys.argv[1])
     with metadata_f.open("r") as f:
@@ -77,13 +77,27 @@ def main():
 
     from birdsconfig import BIRD_TRAIN_LABELS
 
-    ids = []
-    for lbl in BIRD_TRAIN_LABELS:
-        ids.append(ebird_map.get(lbl.replace(" ", "-"), "NOT FOUND " + lbl))
-    ids = list(set(ids))
-    ids.sort()
-    for e_id in ids:
-        print(f'"{e_id}",')
+    RELABEL = {}
+    RELABEL["mohoua novaeseelandiae"] = "brown-creeper"
+    RELABEL["new zealand fantail"] = "fantail"
+    RELABEL["shining bronze-cuckoo"] = "shining-cuckoo"
+    RELABEL["long-tailed koel"] = "long-tailed-cuckoo"
+    RELABEL["masked lapwing"] = "spur-winged-plover"
+    RELABEL["sacred kingfisher (new zealand)"] = "new-zealand-kingfisher"
+    RELABEL["norfolk island gerygone"] = "norfolk gerygone"
+    RELABEL["kelp gull"] = "southern-black-backed-gull"
+    RELABEL["common myna"] = "indian-myna"
+    RELABEL["baillon's crake"] = "marsh-crake"
+    RELABEL["north island brown kiwi"] = "kiwi"
+    RELABEL["great spotted kiwi"] = "kiwi"
+    RELABEL["norfolk morepork"] = "morepork"
+    RELABEL["golden whistler"] = "whistler"
+    RELABEL["norfolk golden whistler"] = "whistler"
+    RELABEL["golden-backed whistler"] = "whistler"
+    for k, v in RELABEL.items():
+        k = get_ebird_id(k, ebird_map)
+        v = get_ebird_id(v, ebird_map)
+        print(f'"{k}":"{v}",')
 
 
 if __name__ == "__main__":

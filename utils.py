@@ -1,7 +1,7 @@
 import csv
 
 
-def get_ebird_map():
+def get_label_to_ebird_map():
     ebird_map = {}
     first = True
     with open("classes.csv", newline="") as csvfile:
@@ -38,7 +38,7 @@ def get_ebird_id(label, ebird_map):
 
 
 def get_ebird_ids_to_labels():
-    ebird_map = get_ebird_map()
+    ebird_map = get_label_to_ebird_map()
     labels_to_ebird = {}
     for lbl, ebird_id in ebird_map.items():
         if ebird_id in labels_to_ebird:
