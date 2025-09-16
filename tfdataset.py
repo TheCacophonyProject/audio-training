@@ -20,7 +20,7 @@ from badwinner2 import MagTransform
 from birdsconfig import (
     ANIMAL_LABELS,
     ALL_BIRDS,
-    MERGE_LABELS,
+    RELABEL_MAP,
     BIRD_TRAIN_LABELS,
     EXTRA_LABELS,
     OTHER_LABELS,
@@ -54,8 +54,8 @@ MOREPORK_MAX = 1200
 
 
 def set_merge_labels(new_merge):
-    global MERGE_LABELS
-    MERGE_LABELS = new_merge
+    global RELABEL_MAP
+    RELABEL_MAP = new_merge
     logging.info("Set merge %s", new_merge)
 
 
@@ -76,8 +76,8 @@ def set_specific_by_count(meta):
             ebird_id_to_labels[ebird_id] = [label]
     #        logging.info("Adding %s for %s",ebird_id,label)
 
-    dataset_lbls = ["total", "train samples", "rec counts", "validation sample"]
-    count_dics = [counts, training, training_rec, validation]
+    dataset_lbls = ["train samples", "rec counts", "validation sample"]
+    count_dics = [training, training_rec, validation]
     for v, lbl_list in ebird_id_to_labels.items():
         for k in lbl_list:
             for dataset_lbl, dataset in zip(dataset_lbls, count_dics):
@@ -103,7 +103,7 @@ def set_specific_by_count(meta):
                     )
 
     # set counts to be counts of all merged labels
-    for k, v in MERGE_LABELS.items():
+    for k, v in RELABEL_MAP.items():
         for dataset_lbl, dataset in zip(dataset_lbls, count_dics):
             if k in dataset:
                 if v not in dataset:
@@ -158,7 +158,7 @@ def get_excluded_labels(labels):
             continue
         elif l not in BIRD_TRAIN_LABELS and l not in EXTRA_LABELS:
             excluded_labels.append(l)
-    for k, v in MERGE_LABELS.items():
+    for k, v in RELABEL_MAP.items():
         if v not in excluded_labels and k in excluded_labels:
             excluded_labels.remove(k)
     return excluded_labels
@@ -330,13 +330,13 @@ def get_remappings(
         if excluded in labels:
             new_labels.remove(excluded)
 
-    merge_v = list(MERGE_LABELS.values())
+    merge_v = list(RELABEL_MAP.values())
 
-    for k, v in MERGE_LABELS.items():
+    for k, v in RELABEL_MAP.items():
         if k in new_labels and v not in new_labels:
             new_labels.append(v)
     new_labels.sort()
-    for label in MERGE_LABELS.keys():
+    for label in RELABEL_MAP.keys():
         if label in new_labels and label not in merge_v:
             new_labels.remove(label)
 
@@ -345,9 +345,9 @@ def get_remappings(
             re_dic[l] = -1
             logging.info("Excluding %s", l)
         else:
-            if l in MERGE_LABELS and MERGE_LABELS[l] in new_labels:
-                logging.info("Re labeiling %s as %s", l, MERGE_LABELS[l])
-                re_dic[l] = new_labels.index(MERGE_LABELS[l])
+            if l in RELABEL_MAP and RELABEL_MAP[l] in new_labels:
+                logging.info("Re labeiling %s as %s", l, RELABEL_MAP[l])
+                re_dic[l] = new_labels.index(RELABEL_MAP[l])
             else:
                 re_dic[l] = new_labels.index(l)
     if not use_generic_bird:
@@ -357,14 +357,14 @@ def get_remappings(
         labels = new_labels
 
     ebird_map = get_ebird_ids_to_labels()
-    for l in labels:
 
+    for l in labels:
         if l in excluded_labels:
             continue
         remap_label = None
         # until we rewrite records if ebird ids need to remape all labels to ebird ids
         text_labels = ebird_map.get(l.lower().replace(" ", "-"))
-        if text_labels is not None:
+        if text_labels is not None and l in new_labels:
             for text_l in text_labels:
                 re_dic[text_l] = new_labels.index(l)
                 # logging.info("Adding remap %s to %s", text_l, l)
@@ -1352,8 +1352,8 @@ def main():
         fmax=fmax,
         # MOREPORK_MAX,
         only_features=args.only_features,
-        debug=True,
-        debug_bird="whistler",
+        # debug=True,
+        # debug_bird="whistler",
         model_name="efficientnet",
         use_generic_bird=False,
         cache=True,
