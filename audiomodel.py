@@ -1823,10 +1823,8 @@ def init_labels(data_dir, **args):
         ebird_labels.append(get_ebird_id(l, ebird_map))
     labels = list(set(ebird_labels))
     labels.sort()
-    if not args.get("use_generic_bird", False):
-        if "bird" in labels:
-            labels.remove("bird")
-    elif "bird" not in labels:
+
+    if args.get("use_generic_bird", False) and "bird" not in labels:
         labels.append("bird")
     if "noise" not in labels:
         labels.append("noise")
@@ -1837,7 +1835,8 @@ def init_labels(data_dir, **args):
     logging.info("Loading train")
 
     excluded_labels = get_excluded_labels(labels)
-
+    if not args.get("use_generic_bird", False):
+        excluded_labels.append("bird")
     if args.get("only_features", False):
         from tfdataset import ANIMAL_LABELS, set_merge_labels
 
@@ -1900,7 +1899,6 @@ def init_labels(data_dir, **args):
 
         set_merge_labels(merge_labels)
     else:
-        all_birds = True
         if "human" not in excluded_labels:
             excluded_labels.append("human")
         if "noise" not in excluded_labels:
