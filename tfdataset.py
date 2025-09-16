@@ -150,12 +150,13 @@ def set_specific_by_count(meta):
 def get_excluded_labels(labels):
     excluded_labels = []
     for l in labels:
-        # FOR HUMAN MODEL
-        # if l not in ["human", "noise"]:
-        #     excluded_labels.append(l)
-        # continue
-
-        if l not in BIRD_TRAIN_LABELS and l not in EXTRA_LABELS:
+        if l in NOISE_LABELS and "noise" in labels:
+            continue
+        elif l in HUMAN_LABELS and "human" in labels:
+            continue
+        elif l in OTHER_LABELS and "other" in labels:
+            continue
+        elif l not in BIRD_TRAIN_LABELS and l not in EXTRA_LABELS:
             excluded_labels.append(l)
     for k, v in MERGE_LABELS.items():
         if v not in excluded_labels and k in excluded_labels:
@@ -340,9 +341,8 @@ def get_remappings(
             new_labels.remove(label)
 
     for l in labels:
-        if l in excluded_labels and l:
+        if l in excluded_labels:
             re_dic[l] = -1
-            # remapped[l] = []
             logging.info("Excluding %s", l)
         else:
             if l in MERGE_LABELS and MERGE_LABELS[l] in new_labels:
@@ -350,8 +350,6 @@ def get_remappings(
                 re_dic[l] = new_labels.index(MERGE_LABELS[l])
             else:
                 re_dic[l] = new_labels.index(l)
-            # remapped[l] = [l]
-            # values.append(new_labels.index(l))
     if not use_generic_bird:
         re_dic["bird"] = -1
 
@@ -359,49 +357,38 @@ def get_remappings(
         labels = new_labels
 
     ebird_map = get_ebird_ids_to_labels()
-    for l_index, l in enumerate(labels):
-        print("Remapping", l)
+    for l in labels:
+
+        if l in excluded_labels:
+            continue
+        remap_label = None
         # until we rewrite records if ebird ids need to remape all labels to ebird ids
         text_labels = ebird_map.get(l.lower().replace(" ", "-"))
         if text_labels is not None:
             for text_l in text_labels:
-                re_dic[text_l] = l_index
+                re_dic[text_l] = new_labels.index(l)
                 # logging.info("Adding remap %s to %s", text_l, l)
 
         if l in NOISE_LABELS:
             if "noise" in new_labels:
                 remap_label = "noise"
-                extra_label_map[l] = new_labels.index("noise")
-            continue
         elif l in HUMAN_LABELS:
             if "human" in new_labels:
-                extra_label_map[l] = new_labels.index("human")
-            continue
+                remap_label = "human"
         elif l in OTHER_LABELS:
             if "other" in new_labels:
-                extra_label_map[l] = new_labels.index("other")
-            continue
-        elif l in BIRD_TRAIN_LABELS:
-            if not use_generic_bird:
-                continue
-            if "bird" in new_labels:
-                if l != "bird":
-                    extra_label_map[l] = new_labels.index("bird")
-            # or l == "human":
-            continue
+                remap_label = "other"
         elif l in ALL_BIRDS:
-            if not use_generic_bird:
+            if not use_generic_bird or l == "bird":
                 continue
-            remap_label = "bird"
-            if l != "bird":
+            if l in BIRD_TRAIN_LABELS:
                 extra_label_map[l] = new_labels.index("bird")
+            else:
+                remap_label = "bird"
         else:
             continue
-        if l == remap_label:
+        if l == remap_label or remap_label is None:
             continue
-        if l in excluded_labels:
-            continue
-        # remapped[remap_label].append(l)
         re_dic[l] = new_labels.index(remap_label)
         # del remapped[l]
     return (extra_label_map, re_dic, new_labels)
