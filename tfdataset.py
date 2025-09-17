@@ -339,7 +339,7 @@ def get_remappings(
     for label in RELABEL_MAP.keys():
         if label in new_labels and label not in merge_v:
             new_labels.remove(label)
-
+            excluded_labels.append(label)
     for l in labels:
         if l in excluded_labels:
             re_dic[l] = -1
@@ -1068,6 +1068,8 @@ def read_tfrecord(
     if labeled:
         # label = tf.cast(example["audio/class/label"], tf.int32)
         label = tf.cast(example["audio/class/text"], tf.string)
+        label =  tf.strings.regex_replace(label," ", "-")
+
         split_labels = tf.strings.split(label, sep="\n")
         global remapped_y, extra_label_map
         labels = remapped_y.lookup(split_labels)

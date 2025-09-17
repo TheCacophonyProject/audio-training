@@ -205,7 +205,6 @@ NOISE_LABELS = [
     "glass_breaking",
     "hand_saw",
     "helicopter",
-    "insect",
     "keyboard_typing",
     "library",
     "mouse_click",
