@@ -165,17 +165,31 @@ def debug_labels():
 
 
 def labels_to_ebird_links(metadata):
-    ebirds = metadata["ebird_ids"]
+    remapped = metadata["remapped_labels"]
     labels = metadata["labels"]
+    ebird_id_mappings = {}
+
+    for l in labels:
+        ebird_id_mappings[l] = {l}
+    for original_id, v in remapped.items():
+        if v == -1:
+            continue
+        ebird_id = labels[v]
+        ebird_id_mappings[ebird_id].add(original_id)
+
+    print(ebird_id_mappings)
+
     ids_to_lbls = get_ebird_ids_to_labels()
 
-    for lbl_ebirds, label in zip(ebirds, labels):
-        if len(lbl_ebirds) > 1:
-            print(label)
-        for ebird_id in lbl_ebirds:
-            translated = ids_to_lbls[ebird_id]
+    for ebird_id, merged_ids in ebird_id_mappings.items():
+        translated = ids_to_lbls.get(ebird_id, [ebird_id])[0]
+
+        if len(merged_ids) > 1:
+            print(translated)
+        for og_id in merged_ids:
+            translated = ids_to_lbls.get(og_id, [og_id])[0]
             print(
-                f"{label},{translated[0]},https://ebird.org/species/{ebird_id}?siteLanguage=en_NZ"
+                f"-,{translated},https://ebird.org/species/{og_id}?siteLanguage=en_NZ"
             )
 
 
@@ -186,7 +200,7 @@ def main():
     metadata_f = Path(sys.argv[1])
     with metadata_f.open("r") as f:
         metadata = json.load(f)
-
+    labels_to_ebird_links(metadata)
     ebird_ids = []
     for l in metadata["labels"]:
         l = l.replace(" ", "-")

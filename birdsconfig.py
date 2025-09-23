@@ -2,7 +2,7 @@
 # i.e red and yellow parekeets into parakeet
 RELABEL_MAP = {
     "gragoo1": "cangoo",
-    "mallar3": "x00458",
+    "x00458": "mallar3",
     "domesz3tic-chicken": "redjun1",
     "yeepen1": "litpen1",
     "yefpar3": "parake",

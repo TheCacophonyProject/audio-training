@@ -333,15 +333,21 @@ def get_remappings(
             new_labels.remove(excluded)
 
     merge_v = list(RELABEL_MAP.values())
-
+    logging.info("New labels are %s", new_labels)
     for k, v in RELABEL_MAP.items():
         if k in new_labels and v not in new_labels:
-            new_labels.append(v)
+            if v in ["noise", "human"]:
+                excluded_labels.append(k)
+                logging.info("Excluding %s as not using noise human", k)
+            else:
+                new_labels.append(v)
     new_labels.sort()
     for label in RELABEL_MAP.keys():
         if label in new_labels and label not in merge_v:
             new_labels.remove(label)
-            excluded_labels.append(label)
+            logging.info(
+                "Removing from labels %s as is merged into another label", label
+            )
     for l in labels:
         if l in excluded_labels:
             re_dic[l] = -1
