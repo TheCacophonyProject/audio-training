@@ -164,8 +164,23 @@ def debug_labels():
     print(text_labels)
 
 
+def labels_to_ebird_links(metadata):
+    ebirds = metadata["ebird_ids"]
+    labels = metadata["labels"]
+    ids_to_lbls = get_ebird_ids_to_labels()
+
+    for lbl_ebirds, label in zip(ebirds, labels):
+        if len(lbl_ebirds) > 1:
+            print(label)
+        for ebird_id in lbl_ebirds:
+            translated = ids_to_lbls[ebird_id]
+            print(
+                f"{label},{translated[0]},https://ebird.org/species/{ebird_id}?siteLanguage=en_NZ"
+            )
+
+
 def main():
-    debug_labels()
+    # debug_labels()
     ebird_map = get_label_to_ebird_map()
 
     metadata_f = Path(sys.argv[1])

@@ -572,10 +572,11 @@ class AudioModel:
                 if args.get("multi_label")
                 else "val_categorical_accuracy.weights.h5"
             )
-            self.model.load_weights(os.path.join(self.checkpoint_folder, run_name, acc))
-            confusion_file = (
-                self.checkpoint_folder / run_name / "confusion-val_binary_accuracy"
+            weights = "val_loss.weights.h5"
+            self.model.load_weights(
+                os.path.join(self.checkpoint_folder, run_name, weights)
             )
+            confusion_file = self.checkpoint_folder / run_name / "confusion-val_loss"
             if args.get("multi_label"):
                 multi_confusion_single(
                     self.model,
@@ -1956,6 +1957,8 @@ def main():
                         compile=False,
                     )
                     other_models.append(model_2)
+            pre_model = None
+            pre_labels = None
             if args.pre_model is not None:
                 pre_model_path = Path(args.pre_model)
                 if pre_model_path.is_dir():
@@ -2005,13 +2008,14 @@ def main():
             extra_label_map=meta_data.get("extra_label_map"),
             stop_on_empty=False,
             one_hot=args.one_hot,
-            use_generic_bird=args.use_generic_bird,
+            use_generic_bird=meta_data.get("use_generic_bird", False),
             filter_freq=meta_data.get("filter_freq", False),
             only_features=meta_data.get("only_features", False),
             features=meta_data.get("features", False),
             multi_label=meta_data.get("multi_label", True),
             loss_fn=meta_data.get("loss_fn"),
-            load_raw=meta_data.get("load_raw"),
+            load_raw=False,
+            # meta_data.get("load_raw"),
             fmin=meta_data.get("fmin"),
             fmax=meta_data.get("fmax"),
             break_freq=meta_data.get("break_freq"),
@@ -2224,7 +2228,7 @@ def parse_args():
         type=str2bool,
         nargs="?",
         const=True,
-        default=True,
+        default=False,
         help="Use bird as well as specific label",
     )
 

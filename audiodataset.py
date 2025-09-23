@@ -123,6 +123,8 @@ class AudioDataset:
                     audio_f = f.with_suffix(".wav")
                 if not audio_f.exists():
                     audio_f = f.with_suffix(".mp3")
+                if not audio_f.exists():
+                    audio_f = f.with_suffix(".flac")
                     # hack to find files, probably should look
                     # at all files in dir or store file in metadata
                 r = Recording(meta, audio_f, self.config)
@@ -845,7 +847,7 @@ def load_features(signal, sr):
 
 
 class Track:
-    def __init__(self, metadata, filename, rec_id, rec, segment_length=3):
+    def __init__(self, metadata, filename, rec_id, rec, segment_length=3, tighten=True):
         self.rec = rec
         self.filename = filename
         self.rec_id = rec_id
@@ -897,8 +899,8 @@ class Track:
                 self.animal_track = True
             elif tag in NOISE_LABELS:
                 self.noise_track = True
-
-        self.tighten_track(metadata, segment_length)
+        if tighten:
+            self.tighten_track(metadata, segment_length)
 
     def tighten_track(self, metadata, segment_length):
 
@@ -1420,7 +1422,7 @@ def remove_rms_noise(
 
 def best_rms(rms, segment_length=3, sr=48000, hop_length=281):
     sr = 48000
-    window_size = sr * 3 / hop_length
+    window_size = sr * segment_length / hop_length
     window_size = int(window_size)
     first_window = np.sum(rms[:window_size])
     rolling_sum = first_window
@@ -1429,7 +1431,6 @@ def best_rms(rms, segment_length=3, sr=48000, hop_length=281):
         rolling_sum = rolling_sum - rms[i - 1] + rms[i + window_size]
         if rolling_sum > max_index[1]:
             max_index = (i, rolling_sum)
-
     return max_index
 
 

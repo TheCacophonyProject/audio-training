@@ -16,6 +16,7 @@ import numpy as np
 from dateutil.parser import parse as parse_date
 from datetime import datetime
 import matplotlib.pyplot as plt
+import geopandas as gpd
 
 NZ_RECT = [166.419, -34.0, 178.517093541, -47.29]
 
@@ -25,11 +26,11 @@ MAX_LAT = 0.10025559492370206
 
 
 def read_ebird_atlas_squares():
-    import geopandas as gpd
-
+    
     global MAX_LNG, MAX_LAT
 
     kml_file = "Atlas Grid Squares with names_June 2020.kml"
+    logging.info("Reading NZ ebird squares from %s",kml_file)
     gdf = gpd.read_file(kml_file, driver="KML")
     all_bounds = []
     max_lng = None
@@ -88,16 +89,13 @@ def slow_find(squares, lng, lat):
     return None, None
 
 
-def find_fast(squares, lng, lat):
+def binary_grid_search(squares, lng, lat):
     high = len(squares)
     low = 0
     found = None
     # squares in order of lng so can binary search
     while high > low:
         mid = (high + low) // 2
-        # print("Checing",high,low,mid)
-        # if mid >= len(squares):
-        # return None
         square = squares[mid]
         bounds = square["bounds"]
 
@@ -139,6 +137,7 @@ def find_fast(squares, lng, lat):
 
 
 def set_neighbours(squares):
+    logging.info("Setting neighbours metadata of squares")
     max_lng = 0.16
     max_lat = 0.11
 
@@ -211,8 +210,6 @@ def birds_at_location(grid_file,lat,lng):
         grid_data = metadata["grid_meta"]
 
 def main():
-    # labels_with_one_samples("species_per_square.json")
-    # 1/0
     fmt = "%(process)d %(thread)s:%(levelname)7s %(message)s"
     logging.basicConfig(
         stream=sys.stderr, level=logging.INFO, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"
@@ -223,6 +220,7 @@ def main():
     squares = sorted(squares, key=lambda square: square[0])
 
     region_metafile = Path("ebird_species.json")
+    logging.info("Reading regoin ebird metadata from %s",region_metafile)
     with region_metafile.open("r") as f:
         region_meta = json.load(f)
     grid_meta = []
@@ -246,12 +244,10 @@ def main():
 
     logging.info("Loading grid data from ", args.csv)
     count = 0
-
     with args.csv.open("r") as f:
         dreader = csv.reader(f, delimiter="\t", quotechar="|")
         first = True
         headers = None
-        atlas_block_i = None
         name_i = None
         lat_i = None
         lng_i = None
@@ -263,20 +259,18 @@ def main():
             if first:
                 headers = row
                 print(headers)
-                atlas_block_i = headers.index("ATLAS BLOCK")
                 name_i = headers.index("COMMON NAME")
                 lat_i = headers.index("LATITUDE")
                 lng_i = headers.index("LONGITUDE")
                 date_i = headers.index("OBSERVATION DATE")
                 type_i = headers.index("OBSERVATION TYPE")
-                county_i = headers.index("COUNTY")
                 first = False
                 continue
             lat = float(row[lat_i])
             lng = float(row[lng_i])
-            res = find_fast(grid_meta, lng, lat)
+            res = binary_grid_search(grid_meta, lng, lat)
             if res is None:
-                # shall we just add these, probably could not add them also
+                # shall we just add these, probably could not add them also generally in the middle of the oceaon
                 grid_meta, square = add_new_square(grid_meta, lng, lat, region_meta)
             else:
                 _, square = res
@@ -284,9 +278,8 @@ def main():
             common_name = row[name_i]
             ebird_id = common_ebird_map.get(common_name.lower(), "unknown")
             if ebird_id == "unknown":
-                print("UNmatched bird ", common_name, row)
-                1 / 0
-            obs_type = row[type_i]
+                logging.warning("Unmatched bird %s %s", common_name, row)
+                continue
             obs_date = parse_date(row[date_i])
             if latest_date is None or obs_date > latest_date:
                 latest_date = obs_date
@@ -303,7 +296,7 @@ def main():
                 logging.info("Completed %s of unknown", count)
     filename = "species_per_square.json"
     set_neighbours(grid_meta)
-    logging.info("Writing to %s", filename)
+    logging.info("Writing metadata to %s", filename)
     metadata = {
         "latest_obs_date": latest_date.isoformat(),
         "generated": datetime.now().isoformat(),

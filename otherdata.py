@@ -1057,12 +1057,15 @@ def add_rms_meta(dir, analyse=False):
     if analyse:
         func = analyze_rms
     meta_files = dir.glob("**/*.txt")
+    meta_files = list(meta_files)
+    meta_files.sort()
+    meta_files = meta_files[:1]
     with Pool(processes=8) as pool:
         [0 for x in pool.imap_unordered(func, meta_files, chunksize=8)]
 
 
 def analyze_rms(metadata_file):
-    from tfdataset import SPECIFIC_BIRD_LABELS, GENERIC_BIRD_LABELS
+    from birdsconfig import ALL_BIRDS
 
     try:
         metadata_file = metadata_file.with_suffix(".txt")
@@ -1091,7 +1094,7 @@ def analyze_rms(metadata_file):
         if len(track.human_tags) == 0:
             continue
         for tag in track.human_tags:
-            if tag in SPECIFIC_BIRD_LABELS or tag in GENERIC_BIRD_LABELS:
+            if tag in ALL_BIRDS:
                 bird_tag = True
         if bird_tag:
             rms = t["bird_rms"]
@@ -1138,7 +1141,6 @@ def analyze_rms(metadata_file):
 
 
 def process_rms(metadata_file, tier1=False):
-    from tfdataset import SPECIFIC_BIRD_LABELS, GENERIC_BIRD_LABELS
 
     try:
         metadata_file = metadata_file.with_suffix(".txt")
@@ -1185,19 +1187,29 @@ def add_rms_data_to_tracks(y, sr, tracks):
     n_fft = 4096
     hop_length = 281
     freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
-    below_freq = 500
-    morepork_max_freq = 1200
-    upper_max_freq = 3000
+    print(freqs)
+    # just for bittern as the calls are in 0-500Hz
+    min_noise_max_freq = 100
+    min_noise_bin = 0
+
+    noise_max_freq = 500
     lower_noise_bin = 0
+    morepork_max_freq = 1200
+    bittern_max_freq = 500
+    upper_max_freq = 3000
     morepork_upper_bin = 0
     upper_noise_bin = 0
-
+    bittern_upper_bin = 0
     max_bin = 0
     for i, f in enumerate(freqs):
-        if f < below_freq:
+        if f < min_noise_max_freq:
+            min_noise_bin = i
+        if f < noise_max_freq:
             lower_noise_bin = i
         if f < morepork_max_freq:
             morepork_upper_bin = i + 1
+        if f < bittern_max_freq:
+            bittern_upper_bin = i + 1
         if f > upper_max_freq:
             upper_noise_bin = i
             break
@@ -1205,7 +1217,7 @@ def add_rms_data_to_tracks(y, sr, tracks):
 
     for t in tracks:
 
-        track = Track(t, None, 0, None)
+        track = Track(t, None, 0, None, tighten=False)
 
         # start = t["start"]
         # end = t["end"]
@@ -1221,32 +1233,35 @@ def add_rms_data_to_tracks(y, sr, tracks):
         noise_stft[lower_noise_bin + 1 :, :] = 0
         S, phase = librosa.magphase(noise_stft)
         noise_rms = librosa.feature.rms(S=S, frame_length=n_fft, hop_length=hop_length)
-        t["lower_nose_bin"] = lower_noise_bin + 1
 
         upper_stft = stft.copy()
         upper_stft[:upper_noise_bin, :] = 0
         S, phase = librosa.magphase(upper_stft)
         upper_rms = librosa.feature.rms(S=S, frame_length=n_fft, hop_length=hop_length)
         t["upper_noise_bin"] = upper_noise_bin
-
-        if "morepork" in track.human_tags:
+        lower_bin = lower_noise_bin
+        upper_bin = None
+        logging.info("Human tags %s", track.human_tags)
+        if "ausbit1" in track.human_tags:
+            upper_bin = bittern_upper_bin
+            lower_bin = min_noise_bin
+            logging.info("Using bittern lower %s upper %s", lower_bin, upper_bin)
             # choose different bins depending
-            t["bird_rms_bin"] = [lower_noise_bin + 1, morepork_upper_bin]
-            stft[:lower_noise_bin, :] = 0
-            stft[morepork_upper_bin:, :] = 0
-            S, phase = librosa.magphase(stft)
-            bird_rms = librosa.feature.rms(
-                S=S, frame_length=n_fft, hop_length=hop_length
-            )
-        else:
-            t["bird_rms_bin"] = [lower_noise_bin + 1]
+        if "morepo2" in track.human_tags:
+            upper_bin = morepork_upper_bin
+            # choose different bins depending
+        t["lower_nose_bin"] = lower_bin + 1
 
-            stft[:lower_noise_bin, :] = 0
-            S, phase = librosa.magphase(stft)
-            bird_rms = librosa.feature.rms(
-                S=S, frame_length=n_fft, hop_length=hop_length
-            )
-            # noise or human
+        stft[:lower_bin, :] = 0
+        if upper_bin is not None:
+            stft[upper_bin:, :] = 0
+            t["bird_rms_bin"] = [lower_bin + 1, upper_bin]
+        else:
+            t["bird_rms_bin"] = [lower_bin + 1]
+
+        S, phase = librosa.magphase(stft)
+        bird_rms = librosa.feature.rms(S=S, frame_length=n_fft, hop_length=hop_length)
+        # noise or human
         t["upper_rms"] = upper_rms[0].tolist()
         t["noise_rms"] = noise_rms[0].tolist()
         t["bird_rms"] = bird_rms[0].tolist()
@@ -1769,6 +1784,39 @@ def generate_tier_metadata_folder(dir):
         ]
 
 
+def graph_rms(filename):
+    with filename.open("r") as f:
+        metadata = json.load(f)
+    import matplotlib.pyplot as plt
+
+    for track in metadata["tracks"]:
+        t = Track(track, filename, 0, None)
+        logging.info("Track rms best track is %s - %s", t.start, t.end)
+        upper_rms = np.array(track["upper_rms"])
+        noise_rms = np.array(track["noise_rms"])
+        rms = np.array(track["bird_rms"])
+        sr = 48000
+        n_fft = 4096
+        fig, ax = plt.subplots(nrows=3, sharex=True)
+        times = librosa.times_like(rms, sr=sr, n_fft=n_fft, hop_length=281)
+        ax[0].semilogy(times, rms, label="BIRD Energy")
+        # ax[0].set(xticks=[])
+        ax[0].legend()
+        ax[0].label_outer()
+
+        ax[1].semilogy(times, noise_rms, label="Noise Energy")
+        ax[1].set(xticks=[])
+        ax[1].legend()
+        ax[1].label_outer()
+
+        ax[2].semilogy(times, upper_rms, label="Upper Energy")
+        ax[2].set(xticks=[])
+        ax[2].legend()
+        ax[2].label_outer()
+
+        plt.show()
+
+
 def main():
     init_logging()
     args = parse_args()
@@ -1786,7 +1834,10 @@ def main():
             tier1_data(args.dir, args.split_file)
     elif args.rms:
         logging.info("Adding rms data %s", args.analyse)
-        add_rms_meta(args.dir, args.analyse)
+        if args.analyse:
+            graph_rms(args.dir)
+        else:
+            add_rms_meta(args.dir, args.analyse)
     elif args.csv:
         logging.info("Loading data divided by folder")
         csv_dataset(args.dir)

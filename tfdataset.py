@@ -65,8 +65,10 @@ def set_specific_by_count(meta):
     training_rec = counts["train"]["rec_counts"]
 
     validation = counts["validation"]["sample_counts"]
-    ebird_ids = meta["ebird_ids"]
-
+    if "ebird_ids" in meta:
+        ebird_ids = meta["ebird_ids"]
+    else:
+        ebird_ids = meta["labels"]
     # just for until dataset is build with ebird ids
     ebird_id_to_labels = {}
     for label, ebird_id in zip(meta["labels"], ebird_ids):
@@ -841,6 +843,15 @@ def get_a_dataset(dir, labels, args):
     #         40096, reshuffle_each_iteration=args.get("reshuffle", True)
     #     )
 
+    do_bittern_butter = True
+    if do_bittern_butter:
+        bittern_i = labels.index("ausbit1")
+        bittern_mask = np.zeros(num_labels, dtype=np.float32)
+        bittern_mask[bittern_i] = 1
+
+        bittern_mask = tf.constant(bittern_mask, dtype=tf.float32)
+        dataset = dataset.map(lambda x, y: butter_bitterns(bittern_mask, x, y))
+
     if batch_size is not None:
         dataset = dataset.batch(batch_size, drop_remainder=False)
 
@@ -1068,7 +1079,7 @@ def read_tfrecord(
     if labeled:
         # label = tf.cast(example["audio/class/label"], tf.int32)
         label = tf.cast(example["audio/class/text"], tf.string)
-        label =  tf.strings.regex_replace(label," ", "-")
+        label = tf.strings.regex_replace(label, " ", "-")
 
         split_labels = tf.strings.split(label, sep="\n")
         global remapped_y, extra_label_map
@@ -1291,8 +1302,12 @@ def main():
     file = tf_dir.parent / "training-meta.json"
     with file.open("r") as f:
         meta = json.load(f)
-    labels.update(meta.get("ebird_ids", []))
-    # labels.add("bird")
+    if "ebird_ids" in meta:
+        labels.update(meta.get("ebird_ids", []))
+    else:
+        labels.update(meta.get("labels", []))
+
+        # labels.add("bird")
     labels.add("noise")
     # labels = list(labels)
     set_specific_by_count(meta)
@@ -1348,7 +1363,7 @@ def main():
         use_bird_tags=args.use_bird_tags,
         load_all_y=True,
         shuffle=False,
-        load_raw=False,
+        load_raw=True,
         n_fft=4096,
         fmin=fmin,
         fmax=fmax,
@@ -1363,7 +1378,7 @@ def main():
         augment=False,
         # signal_less_than = 0.1
     )
-    return
+    # return
     # for epoch in range(5):
     #     global_epoch.assign(epoch)
     #     print("Global epoch assigned",global_epoch.value())
@@ -1571,8 +1586,8 @@ def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
         img = image_batch[n]
         plot_mel(image_batch[n][:, :, 0], ax)
         # np.save(f"dataset-images/batch-{batch_i}-{rec}-{start_s:.1f}.npy",image_batch[n])
-    plt.savefig(f"dataset-images/batch-{batch_i}.png")
-    # plt.show()
+    # plt.savefig(f"dataset-images/batch-{batch_i}.png")
+    plt.show()
 
 
 def plot_mfcc(mfccs, ax):
@@ -1797,6 +1812,20 @@ def raw_to_mel_dual(x, y):
 
 
 @tf.function
+def butter_bitterns(mask, input, y):
+    logging.info("Butter bitterns %s", mask)
+    logging.info("Input is %s", input.shape)
+    if tf.math.reduce_all(tf.math.equal(y[0], mask)):
+        shape = input.shape
+        input = butter_function(input, 100, 500, 10)
+        input.set_shape(shape)
+
+    logging.info("Input now is %s", input.shape)
+
+    return input, y
+
+
+@tf.function
 def normalize(input, y):
 
     if isinstance(input, tuple):
@@ -1834,7 +1863,7 @@ def raw_to_mel(x, y):
         fmax = FMAX
     # logging.info("Applying butter %s %s", fmin, fmax)
     # not needed if using mel freq bin fmin and fmax
-    # raw =  butter_function(raw,fmin,fmax)
+    # raw =  buttr_efunction(raw,fmin,fmax)
 
     stft = tf.signal.stft(
         raw,
@@ -1872,8 +1901,11 @@ def raw_to_mel(x, y):
     return x, y
 
 
-def butter_function(x, lowcut, highcut):
-    x = tf.numpy_function(butter_bandpass_filter, [x, lowcut, highcut], tf.float32)
+@tf.function
+def butter_function(x, lowcut, highcut, order=2):
+    x = tf.numpy_function(
+        butter_bandpass_filter, [x, lowcut, highcut, 48000, order], tf.float32
+    )
     return x
 
 

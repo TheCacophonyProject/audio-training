@@ -79,17 +79,17 @@ def plot_mel_signals(mel, signals, signals2=[], i=0, colours=None, fmin=50, fmax
     plt.close()
 
 
-def plot_spec(S, filename="spec"):
+def plot_spec(S, filename="spec", fmin=0, fmax=30000):
     fig = plt.figure(figsize=(10, 10))
     ax = plt.subplot(1, 1, 1)
     img = librosa.display.specshow(
         # S,
         librosa.amplitude_to_db(S, ref=np.max),
         x_axis="time",
-        y_axis="linear",
+        y_axis="log",
         sr=48000,
-        fmax=30000,
-        fmin=0,
+        # fmax=fmax,
+        # fmin=fmin,
         ax=ax,
         hop_length=281,
     )
