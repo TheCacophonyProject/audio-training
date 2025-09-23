@@ -50,7 +50,7 @@ import tensorflow as tf
 # import tensorflow_decision_forests as tfdf
 from tensorflow.keras import layers
 import ydf
-from utils import get_label_to_ebird_map, get_ebird_id
+from utils import get_label_to_ebird_map, get_ebird_id, get_ebird_ids_to_labels
 
 MIXED_PRECISION = False
 
@@ -1298,14 +1298,19 @@ def log_confusion_matrix(epoch, logs, model, dataset, writer, labels):
 
 def confusion(
     model,
-    labels,
+    model_labels,
     dataset,
     filename="confusion.png",
     one_hot=True,
     model_name=None,
     other_models=None,
 ):
-    labels = labels.copy()
+    ebird_labels = model_labels.copy()
+    labels = []
+    ebird_id_map = get_ebird_ids_to_labels()
+    for ebird_id in ebird_labels:
+        label = ebird_id_map.get(ebird_id, [ebird_id])
+        labels.append(label[0])
     true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
     true_categories = tf.concat(true_categories, axis=0)
     y_true = []
