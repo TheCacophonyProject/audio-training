@@ -2091,17 +2091,26 @@ def main():
                         model_name=model_name,
                     )
                 else:
-                    confusion_with_pre(
+                    confusion(
                         model,
                         labels,
                         dataset,
                         confusion_file,
                         one_hot=not meta_data.get("only_features"),
-                        model_name=model_name,
                         other_models=other_models,
-                        pre_model=pre_model,
-                        pre_labels=pre_labels,
                     )
+
+                    # confusion_with_pre(
+                    #     model,
+                    #     labels,
+                    #     dataset,
+                    #     confusion_file,
+                    #     one_hot=not meta_data.get("only_features"),
+                    #     model_name=model_name,
+                    #     other_models=other_models,
+                    #     pre_model=pre_model,
+                    #     pre_labels=pre_labels,
+                    # )
 
     else:
         am = AudioModel(args.model_name, args.dataset_dir, args.second_dataset_dir)
