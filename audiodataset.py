@@ -39,6 +39,22 @@ REJECT_TAGS = ["unidentified", "other", "mammal"]
 MAX_TRACK_SAMPLES = 4
 
 ACCEPT_TAGS = None
+# [
+#     "ausbit1",
+#     "ausmag2",
+#     "dobplo1",
+#     "eurbla",
+#     "gryger1",
+#     "houspa",
+#     "kiwi",
+#     "morepo2",
+#     "nezbel1",
+#     "nezfan1",
+#     "rebdot1",
+#     "silver3",
+#     "sonthr1",
+#     "tui1",
+# ]
 # # [
 #     "house sparrow",
 #     "bird",
@@ -613,7 +629,7 @@ class Recording:
 
             sample_jitter = None
             sample_starts = (
-                np.arange(track_samples, step=start_stride, dtype=np.float32)
+                np.arange(track.length, step=start_stride, dtype=np.float32)
                 + track.start
             )
 

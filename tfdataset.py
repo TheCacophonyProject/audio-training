@@ -849,8 +849,9 @@ def get_a_dataset(dir, labels, args):
     #         40096, reshuffle_each_iteration=args.get("reshuffle", True)
     #     )
 
-    do_bittern_butter = True
+    do_bittern_butter = False
     if do_bittern_butter:
+        assert args.get("load_raw")
         bittern_i = labels.index("ausbit1")
         bittern_mask = np.zeros(num_labels, dtype=np.float32)
         bittern_mask[bittern_i] = 1
