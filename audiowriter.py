@@ -133,7 +133,6 @@ def create_tf_example(sample):
         ),
         "audio/raw": tfrecord_util.float_list_feature(np.float32(data.raw.ravel())),
     }
-    print("Writing ", sample.text_tags_s, sample.tags_s)
     if data.short_features is not None:
         feature_dict["audio/short_f"] = tfrecord_util.float_list_feature(
             np.float32(data.short_features.ravel())

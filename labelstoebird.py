@@ -193,8 +193,21 @@ def labels_to_ebird_links(metadata):
             )
 
 
+def test_labels():
+    gulls = [
+        "silver-gull-(red-billed)",
+        "kelp-gull",
+        "gull-sp.",
+        "black-billed-gull",
+        "southern black-backed gull",
+    ]
+    ebird_map = get_label_to_ebird_map()
+    for gull in gulls:
+        ebird_id = get_ebird_id(gull, ebird_map)
+        print(f"{gull} ebirdid: {ebird_id}")
+
+
 def main():
-    # debug_labels()
     ebird_map = get_label_to_ebird_map()
 
     metadata_f = Path(sys.argv[1])

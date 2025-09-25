@@ -9,6 +9,11 @@ RELABEL_MAP = {
     "refpar4": "parake",
     "nezrob2": "nezrob3",
     "redpol1": "comred",
+    "blbgul1": "gull",
+    "silgul2": "gull",
+    "kelgul": "gull",
+    "larus": "gull",
+    "rebgul1": "gull",
 }
 
 
