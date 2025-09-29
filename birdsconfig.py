@@ -2,7 +2,8 @@
 # i.e red and yellow parekeets into parakeet
 RELABEL_MAP = {
     "gragoo1": "cangoo",
-    "x00458": "mallar3",
+    "x00458": "duck",
+    "mallar3": "duck",
     "domesz3tic-chicken": "redjun1",
     "yeepen1": "litpen1",
     "yefpar3": "parake",
@@ -47,6 +48,7 @@ ALL_BIRDS.append("gull")
 ALL_BIRDS.append("dove")
 ALL_BIRDS.append("kiwi")
 ALL_BIRDS.append("norfolk silkeye")
+ALL_BIRDS.append("tree weta")
 
 
 # NOISE SECTION

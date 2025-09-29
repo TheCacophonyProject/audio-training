@@ -4,7 +4,7 @@ import csv
 def get_all_birds():
     allbirds = set()
     first = True
-    with open("classes.csv", newline="") as csvfile:
+    with open("eBird_taxonomy_v2024.csv", newline="") as csvfile:
         dreader = csv.reader(csvfile, delimiter=",", quotechar="|")
         _ = next(dreader)
         for row in dreader:

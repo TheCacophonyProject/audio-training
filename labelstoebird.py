@@ -4,6 +4,153 @@ from pathlib import Path
 import csv
 from utils import get_label_to_ebird_map, get_ebird_id, get_ebird_ids_to_labels
 
+new_labels = [
+    "ausbit1",
+    "ausmag2",
+    "auspip3",
+    "baicra4",
+    "blknod",
+    "blkswa",
+    "calqua",
+    "cangoo",
+    "comcha",
+    "commyn",
+    "comred",
+    "criros2",
+    "dobplo1",
+    "dunnoc1",
+    "eurbla",
+    "eurgol",
+    "eurgre1",
+    "eursta",
+    "fernbi1",
+    "frog",
+    "gryger1",
+    "gull",
+    "houspa",
+    "insect",
+    "kea1",
+    "kiwi",
+    "litowl1",
+    "lotkoe1",
+    "mallar3",
+    "maslap1",
+    "morepo2",
+    "nezbel1",
+    "nezfal1",
+    "nezfan1",
+    "nezkak1",
+    "nezpig2",
+    "nezrob3",
+    "noiger1",
+    "noipar1",
+    "oyster1",
+    "pacrob2",
+    "parake",
+    "parshe1",
+    "pipipi1",
+    "purswa6",
+    "redjun",
+    "rettro",
+    "riflem1",
+    "sackin1",
+    "sackin3",
+    "sbweye1",
+    "shbcuc1",
+    "silver3",
+    "skylar",
+    "sonthr1",
+    "sooter1",
+    "tomtit1",
+    "tui1",
+    "weka1",
+    "whiteh1",
+    "whiter",
+    "y01193",
+    "yellow2",
+    "yellow3",
+]
+current_labels = [
+    "ausmag2",
+    "auspip3",
+    "baicra4",
+    "blknod",
+    "blkswa",
+    "brncre",
+    "calqua",
+    "cangoo",
+    "comcha",
+    "commyn",
+    "criros2",
+    "dunnoc1",
+    "eurbla",
+    "eurgre1",
+    "eursta",
+    "fernbi1",
+    "frog",
+    "gryger1",
+    "houspa",
+    "insect",
+    "kea1",
+    "kelgul",
+    "kiwi",
+    "lotkoe1",
+    "maslap1",
+    "morepo2",
+    "nezbel1",
+    "nezfal1",
+    "nezfan1",
+    "nezkak1",
+    "nezpig2",
+    "nezrob2",
+    "nezrob3",
+    "noiger1",
+    "oyster1",
+    "pacrob2",
+    "parake",
+    "parshe1",
+    "purswa6",
+    "redjun",
+    "redpol1",
+    "rettro",
+    "riflem1",
+    "sackin1",
+    "sbweye1",
+    "shbcuc1",
+    "silver3",
+    "skylar",
+    "sonthr1",
+    "sooter1",
+    "tomtit1",
+    "tui1",
+    "weka1",
+    "weta",
+    "whiteh1",
+    "whiter",
+    "x00458",
+    "y01193",
+    "yefpar3",
+    "yellow2",
+    "yellow3",
+]
+
+
+def compare_labels():
+    to_labels = get_ebird_ids_to_labels()
+    global new_labels
+    current = set(current_labels)
+    new_labels = set(new_labels)
+    added = new_labels - current
+    for add in added:
+        print("Added", to_labels.get(add, [add])[0])
+    print("Have added ", new_labels - current)
+
+    added = current - new_labels
+    for add in added:
+        print("Removed ", to_labels.get(add, [add])[0])
+
+    print("Have removed ", current - new_labels)
+
 
 def labels_to_ebird_links(metadata):
     remapped = metadata["remapped_labels"]
@@ -64,6 +211,7 @@ def test_labels():
 
 
 def main():
+    compare_labels()
     test_labels()
     return
     ebird_map = get_label_to_ebird_map()
