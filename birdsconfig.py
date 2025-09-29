@@ -47,8 +47,8 @@ ALL_BIRDS.append("bird")
 ALL_BIRDS.append("gull")
 ALL_BIRDS.append("dove")
 ALL_BIRDS.append("kiwi")
-ALL_BIRDS.append("norfolk silkeye")
-ALL_BIRDS.append("tree weta")
+ALL_BIRDS.append("norfolk-silkeye")
+ALL_BIRDS.append("tree-weta")
 
 
 # NOISE SECTION

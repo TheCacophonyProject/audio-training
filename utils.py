@@ -9,6 +9,11 @@ def get_all_birds():
         _ = next(dreader)
         for row in dreader:
             allbirds.add(row[2])
+    with open("classes.csv", newline="") as csvfile:
+        dreader = csv.reader(csvfile, delimiter=",", quotechar="|")
+        _ = next(dreader)
+        for row in dreader:
+            allbirds.add(row[2])
     allbirds = list(allbirds)
     allbirds.sort()
     return allbirds
