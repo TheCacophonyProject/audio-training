@@ -1,6 +1,19 @@
 import csv
 
 
+def get_all_birds():
+    allbirds = set()
+    first = True
+    with open("classes.csv", newline="") as csvfile:
+        dreader = csv.reader(csvfile, delimiter=",", quotechar="|")
+        _ = next(dreader)
+        for row in dreader:
+            allbirds.add(row[2])
+    allbirds = list(allbirds)
+    allbirds.sort()
+    return allbirds
+
+
 def get_label_to_ebird_map():
     ebird_map = {}
     first = True
