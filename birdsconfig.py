@@ -8,6 +8,7 @@ RELABEL_MAP = {
     "yeepen1": "litpen1",
     "yefpar3": "parake",
     "refpar4": "parake",
+    "noipar1": "parake",
     "nezrob2": "nezrob3",
     "redpol1": "comred",
     "blbgul1": "gull",
@@ -15,8 +16,10 @@ RELABEL_MAP = {
     "kelgul": "gull",
     "larus": "gull",
     "rebgul1": "gull",
-    "new zealand dotterel": "dobplo1",
-    "rebdot1": "dobplo1",
+    "new zealand dotterel": "rebdot1",
+    "dobplo1": "rebdot1",
+    "sackin1": "sackin3",
+    "brncre": "pipipi1",
 }
 
 

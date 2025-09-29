@@ -136,7 +136,7 @@ def set_specific_by_count(meta):
         val_count = validation[label]
         if count > 50 and rec_count > 50 and val_count > 2:
             labels_with_data.append(label)
-            if label not in ALL_BIRDS:
+            if label not in ALL_BIRDS and label not in RELABEL_MAP:
                 logging.info("Have data for %s but not included ", label)
             if label in ALL_BIRDS and label not in BIRD_TRAIN_LABELS:
                 BIRD_TRAIN_LABELS.append(label)
