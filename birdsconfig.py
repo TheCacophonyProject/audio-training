@@ -14,6 +14,8 @@ RELABEL_MAP = {
     "kelgul": "gull",
     "larus": "gull",
     "rebgul1": "gull",
+    "new zealand dotterel": "dobplo1",
+    "rebdot1": "dobplo1",
 }
 
 
