@@ -924,9 +924,9 @@ class Track:
             # dont do anything for noisy tracks
             return
         if "upper_rms" not in metadata:
-            self.rms_filtered = True
+            # self.rms_filtered = True
             logging.info(
-                "Missing rms %s human tag %s id is %s",
+                "Missing rms %s human tag %s id is %s not filtering",
                 self.filename,
                 self.human_tags,
                 self.id,
