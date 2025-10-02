@@ -211,11 +211,10 @@ def test_labels():
 
 
 def main():
-    compare_labels()
-    test_labels()
-    return
+    # compare_labels()
+    # test_labels()
+    # return
     ebird_map = get_label_to_ebird_map()
-
     metadata_f = Path(sys.argv[1])
     with metadata_f.open("r") as f:
         metadata = json.load(f)

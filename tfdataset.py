@@ -976,7 +976,10 @@ def read_tfrecord(
     model_name="badwinner2",
     global_epoch=None,
 ):
-    tfrecord_format = {"audio/class/text": tf.io.FixedLenFeature((), tf.string)}
+    tfrecord_format = {
+        "audio/class/ebird": tf.io.FixedLenFeature((), tf.string),
+        "audio/class/text": tf.io.FixedLenFeature((), tf.string),
+    }
     tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
     tfrecord_format["audio/track_id"] = tf.io.FixedLenFeature((), tf.string)
     tfrecord_format["audio/low_sample"] = tf.io.FixedLenFeature((), tf.int64)
@@ -1087,9 +1090,7 @@ def read_tfrecord(
         mel = mel - mel_m
     if labeled:
         # label = tf.cast(example["audio/class/label"], tf.int32)
-        label = tf.cast(example["audio/class/text"], tf.string)
-        label = tf.strings.regex_replace(label, " ", "-")
-
+        label = tf.cast(example["audio/class/ebird"], tf.string)
         split_labels = tf.strings.split(label, sep="\n")
         global remapped_y, extra_label_map
         labels = remapped_y.lookup(split_labels)
