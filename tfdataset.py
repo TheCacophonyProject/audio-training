@@ -507,6 +507,8 @@ def get_a_dataset(dir, labels, args):
         extra_label_dic, remapped, labels = get_remappings(
             labels, excluded_labels, use_generic_bird=use_generic_bird
         )
+        for k, v in remapped.items():
+            logging.info("Remapping %s to %s", k, labels[v])
         logging.info(
             "Remapped %s extra mapping %s new labels %s Use gen bird %s",
             remapped,

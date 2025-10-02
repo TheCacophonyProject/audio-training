@@ -782,7 +782,7 @@ def tier1_data(base_dir, split_file=None):
         # "banded dotterel",
         "australasian bittern",
     ]
-    only_test_labels = True
+    only_test_labels = False
     ebird_map = get_ebird_map()
     first = True
     config = Config()
