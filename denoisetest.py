@@ -1059,6 +1059,169 @@ def rms(args):
     plt.show()
 
 
+N_MELS = 160
+BREAK_FREQ = 1000
+
+MEL_WEIGHTS = mel_f(48000, N_MELS, 100, 11000, 4096, BREAK_FREQ)
+MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
+
+MEL_WEIGHTS_2 = mel_f(48000, N_MELS, 100, 3000, 2048, BREAK_FREQ)
+MEL_WEIGHTS_2 = tf.constant(MEL_WEIGHTS_2)
+
+MEL_WEIGHTS_3 = mel_f(48000, N_MELS, 100, 11000, 1024, BREAK_FREQ)
+MEL_WEIGHTS_3 = tf.constant(MEL_WEIGHTS_3)
+
+
+def test_multi_rgb(frames, sr):
+    frames = frames[np.newaxis, :]
+    rgb_spec = raw_to_mel_rgb(frames, None)
+    print(rgb_spec.shape)
+    # Display the image
+    plt.imshow(rgb_spec.numpy()[0])
+
+    # Show the plot
+    plt.show()
+    N_MELS = 160
+    BREAK_FREQ = 1000
+
+    n_fft = 4096
+    hop_length = 281
+    MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, n_fft, BREAK_FREQ)
+
+    spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
+    mel = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
+    mel = tf.math.pow(mel, 2)
+    # 2048,
+    # 278,
+    n_fft = 2048
+    hop_length = 281
+    spectogram_2 = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
+    MEL_WEIGHTS_2 = mel_f(48000, N_MELS, 50, 3000, n_fft, BREAK_FREQ)
+
+    mel_2 = tf.tensordot(MEL_WEIGHTS_2, spectogram_2, 1)
+    mel_2 = tf.math.pow(mel_2, 2)
+
+    n_fft = 1024
+    hop_length = 281
+    spectogram_3 = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
+    MEL_WEIGHTS_3 = mel_f(48000, N_MELS, 500, 11000, n_fft, BREAK_FREQ)
+
+    mel_3 = tf.tensordot(MEL_WEIGHTS_3, spectogram_3, 1)
+    mel_3 = tf.math.pow(mel_3, 2)
+
+    print(spectogram.shape, spectogram_2.shape, mel.shape, mel_2.shape, mel_3.shape)
+
+    fig, ax = plt.subplots(nrows=3, sharex=True)
+    librosa.display.specshow(
+        mel.numpy(),
+        y_axis="mel",
+        x_axis="time",
+        ax=ax[0],
+        sr=sr,
+        hop_length=281,
+        fmin=50,
+        fmax=15000,
+        n_fft=4096,
+    )
+    librosa.display.specshow(
+        mel_2.numpy(),
+        y_axis="mel",
+        x_axis="time",
+        ax=ax[1],
+        fmin=50,
+        fmax=3000,
+        sr=sr,
+        hop_length=281,
+        n_fft=2048,
+    )
+    librosa.display.specshow(
+        mel_3.numpy(),
+        y_axis="mel",
+        x_axis="time",
+        ax=ax[2],
+        fmin=500,
+        fmax=11000,
+        sr=sr,
+        hop_length=281,
+        n_fft=1024,
+    )
+    plt.show()
+
+    # stft = tf.signal.stft(
+    #     raw,
+    #     1024,
+    #     280,
+    #     fft_length=1024,
+    #     window_fn=tf.signal.hann_window,
+    #     # pad_end=True,
+    #     name=None,
+    # )
+
+
+def raw_to_mel_rgb(x, y):
+    if isinstance(x, tuple):
+        raw = x[0]
+    else:
+        raw = x
+
+    stft = tf.signal.stft(
+        raw,
+        4096,
+        281,
+        fft_length=4096,
+        window_fn=tf.signal.hann_window,
+        pad_end=True,
+        name=None,
+    )
+    stft_2 = tf.signal.stft(
+        raw,
+        2048,
+        281,
+        fft_length=2048,
+        window_fn=tf.signal.hann_window,
+        pad_end=True,
+        name=None,
+    )
+    stft_3 = tf.signal.stft(
+        raw,
+        1024,
+        281,
+        fft_length=1024,
+        window_fn=tf.signal.hann_window,
+        pad_end=True,
+        name=None,
+    )
+
+    batch_size = tf.keras.ops.shape(raw)[0]
+    stft = tf.math.pow(stft, 2)
+    stft = tf.transpose(stft, [0, 2, 1])
+    stft = tf.math.abs(stft)
+    weights = tf.expand_dims(MEL_WEIGHTS, 0)
+    weights = tf.repeat(weights, batch_size, 0)
+    image = tf.keras.backend.batch_dot(weights, stft)
+
+    stft_2 = tf.math.pow(stft_2, 2)
+    stft_2 = tf.transpose(stft_2, [0, 2, 1])
+    stft_2 = tf.math.abs(stft_2)
+    weights_2 = tf.expand_dims(MEL_WEIGHTS_2, 0)
+    weights_2 = tf.repeat(weights_2, batch_size, 0)
+    image_2 = tf.keras.backend.batch_dot(weights_2, stft_2)
+
+    stft_3 = tf.math.pow(stft_3, 2)
+    stft_3 = tf.transpose(stft_3, [0, 2, 1])
+    stft_3 = tf.math.abs(stft_3)
+    weights_3 = tf.expand_dims(MEL_WEIGHTS_3, 0)
+    weights_3 = tf.repeat(weights_3, batch_size, 0)
+    image_3 = tf.keras.backend.batch_dot(weights_3, stft_3)
+
+    image = tf.expand_dims(image, axis=3)
+    image_2 = tf.expand_dims(image_2, axis=3)
+    image_3 = tf.expand_dims(image_3, axis=3)
+
+    image = tf.concat([image, image_2, image_3], axis=3)
+    return image
+
+
 def main():
     init_logging()
     args = parse_args()
@@ -1070,12 +1233,14 @@ def main():
     BREAK_FREQ = 1000
     MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, n_fft, BREAK_FREQ)
     # plot_mel_weights(MEL_WEIGHTS)
-    MEL_WEIGHTS = librosa.filters.mel(
-        sr=48000, n_fft=n_fft, n_mels=N_MELS, fmin=50, fmax=11000
-    )
+    # MEL_WEIGHTS = librosa.filters.mel(
+    #     sr=48000, n_fft=n_fft, n_mels=N_MELS, fmin=50, fmax=11000
+    # )
     # plot_mel_weights(MEL_WEIGHTS)
 
     frames, sr = load_recording(args.file)
+    test_multi_rgb(frames[: sr * 3], sr)
+    return
     # mel = birdnet_mel(sr, frames, n_fft, hop_length=hop_length, mel_weights=MEL_WEIGHTS)
     # plot_mel(mel)
     # # return

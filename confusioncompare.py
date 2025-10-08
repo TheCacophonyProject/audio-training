@@ -98,15 +98,32 @@ def main():
 
         else:
             print(f"Label {label} only in first")
+    second_correct = 0
+    second_total_samples = 0
+    second_incorrect = 0
+    for second_i, label in enumerate(second_labels):
+        second_count = second_cm[second_i][second_i]
+        second_correct += second_count
+        second_total = np.sum(second_cm[second_i])
+        second_none = second_cm[second_i][-1]
+
+        second_total_samples += second_total
+        second_incorrect += second_total - second_count - second_none
+
     print(
         f"Total diff is {total} ( {round(100* total/ total_samples,1)}) first inccorect {first_inccorect} second incorrect {second_incorrect} score diff {round(100* (first_inccorect - second_incorrect) / total_samples,1)}"
     )
     print("Total samples are ", total_samples)
-    print(first_correct / total_samples, " vs ", second_correct / second_total_samples)
+    print(
+        f"{first_correct} / {total_samples} = ",
+        first_correct / total_samples,
+        f" vs {second_correct} / {second_total_samples} = ",
+        second_correct / second_total_samples,
+    )
     if total > 0:
-        print("Better model is ", args.first_confusion)
+        print("Better model is first ", args.first_confusion)
     else:
-        print("Better model is ", args.second_confusion)
+        print("Better model is second ", args.second_confusion)
 
 
 if __name__ == "__main__":

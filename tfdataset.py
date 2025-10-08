@@ -44,8 +44,14 @@ N_MELS = 160
 SR = 48000
 BREAK_FREQ = 1000
 NFFT = 4096
-MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, NFFT, BREAK_FREQ)
+MEL_WEIGHTS = mel_f(48000, N_MELS, 100, 11000, NFFT, BREAK_FREQ)
 MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
+
+MEL_WEIGHTS_2 = mel_f(48000, N_MELS, 100, 3000, 2048, BREAK_FREQ)
+MEL_WEIGHTS_2 = tf.constant(MEL_WEIGHTS_2)
+
+MEL_WEIGHTS_3 = mel_f(48000, N_MELS, 100, 11000, 1024, BREAK_FREQ)
+MEL_WEIGHTS_3 = tf.constant(MEL_WEIGHTS_3)
 
 FMIN = 50
 FMAX = 11000
@@ -1854,6 +1860,76 @@ def normalize(input, y):
         return (x, input[1], input[2]), y
     else:
         return x, y
+
+
+@tf.function
+def raw_to_mel_rgb(x, y):
+    if isinstance(x, tuple):
+        raw = x[0]
+    else:
+        raw = x
+
+    stft = tf.signal.stft(
+        raw,
+        4096,
+        281,
+        fft_length=4096,
+        window_fn=tf.signal.hann_window,
+        pad_end=True,
+        name=None,
+    )
+    stft_2 = tf.signal.stft(
+        raw,
+        2048,
+        281,
+        fft_length=2048,
+        window_fn=tf.signal.hann_window,
+        pad_end=True,
+        name=None,
+    )
+    stft_3 = tf.signal.stft(
+        raw,
+        1024,
+        281,
+        fft_length=1024,
+        window_fn=tf.signal.hann_window,
+        pad_end=True,
+        name=None,
+    )
+
+    batch_size = tf.keras.ops.shape(raw)[0]
+    stft = tf.math.pow(stft, 2)
+    stft = tf.transpose(stft, [0, 2, 1])
+    stft = tf.math.abs(stft)
+    weights = tf.expand_dims(MEL_WEIGHTS, 0)
+    weights = tf.repeat(weights, batch_size, 0)
+    image = tf.keras.backend.batch_dot(weights, stft)
+
+    stft_2 = tf.math.pow(stft_2, 2)
+    stft_2 = tf.transpose(stft_2, [0, 2, 1])
+    stft_2 = tf.math.abs(stft_2)
+    weights_2 = tf.expand_dims(MEL_WEIGHTS_2, 0)
+    weights_2 = tf.repeat(weights_2, batch_size, 0)
+    image_2 = tf.keras.backend.batch_dot(weights_2, stft_2)
+
+    stft_3 = tf.math.pow(stft_3, 2)
+    stft_3 = tf.transpose(stft_3, [0, 2, 1])
+    stft_3 = tf.math.abs(stft_3)
+    weights_3 = tf.expand_dims(MEL_WEIGHTS_3, 0)
+    weights_3 = tf.repeat(weights_3, batch_size, 0)
+    image_3 = tf.keras.backend.batch_dot(weights_3, stft_3)
+
+    image = tf.expand_dims(image, axis=3)
+    image_2 = tf.expand_dims(image_2, axis=3)
+    image_3 = tf.expand_dims(image_3, axis=3)
+
+    image = tf.concat([image, image_2, image_3], axis=3)
+
+    if isinstance(x, tuple):
+        x = (image, x[1], x[2])
+    else:
+        x = image
+    return x, y
 
 
 @tf.function
