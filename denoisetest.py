@@ -1062,10 +1062,10 @@ def rms(args):
 N_MELS = 160
 BREAK_FREQ = 1000
 
-MEL_WEIGHTS = mel_f(48000, N_MELS, 100, 11000, 4096, BREAK_FREQ)
+MEL_WEIGHTS = mel_f(48000, N_MELS, 500, 11000, 4096, BREAK_FREQ)
 MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 
-MEL_WEIGHTS_2 = mel_f(48000, N_MELS, 100, 3000, 2048, BREAK_FREQ)
+MEL_WEIGHTS_2 = mel_f(48000, N_MELS, 100, 3000, 1024, BREAK_FREQ)
 MEL_WEIGHTS_2 = tf.constant(MEL_WEIGHTS_2)
 
 MEL_WEIGHTS_3 = mel_f(48000, N_MELS, 100, 11000, 1024, BREAK_FREQ)
@@ -1073,30 +1073,29 @@ MEL_WEIGHTS_3 = tf.constant(MEL_WEIGHTS_3)
 
 
 def test_multi_rgb(frames, sr):
-    frames = frames[np.newaxis, :]
-    rgb_spec = raw_to_mel_rgb(frames, None)
-    print(rgb_spec.shape)
-    # Display the image
-    plt.imshow(rgb_spec.numpy()[0])
+    # frames = frames[np.newaxis, :]
+    # rgb_spec = raw_to_mel_rgb(frames[np.newaxis, :], None)
+    # print(rgb_spec.shape)
+    # # Display the image
+    # plt.imshow(rgb_spec.numpy()[0])
 
-    # Show the plot
-    plt.show()
+    # # Show the plot
+    # plt.show()
     N_MELS = 160
-    BREAK_FREQ = 1000
+    BREAK_FREQ = 1750
 
     n_fft = 4096
     hop_length = 281
-    MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, n_fft, BREAK_FREQ)
 
     spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
+    print("SPec is ", spectogram.shape)
     mel = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
     mel = tf.math.pow(mel, 2)
     # 2048,
     # 278,
-    n_fft = 2048
+    n_fft = 1024
     hop_length = 281
     spectogram_2 = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
-    MEL_WEIGHTS_2 = mel_f(48000, N_MELS, 50, 3000, n_fft, BREAK_FREQ)
 
     mel_2 = tf.tensordot(MEL_WEIGHTS_2, spectogram_2, 1)
     mel_2 = tf.math.pow(mel_2, 2)
@@ -1104,7 +1103,6 @@ def test_multi_rgb(frames, sr):
     n_fft = 1024
     hop_length = 281
     spectogram_3 = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
-    MEL_WEIGHTS_3 = mel_f(48000, N_MELS, 500, 11000, n_fft, BREAK_FREQ)
 
     mel_3 = tf.tensordot(MEL_WEIGHTS_3, spectogram_3, 1)
     mel_3 = tf.math.pow(mel_3, 2)
@@ -1119,8 +1117,8 @@ def test_multi_rgb(frames, sr):
         ax=ax[0],
         sr=sr,
         hop_length=281,
-        fmin=50,
-        fmax=15000,
+        fmin=500,
+        fmax=11000,
         n_fft=4096,
     )
     librosa.display.specshow(
@@ -1128,7 +1126,7 @@ def test_multi_rgb(frames, sr):
         y_axis="mel",
         x_axis="time",
         ax=ax[1],
-        fmin=50,
+        fmin=100,
         fmax=3000,
         sr=sr,
         hop_length=281,

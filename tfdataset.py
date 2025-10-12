@@ -44,16 +44,16 @@ N_MELS = 160
 SR = 48000
 BREAK_FREQ = 1000
 NFFT = 4096
-MEL_WEIGHTS = mel_f(48000, N_MELS, 100, 11000, NFFT, BREAK_FREQ)
+MEL_WEIGHTS = mel_f(48000, N_MELS, 500, 11000, NFFT, BREAK_FREQ)
 MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 
-MEL_WEIGHTS_2 = mel_f(48000, N_MELS, 100, 3000, 2048, BREAK_FREQ)
+MEL_WEIGHTS_2 = mel_f(48000, N_MELS, 100, 3000, 1024, BREAK_FREQ)
 MEL_WEIGHTS_2 = tf.constant(MEL_WEIGHTS_2)
 
-MEL_WEIGHTS_3 = mel_f(48000, N_MELS, 100, 11000, 1024, BREAK_FREQ)
+MEL_WEIGHTS_3 = mel_f(48000, N_MELS, 500, 11000, 1024, BREAK_FREQ)
 MEL_WEIGHTS_3 = tf.constant(MEL_WEIGHTS_3)
 
-FMIN = 50
+FMIN = 100
 FMAX = 11000
 
 MOREPORK_MAX = 1200
@@ -482,7 +482,7 @@ def get_dataset(dir, labels, global_epoch=None, **args):
             )
         else:
             dataset = dataset.map(
-                lambda x, y: raw_to_mel(x, y),
+                lambda x, y: raw_to_mel_rgb(x, y),
                 num_parallel_calls=tf.data.AUTOTUNE,
                 deterministic=deterministic,
             )
@@ -1600,7 +1600,9 @@ def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
             plot_title = f"{plot_title} - {rec}:{track} at {start_s:.1f} sig {signal_percent:.1f}"
         plt.title(f"{plot_title}\n{predicted}")
         img = image_batch[n]
-        plot_mel(image_batch[n][:, :, 0], ax)
+        ax.imshow(img)
+
+        # plot_mel(image_batch[n][:, :, 0], ax)
         # np.save(f"dataset-images/batch-{batch_i}-{rec}-{start_s:.1f}.npy",image_batch[n])
     # plt.savefig(f"dataset-images/batch-{batch_i}.png")
     plt.show()
@@ -1868,7 +1870,7 @@ def raw_to_mel_rgb(x, y):
         raw = x[0]
     else:
         raw = x
-
+    logging.info("DOING RGB")
     stft = tf.signal.stft(
         raw,
         4096,
@@ -1880,9 +1882,9 @@ def raw_to_mel_rgb(x, y):
     )
     stft_2 = tf.signal.stft(
         raw,
-        2048,
+        1024,
         281,
-        fft_length=2048,
+        fft_length=1024,
         window_fn=tf.signal.hann_window,
         pad_end=True,
         name=None,
