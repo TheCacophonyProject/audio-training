@@ -2235,7 +2235,7 @@ def parse_args():
 
     parser.add_argument("--shuffle", type=str2bool, default=True, help="Shuffle DS")
     parser.add_argument(
-        "--multi-label", type=str2bool, default=True, help="Multi label"
+        "--multi-label", type=str2bool, default=False, help="Multi label"
     )
     parser.add_argument(
         "--use-generic-bird",
