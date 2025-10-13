@@ -4,6 +4,7 @@ from pathlib import Path
 import csv
 from utils import get_label_to_ebird_map, get_ebird_id, get_ebird_ids_to_labels
 
+# bunch of debug and helper functions
 new_labels = [
     "ausbit1",
     "ausmag2",
@@ -210,12 +211,111 @@ def test_labels():
     print("Ids are", e_ids)
 
 
+# convert model labels to the exact text used on the api server
+def labels_to_api(metadata_f):
+    with metadata_f.open("r") as f:
+        metadata = json.load(f)
+
+    lbl_paths = Path("label_paths.json")
+    with lbl_paths.open("r") as f:
+        lbl_metadata = json.load(f)
+
+    hyphenated_lbls = {}
+    for lbl in lbl_metadata.keys():
+        hyphenated_lbls[lbl.replace(" ", "-")] = lbl
+
+    ebird_labels = metadata["labels"]
+    ebird_map = get_ebird_ids_to_labels()
+    text_labels = []
+    for ebird_id in ebird_labels:
+        e_text_labels = ebird_map.get(ebird_id, [ebird_id])
+        match = None
+        for text_label in e_text_labels:
+            if text_label in hyphenated_lbls:
+                match = hyphenated_lbls[text_label]
+                print(f"Found match ebird {ebird_id} textual: {text_label}  {match}")
+                break
+        if match is None:
+            print("Could not find api name for ", ebird_id, text_labels)
+            raise Exception(f"Could not find api name for {ebird_id}  {text_labels}")
+        text_labels.append(match)
+    print("Text labels is ", text_labels)
+    metadata["labels"] = text_labels
+    metadata["ebird_labels"] = ebird_labels
+
+    remapped_lbls = metadata["remapped_labels"]
+    lbl_to_ebirds = {}
+    for k, v in remapped_lbls.items():
+        if v == -1:
+            continue
+        if k not in ebird_map:
+            continue
+        ebird_id = ebird_labels[v]
+        if ebird_id not in lbl_to_ebirds:
+            lbl_to_ebirds[ebird_id] = []
+        lbl_to_ebirds[ebird_id].append(k)
+
+    ebird_ids = []
+    for lbl in ebird_labels:
+        lbl_ebird_ids = set()
+        if lbl in ebird_map:
+            lbl_ebird_ids.add(lbl)
+        if lbl in lbl_to_ebirds:
+            lbl_ebird_ids.update(lbl_to_ebirds[lbl])
+        ebird_ids.append(list(lbl_ebird_ids))
+        print(lbl_ebird_ids)
+    metadata["ebird_ids"] = ebird_ids
+    with metadata_f.open("w") as f:
+        json.dump(metadata, f, indent=4)
+
+
+# convert model labels to the exact text used on the api server
+def labels_to_api_old(metadata_f):
+    with metadata_f.open("r") as f:
+        metadata = json.load(f)
+
+    lbl_paths = Path("label_paths.json")
+    with lbl_paths.open("r") as f:
+        lbl_metadata = json.load(f)
+
+    hyphenated_lbls = {}
+    for lbl in lbl_metadata.keys():
+        hyphenated_lbls[lbl.replace(" ", "-")] = lbl
+    hyphenated_lbls["indian-myna"] = "common myna"
+    hyphenated_lbls["mohua"] = "yellowhead"
+    hyphenated_lbls["new-zealand-fernbird"] = "fernbird"
+    hyphenated_lbls["new-zealand-kaka"] = "kaka"
+    hyphenated_lbls["new-zealand-kingfisher"] = "sacred kingfisher"
+
+    text_labels = metadata["labels"]
+    new_labels = []
+    for lbl in text_labels:
+        match = None
+        hyphened = lbl.replace(" ", "-")
+        if hyphened in hyphenated_lbls:
+            match = hyphenated_lbls[hyphened]
+        if match is None:
+            print("Could not find lbl", lbl)
+            1 / 0
+        if match != lbl:
+            print(f"{lbl} changed to {match}")
+        new_labels.append(match)
+    metadata["original_labels"] = text_labels
+
+    metadata["labels"] = new_labels
+    with metadata_f.open("w") as f:
+        json.dump(metadata, f, indent=4)
+
+
 def main():
     # compare_labels()
     # test_labels()
     # return
-    ebird_map = get_label_to_ebird_map()
     metadata_f = Path(sys.argv[1])
+    labels_to_api_old(metadata_f)
+    return
+    ebird_map = get_label_to_ebird_map()
+
     with metadata_f.open("r") as f:
         metadata = json.load(f)
     labels_to_ebird_links(metadata)

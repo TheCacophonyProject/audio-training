@@ -50,6 +50,10 @@ def get_label_to_ebird_map():
     ebird_map["pigeon"] = "rocpig"
     ebird_map["new-zealand-dotterel"] = "dobplo1"
     ebird_map["brown-creeper"] = "pipipi1"
+    ebird_map["new-zealand-dotterel"] = "rebdot1"
+    ebird_map["sacred-kingfisher"] = "sackin3"
+    ebird_map["rock-wren"] = "soiwre1"
+    ebird_map["redpoll"] = "comred"
 
     return ebird_map
 
@@ -66,5 +70,4 @@ def get_ebird_ids_to_labels():
             labels_to_ebird[ebird_id].append(lbl)
         else:
             labels_to_ebird[ebird_id] = [lbl]
-
     return labels_to_ebird

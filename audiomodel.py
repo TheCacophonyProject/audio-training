@@ -600,7 +600,7 @@ class AudioModel:
         model_stats["bird_thresh"] = 1
         model_stats["use_generic_bird"] = args.get("use_generic_bird", False)
         # model_stats["filter_freq"] = args.get("filter_freq", False)
-        model_stats["labels"] = self.labels
+        model_stats["ebird_labels"] = self.labels
         # model_stats["multi_label"] = args.get("multi_label", False)
         model_stats["mean_sub"] = self.mean_sub
         model_stats["loss_fn"] = self.loss_fn
