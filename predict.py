@@ -323,7 +323,6 @@ def load_samples(
                 print("Showing spec for ", t)
             if normalize:
                 data = normalize_data(data)
-                print("NORMALIZED")
             spect = get_spect(
                 data,
                 sr,
@@ -414,7 +413,7 @@ def get_spect(
         #     spectogram[int(max_bin) :] = 0
         # print("F min is ",fmin)
         # fmin =200
-        print("Power ?,", power, fmin, fmax)
+        # print("Power ?,", power, fmin, fmax)
         mel = mel_spec(
             spectogram,
             sr,
@@ -1192,7 +1191,7 @@ def main():
                 labels[max_p],
                 "Pred for start ",
                 t.start + start_i * segment_stride,
-                np.round(p * 100),
+                np.round(p[max_p] * 100),"%"s
             )
 
         #     for i, percent in enumerate(p):
@@ -1210,7 +1209,7 @@ def main():
         # print("COUNTS are", pred_counts, " more than ", len(predictions) // 2)
 
         prediction = np.mean(predictions, axis=0)
-        print("Prediction is", np.round(100 * prediction))
+        print("Mean Prediction is", np.round(100 * prediction))
         for i, count in enumerate(pred_counts):
             if count > 0:
                 print(f"{labels[i]}: {count}")

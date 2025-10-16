@@ -197,12 +197,11 @@ def merge_signals(signals):
     return signals, something_merged
 
 
-def get_tracks_from_signals(signals, end, filter_short=True):
+def get_tracks_from_signals(signals, end):
     # probably a much more efficient way of doing this
     # just keep merging until there are no more valid merges
     merged = True
     min_mel_range = 50
-
     while merged:
         signals, merged = merge_signals(signals)
 
@@ -213,57 +212,108 @@ def get_tracks_from_signals(signals, end, filter_short=True):
         if s in to_delete:
             continue
         if s.length < min_length:
-            if filter_short:
-                to_delete.append(s)
+            to_delete.append(s)
             continue
+
         s.enlarge(1.4, min_track_length=min_track_length)
-        if end is not None:
-            s.end = min(end, s.end)
-        # s.end = min(end, s.end)
+        s.end = min(end, s.end)
+
         for s2 in signals:
             if s2 in to_delete:
                 continue
             if s == s2:
                 continue
 
-            # continue
             overlap = s.time_overlap(s2)
             mel_overlap = s.freq_overlap(s2)
             min_length = min(s.length, s2.length)
-
-            # print(
-            #     "TIme overlap between ",
-            #     s,
-            #     " and ",
-            #     s2,
-            #     " is ",
-            #     overlap / min_length,
-            #     mel_overlap,
-            # )
+            # 2200 chosen on testing some files may be too leniant
+            # was also filtering by  and abs(mel_overlap) < 2200:
             if overlap > 0.7 * min_length:
                 s.merge(s2)
                 to_delete.append(s2)
-                continue
-            # engulfed = overlap >= 0.9 * s2.length
-            # f_overlap = s.mel_freq_overlap(s2)
-            # range = s2.mel_freq_range
-            # range *= 0.7
-            # if f_overlap > range and engulfed:
-            #     to_delete.append(s2)
 
     for s in to_delete:
         signals.remove(s)
-    for s in signals:
-        # s.enlarge(1.4, min_track_length=min_track_length)
-        if end is not None:
-            s.end = min(end, s.end)
     to_delete = []
     for s in signals:
+        # doing earlier now
+        # s.enlarge(1.4, min_track_length=min_track_length)
+        # s.end = min(end, s.end)
         if s.mel_freq_range < min_mel_range:
             to_delete.append(s)
     for s in to_delete:
         signals.remove(s)
     return signals
+
+
+# def get_tracks_from_signals(signals, end, filter_short=True):
+#     # probably a much more efficient way of doing this
+#     # just keep merging until there are no more valid merges
+#     merged = True
+#     min_mel_range = 50
+
+#     while merged:
+#         signals, merged = merge_signals(signals)
+
+#     to_delete = []
+#     min_length = 0.35
+#     min_track_length = 0.7
+#     for s in signals:
+#         if s in to_delete:
+#             continue
+#         if s.length < min_length:
+#             if filter_short:
+#                 to_delete.append(s)
+#             continue
+#         s.enlarge(1.4, min_track_length=min_track_length)
+#         if end is not None:
+#             s.end = min(end, s.end)
+#         # s.end = min(end, s.end)
+#         for s2 in signals:
+#             if s2 in to_delete:
+#                 continue
+#             if s == s2:
+#                 continue
+
+#             # continue
+#             overlap = s.time_overlap(s2)
+#             mel_overlap = s.freq_overlap(s2)
+#             min_length = min(s.length, s2.length)
+
+#             # print(
+#             #     "TIme overlap between ",
+#             #     s,
+#             #     " and ",
+#             #     s2,
+#             #     " is ",
+#             #     overlap / min_length,
+#             #     mel_overlap,
+#             # )
+#             if overlap > 0.7 * min_length:
+#                 s.merge(s2)
+#                 to_delete.append(s2)
+#                 continue
+#             # engulfed = overlap >= 0.9 * s2.length
+#             # f_overlap = s.mel_freq_overlap(s2)
+#             # range = s2.mel_freq_range
+#             # range *= 0.7
+#             # if f_overlap > range and engulfed:
+#             #     to_delete.append(s2)
+
+#     for s in to_delete:
+#         signals.remove(s)
+#     for s in signals:
+#         # s.enlarge(1.4, min_track_length=min_track_length)
+#         if end is not None:
+#             s.end = min(end, s.end)
+#     to_delete = []
+#     for s in signals:
+#         if s.mel_freq_range < min_mel_range:
+#             to_delete.append(s)
+#     for s in to_delete:
+#         signals.remove(s)
+#     return signals
 
 
 SIGNAL_ID = 0

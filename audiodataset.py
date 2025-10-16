@@ -1060,6 +1060,13 @@ class Track:
     #
     # def get_human_tags(self):
     #     return set([t.what for t in self.human_tags])
+    @property
+    def freq_start(self):
+        return self.min_freq
+
+    @property
+    def freq_end(self):
+        return self.max_freq
 
     @property
     def length(self):
@@ -1077,16 +1084,9 @@ class Track:
 
     @property
     def tag(self):
-        all_tags = self.tags
-        tag = None
-        # for t in all_tags:
-        #     if t in ["bird", "human", "video-game", "other"]:
-        #         tag = t
-
-        if tag is None and len(self.human_tags) > 0:
+        if len(self.human_tags) > 0:
             return list(self.human_tags)[0]
-        else:
-            return tag
+        return None
 
     @property
     def bin_id(self):

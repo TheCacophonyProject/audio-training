@@ -347,6 +347,16 @@ def get_ffmpeg_duration(file):
     return float(output)
 
 
+def load_recording(file, resample=48000):
+    aro = audioread.ffdec.FFmpegAudioFile(file)
+    frames, sr = librosa.load(aro, sr=None)
+    aro.close()
+    if resample is not None and resample != sr:
+        frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
+        sr = resample
+    return frames, sr
+
+
 def save_data(
     rec,
     writers,
@@ -364,9 +374,8 @@ def save_data(
 ):
     resample = 48000
     try:
-        aro = audioread.ffdec.FFmpegAudioFile(rec.filename)
-        orig_frames, sr = librosa.load(aro, sr=None)
-        aro.close()
+        orig_frames, sr = load_recording(rec.filename, resample=None)
+
         duration = get_ffmpeg_duration(rec.filename)
         if abs(duration - len(orig_frames) / sr) > 1:
             # print(abs(duration - len(orig_frames / sr)))

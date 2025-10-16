@@ -1439,7 +1439,7 @@ def confusion_with_pre(
     if "None" not in labels:
         labels.append("None")
 
-    morepork_i = labels.index("morepork")
+    morepork_i = labels.index("morepo2")
     if all_preds is not None and weighted_max:
         logging.info("Running weighted max")
         for row, pred in enumerate(all_preds[0]):
@@ -1481,10 +1481,10 @@ def confusion_with_pre(
                 filter_moreporks = False
                 if pre_max_p > 0.7:
                     if pre_lbl == "noise":
-                        if lbl not in ["insect", "tree-weta"] or max_p <= 0.7:
+                        if lbl not in ["insect", "tree-weta", "weta"] or max_p <= 0.7:
                             max_i = pre_max_i
                             max_p = pre_max_p
-                    elif pre_lbl in ["morepork", "human"]:
+                    elif pre_lbl in ["morepo2", "human"]:
                         max_i = pre_max_i
                         max_p = pre_max_p
                     else:
@@ -1912,6 +1912,108 @@ def init_labels(data_dir, **args):
     return labels, excluded_labels, meta
 
 
+from functools import partial
+
+from multiprocessing import Pool
+
+
+def evaluate_dir(model, model_meta, dir_name, filename):
+    filename = Path("./confusions") / filename
+    meta_data_f = dir_name.glob("**/*.txt")
+    meta_data_f = list(meta_data_f)
+    predicted_categories = []
+    y_true = []
+    labels = model_meta["labels"]
+    include_labels = set(labels)
+    for k, v in model_meta["remapped_labels"].items():
+        if v >= 0:
+            include_labels.add(k)
+    include_labels = list(include_labels)
+    include_labels.sort()
+    print("Include labels is ", include_labels)
+    # meta_data_f = meta_data_f[:1]
+    pre_fn = partial(preprocess_audio, labels=include_labels)
+    labels.append("None")
+    with Pool(processes=1) as pool:
+        for result in pool.imap_unordered(pre_fn, meta_data_f, chunksize=8):
+            if result is None:
+                continue
+            tracks, all_samples = result
+            all_samples_og = all_samples
+            # all_samples = np.array(all_samples)
+            all_samples = np.concat(all_samples, axis=0)
+            all_samples = np.repeat(all_samples, 3, -1)
+
+            predictions = model.predict(all_samples)
+            offset = 0
+            for track, track_samples in zip(tracks, all_samples_og):
+                track_preds = predictions[offset : offset + len(track_samples)]
+                print(
+                    "Doing ",
+                    len(track_samples),
+                    len(track_preds),
+                    " for track ",
+                    track.id,
+                    " with tag ",
+                    track.tag,
+                    " #seconds: ",
+                    track.length,
+                )
+                # probably want to change to other methods
+                track_pred = np.mean(track_preds, axis=0)
+
+                max_i = np.argmax(track_pred)
+                max_p = track_pred[max_i]
+                if max_p > 0.7:
+                    predicted_categories.append(max_i)
+                else:
+                    predicted_categories.append(len(labels) - 1)
+
+                y_true.append(labels.index(track.tag))
+                offset += len(track_samples)
+
+    predicted_categories = np.array(predicted_categories)
+
+    print("Saving to ", filename)
+    cm = confusion_matrix(y_true, predicted_categories, labels=np.arange(len(labels)))
+    figure = plot_confusion_matrix(cm, class_names=labels)
+    plt.savefig(filename.with_suffix(".png"), format="png")
+    np.save(str(filename.with_suffix(".npy")), cm)
+
+
+from identifytracks import get_tracks_from_signals, signal_noise, get_end, Signal
+from audiowriter import load_recording
+from predict_utils import load_samples
+from audiodataset import Recording
+
+
+def preprocess_audio(metadata_f, labels=None):
+    audio_f = metadata_f.with_suffix(".m4a")
+    if not audio_f.exists():
+        audio_f = metadata_f.with_suffix(".wav")
+    if not audio_f.exists():
+        audio_f = metadata_f.with_suffix(".mp3")
+    if not audio_f.exists():
+        audio_f = metadata_f.with_suffix(".flac")
+    if not audio_f.exists():
+        logging.info("Could not find audio file for %s", metadata_f)
+        return None
+
+    try:
+        with metadata_f.open("r") as f:
+            metadata = json.load(f)
+    except:
+        logging.info("Could not load metadata for %s", metadata_f, exc_info=True)
+        return None
+    rec = Recording(metadata, audio_f, None, False)
+    frames, sr = load_recording(audio_f)
+    end = get_end(frames, sr)
+    frames = frames[: int(sr * end)]
+    tracks = [track for track in rec.tracks if track.tag in labels]
+    samples = load_samples(frames, sr, tracks)
+    return tracks, samples
+
+
 def main():
     init_logging()
     args = parse_args()
@@ -1993,6 +2095,9 @@ def main():
                             continue
                         pre_lbl = pre_labels[v]
                         remapped_labels[k] = labels.index(pre_lbl)
+        if args.evaluate_dir is not None:
+            evaluate_dir(model, meta_data, Path(args.evaluate_dir), args.confusion)
+            return
 
         base_dir = Path(args.dataset_dir)
         second_dir = None
@@ -2299,6 +2404,11 @@ def parse_args():
         "--break-freq",
         default=None,
         type=int,
+    )
+
+    parser.add_argument(
+        "--evaluate-dir",
+        default=None,
     )
 
     args = parser.parse_args()
