@@ -1464,7 +1464,7 @@ def confusion_with_pre(
             max_i = np.argmax(pred)
             max_p = pred[max_i]
             lbl = labels[max_i]
-            if pre_model is not None:
+            if pre_model is not None and max_p <=0.7:
                 pre_pred = pre_model_pred[i]
                 pre_max_i = np.argmax(pre_pred)
                 pre_max_p = pre_pred[pre_max_i]
@@ -1480,6 +1480,10 @@ def confusion_with_pre(
                 )
                 filter_moreporks = False
                 if pre_max_p > 0.7:
+                    max_i = pre_max_i
+                    max_p = pre_max_p
+                    # only use as fallback
+                    continue
                     if pre_lbl == "noise":
                         if lbl not in ["insect", "tree-weta", "weta"] or max_p <= 0.7:
                             max_i = pre_max_i
@@ -1492,11 +1496,11 @@ def confusion_with_pre(
                         if max_i == morepork_i or max_p <= 0.7:
                             max_i = pre_max_i
                             max_p = pre_max_p
-                elif pre_max_p > 0.5 and pre_lbl in ["noise", "human"]:
-                    if max_i == morepork_i:
-                        predicted_categories.append(len(labels) - 1)
-                        logging.info("Unknown")
-                        continue
+                # elif pre_max_p > 0.5 and pre_lbl in ["noise", "human"]:
+                #     if max_i == morepork_i:
+                #         predicted_categories.append(len(labels) - 1)
+                #         logging.info("Unknown")
+                #         continue
             if max_p > 0.7:
                 # logging.info(
                 #     "Final result is %s true %s", labels[max_i], labels[y_true[i]]
@@ -2201,26 +2205,26 @@ def main():
                         model_name=model_name,
                     )
                 else:
-                    confusion(
-                        model,
-                        labels,
-                        dataset,
-                        confusion_file,
-                        one_hot=not meta_data.get("only_features"),
-                        other_models=other_models,
-                    )
-
-                    # confusion_with_pre(
+                    # confusion(
                     #     model,
                     #     labels,
                     #     dataset,
                     #     confusion_file,
                     #     one_hot=not meta_data.get("only_features"),
-                    #     model_name=model_name,
                     #     other_models=other_models,
-                    #     pre_model=pre_model,
-                    #     pre_labels=pre_labels,
                     # )
+
+                    confusion_with_pre(
+                        model,
+                        labels,
+                        dataset,
+                        confusion_file,
+                        one_hot=not meta_data.get("only_features"),
+                        model_name=model_name,
+                        other_models=other_models,
+                        pre_model=pre_model,
+                        pre_labels=pre_labels,
+                    )
 
     else:
         am = AudioModel(args.model_name, args.dataset_dir, args.second_dataset_dir)
