@@ -1464,7 +1464,7 @@ def confusion_with_pre(
             max_i = np.argmax(pred)
             max_p = pred[max_i]
             lbl = labels[max_i]
-            if pre_model is not None and max_p <=0.7:
+            if pre_model is not None and max_p <= 0.7:
                 pre_pred = pre_model_pred[i]
                 pre_max_i = np.argmax(pre_pred)
                 pre_max_p = pre_pred[pre_max_i]
@@ -1921,7 +1921,7 @@ from functools import partial
 from multiprocessing import Pool
 
 
-def evaluate_dir(model, model_meta, dir_name, filename):
+def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
     filename = Path("./confusions") / filename
     meta_data_f = dir_name.glob("**/*.txt")
     meta_data_f = list(meta_data_f)
@@ -1935,11 +1935,24 @@ def evaluate_dir(model, model_meta, dir_name, filename):
     include_labels = list(include_labels)
     include_labels.sort()
     print("Include labels is ", include_labels)
+
+    filtered_meta = []
+    for f in meta_data_f:
+        try:
+            first_hyphen = f.index("-")
+        except:
+            continue
+        rec_id = f[:first_hyphen]
+        rec_id = int(rec_id)
+        if rec_id in rec_ids:
+            filtered_meta.append(f)
+
+    print("Runing on ", len(filtered_meta), " supplied recs ", len(rec_ids))
     # meta_data_f = meta_data_f[:1]
     pre_fn = partial(preprocess_audio, labels=include_labels)
     labels.append("None")
     with Pool(processes=1) as pool:
-        for result in pool.imap_unordered(pre_fn, meta_data_f, chunksize=8):
+        for result in pool.imap_unordered(pre_fn, filtered_meta, chunksize=8):
             if result is None:
                 continue
             tracks, all_samples = result
@@ -1952,17 +1965,17 @@ def evaluate_dir(model, model_meta, dir_name, filename):
             offset = 0
             for track, track_samples in zip(tracks, all_samples_og):
                 track_preds = predictions[offset : offset + len(track_samples)]
-                print(
-                    "Doing ",
-                    len(track_samples),
-                    len(track_preds),
-                    " for track ",
-                    track.id,
-                    " with tag ",
-                    track.tag,
-                    " #seconds: ",
-                    track.length,
-                )
+                # print(
+                #     "Doing ",
+                #     len(track_samples),
+                #     len(track_preds),
+                #     " for track ",
+                #     track.id,
+                #     " with tag ",
+                #     track.tag,
+                #     " #seconds: ",
+                #     track.length,
+                # )
                 # probably want to change to other methods
                 track_pred = np.mean(track_preds, axis=0)
 
@@ -2100,7 +2113,16 @@ def main():
                         pre_lbl = pre_labels[v]
                         remapped_labels[k] = labels.index(pre_lbl)
         if args.evaluate_dir is not None:
-            evaluate_dir(model, meta_data, Path(args.evaluate_dir), args.confusion)
+            base_dir = Path(args.dataset_dir)
+            meta_f = base_dir.parent / "training-meta.json"
+            with meta_f.open("r") as f:
+                data_json = json.load(f)
+
+            ds_name = base_dir.stem
+            rec_ids = data_json["recs"][ds_name]
+            evaluate_dir(
+                model, meta_data, Path(args.evaluate_dir), args.confusion, rec_ids
+            )
             return
 
         base_dir = Path(args.dataset_dir)
@@ -2270,6 +2292,7 @@ def parse_args():
     )
 
     parser.add_argument(
+        "-d",
         "--dataset-dir",
         type=str,
         default="/data/audio-data/training-data",
