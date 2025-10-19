@@ -1929,7 +1929,8 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
     y_true = []
     labels = model_meta["labels"]
     include_labels = set(labels)
-    for k, v in model_meta["remapped_labels"].items():
+    remapped = model_meta["remapped_labels"]
+    for k, v in remapped.items():
         if v >= 0:
             include_labels.add(k)
     include_labels = list(include_labels)
@@ -1991,7 +1992,11 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
                 else:
                     predicted_categories.append(len(labels) - 1)
 
-                y_true.append(labels.index(track.tag))
+                if track.tag in remapped:
+                    lbl_i = remapped[track.tag]
+                else:
+                    lbl_i = labels.index(track.tag)
+                y_true.append(lbl_i)
                 offset += len(track_samples)
 
     predicted_categories = np.array(predicted_categories)

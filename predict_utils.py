@@ -59,7 +59,7 @@ def load_samples(
         track_data = []
         if (
             t.freq_start is not None
-            and t.freq_end is not none
+            and t.freq_end is not None
             and (t.freq_start > fmax or t.freq_end < fmin)
         ):
             mel_samples.append(track_data)
