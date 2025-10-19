@@ -1971,7 +1971,9 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
             # all_samples = np.array(all_samples)
             all_samples = np.concat(all_samples, axis=0)
             all_samples = np.repeat(all_samples, 3, -1)
-
+            if len(all_samples) ==0:
+                logging.info("No samples for %s", file_name)
+                continue
             predictions = model.predict(all_samples)
             offset = 0
             for track, track_samples in zip(tracks, all_samples_og):
