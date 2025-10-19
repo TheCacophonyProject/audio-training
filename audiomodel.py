@@ -1953,8 +1953,13 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
     # meta_data_f = meta_data_f[:1]
     pre_fn = partial(preprocess_audio, labels=include_labels)
     labels.append("None")
-    with Pool(processes=1) as pool:
+    total_count = len(filtered_meta)
+    count = 0
+    with Pool(processes=8) as pool:
         for result in pool.imap_unordered(pre_fn, filtered_meta, chunksize=8):
+            if count % 100 == 0:
+                logging.info("Done %s / %s", count, total_count)
+            count += 1
             if result is None:
                 continue
             file_name, tracks, all_samples = result
