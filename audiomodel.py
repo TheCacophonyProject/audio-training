@@ -1963,48 +1963,63 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
             if result is None:
                 continue
             file_name, tracks, all_samples = result
-            if len(all_samples) == 0:
-                logging.info("No samples for %s", file_name)
-                continue
-            all_samples_og = all_samples
+            try:
+                if len(all_samples) == 0:
+                    logging.info("No samples for %s", file_name)
+                    continue
 
-            # all_samples = np.array(all_samples)
-            all_samples = np.concat(all_samples, axis=0)
-            all_samples = np.repeat(all_samples, 3, -1)
-            if len(all_samples) ==0:
-                logging.info("No samples for %s", file_name)
-                continue
-            predictions = model.predict(all_samples)
-            offset = 0
-            for track, track_samples in zip(tracks, all_samples_og):
-                track_preds = predictions[offset : offset + len(track_samples)]
-                # print(
-                #     "Doing ",
-                #     len(track_samples),
-                #     len(track_preds),
-                #     " for track ",
-                #     track.id,
-                #     " with tag ",
-                #     track.tag,
-                #     " #seconds: ",
-                #     track.length,
-                # )
-                # probably want to change to other methods
-                track_pred = np.mean(track_preds, axis=0)
+                all_samples_og = all_samples
+                filtered_tracks = []
+                filtered_samples = []
+                counts = []
+                for track, samples in zip(tracks, all_samples):
+                    if len(samples) == 0:
+                        logging.info("No samples for track %s", track)
+                        continue
+                    filtered_tracks.append(track)
+                    filtered_samples.extend(samples)
+                    counts.append(len(samples))
 
-                max_i = np.argmax(track_pred)
-                max_p = track_pred[max_i]
-                if max_p > 0.7:
-                    predicted_categories.append(max_i)
-                else:
-                    predicted_categories.append(len(labels) - 1)
+                # all_samples = np.array(all_samples)
+                # all_samples = np.concat(all_samples, axis=0)
+                all_samples = np.array(filtered_samples)
+                all_samples = np.repeat(all_samples, 3, -1)
+                if len(all_samples) == 0:
+                    logging.info("No samples for %s", file_name)
+                    continue
+                predictions = model.predict(all_samples)
+                offset = 0
+                for track, counts in zip(tracks, counts):
+                    track_preds = predictions[offset : offset + counts]
+                    # print(
+                    #     "Doing ",
+                    #     len(track_samples),
+                    #     len(track_preds),
+                    #     " for track ",
+                    #     track.id,
+                    #     " with tag ",
+                    #     track.tag,
+                    #     " #seconds: ",
+                    #     track.length,
+                    # )
+                    # probably want to change to other methods
+                    track_pred = np.mean(track_preds, axis=0)
 
-                if track.tag in remapped:
-                    lbl_i = remapped[track.tag]
-                else:
-                    lbl_i = labels.index(track.tag)
-                y_true.append(lbl_i)
-                offset += len(track_samples)
+                    max_i = np.argmax(track_pred)
+                    max_p = track_pred[max_i]
+                    if max_p > 0.7:
+                        predicted_categories.append(max_i)
+                    else:
+                        predicted_categories.append(len(labels) - 1)
+
+                    if track.tag in remapped:
+                        lbl_i = remapped[track.tag]
+                    else:
+                        lbl_i = labels.index(track.tag)
+                    y_true.append(lbl_i)
+                    offset += counts
+            except:
+                logging.error("Could not process %s", file_name, exc_info=True)
 
     predicted_categories = np.array(predicted_categories)
 
