@@ -1968,7 +1968,6 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
                     logging.info("No samples for %s", file_name)
                     continue
 
-                all_samples_og = all_samples
                 filtered_tracks = []
                 filtered_samples = []
                 counts = []
@@ -1979,14 +1978,14 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
                     filtered_tracks.append(track)
                     filtered_samples.extend(samples)
                     counts.append(len(samples))
+                if len(filtered_samples) == 0:
+                    logging.info("No samples for %s", file_name)
+                    continue
 
                 # all_samples = np.array(all_samples)
                 # all_samples = np.concat(all_samples, axis=0)
                 all_samples = np.array(filtered_samples)
                 all_samples = np.repeat(all_samples, 3, -1)
-                if len(all_samples) == 0:
-                    logging.info("No samples for %s", file_name)
-                    continue
                 predictions = model.predict(all_samples)
                 offset = 0
                 for track, counts in zip(tracks, counts):
@@ -2037,31 +2036,40 @@ from audiodataset import Recording
 
 
 def preprocess_audio(metadata_f, labels=None):
-    audio_f = metadata_f.with_suffix(".m4a")
-    if not audio_f.exists():
-        audio_f = metadata_f.with_suffix(".wav")
-    if not audio_f.exists():
-        audio_f = metadata_f.with_suffix(".mp3")
-    if not audio_f.exists():
-        audio_f = metadata_f.with_suffix(".flac")
-    if not audio_f.exists():
-        logging.info("Could not find audio file for %s", metadata_f)
-        return None
-
     try:
-        with metadata_f.open("r") as f:
-            metadata = json.load(f)
+        audio_f = metadata_f.with_suffix(".m4a")
+        if not audio_f.exists():
+            audio_f = metadata_f.with_suffix(".wav")
+        if not audio_f.exists():
+            audio_f = metadata_f.with_suffix(".mp3")
+        if not audio_f.exists():
+            audio_f = metadata_f.with_suffix(".flac")
+        if not audio_f.exists():
+            logging.info("Could not find audio file for %s", metadata_f)
+            return None
+
+        try:
+            with metadata_f.open("r") as f:
+                metadata = json.load(f)
+        except:
+            logging.info("Could not load metadata for %s", metadata_f, exc_info=True)
+            return None
+        rec = Recording(metadata, audio_f, None, False, False)
+        frames, sr = load_recording(audio_f)
+        end = get_end(frames, sr)
+        frames = frames[: int(sr * end)]
+        tracks = [track for track in rec.tracks if track.tag in labels]
+        if len(tracks)==0:
+            return None
+        samples = load_samples(frames, sr, tracks)
+        all_s = samples.ravel()
+        for s,t in zip(samples,tracks)
+            if len(s)==0:
+                logging.error("No samples for some track %s from %s",t.id,metadata_f, exc_info=True)
+                return None
     except:
-        logging.info("Could not load metadata for %s", metadata_f, exc_info=True)
+        logging.error("Could not load audio for %s",metadata_f, exc_info=True)
         return None
-    rec = Recording(metadata, audio_f, None, False, False)
-    frames, sr = load_recording(audio_f)
-    end = get_end(frames, sr)
-    frames = frames[: int(sr * end)]
-    tracks = [track for track in rec.tracks if track.tag in labels]
-    if len(tracks)==0:
-        return None
-    samples = load_samples(frames, sr, tracks)
     return metadata_f, tracks, samples
 
 
