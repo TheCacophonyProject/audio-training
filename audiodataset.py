@@ -415,7 +415,9 @@ class AudioSample:
 
 
 class Recording:
-    def __init__(self, metadata, filename, config, load_samples=True):
+    def __init__(
+        self, metadata, filename, config, load_samples=True, tighten_tracks=True
+    ):
         self.filename = filename
         self.metadata = metadata
         self.id = metadata.get("id")
@@ -451,7 +453,7 @@ class Recording:
             tracks_meta = metadata.get("tracks", [])
 
         for track in tracks_meta:
-            t = Track(track, self.filename, self.id, self)
+            t = Track(track, self.filename, self.id, self, tighten=tighten_tracks)
             if filter_track(t):
                 continue
             self.tracks.append(t)

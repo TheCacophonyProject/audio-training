@@ -1938,11 +1938,12 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
 
     filtered_meta = []
     for f in meta_data_f:
+        file_name = f.stem
         try:
-            first_hyphen = f.index("-")
+            first_hyphen = file_name.index("-")
         except:
             continue
-        rec_id = f[:first_hyphen]
+        rec_id = file_name[:first_hyphen]
         rec_id = int(rec_id)
         if rec_id in rec_ids:
             filtered_meta.append(f)
@@ -1955,8 +1956,12 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
         for result in pool.imap_unordered(pre_fn, filtered_meta, chunksize=8):
             if result is None:
                 continue
-            tracks, all_samples = result
+            file_name, tracks, all_samples = result
+            if len(all_samples) == 0:
+                logging.info("No samples for %s", file_name)
+                continue
             all_samples_og = all_samples
+
             # all_samples = np.array(all_samples)
             all_samples = np.concat(all_samples, axis=0)
             all_samples = np.repeat(all_samples, 3, -1)
@@ -2022,13 +2027,13 @@ def preprocess_audio(metadata_f, labels=None):
     except:
         logging.info("Could not load metadata for %s", metadata_f, exc_info=True)
         return None
-    rec = Recording(metadata, audio_f, None, False)
+    rec = Recording(metadata, audio_f, None, False, False)
     frames, sr = load_recording(audio_f)
     end = get_end(frames, sr)
     frames = frames[: int(sr * end)]
     tracks = [track for track in rec.tracks if track.tag in labels]
     samples = load_samples(frames, sr, tracks)
-    return tracks, samples
+    return metadata_f, tracks, samples
 
 
 def main():
