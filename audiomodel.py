@@ -2059,6 +2059,8 @@ def preprocess_audio(metadata_f, labels=None):
     end = get_end(frames, sr)
     frames = frames[: int(sr * end)]
     tracks = [track for track in rec.tracks if track.tag in labels]
+    if len(tracks)==0:
+        return None
     samples = load_samples(frames, sr, tracks)
     return metadata_f, tracks, samples
 
