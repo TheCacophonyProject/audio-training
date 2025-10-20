@@ -1936,25 +1936,31 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
     include_labels = list(include_labels)
     include_labels.sort()
     print("Include labels is ", include_labels)
+    if rec_ids is not None:
+        filtered_meta = []
+        for f in meta_data_f:
+            file_name = f.stem
+            try:
+                first_hyphen = file_name.index("-")
+            except:
+                continue
+            rec_id = file_name[:first_hyphen]
+            rec_id = int(rec_id)
+            if rec_id in rec_ids:
+                filtered_meta.append(f)
+        print("Runing on ", len(filtered_meta), " supplied recs ", len(rec_ids))
 
-    filtered_meta = []
-    for f in meta_data_f:
-        file_name = f.stem
-        try:
-            first_hyphen = file_name.index("-")
-        except:
-            continue
-        rec_id = file_name[:first_hyphen]
-        rec_id = int(rec_id)
-        if rec_id in rec_ids:
-            filtered_meta.append(f)
-
-    print("Runing on ", len(filtered_meta), " supplied recs ", len(rec_ids))
+    else:
+        filtered_meta = meta_data_f
     # meta_data_f = meta_data_f[:1]
     pre_fn = partial(preprocess_audio, labels=include_labels)
     labels.append("None")
     total_count = len(filtered_meta)
     count = 0
+
+    predicted_mean = []
+    predicted_max = []
+    predicted_counts = []
     with Pool(processes=8) as pool:
         for result in pool.imap_unordered(pre_fn, filtered_meta, chunksize=8):
             if count % 100 == 0:
@@ -1988,45 +1994,77 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
                 all_samples = np.repeat(all_samples, 3, -1)
                 predictions = model.predict(all_samples)
                 offset = 0
-                for track, counts in zip(tracks, counts):
-                    track_preds = predictions[offset : offset + counts]
-                    # print(
-                    #     "Doing ",
-                    #     len(track_samples),
-                    #     len(track_preds),
-                    #     " for track ",
-                    #     track.id,
-                    #     " with tag ",
-                    #     track.tag,
-                    #     " #seconds: ",
-                    #     track.length,
-                    # )
-                    # probably want to change to other methods
+                for track, count in zip(tracks, counts):
+                    track_preds = predictions[offset : offset + count]
+
+                    track_pred = np.max(track_preds, axis=0)
+                    max_i = np.argmax(track_pred)
+                    max_p = track_pred[max_i]
+                    if max_p > 0.7:
+                        predicted_max.append(max_i)
+                    else:
+                        predicted_max.append(len(labels) - 1)
+
                     track_pred = np.mean(track_preds, axis=0)
 
                     max_i = np.argmax(track_pred)
                     max_p = track_pred[max_i]
                     if max_p > 0.7:
-                        predicted_categories.append(max_i)
+                        predicted_mean.append(max_i)
                     else:
-                        predicted_categories.append(len(labels) - 1)
+                        predicted_mean.append(len(labels) - 1)
+
+                    arg_max = np.argmax(track_preds, axis=1)
+                    rows = np.arange(len(track_preds))
+                    prob_max = track_preds[rows, arg_max]
+                    over_thresh = prob_max > 0.7
+                    args_over_thresh = arg_max[over_thresh]
+                    if len(args_over_thresh) == 0:
+                        predicted_counts.append(len(labels) - 1)
+                    else:
+                        counts = np.bincount(args_over_thresh)
+                        max_i = np.argmax(counts)
+                        max_c = counts[max_i]
+                        max_counts = np.where(counts == max_c)
+                        if len(max_counts) > 1:
+                            # could use mean will just be unknown???
+                            predicted_counts.append(predicted_mean[-1])
+                        elif len(max_counts) == 1:
+                            predicted_counts.append(max_i)
 
                     if track.tag in remapped:
                         lbl_i = remapped[track.tag]
                     else:
                         lbl_i = labels.index(track.tag)
                     y_true.append(lbl_i)
-                    offset += counts
+                    offset += count
             except:
                 logging.error("Could not process %s", file_name, exc_info=True)
 
-    predicted_categories = np.array(predicted_categories)
+    predicted_mean = np.array(predicted_mean)
+    predicted_max = np.array(predicted_max)
+    predicted_counts = np.array(predicted_counts)
 
     print("Saving to ", filename)
-    cm = confusion_matrix(y_true, predicted_categories, labels=np.arange(len(labels)))
+    cm_file = filename.parent / f"{filename.stem}-mean"
+    cm = confusion_matrix(y_true, predicted_mean, labels=np.arange(len(labels)))
     figure = plot_confusion_matrix(cm, class_names=labels)
-    plt.savefig(filename.with_suffix(".png"), format="png")
-    np.save(str(filename.with_suffix(".npy")), cm)
+    plt.savefig(cm_file.with_suffix(".png"), format="png")
+    np.save(str(cm_file.with_suffix(".npy")), cm)
+
+    print("Saving to ", filename)
+    cm_file = filename.parent / f"{filename.stem}-max"
+    cm = confusion_matrix(y_true, predicted_max, labels=np.arange(len(labels)))
+    figure = plot_confusion_matrix(cm, class_names=labels)
+    plt.savefig(cm_file.with_suffix(".png"), format="png")
+    np.save(str(cm_file.with_suffix(".npy")), cm)
+
+    print("Saving to ", filename)
+    cm_file = filename.parent / f"{filename.stem}-counts"
+    cm = confusion_matrix(y_true, predicted_counts, labels=np.arange(len(labels)))
+    figure = plot_confusion_matrix(cm, class_names=labels)
+    plt.savefig(cm_file.with_suffix(".png"), format="png")
+    np.save(str(cm_file.with_suffix(".npy")), cm)
 
 
 from identifytracks import get_tracks_from_signals, signal_noise, get_end, Signal
@@ -2059,16 +2097,20 @@ def preprocess_audio(metadata_f, labels=None):
         end = get_end(frames, sr)
         frames = frames[: int(sr * end)]
         tracks = [track for track in rec.tracks if track.tag in labels]
-        if len(tracks)==0:
+        if len(tracks) == 0:
             return None
         samples = load_samples(frames, sr, tracks)
-        all_s = samples.ravel()
-        for s,t in zip(samples,tracks)
-            if len(s)==0:
-                logging.error("No samples for some track %s from %s",t.id,metadata_f, exc_info=True)
+        for s, t in zip(samples, tracks):
+            if len(s) == 0:
+                logging.error(
+                    "No samples for some track %s from %s",
+                    t.id,
+                    metadata_f,
+                    exc_info=True,
+                )
                 return None
     except:
-        logging.error("Could not load audio for %s",metadata_f, exc_info=True)
+        logging.error("Could not load audio for %s", metadata_f, exc_info=True)
         return None
     return metadata_f, tracks, samples
 
@@ -2155,13 +2197,15 @@ def main():
                         pre_lbl = pre_labels[v]
                         remapped_labels[k] = labels.index(pre_lbl)
         if args.evaluate_dir is not None:
-            base_dir = Path(args.dataset_dir)
-            meta_f = base_dir.parent / "training-meta.json"
-            with meta_f.open("r") as f:
-                data_json = json.load(f)
+            rec_ids = None
+            if args.dataset_dir is not None:
+                base_dir = Path(args.dataset_dir)
+                meta_f = base_dir.parent / "training-meta.json"
+                with meta_f.open("r") as f:
+                    data_json = json.load(f)
 
-            ds_name = base_dir.stem
-            rec_ids = data_json["recs"][ds_name]
+                ds_name = base_dir.stem
+                rec_ids = data_json["recs"][ds_name]
             evaluate_dir(
                 model, meta_data, Path(args.evaluate_dir), args.confusion, rec_ids
             )
@@ -2337,7 +2381,8 @@ def parse_args():
         "-d",
         "--dataset-dir",
         type=str,
-        default="/data/audio-data/training-data",
+        default=None,
+        # "/data/audio-data/training-data",
         help="Dataset directory to use",
     )
     parser.add_argument(
