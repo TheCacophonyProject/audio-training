@@ -2092,7 +2092,7 @@ def preprocess_audio(metadata_f, labels=None):
         except:
             logging.info("Could not load metadata for %s", metadata_f, exc_info=True)
             return None
-        rec = Recording(metadata, audio_f, None, False, False)
+        rec = Recording(metadata, audio_f, None, False, True)
         frames, sr = load_recording(audio_f)
         end = get_end(frames, sr)
         frames = frames[: int(sr * end)]
