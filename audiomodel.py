@@ -1323,7 +1323,7 @@ def confusion(
         dataset = tf_to_ydf(dataset)
     y_pred = model.predict(dataset)
     all_preds = None
-    weighted_max = True
+    weighted_max = False
     weights = [0.6, 0.4]
 
     if other_models is not None:
@@ -2313,26 +2313,26 @@ def main():
                         model_name=model_name,
                     )
                 else:
-                    # confusion(
-                    #     model,
-                    #     labels,
-                    #     dataset,
-                    #     confusion_file,
-                    #     one_hot=not meta_data.get("only_features"),
-                    #     other_models=other_models,
-                    # )
-
-                    confusion_with_pre(
+                    confusion(
                         model,
                         labels,
                         dataset,
                         confusion_file,
                         one_hot=not meta_data.get("only_features"),
-                        model_name=model_name,
                         other_models=other_models,
-                        pre_model=pre_model,
-                        pre_labels=pre_labels,
                     )
+
+                    # confusion_with_pre(
+                    #     model,
+                    #     labels,
+                    #     dataset,
+                    #     confusion_file,
+                    #     one_hot=not meta_data.get("only_features"),
+                    #     model_name=model_name,
+                    #     other_models=other_models,
+                    #     pre_model=pre_model,
+                    #     pre_labels=pre_labels,
+                    # )
 
     else:
         am = AudioModel(args.model_name, args.dataset_dir, args.second_dataset_dir)

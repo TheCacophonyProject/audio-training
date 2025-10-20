@@ -65,12 +65,23 @@ def main():
         label_total = np.sum(first_cm[i])
         total_samples += label_total
         first_correct += first_count
+
+        row_copy = first_cm[i].copy()
+        row_copy[i] = 0
+        row_copy[-1] = 0
+        most_wrong = np.argmax(row_copy)
         if label in second_labels:
             second_i = second_labels.index(label)
             second_count = second_cm[second_i][second_i]
             second_correct += second_count
             second_none = second_cm[second_i][-1]
             second_total = np.sum(second_cm[second_i])
+
+            row_copy = second_cm[i].copy()
+            row_copy[i] = 0
+            row_copy[-1] = 0
+            second_most_wrong = np.argmax(row_copy)
+
             # if second_total != first_total:
             # print(f"{label} First total is {first_total} second is {second_total}")
             # assert second_total == first_total, f"{label} First total is {first_total} second is {second_total}"
@@ -92,7 +103,7 @@ def main():
             second_acc = round(100 * second_count / second_total)
             second_none = round(100 * second_none / second_total)
             print(
-                f"For {label} have {first_count-second_count} samples diff from  {first_acc}% vs {second_acc}% None accuracies are {first_none} vs {second_none} total is {first_total} "
+                f"For {label} have {first_count-second_count} samples diff from  {first_acc}% vs {second_acc}% None accuracies are {first_none} vs {second_none} most wrong {first_labels[most_wrong]}, {first_cm[i][most_wrong]}# and second most wrong {second_labels[second_most_wrong]}, {second_cm[second_i][second_most_wrong]}# total is {first_total} "
             )
             total += first_count - second_count
 
