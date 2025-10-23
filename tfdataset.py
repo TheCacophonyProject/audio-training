@@ -190,7 +190,7 @@ BIRD_WEIGHTING = []
 SPECIFIC_BIRD_MASK = []
 
 
-def load_dataset(filenames, num_labels, labels, has_ebird=True,args):
+def load_dataset(filenames, num_labels, labels, args, has_ebird=True):
     deterministic = args.get("deterministic", False)
     if not deterministic:
         logging.info("Shuffling filenames")
@@ -266,7 +266,7 @@ def load_dataset(filenames, num_labels, labels, has_ebird=True,args):
             multi=args.get("multi_label", True),
             load_raw=args.get("load_raw", True),
             model_name=args.get("model_name", "badwinner2"),
-            has_ebird=has_ebird
+            has_ebird=has_ebird,
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -642,7 +642,9 @@ def get_a_dataset(dir, labels, args):
             )
             if load_seperate_ds:
                 logging.info("Loading third_ds %s files from %s", len(extra_files), dir)
-                dataset_extra = load_dataset(extra_files, num_labels, labels,has_ebird=False, args)
+                dataset_extra = load_dataset(
+                    extra_files, num_labels, labels, args, has_ebird=False
+                )
                 datasets.append(dataset_extra)
 
             else:
@@ -984,9 +986,7 @@ def read_tfrecord(
     global_epoch=None,
     has_ebird=True,
 ):
-    tfrecord_format = {
-        "audio/class/text": tf.io.FixedLenFeature((), tf.string)
-    }
+    tfrecord_format = {"audio/class/text": tf.io.FixedLenFeature((), tf.string)}
     if has_ebird:
         tfrecord_format["audio/class/ebird"] = tf.io.FixedLenFeature((), tf.string)
 
