@@ -190,7 +190,7 @@ BIRD_WEIGHTING = []
 SPECIFIC_BIRD_MASK = []
 
 
-def load_dataset(filenames, num_labels, labels, args):
+def load_dataset(filenames, num_labels, labels, has_ebird=True,args):
     deterministic = args.get("deterministic", False)
     if not deterministic:
         logging.info("Shuffling filenames")
@@ -266,6 +266,7 @@ def load_dataset(filenames, num_labels, labels, args):
             multi=args.get("multi_label", True),
             load_raw=args.get("load_raw", True),
             model_name=args.get("model_name", "badwinner2"),
+            has_ebird=has_ebird
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -641,7 +642,7 @@ def get_a_dataset(dir, labels, args):
             )
             if load_seperate_ds:
                 logging.info("Loading third_ds %s files from %s", len(extra_files), dir)
-                dataset_extra = load_dataset(extra_files, num_labels, labels, args)
+                dataset_extra = load_dataset(extra_files, num_labels, labels,has_ebird=False, args)
                 datasets.append(dataset_extra)
 
             else:
@@ -981,11 +982,14 @@ def read_tfrecord(
     load_raw=True,
     model_name="badwinner2",
     global_epoch=None,
+    has_ebird=True,
 ):
     tfrecord_format = {
-        "audio/class/ebird": tf.io.FixedLenFeature((), tf.string),
-        "audio/class/text": tf.io.FixedLenFeature((), tf.string),
+        "audio/class/text": tf.io.FixedLenFeature((), tf.string)
     }
+    if has_ebird:
+        tfrecord_format["audio/class/ebird"] = tf.io.FixedLenFeature((), tf.string)
+
     tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
     tfrecord_format["audio/track_id"] = tf.io.FixedLenFeature((), tf.string)
     tfrecord_format["audio/low_sample"] = tf.io.FixedLenFeature((), tf.int64)
@@ -1096,7 +1100,11 @@ def read_tfrecord(
         mel = mel - mel_m
     if labeled:
         # label = tf.cast(example["audio/class/label"], tf.int32)
-        label = tf.cast(example["audio/class/ebird"], tf.string)
+        if has_ebird:
+            label = tf.cast(example["audio/class/ebird"], tf.string)
+        else:
+            label = tf.cast(example["audio/class/text"], tf.string)
+
         split_labels = tf.strings.split(label, sep="\n")
         global remapped_y, extra_label_map
         labels = remapped_y.lookup(split_labels)
