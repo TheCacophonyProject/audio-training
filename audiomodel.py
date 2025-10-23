@@ -2526,7 +2526,7 @@ def parse_args():
     )
 
     args = parser.parse_args()
-    args.extra_datasets = None
+    # args.extra_datasets = None
     # args.multi = args.multi > 0
     args.resample = args.resample > 0
     args.only_features = args.only_features > 0
