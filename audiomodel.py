@@ -2214,6 +2214,10 @@ def main():
 
                 ds_name = base_dir.stem
                 rec_ids = data_json["recs"][ds_name]
+
+            if args.weights is not None:
+                logging.info("Loading weights %s", args.weights)
+                model.load_weights(args.weights)
             evaluate_dir(
                 model, meta_data, Path(args.evaluate_dir), args.confusion, rec_ids
             )
