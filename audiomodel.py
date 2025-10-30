@@ -1961,6 +1961,7 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
     predicted_mean = []
     predicted_max = []
     predicted_counts = []
+    confidences = []
     with Pool(processes=8) as pool:
         for result in pool.imap_unordered(pre_fn, filtered_meta, chunksize=8):
             if count % 100 == 0:
@@ -2006,7 +2007,7 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
                         predicted_max.append(len(labels) - 1)
 
                     track_pred = np.mean(track_preds, axis=0)
-
+                    confidences.append(track_pred)
                     max_i = np.argmax(track_pred)
                     max_p = track_pred[max_i]
                     if max_p > 0.7:
@@ -2044,6 +2045,13 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
     predicted_mean = np.array(predicted_mean)
     predicted_max = np.array(predicted_max)
     predicted_counts = np.array(predicted_counts)
+    confidences = np.array(confidences)
+    npy_file = filename.parent / f"{filename.stem}-raw.npy"
+    with npy_file.open("wb") as f:
+        np.save(f, y_true)
+        np.save(f, predicted_mean)
+        np.save(f, confidences)
+        np.save(f, labels)
 
     print("Saving to ", filename)
     cm_file = filename.parent / f"{filename.stem}-mean"
@@ -2526,7 +2534,7 @@ def parse_args():
     )
 
     args = parser.parse_args()
-    # args.extra_datasets = None
+    args.extra_datasets = None
     # args.multi = args.multi > 0
     args.resample = args.resample > 0
     args.only_features = args.only_features > 0

@@ -34,6 +34,14 @@ def main():
         second_meta = json.load(f)
 
     first_labels = first_meta["labels"]
+    # re_l = first_meta["remapped_labels"]
+    # for k, v in re_l.items():
+    #     mapped_lbl = first_labels[v]
+    #     if mapped_lbl != k:
+    #         print("Mapped is ",mapped_lbl, k)
+    #         if k in first_labels:
+    #             first_labels.remove(k)
+    #             print("Remvoing", k)
     second_labels = second_meta["labels"]
     pre_labels = ["animal", "bird", "human", "noise"]
 
@@ -92,6 +100,9 @@ def main():
     second_correct = 0
     second_total_samples = 0
     for i, label in enumerate(first_labels):
+        print("Getting label", label)
+        # if label in ["human","noise"]:
+        #     continue
         first_count = first_cm[i][i]
         first_none = first_cm[i][-1]
         first_total = np.sum(first_cm[i])
@@ -110,8 +121,8 @@ def main():
             second_none = second_cm[second_i][-1]
             second_total = np.sum(second_cm[second_i])
 
-            row_copy = second_cm[i].copy()
-            row_copy[i] = 0
+            row_copy = second_cm[second_i].copy()
+            row_copy[second_i] = 0
             row_copy[-1] = 0
             second_most_wrong = np.argmax(row_copy)
 

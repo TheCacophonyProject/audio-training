@@ -643,7 +643,7 @@ def get_a_dataset(dir, labels, args):
             if load_seperate_ds:
                 logging.info("Loading third_ds %s files from %s", len(extra_files), dir)
                 dataset_extra = load_dataset(
-                    extra_files, num_labels, labels, args, has_ebird=False
+                    extra_files, num_labels, labels, args
                 )
                 datasets.append(dataset_extra)
 
