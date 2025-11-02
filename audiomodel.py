@@ -1962,6 +1962,7 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
     predicted_max = []
     predicted_counts = []
     confidences = []
+    track_ids = []
     with Pool(processes=8) as pool:
         for result in pool.imap_unordered(pre_fn, filtered_meta, chunksize=8):
             if count % 100 == 0:
@@ -2008,6 +2009,7 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
 
                     track_pred = np.mean(track_preds, axis=0)
                     confidences.append(track_pred)
+                    track_ids.append(track.id)
                     max_i = np.argmax(track_pred)
                     max_p = track_pred[max_i]
                     if max_p > 0.7:
@@ -2046,8 +2048,11 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
     predicted_max = np.array(predicted_max)
     predicted_counts = np.array(predicted_counts)
     confidences = np.array(confidences)
+    track_ids = np.array(track_ids)
+
     npy_file = filename.parent / f"{filename.stem}-raw.npy"
     with npy_file.open("wb") as f:
+        np.save(f, track_ids)
         np.save(f, y_true)
         np.save(f, predicted_mean)
         np.save(f, confidences)
