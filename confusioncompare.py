@@ -33,7 +33,7 @@ def main():
     with second_cm_meta_file.open("r") as f:
         second_meta = json.load(f)
 
-    first_labels = first_meta["labels"]
+    first_labels = first_meta["ebird_labels"]
     # re_l = first_meta["remapped_labels"]
     # for k, v in re_l.items():
     #     mapped_lbl = first_labels[v]

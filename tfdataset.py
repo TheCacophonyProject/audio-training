@@ -483,7 +483,7 @@ def get_dataset(dir, labels, global_epoch=None, **args):
             )
         else:
             dataset = dataset.map(
-                lambda x, y: raw_to_mel_rgb(x, y),
+                lambda x, y: raw_to_mel(x, y),
                 num_parallel_calls=tf.data.AUTOTUNE,
                 deterministic=deterministic,
             )
