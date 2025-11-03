@@ -1954,12 +1954,16 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
         include_labels.add(l)
 
         remapped[l] = labels.index("human")
+    remapped["human"] = labels.index("human")
+
     for l in ALL_BIRDS:
         if l in labels:
             continue
         include_labels.add(l)
 
         remapped[l] = labels.index("bird")
+    remapped["bird"] = labels.index("bird")
+
     include_labels = list(include_labels)
     include_labels.sort()
     print("Include labels is ", include_labels)
