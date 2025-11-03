@@ -67,6 +67,7 @@ from birdsconfig import (
     ALL_BIRDS,
     EXTRA_LABELS,
     OTHER_LABELS,
+    HUMAN_LABELS,
 )
 
 from tfdataset import (
@@ -1928,11 +1929,37 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
     predicted_categories = []
     y_true = []
     labels = model_meta["labels"]
+
     include_labels = set(labels)
+
+    pre_labels = ["bird", "human", "noise"]
+
+    for pre_l in pre_labels:
+        if pre_l not in labels:
+            labels.append(pre_l)
+    labels.append("None")
+
     remapped = model_meta["remapped_labels"]
     for k, v in remapped.items():
         if v >= 0:
             include_labels.add(k)
+
+    include_labels.add("noise")
+    include_labels.add("human")
+
+    for l in NOISE_LABELS:
+        include_labels.add(l)
+        remapped[l] = labels.index("noise")
+    for l in HUMAN_LABELS:
+        include_labels.add(l)
+
+        remapped[l] = labels.index("human")
+    for l in ALL_BIRDS:
+        if l in labels:
+            continue
+        include_labels.add(l)
+
+        remapped[l] = labels.index("bird")
     include_labels = list(include_labels)
     include_labels.sort()
     print("Include labels is ", include_labels)
@@ -1954,7 +1981,6 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
         filtered_meta = meta_data_f
     # meta_data_f = meta_data_f[:1]
     pre_fn = partial(preprocess_audio, labels=include_labels)
-    labels.append("None")
     total_count = len(filtered_meta)
     count = 0
 
@@ -1963,6 +1989,7 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
     predicted_counts = []
     confidences = []
     track_ids = []
+
     with Pool(processes=8) as pool:
         for result in pool.imap_unordered(pre_fn, filtered_meta, chunksize=8):
             if count % 100 == 0:

@@ -33,7 +33,7 @@ def main():
     with second_cm_meta_file.open("r") as f:
         second_meta = json.load(f)
 
-    first_labels = first_meta["ebird_labels"]
+    first_labels = first_meta["labels"]
     # re_l = first_meta["remapped_labels"]
     # for k, v in re_l.items():
     #     mapped_lbl = first_labels[v]
@@ -100,7 +100,6 @@ def main():
     second_correct = 0
     second_total_samples = 0
     for i, label in enumerate(first_labels):
-        print("Getting label", label)
         # if label in ["human","noise"]:
         #     continue
         first_count = first_cm[i][i]
@@ -111,6 +110,11 @@ def main():
         first_correct += first_count
 
         row_copy = first_cm[i].copy()
+        first_bird_c = 0
+        if "bird" in first_labels:
+            first_bird_c = first_cm[i][first_labels.index("bird")]
+            row_copy[first_labels.index("bird")] = 0
+
         row_copy[i] = 0
         row_copy[-1] = 0
         most_wrong = np.argmax(row_copy)
@@ -122,6 +126,8 @@ def main():
             second_total = np.sum(second_cm[second_i])
 
             row_copy = second_cm[second_i].copy()
+            if "bird" in second_labels:
+                row_copy[second_labels.index("bird")] = 0
             row_copy[second_i] = 0
             row_copy[-1] = 0
             second_most_wrong = np.argmax(row_copy)
@@ -129,13 +135,14 @@ def main():
             # if second_total != first_total:
             # print(f"{label} First total is {first_total} second is {second_total}")
             # assert second_total == first_total, f"{label} First total is {first_total} second is {second_total}"
-            if first_total == 0:
-                continue
+            # if first_total == 0:
+            #     continue
 
-            bird_c = 0
-            # bird_c = second_cm[second_i][second_labels.index("bird")]
+            first_inccorect += first_total - first_count - first_none - first_bird_c
+
+            # bird_c = 0
+            bird_c = second_cm[second_i][second_labels.index("bird")]
             second_total_samples += second_total
-            first_inccorect += first_total - first_count - first_none
             second_incorrect += second_total - second_count - second_none - bird_c
             # assert first_inccorect == second_incorrect, f"{first_cm[i] } vs {second_cm[second_i]}"
             # print("for first",first_total - first_count - first_none," Second ",second_total - second_count - second_none-bird_c)
@@ -150,10 +157,18 @@ def main():
             # )
             # print(first_cm[i],second_cm[i])
             # print(second_count,second_total)
-            first_acc = round(100 * first_count / first_total)
-            first_none = round(100 * first_none / first_total)
-            second_acc = round(100 * second_count / second_total)
-            second_none = round(100 * second_none / second_total)
+            if first_total == 0:
+                first_acc = 0
+                first_none = 0
+            else:
+                first_acc = round(100 * first_count / first_total)
+                first_none = round(100 * first_none / first_total)
+            if second_total == 0:
+                second_acc = 0
+                second_none = 0
+            else:
+                second_acc = round(100 * second_count / second_total)
+                second_none = round(100 * second_none / second_total)
             print(
                 f"For {label} have {first_count-second_count} samples diff from  {first_acc}% vs {second_acc}% None accuracies are {first_none} vs {second_none} most wrong {first_labels[most_wrong]}, {first_cm[i][most_wrong]}# and second most wrong {second_labels[second_most_wrong]}, {second_cm[second_i][second_most_wrong]}# total is {first_total} "
             )
