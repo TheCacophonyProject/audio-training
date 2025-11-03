@@ -43,7 +43,7 @@ def main():
     #             first_labels.remove(k)
     #             print("Remvoing", k)
     second_labels = second_meta["labels"]
-    pre_labels = ["animal", "bird", "human", "noise"]
+    pre_labels = ["bird", "human", "noise"]
 
     if len(first_cm[0]) != len(first_labels) + 1:
         first_labels.extend(pre_labels)
@@ -115,9 +115,13 @@ def main():
             first_bird_c = first_cm[i][first_labels.index("bird")]
             row_copy[first_labels.index("bird")] = 0
 
+        if label == "noise":
+            row_copy[first_labels.index("insect")] = 0
+
         row_copy[i] = 0
         row_copy[-1] = 0
         most_wrong = np.argmax(row_copy)
+        # print(label,first_cm[i])
         if label in second_labels:
             second_i = second_labels.index(label)
             second_count = second_cm[second_i][second_i]
@@ -128,6 +132,9 @@ def main():
             row_copy = second_cm[second_i].copy()
             if "bird" in second_labels:
                 row_copy[second_labels.index("bird")] = 0
+
+            if label == "noise":
+                row_copy[second_labels.index("insect")] = 0
             row_copy[second_i] = 0
             row_copy[-1] = 0
             second_most_wrong = np.argmax(row_copy)
@@ -137,11 +144,14 @@ def main():
             # assert second_total == first_total, f"{label} First total is {first_total} second is {second_total}"
             # if first_total == 0:
             #     continue
+            bird_c = second_cm[second_i][second_labels.index("bird")]
 
+            if label in pre_labels:
+                first_bird_c = 0
+                bird_c = 0
             first_inccorect += first_total - first_count - first_none - first_bird_c
 
             # bird_c = 0
-            bird_c = second_cm[second_i][second_labels.index("bird")]
             second_total_samples += second_total
             second_incorrect += second_total - second_count - second_none - bird_c
             # assert first_inccorect == second_incorrect, f"{first_cm[i] } vs {second_cm[second_i]}"

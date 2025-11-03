@@ -1993,7 +1993,7 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
     predicted_counts = []
     confidences = []
     track_ids = []
-
+    all_pred_confidences = []
     with Pool(processes=8) as pool:
         for result in pool.imap_unordered(pre_fn, filtered_meta, chunksize=8):
             if count % 100 == 0:
@@ -2047,7 +2047,7 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
                         predicted_mean.append(max_i)
                     else:
                         predicted_mean.append(len(labels) - 1)
-
+                    all_pred_confidences.append(track_preds)
                     arg_max = np.argmax(track_preds, axis=1)
                     rows = np.arange(len(track_preds))
                     prob_max = track_preds[rows, arg_max]
@@ -2089,6 +2089,12 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
         np.save(f, confidences)
         np.save(f, labels)
 
+    import pickle
+
+    # save all confs for further analysis
+    pkl_file = filename.parent / f"{filename.stem}-raw-confidences.pkl"
+    with pkl_file.open("wb") as f:
+        pickle.dump(all_pred_confidences, f)
     print("Saving to ", filename)
     cm_file = filename.parent / f"{filename.stem}-mean"
     cm = confusion_matrix(y_true, predicted_mean, labels=np.arange(len(labels)))
