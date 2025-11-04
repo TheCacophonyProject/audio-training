@@ -202,257 +202,6 @@ def show_signals(file):
     plot_mel_signals(mel, signals, signals2)
 
 
-# MIGHT BE WORTH TRYING
-#
-# import random
-# def split_sound(clip):
-#     """Returns the sound array, sample rate and
-#     x_split = intervals where sound is louder than top db
-#     """
-#     db = librosa.core.amplitude_to_db(clip)
-#     mean_db = np.abs(db).mean()
-#     std_db = db.std()
-#     x_split = librosa.effects.split(y=clip, top_db = mean_db - std_db)
-#     return x_split
-# def split_sound(clip):
-#     """Returns the sound array, sample rate and
-#     x_split = intervals where sound is louder than top db
-#     """
-#     db = librosa.core.amplitude_to_db(clip)
-#     mean_db = np.abs(db).mean()
-#     std_db = db.std()
-#     x_split = librosa.effects.split(y=clip, top_db=mean_db + 2 * std_db)
-#     return x_split
-
-
-def load_samples(
-    frames,
-    sr,
-    tracks,
-    segment_length,
-    stride,
-    hop_length=281,
-    mean_sub=False,
-    use_mfcc=False,
-    mel_break=1000,
-    htk=True,
-    n_mels=160,
-    fmin=50,
-    fmax=11000,
-    channels=1,
-    power=1,
-    db_scale=False,
-    normalize=True,
-    pad_short_tracks=True,
-):
-    # pad_short_tracks = False
-    filter_below = 1000
-    logging.info(
-        "Loading samples with length %s stride %s hop length %s and mean_sub %s mfcc %s break %s htk %s n mels %s fmin %s fmax %s",
-        segment_length,
-        stride,
-        hop_length,
-        mean_sub,
-        use_mfcc,
-        mel_break,
-        htk,
-        n_mels,
-        fmin,
-        fmax,
-    )
-    mels = []
-    i = 0
-    # n_fft = sr // 10
-    n_fft = 4096
-    # hop_length = 640  # feature frame rate of 75
-
-    sample_size = int(sr * segment_length)
-    jumps_per_stride = int(sr * stride)
-    length = len(frames) / sr
-    end = segment_length
-    mel_samples = []
-    for t in tracks:
-        show_spec = False
-        track_data = []
-        start = 0
-        end = start + segment_length
-
-        sr_end = int(t.end * sr)
-        sr_start = int(sr * t.start)
-
-        if pad_short_tracks:
-            end = min(end, t.length)
-            track_frames = frames[sr_start:sr_end]
-        else:
-            missing = sample_size - (sr_end - sr_start)
-            if missing > 0:
-                offset = np.random.randint(0, missing)
-                sr_start = sr_start - offset
-
-                if sr_start <= 0:
-                    sr_start = 0
-                    sr_end = sr_start + sample_size
-                    sr_end = min(sr_end, len(frames))
-                else:
-                    end_offset = sr_end + missing - offset
-                    if end_offset > len(frames):
-                        end_offset = len(frames)
-                        sr_start = end_offset - sample_size
-                        sr_start = max(sr_start, 0)
-                    sr_end = end_offset
-                assert sr_end - sr_start == sample_size
-            # print("Track ",t , " becomes ", sr_start/sr, sr_end / sr)
-            track_frames = frames[sr_start:sr_end]
-
-        sr_start = 0
-        sr_end = min(sr_end, sample_size)
-        while True:
-            data = track_frames[sr_start:sr_end]
-            print("Data size for track ", t, data.shape)
-            if len(data) != sample_size:
-                extra_frames = sample_size - len(data)
-                offset = np.random.randint(0, extra_frames)
-                data = np.pad(data, (offset, extra_frames - offset))
-            if filter_below and t.freq_end < filter_below:
-                logging.info(
-                    "Filter freq below %s %s %s", filter_below, t.freq_start, t.freq_end
-                )
-                # data = butter_bandpass_filter(data, t.freq_start, t.freq_end, sr)
-                # 1/0
-            if show_spec:
-                print("Showing spec for ", t)
-            if normalize:
-                data = normalize_data(data)
-            spect = get_spect(
-                data,
-                sr,
-                hop_length,
-                mean_sub,
-                use_mfcc,
-                mel_break,
-                htk,
-                n_mels,
-                fmin,
-                fmax,
-                n_fft,
-                power,
-                db_scale,
-                channels,
-                low_pass=t.freq_start,
-                high_pass=t.freq_end,
-                show_spec=show_spec,
-            )
-            # if t.start > 24 and t.start < 34:
-            #     print(spect[:, :, 0].shape, "Spec for ", sr_start / sr, sr_end / sr)
-            #     plot_spec(spect[:, :, 0])
-
-            show_spec = False
-            track_data.append(spect)
-            start = start + stride
-            end = start + segment_length
-            sr_start = int(start * sr)
-            sr_end = min(int(end * sr), sr_start + sample_size)
-            # always take 1 sample
-            if end > t.length:
-                break
-        mel_samples.append(track_data)
-    return mel_samples
-
-
-def get_spect(
-    data,
-    sr,
-    hop_length,
-    mean_sub,
-    use_mfcc,
-    mel_break,
-    htk,
-    n_mels,
-    fmin,
-    fmax,
-    n_fft,
-    power,
-    db_scale,
-    channels=1,
-    low_pass=None,
-    high_pass=None,
-    show_spec=False,
-):
-    data = data.copy()
-    if not htk:
-        mel = librosa.feature.melspectrogram(
-            y=data,
-            sr=sr,
-            n_fft=n_fft,
-            hop_length=hop_length,
-            fmin=fmin,
-            fmax=fmax,
-            n_mels=n_mels,
-        )
-        print("HTK")
-    else:
-        butter = False
-        if butter:
-            print("applying butter")
-            data = butter_bandpass_filter(data, low_pass, high_pass, sr)
-
-        # data = bandpassed + noise
-
-        # bandpassed = data
-        spectogram = np.abs(librosa.stft(data, n_fft=n_fft, hop_length=hop_length))
-
-        # bins = 1 + n_fft / 2
-        # max_f = sr / 2
-        # gap = max_f / bins
-        # if low_pass is not None:
-        #     min_bin = low_pass // gap
-        #     spectogram[: int(min_bin)] = 0
-        #
-        # if high_pass is not None:
-        #     max_bin = high_pass // gap
-        #     spectogram[int(max_bin) :] = 0
-        # print("F min is ",fmin)
-        # fmin =200
-        # print("Power ?,", power, fmin, fmax)
-        mel = mel_spec(
-            spectogram,
-            sr,
-            n_fft,
-            hop_length,
-            n_mels,
-            fmin,
-            fmax,
-            mel_break,
-            power=power,
-        )
-    if show_spec:
-        plot_mel(mel, fmin=fmin, fmax=fmax)
-    if db_scale:
-        mel = librosa.power_to_db(mel, ref=np.max)
-    mel = tf.expand_dims(mel, axis=2)
-
-    if use_mfcc:
-        mfcc = librosa.feature.mfcc(
-            y=data,
-            sr=sr,
-            hop_length=hop_length,
-            htk=True,
-            fmin=50,
-            fmax=11000,
-            n_mels=80,
-        )
-        mfcc = tf.image.resize_with_pad(mfcc, *mel.shape)
-        mel = tf.concat((mel, mfcc), axis=0)
-    # end = start + sample_size
-    if mean_sub:
-        mel_m = tf.reduce_mean(mel, axis=1)
-        mel_m = tf.expand_dims(mel_m, axis=1)
-        mel = mel - mel_m
-    if channels > 1:
-        mel = tf.repeat(mel, channels, axis=2)
-    return mel
-
-
 def preprocess_file(
     tracks, file, seg_length, stride, hop_length, mean_sub, use_mfcc, break_freq, n_mels
 ):
@@ -729,7 +478,7 @@ def predict_on_folder(load_model, base_dir):
     total_files = 0
     total_correct = 0
     load_model = Path(load_model)
-    logging.info("Loading %s with weights %s", load_model, "val_acc")
+    logging.info("Loading %s with weights %s", load_model, args.weights)
     model = tf.keras.models.load_model(
         str(load_model),
         compile=False,
@@ -971,6 +720,9 @@ def predict_on_test(split_file, load_model, base_dir, confusion_file="confusion.
     plt.savefig(confusion_file.with_suffix(".png"), format="png")
 
 
+from audiomodel import preprocess_audio
+
+
 def main():
     init_logging()
     args = parse_args()
@@ -979,27 +731,16 @@ def main():
     if args.dir:
         predict_on_folder(args.model, args.dir)
         return
+
     frames, sr = load_recording(args.file)
     end = get_end(frames, sr)
     frames = frames[: int(sr * end)]
     signals, _ = signal_noise(frames, sr)
 
     tracks = get_tracks_from_signals(signals, end)
-    # tracks = [track for track in tracks if track.start > 18 and track.end < 21]
-    # track.start = 28.0p6436538696289
-    # track.end = 31.0
-    # tracks = [track]
-    # for s in tracks:
-    #     print("SIgnals are ", s)
-    # get_speech_score(args.file)
-    # show_signals(args.file)
-    # return
-    # db_check(args.file)
-    # return
     load_model = Path(args.model)
-    # test(args.file)
-    # return
-    logging.info("Loading %s with weights %s", load_model, "val_acc")
+
+    logging.info("Loading %s with weights %s", load_model, args.weights)
     model = tf.keras.models.load_model(
         str(load_model),
         # custom_objects={
@@ -1046,19 +787,6 @@ def main():
     # 1 / 0
 
     labels = meta.get("labels", [])
-    ebird_ids = meta.get("ebird_ids", [])
-    ebirds = add_ebird_mappings(labels)
-    list_mappings = []
-    for l in labels:
-        list_mappings.append(ebirds[l])
-    for label, ids in zip(labels, ebird_ids):
-        if len(ids) == 0:
-            print(label, "Have ", ids, " now calced ", ebirds[label])
-
-    meta["ebird_ids"] = list_mappings
-    with open(load_model.parent / "metadata.txt", "w") as f:
-        json.dump(meta, f, indent=4)
-    assert len(ebirds) == len(labels)
     multi_label = meta.get("multi_label", True)
     segment_length = meta.get("segment_length", 3)
     segment_stride = meta.get("segment_stride", 1)
@@ -1072,18 +800,12 @@ def main():
     n_mels = meta.get("n_mels", 160)
     normalize = meta.get("normalize", True)
     power = meta.get("power", 2)
-    fmin = meta.get("fmin", 50)
+    fmin = meta.get("fmin", 100)
     # fmin = 1000
     fmax = meta.get("fmax", 11000)
     pad_short_tracks = meta.get("pad_short_tracks", True)
 
     hop_length = 281
-    # print("stride is", segment_stride)
-    # segment_length = 2
-    # segment_stride = 0.5
-    # segment_stride = 0.1
-    # multi_label = True
-    # labels = ["bird", "human"]
     start = 0
     if args.dataset:
         data_path = Path(args.dataset)
@@ -1140,26 +862,10 @@ def main():
         elif model_name == "yamn-embeddings":
             data, length = yamn_embeddings(file, segment_stride)
         else:
-            frames, sr = load_recording(file)
-            # frames = butter_bandpass_filter(frames, 0, 10000, sr, order=5)
+            # frames, sr = load_recording(file)
+            from predict_utils import load_samples
 
-            data = load_samples(
-                frames,
-                sr,
-                tracks,
-                segment_length,
-                segment_stride,
-                hop_length,
-                mean_sub,
-                mel_break=break_freq,
-                n_mels=n_mels,
-                normalize=normalize,
-                power=power,
-                fmin=fmin,
-                fmax=fmax,
-                pad_short_tracks=pad_short_tracks,
-            )
-        # data = np.array(data)
+            data = load_samples(frames, sr, tracks)
 
     start = 0
 
@@ -1191,7 +897,8 @@ def main():
                 labels[max_p],
                 "Pred for start ",
                 t.start + start_i * segment_stride,
-                np.round(p[max_p] * 100),"%"s
+                np.round(p[max_p] * 100),
+                "%",
             )
 
         #     for i, percent in enumerate(p):

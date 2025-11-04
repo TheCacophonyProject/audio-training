@@ -75,6 +75,7 @@ def load_samples(
             end = min(end, t.length)
             track_frames = frames[sr_start:sr_end]
         else:
+
             missing = sample_size - (sr_end - sr_start)
             if missing > 0:
                 offset = np.random.randint(0, missing)
