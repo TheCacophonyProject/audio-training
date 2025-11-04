@@ -99,7 +99,12 @@ def main():
     first_correct = 0
     second_correct = 0
     second_total_samples = 0
+    first_pre_lbl_error = 0
+    second_pre_lbl_error = 0
+    
     for i, label in enumerate(first_labels):
+        # if label in pre_labels:
+            # continue
         # if label in ["human","noise"]:
         #     continue
         first_count = first_cm[i][i]
@@ -117,7 +122,13 @@ def main():
 
         if label == "noise":
             row_copy[first_labels.index("insect")] = 0
-
+        if label !="insect" and label not in pre_labels:
+            for pre_l in pre_labels:
+                if pre_l == "bird":
+                    continue
+                pre_i = first_labels.index(pre_l)
+                first_pre_lbl_error += first_cm[i][pre_i]
+            # print("Adding error for ",label,first_pre_lbl_error,first_cm[i],np.sum(first_cm[i]))
         row_copy[i] = 0
         row_copy[-1] = 0
         most_wrong = np.argmax(row_copy)
@@ -129,6 +140,13 @@ def main():
             second_none = second_cm[second_i][-1]
             second_total = np.sum(second_cm[second_i])
 
+            if label !="insect" and label not in pre_labels:
+                for pre_l in pre_labels:
+                    if pre_l == "bird":
+                        continue
+                    pre_i = second_labels.index(pre_l)
+                    second_pre_lbl_error += second_cm[i][pre_i]
+                    
             row_copy = second_cm[second_i].copy()
             if "bird" in second_labels:
                 row_copy[second_labels.index("bird")] = 0
@@ -150,7 +168,6 @@ def main():
                 first_bird_c = 0
                 bird_c = 0
             first_inccorect += first_total - first_count - first_none - first_bird_c
-
             # bird_c = 0
             second_total_samples += second_total
             second_incorrect += second_total - second_count - second_none - bird_c
@@ -217,7 +234,7 @@ def main():
         print("Better model is first ", args.first_confusion)
     else:
         print("Better model is second ", args.second_confusion)
-
+    print("Pre lbl error ", first_pre_lbl_error," second ", second_pre_lbl_error)
 
 if __name__ == "__main__":
     main()
