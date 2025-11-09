@@ -203,7 +203,8 @@ def test_labels():
     ebird_map = get_label_to_ebird_map()
     ebird_ids = set()
     for text_label in text_labels:
-        ebird_id = get_ebird_id(text_label, ebird_map)
+        ebird_id = get_ebilabels_to_ebird_links
+        rd_id(text_label, ebird_map)
         print(f"{text_label} ebirdid: {ebird_id}")
         ebird_ids.add(ebird_id)
     e_ids = list(ebird_ids)
@@ -312,13 +313,14 @@ def main():
     # test_labels()
     # return
     metadata_f = Path(sys.argv[1])
-    labels_to_api_old(metadata_f)
-    return
+    # labels_to_api_old(metadata_f)
+    # return
     ebird_map = get_label_to_ebird_map()
 
     with metadata_f.open("r") as f:
         metadata = json.load(f)
     labels_to_ebird_links(metadata)
+    return
     ebird_ids = []
     for l in metadata["labels"]:
         l = l.replace(" ", "-")

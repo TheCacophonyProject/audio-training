@@ -44,7 +44,7 @@ def get_label_to_ebird_map():
     ebird_map["whistler"] = "y01193"
     ebird_map["common-starling"] = "eursta"
     ebird_map["turkey"] = "wiltur"
-    ebird_map["rooster"] = "redjun"
+    ebird_map["chicken"] = "redjun1"
     ebird_map["crow"] = "rook1"
     ebird_map["norfolk-parrot"] = "noipar1"
     ebird_map["pigeon"] = "rocpig"

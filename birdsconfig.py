@@ -4,7 +4,9 @@ RELABEL_MAP = {
     "gragoo1": "cangoo",
     "x00458": "duck",
     "mallar3": "duck",
-    "domesz3tic-chicken": "redjun1",
+    "domestic-chicken": "redjun1",
+    "chicken": "redjun1",
+    "redjun": "redjun1",
     "yeepen1": "litpen1",
     "yefpar3": "parake",
     "refpar4": "parake",
@@ -53,6 +55,7 @@ ALL_BIRDS.append("kiwi")
 ALL_BIRDS.append("norfolk silkeye")
 ALL_BIRDS.append("tree-weta")
 ALL_BIRDS.append("new zealand dotterel")
+ALL_BIRDS.add("rooster")
 
 
 # NOISE SECTION
@@ -135,7 +138,6 @@ NOISE_LABELS = [
 ANIMAL_LABELS = [
     "bear",
     "cat",
-    "chicken",
     "cow",
     "dog",
     "dolphin",
