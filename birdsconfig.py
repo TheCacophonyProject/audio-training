@@ -55,7 +55,7 @@ ALL_BIRDS.append("kiwi")
 ALL_BIRDS.append("norfolk silkeye")
 ALL_BIRDS.append("tree-weta")
 ALL_BIRDS.append("new zealand dotterel")
-ALL_BIRDS.add("rooster")
+ALL_BIRDS.append("rooster")
 
 
 # NOISE SECTION

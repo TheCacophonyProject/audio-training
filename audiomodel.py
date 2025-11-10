@@ -1305,6 +1305,8 @@ def confusion(
     one_hot=True,
     model_name=None,
     other_models=None,
+    pre_model=None,
+    pre_labels=None,
 ):
     ebird_labels = model_labels.copy()
     labels = []
@@ -1348,10 +1350,27 @@ def confusion(
             # y_pred = np.maximum(all_preds)
             logging.info("y_pred preds is %s", y_pred.shape)
         # y_pred = np.int64(tf.argmax(y_pred, axis=1))
+    if pre_model is not None:
+        pre_pred = pre_model.predict(dataset)
 
     predicted_categories = []
     if "None" not in labels:
         labels.append("None")
+    # save raw values for use later
+    npy_file = filename.parent / f"{filename.stem}-raw.npy"
+    with npy_file.open("wb") as f:
+        np.save(f, np.array(model_labels))
+        np.save(f, y_pred)
+        np.save(f, y_true)
+
+        if pre_model is not None:
+            np.save(f, np.array(["premodel"]))
+            np.save(f, pre_pred)
+            np.save(f, np.array(pre_labels))
+
+        if all_preds is not None and len(all_preds) > 1:
+            np.save(f, np.array(["other_model"]))
+            np.save(f, all_preds[1])
 
     if all_preds is not None and weighted_max:
         logging.info("Running weighted max")
@@ -1382,6 +1401,7 @@ def confusion(
                 predicted_categories.append(len(labels) - 1)
     cm = confusion_matrix(y_true, predicted_categories, labels=np.arange(len(labels)))
     figure = plot_confusion_matrix(cm, class_names=labels)
+
     plt.savefig(filename.with_suffix(".png"), format="png")
     np.save(str(filename.with_suffix(".npy")), cm)
 
@@ -2374,6 +2394,8 @@ def main():
                         confusion_file,
                         one_hot=not meta_data.get("only_features"),
                         other_models=other_models,
+                        pre_model=pre_model,
+                        pre_labels=pre_labels,
                     )
 
                     # confusion_with_pre(
