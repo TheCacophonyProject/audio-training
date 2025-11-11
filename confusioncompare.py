@@ -42,7 +42,7 @@ def main():
     #         if k in first_labels:
     #             first_labels.remove(k)
     #             print("Remvoing", k)
-    second_labels = second_meta["labels"]
+    second_labels = second_meta["ebird_ids"]
     pre_labels = ["bird", "human", "noise"]
 
     if len(first_cm[0]) != len(first_labels) + 1:
@@ -141,13 +141,13 @@ def main():
             second_none = second_cm[second_i][-1]
             second_total = np.sum(second_cm[second_i])
 
-            if label != "insect" and label not in pre_labels:
-                for pre_l in pre_labels:
-                    if pre_l == "bird":
-                        continue
-                    if pre_l in second_labels:
-                        pre_i = second_labels.index(pre_l)
-                        second_pre_lbl_error += second_cm[i][pre_i]
+            # if label != "insect" and label not in pre_labels:
+            #     for pre_l in pre_labels:
+            #         if pre_l == "bird":
+            #             continue
+            #         if pre_l in second_labels:
+            #             pre_i = second_labels.index(pre_l)
+            #             second_pre_lbl_error += second_cm[i][pre_i]
 
             row_copy = second_cm[second_i].copy()
             if "bird" in second_labels:

@@ -131,6 +131,7 @@ class AudioDataset:
 
     def load_meta(self, base_path):
         meta_files = Path(base_path).glob("**/*.txt")
+
         for f in meta_files:
             try:
                 meta = load_metadata(f)
@@ -143,7 +144,7 @@ class AudioDataset:
                     audio_f = f.with_suffix(".flac")
                     # hack to find files, probably should look
                     # at all files in dir or store file in metadata
-                r = Recording(meta, audio_f, self.config)
+                r = Recording(meta, audio_f, self.config, tighten_tracks=False)
 
                 self.add_recording(r)
             except:

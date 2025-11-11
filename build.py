@@ -851,7 +851,7 @@ def parse_args():
     parser.add_argument(
         "--seg-length", default=3, type=int, help="Segment length in seconds"
     )
-    parser.add_argument("--stride", default=1, help="Segment stride")
+    parser.add_argument("--stride", default=1, type=float, help="Segment stride")
     parser.add_argument(
         "out_dir", default="/data/audio-data", help="Directory to place files in"
     )

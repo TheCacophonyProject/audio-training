@@ -76,39 +76,39 @@ def set_specific_by_count(meta):
     else:
         ebird_ids = meta["labels"]
     # just for until dataset is build with ebird ids
-    ebird_id_to_labels = {}
-    for label, ebird_id in zip(meta["labels"], ebird_ids):
-        if ebird_id in ebird_id_to_labels:
-            ebird_id_to_labels[ebird_id].append(label)
-        else:
-            ebird_id_to_labels[ebird_id] = [label]
-    #        logging.info("Adding %s for %s",ebird_id,label)
+    # ebird_id_to_labels = {}
+    # for label, ebird_id in zip(meta["labels"], ebird_ids):
+    #     if ebird_id in ebird_id_to_labels:
+    #         ebird_id_to_labels[ebird_id].append(label)
+    #     else:
+    #         ebird_id_to_labels[ebird_id] = [label]
+    # #        logging.info("Adding %s for %s",ebird_id,label)
 
-    dataset_lbls = ["train samples", "rec counts", "validation sample"]
-    count_dics = [training, training_rec, validation]
-    for v, lbl_list in ebird_id_to_labels.items():
-        for k in lbl_list:
-            for dataset_lbl, dataset in zip(dataset_lbls, count_dics):
-                if k in dataset:
-                    if v not in dataset:
-                        dataset[v] = 0
-                    total_count = dataset[k]
-                    if v in dataset:
-                        total_count += dataset[v]
-                    dataset[k] = total_count
-                    logging.info(
-                        "%s - Adding samples of %s to  %s for a total of %s",
-                        dataset_lbl,
-                        k,
-                        v,
-                        total_count,
-                    )
+    # dataset_lbls = ["train samples", "rec counts", "validation sample"]
+    # count_dics = [training, training_rec, validation]
+    # for v, lbl_list in ebird_id_to_labels.items():
+    #     for k in lbl_list:
+    #         for dataset_lbl, dataset in zip(dataset_lbls, count_dics):
+    #             if k in dataset:
+    #                 if v not in dataset:
+    #                     dataset[v] = 0
+    #                 total_count = dataset[k]
+    #                 if v in dataset:
+    #                     total_count += dataset[v]
+    #                 dataset[k] = total_count
+    #                 logging.info(
+    #                     "%s - Adding samples of %s to  %s for a total of %s",
+    #                     dataset_lbl,
+    #                     k,
+    #                     v,
+    #                     total_count,
+    #                 )
 
-                    if v in dataset:
-                        dataset[v] = total_count
-                    logging.info(
-                        "%s Setting total of %s to %s", dataset_lbl, v, total_count
-                    )
+    #                 if v in dataset:
+    #                     dataset[v] = total_count
+    #                 logging.info(
+    #                     "%s Setting total of %s to %s", dataset_lbl, v, total_count
+    #                 )
 
     # set counts to be counts of all merged labels
     for k, v in RELABEL_MAP.items():
