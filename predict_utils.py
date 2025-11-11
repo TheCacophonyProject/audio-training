@@ -29,7 +29,7 @@ def load_samples(
     n_fft=4096,
     pad_short_tracks=False,
 ):
-    logging.debug(
+    logging.info(
         "Loading samples with length %s stride %s hop length %s and mean_sub %s mfcc %s break %s htk %s n mels %s fmin %s fmax %s filtering freqs %s filter below %s n_fft %s pad short tracks %s",
         segment_length,
         stride,
@@ -181,8 +181,8 @@ def get_spect(
             sr=sr,
             n_fft=n_fft,
             hop_length=hop_length,
-            fmin=50,
-            fmax=11000,
+            fmin=fmin,
+            fmax=fmax,
             n_mels=n_mels,
         )
     else:

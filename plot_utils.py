@@ -113,7 +113,7 @@ def plot_mel_weights(weights):
     plt.show()
 
 
-def plot_mel(mel, filename="mel", fmin=50, fmax=24000):
+def plot_mel(mel, filename="mel", fmin=100, fmax=11000):
     fig = plt.figure(figsize=(10, 10))
     ax = plt.subplot(1, 1, 1)
     img = librosa.display.specshow(

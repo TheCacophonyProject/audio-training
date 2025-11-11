@@ -22,6 +22,8 @@ RELABEL_MAP = {
     "dobplo1": "rebdot1",
     "sackin1": "sackin3",
     "brncre": "pipipi1",
+    "criros2": "rosella",
+    "easros1": "easros1",
 }
 
 

@@ -84,8 +84,8 @@ def set_specific_by_count(meta):
     #         ebird_id_to_labels[ebird_id] = [label]
     # #        logging.info("Adding %s for %s",ebird_id,label)
 
-    # dataset_lbls = ["train samples", "rec counts", "validation sample"]
-    # count_dics = [training, training_rec, validation]
+    dataset_lbls = ["train samples", "rec counts", "validation sample"]
+    count_dics = [training, training_rec, validation]
     # for v, lbl_list in ebird_id_to_labels.items():
     #     for k in lbl_list:
     #         for dataset_lbl, dataset in zip(dataset_lbls, count_dics):

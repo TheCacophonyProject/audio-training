@@ -643,7 +643,7 @@ def predict_on_test(split_file, load_model, base_dir, confusion_file="confusion.
     power = meta.get("power", 2)
     hop_length = 281
     n_fft = 4096
-    fmin = 50
+    fmin = 100
     fmax = 11000
     y_true = []
     predicted = []
@@ -790,6 +790,8 @@ def main():
     multi_label = meta.get("multi_label", True)
     segment_length = meta.get("segment_length", 3)
     segment_stride = meta.get("segment_stride", 1)
+    segment_stride = 1
+    print("Stride is ", segment_stride)
     use_mfcc = meta.get("use_mfcc", True)
     mean_sub = meta.get("mean_sub", False)
     use_mfcc = meta.get("use_mfcc", False)
@@ -870,6 +872,7 @@ def main():
     start = 0
 
     for d, t in zip(data, tracks):
+
         pred_counts = [0] * len(labels)
         print("Predicting", t, " samples are ", len(d))
         # print(np.array(d).shape)
@@ -880,6 +883,9 @@ def main():
         previous_pred = None
         print("Predictin", t)
         for start_i, p in enumerate(predictions):
+            mel = d[start_i]
+            # print("Showign spec ",mel[:,:].shape)
+            # plot_mel(mel[:,:,0])
             max_p = np.argmax(p)
             conf = p[max_p]
             print("At ", start_i, " this is now ", t.start + start_i * segment_stride)
