@@ -150,13 +150,13 @@ class AudioDataset:
             except:
                 logging.error("Error loading %s", f, exc_info=True)
 
-    def add_recording(self, r, filename):
+    def add_recording(self, r):
         if r.id in self.recs:
             logging.info(
                 "Already have %s in recs from %s now trying to add %s",
                 r.id,
                 self.recs[r.id].filename,
-                audio_f,
+                r.filename,
             )
         self.recs[r.id] = r
 
