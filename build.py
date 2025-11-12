@@ -62,6 +62,9 @@ def split_label(
     num_samples = 0
     rec_by_id = dataset.recs
     for s in dataset.samples:
+        if s.rec_id is not in rec_by_id:
+            logging.error("Could not find %s in dataset", s.rec_id)
+            continue
         rec = rec_by_id[s.rec_id]
         if label not in rec.human_tags:
             continue
@@ -228,7 +231,7 @@ def split_randomly(dataset, datasets=None, test_clips=[], no_test=False):
         train.enable_augmentation = True
         validation = AudioDataset("validation", dataset.config)
         test = AudioDataset("test", dataset.config)
-        datasets = [train, validation, test]
+        datasets = [train,validation,test]
     labels = list(dataset.labels)
     labels.sort()
     for label in labels:
@@ -649,12 +652,14 @@ def main():
             # add in some metadata stats
             meta = json.load(t)
         datasets = split_by_file(dataset, meta)
-        # else:
+    # else:
         logging.info("Remaining samples")
         dataset.print_sample_counts()
 
     logging.info("Splitting randomly")
-    datasets = split_randomly(dataset, datasets=datasets, no_test=args.no_test)
+    datasets = split_randomly(dataset,datasets=datasets, no_test=args.no_test)
+    logging.info("Remaining samples")    
+    d.print_sample_counts()
 
     all_labels = set()
     for d in datasets:

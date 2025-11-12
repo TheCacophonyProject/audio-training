@@ -146,12 +146,20 @@ class AudioDataset:
                     # at all files in dir or store file in metadata
                 r = Recording(meta, audio_f, self.config, tighten_tracks=False)
 
-                self.add_recording(r)
+                self.add_recording(r, audio_f)
             except:
                 logging.error("Error loading %s", f, exc_info=True)
 
-    def add_recording(self, r):
+    def add_recording(self, r, filename):
+        if r.id in self.recs:
+            logging.info(
+                "Already have %s in recs from %s now trying to add %s",
+                r.id,
+                self.recs[r.id].filename,
+                audio_f,
+            )
         self.recs[r.id] = r
+
         self.samples.extend(r.samples)
 
         # r.get_human_tags()
