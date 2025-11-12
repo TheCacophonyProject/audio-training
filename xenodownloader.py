@@ -2,6 +2,7 @@ import requests
 from pathlib import Path
 import datetime
 import json
+import argparse
 
 
 def download_file(url, local_filename):
@@ -17,14 +18,31 @@ def download_file(url, local_filename):
     return local_filename
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--limit", default=None, type=int, help="Limit number of files")
+
+    parser.add_argument("bird", help="Bird data to download")
+    parser.add_argument("dir", help="Directory to download into")
+
+    args = parser.parse_args()
+    args.dir = Path(args.dir)
+    return args
+
+
 base_url = "https://www.xeno-canto.org/api/2/recordings"
-bird = "golden%20whistler"
-dl_path = Path(f"./golden-whistler")
+args = parse_args()
+bird = args.bird
+import urllib
+
+bird = urllib.parse.quote(bird)
+dl_path = Path(args.dir)
 url = f"{base_url}?query={bird}"
 print("getting", url)
 r = requests.get(url)
 r.raise_for_status()
 results = r.json()
+downloaded = 0
 for r in results.get("recordings"):
     dl = r.get("file")
     date = r.get("date")
@@ -42,9 +60,13 @@ for r in results.get("recordings"):
     meta_file = filename.with_suffix(".txt")
     print("Saving meta", meta_file, meta_file.exists())
     if not meta_file.exists():
+        if r.get("lat") is None or r.get("lng") is None:
+            location = {}
+        else:
+            location = ({"lat": float(r.get("lat")), "lng": float(r.get("lng"))},)
         meta_data = {
             "recordingDateTime": date_time.isoformat(),
-            "location": {"lat": float(r.get("lat")), "lng": float(r.get("lng"))},
+            "location": location,
             "additionalMetadata": {
                 "source": "xeno",
                 "url": r.get("url"),
@@ -62,5 +84,9 @@ for r in results.get("recordings"):
         print("already exists", filename)
     else:
         download_file(dl, filename)
+        downloaded += 1
 
+    if args.limit is not None and downloaded >= args.limit:
+        print("Reached limit of ", args.limit)
+        break
 # print("got results", results)

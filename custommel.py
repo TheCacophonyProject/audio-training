@@ -12,7 +12,6 @@ def mel_frequencies(n_mels, fmin, fmax, break_freq):
     min_mel = hz_to_mel(fmin, break_freq)
     max_mel = hz_to_mel(fmax, break_freq)
     mels = np.linspace(min_mel, max_mel, n_mels)
-
     return break_freq * (10.0 ** (mels / 2595.0) - 1.0)
 
 
@@ -23,7 +22,6 @@ def mel_f(sr, n_mels, fmin, fmax, n_fft, break_freq):
 
     # Center freqs of each FFT bin
     fftfreqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
-
     # 'Center freqs' of mel bands - uniformly spaced between limits
     mel_f = mel_frequencies(n_mels + 2, fmin, fmax, break_freq)
 

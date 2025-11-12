@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import librosa
 
-matplotlib.use("TkAgg")
+# matplotlib.use("TkAgg")
 import numpy as np
 
 
@@ -20,7 +20,7 @@ def plot_mfcc(mfcc):
 import matplotlib.patches as patches
 
 
-def plot_mel_signals(mel, signals, signals2=[], i=0):
+def plot_mel_signals(mel, signals, signals2=[], i=0, colours=None, fmin=50, fmax=11000):
     fig = plt.figure(figsize=(10, 10))
     ax = plt.subplot(1, 1, 1)
     img = librosa.display.specshow(
@@ -28,28 +28,35 @@ def plot_mel_signals(mel, signals, signals2=[], i=0):
         x_axis="time",
         y_axis="linear",
         sr=48000,
-        fmax=11000,
-        fmin=50,
+        # fmax=fmax,
+        # fmin=fmin,
         ax=ax,
         hop_length=281,
     )
     fig.colorbar(img, ax=ax, format="%+2.f dB")
+    signal_i = 0
     for s in signals:
         start_x = s.start
         end_x = s.end
         # start_x = int(start_x)
         # end_x = int(end_x)
+        edge_color = "g"
+        # if s.mel_freq_range < 50:
+        #     edge_color = "r"
+        if colours is not None and len(colours) > 0:
+            edge_color = colours[signal_i % len(colours)]
         rect = patches.Rectangle(
             (start_x, s.freq_start),
             end_x - start_x,
             s.freq_range,
             linewidth=1,
-            edgecolor="r",
+            edgecolor=edge_color,
             facecolor="none",
         )
         ax.add_patch(rect)
         # print("Added rect", start_x, end_x)
         # break
+        signal_i += 1
     for s in signals2:
         start_x = s[0]
         end_x = s[1]
@@ -60,7 +67,7 @@ def plot_mel_signals(mel, signals, signals2=[], i=0):
             end_x - start_x,
             s[3] - s[2],
             linewidth=1,
-            edgecolor="g",
+            edgecolor="r",
             facecolor="none",
         )
         ax.add_patch(rect)
@@ -72,16 +79,17 @@ def plot_mel_signals(mel, signals, signals2=[], i=0):
     plt.close()
 
 
-def plot_spec(S, filename="spec"):
+def plot_spec(S, filename="spec", fmin=0, fmax=30000):
     fig = plt.figure(figsize=(10, 10))
     ax = plt.subplot(1, 1, 1)
     img = librosa.display.specshow(
+        # S,
         librosa.amplitude_to_db(S, ref=np.max),
         x_axis="time",
-        y_axis="linear",
+        y_axis="log",
         sr=48000,
-        fmax=22050,
-        fmin=0,
+        # fmax=fmax,
+        # fmin=fmin,
         ax=ax,
         hop_length=281,
     )
@@ -93,22 +101,35 @@ def plot_spec(S, filename="spec"):
     plt.close()
 
 
-def plot_mel(mel, filename="mel"):
+def plot_mel_weights(weights):
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots()
+    img = librosa.display.specshow(
+        weights, x_axis="linear", ax=ax, sr=48000, n_fft=4096, fmin=50, fmax=11000
+    )
+    ax.set(ylabel="Mel filter", title="Mel filter bank")
+    fig.colorbar(img, ax=ax)
+    plt.show()
+
+
+def plot_mel(mel, filename="mel", fmin=100, fmax=11000):
     fig = plt.figure(figsize=(10, 10))
     ax = plt.subplot(1, 1, 1)
     img = librosa.display.specshow(
+        # librosa.power_to_db(mel, ref=np.max),
         mel,
         x_axis="time",
         y_axis="mel",
         sr=48000,
-        fmax=11000,
-        fmin=50,
+        fmax=fmax,
+        fmin=fmin,
         ax=ax,
         hop_length=281,
     )
     fig.colorbar(img, ax=ax, format="%+2.f dB")
 
-    # plt.show()
-    plt.savefig(f"{filename}.png", format="png")
+    plt.show()
+    # plt.savefig(f"{filename}.png", format="png")
     plt.clf()
     plt.close()

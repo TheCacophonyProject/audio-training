@@ -23,21 +23,25 @@ import argparse
 import logging
 import tensorflow as tf
 
-import tensorflow_probability as tfp
+# import tensorflow_probability as tfp
 
 # Worth looking into lme pooling as proposed in  https://github.com/f0k/birdclef2018/blob/master/experiments/model.py
 # Research/2018-birdclef.pdf
 
 
+@tf.keras.utils.register_keras_serializable(package="MyLayers", name="MagTransform")
 class MagTransform(tf.keras.layers.Layer):
-    def __init__(self):
-        super(MagTransform, self).__init__()
+    def __init__(self, **kwargs):
+        super(MagTransform, self).__init__(**kwargs)
         self.a = self.add_weight(
-            initializer=tf.keras.initializers.Constant(value=0.0),
+            initializer=tf.keras.initializers.Constant(value=-1.0),
             name="a-power",
             dtype="float32",
-            shape=(),
+            shape=[1],
             trainable=True,
+            constraint=tf.keras.constraints.MinMaxNorm(
+                min_value=-2.0, max_value=1.0, rate=1.0, axis=-1
+            ),
         )
 
     def call(self, inputs):
@@ -120,17 +124,25 @@ def res_block(X, filters, stage, block, stride=1):
     return X
 
 
-def build_model_res(input_shape, norm_layer, num_labels, multi_label=False):
+def build_model_res(
+    input_shape,
+    norm_layer,
+    num_labels,
+    multi_label=False,
+    add_dense=True,
+    big_condense=True,
+):
     input = tf.keras.Input(shape=input_shape, name="input")
     # x = norm_layer(input)
     # if multi_label:
     filters = 256
     # y = x σ(a) , where σ(a) = 1/ (1 + exp(−a))
+    n_mels = input_shape[0]
 
     x = MagTransform()(input)
-    # x = tf.keras.layers.BatchNormalization()(x)
-
-    x = tf.keras.layers.Conv2D(64, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.BatchNormalization(axis=1, scale=False, center=False)(x)
+    x = tf.keras.layers.Conv2D(64, (3, 3))(x)
+    x = tf.keras.layers.LeakyReLU()(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
     # RESNET
@@ -139,66 +151,103 @@ def build_model_res(input_shape, norm_layer, num_labels, multi_label=False):
     x = res_block(x, 128, 2, "b")
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Activation("relu")(x)
-    x = tf.keras.layers.Conv2D(128, (14, 3), activation=tf.keras.layers.LeakyReLU())(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Conv2D(128, (22, 3), activation=tf.keras.layers.LeakyReLU())(x)
+
+    if big_condense:
+        if n_mels == 160:
+            x = tf.keras.layers.Conv2D(128, (48, 3), name="bigcondense")(x)
+        # elif n_mels== 96:
+        #     x = tf.keras.layers.Conv2D(128, (22, 3))(x)
+        else:
+            raise "Unhandle mel channels " + n_mels
+        x = tf.keras.layers.LeakyReLU()(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+    else:
+        x = tf.keras.layers.Conv2D(128, (14, 3))(x)
+        x = tf.keras.layers.LeakyReLU()(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+        x = tf.keras.layers.Conv2D(128, (22, 3))(x)
+        x = tf.keras.layers.LeakyReLU()(x)
+
     x = tf.keras.layers.Dropout(0.5)(x)
 
     # probably dont need to be as big
     x = tf.keras.layers.Conv2D(
         1024,
         (1, 9),
-        activation=tf.keras.layers.LeakyReLU(),
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
+    x = tf.keras.layers.LeakyReLU()(x)
+
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Dropout(0.5)(x)
 
     x = tf.keras.layers.Conv2D(
         1024,
         1,
-        activation=tf.keras.layers.LeakyReLU(),
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
+    x = tf.keras.layers.LeakyReLU()(x)
+
     x = tf.keras.layers.BatchNormalization()(x)
 
     x = tf.keras.layers.Dropout(0.5)(x)
 
-    x = tf.keras.layers.Conv2D(
-        num_labels,
-        1,
-        activation=tf.keras.layers.LeakyReLU(),
-        kernel_initializer=tf.keras.initializers.Orthogonal(),
-    )(x)
-    # x = logmeanexp(x, sharpness=1, axis=2)
-    x = tf.keras.layers.GlobalAveragePooling2D()(x)
+    if add_dense:
+        x = tf.keras.layers.Conv2D(
+            num_labels,
+            1,
+            kernel_initializer=tf.keras.initializers.Orthogonal(),
+        )(x)
+        x = tf.keras.layers.LeakyReLU()(x)
 
-    x = tf.keras.activations.sigmoid(x)
+        # x = logmeanexp(x, sharpness=1, axis=2)
+        x = tf.keras.layers.GlobalAveragePooling2D()(x)
+
+        x = tf.keras.activations.sigmoid(x)
 
     model = tf.keras.models.Model(input, outputs=x)
     return model
 
 
-def build_model(input_shape, norm_layer, num_labels, multi_label=False, lme=False):
-    input = tf.keras.Input(shape=input_shape, name="input")
+def build_model(
+    input_shape,
+    norm_layer,
+    num_labels,
+    multi_label=False,
+    lme=False,
+    add_dense=True,
+    big_condense=True,
+    input_name="input",
+    # n_mels= 160
+):
+    leaky_alpha = 0.01
+    input = tf.keras.Input(shape=input_shape, name=input_name)
     # x = norm_layer(input)
     # if multi_label:
     filters = 256
     # y = x σ(a) , where σ(a) = 1/ (1 + exp(−a))
-
+    n_mels = input_shape[0]
     x = MagTransform()(input)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Conv2D(64, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
+
+    # beta and gamma None mean over mel axis
+    x = tf.keras.layers.BatchNormalization(axis=1, scale=False, center=False)(x)
+
+    x = tf.keras.layers.Conv2D(64, (3, 3))(x)
+    x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
-    x = tf.keras.layers.Conv2D(64, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.Conv2D(64, (3, 3))(x)
+    x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
     x = tf.keras.layers.MaxPool2D((3, 3))(x)
 
-    x = tf.keras.layers.Conv2D(128, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
+    x = tf.keras.layers.Conv2D(128, (3, 3))(x)
+    x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Conv2D(128, (3, 3), activation=tf.keras.layers.LeakyReLU())(x)
+
+    x = tf.keras.layers.Conv2D(128, (3, 3))(x)
+    x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
     # Original is based of 80 mels, which only needs one conv 17x 3
@@ -206,11 +255,24 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False, lme=Fals
 
     # At this point we have 48 mel bands remaining if we started with 160
     # Squish the information into smaller features essentially combining mel bands
-    x = tf.keras.layers.Conv2D(128, (28, 3), activation=tf.keras.layers.LeakyReLU())(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    # Squish again so that we have 5 condense mel bands
-    x = tf.keras.layers.Conv2D(128, (17, 3), activation=tf.keras.layers.LeakyReLU())(x)
-    x = tf.keras.layers.BatchNormalization()(x)
+    if big_condense:
+        if n_mels == 160:
+            x = tf.keras.layers.Conv2D(128, (44, 3))(x)
+        elif n_mels == 96:
+            x = tf.keras.layers.Conv2D(128, (22, 3))(x)
+        else:
+            raise "Unhandle mel channels " + n_mels
+        x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+    else:
+        x = tf.keras.layers.Conv2D(128, (28, 3))(x)
+        x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+        x = tf.keras.layers.Conv2D(128, (17, 3))(x)
+        x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+
+        # Squish again so that we have 5 condense mel bands
 
     # Pool the mel bands so that we have a shape of (1,X) essentially brining all the mel bands
     # into a set of features per time range
@@ -220,49 +282,46 @@ def build_model(input_shape, norm_layer, num_labels, multi_label=False, lme=Fals
     x = tf.keras.layers.Conv2D(
         1024,
         (1, 9),
-        activation=tf.keras.layers.LeakyReLU(),
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
+    x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Dropout(0.5)(x)
 
     x = tf.keras.layers.Conv2D(
         1024,
         1,
-        activation=tf.keras.layers.LeakyReLU(),
         kernel_initializer=tf.keras.initializers.Orthogonal(),
     )(x)
+    x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
     x = tf.keras.layers.BatchNormalization()(x)
 
     x = tf.keras.layers.Dropout(0.5)(x)
 
-    x = tf.keras.layers.Conv2D(
-        num_labels,
-        1,
-        activation=tf.keras.layers.LeakyReLU(),
-        kernel_initializer=tf.keras.initializers.Orthogonal(),
-    )(x)
+    if add_dense:
+        x = tf.keras.layers.Conv2D(
+            num_labels,
+            1,
+            kernel_initializer=tf.keras.initializers.Orthogonal(),
+        )(x)
+        x = tf.keras.layers.LeakyReLU(alpha=leaky_alpha)(x)
+        # Since we have quite specific track information, LME might not be so usefull, as this is more
+        #  like an inbetween max and average, higher the sharpness the more like max it becomes
+        # haven't found any benefit using LME
+        if lme:
+            x = LMELayer(axis=1, sharpness=5)(x)
+            x = LMELayer(axis=2, sharpness=5)(x)
 
-    # Since we have quite specific track information, LME might not be so usefull, as this is more
-    #  like an inbetween max and average, higher the sharpness the more like max it becomes
-    # haven't found any benefit using LME
-    if lme:
-        x = logmeanexp(x, axis=1, sharpness=5, keepdims=False)
-        x = logmeanexp(x, axis=2, sharpness=5, keepdims=False)
-
-    x = tf.keras.layers.GlobalAveragePooling2D()(x)
-
-    x = tf.keras.activations.sigmoid(x)
+        x = tf.keras.layers.GlobalAveragePooling2D()(x)
+        if multi_label:
+            logging.info("Using sig")
+            x = tf.keras.activations.sigmoid(x)
+        else:
+            logging.info("Using softmax")
+            x = tf.keras.activations.softmax(x)
 
     model = tf.keras.models.Model(input, outputs=x)
     return model
-
-
-def logmeanexp(x, axis=None, keepdims=False, sharpness=5):
-    return (
-        tfp.math.reduce_logmeanexp(x * sharpness, axis=axis, keepdims=keepdims)
-        / sharpness
-    )
 
 
 #
@@ -281,22 +340,40 @@ def logmeanexp(x, axis=None, keepdims=False, sharpness=5):
 # 7 being roughly 1/2 second of audio
 
 
-def logmeanexp(x, axis=None, keepdims=False, sharpness=5):
-    return (
-        tfp.math.reduce_logmeanexp(x * sharpness, axis=axis, keepdims=True) / sharpness
-    )
+class LMELayer(tf.keras.Layer):
+    def __init__(self, sharpness=5, axis=None):
+        super(LMELayer, self).__init__()
+        self.sharpness = sharpness
+        self.axis = axis
+
+    def call(self, x):
+        return (
+            tfp.math.reduce_logmeanexp(
+                x * self.sharpness, axis=self.axis, keepdims=True
+            )
+            / self.sharpness
+        )
 
 
 def main():
     init_logging()
     args = parse_args()
-    model = build_model((160, 513, 1), None, 21, multi_label=True, lme=False)
+    # l = MagTransform()
+    # print(l.get_config())
+    # l.from_config(l.get_config())
+    # model = tf.keras.models.load_model("test-model/test.keras",compile=False)
+
+    # return
+    model = build_model((160, 513, 1), None, 21, multi_label=True, lme=True)
+
+    # model = build_model_res((160, 513, 1), None, 21, multi_label=True)
     model.summary()
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(),
-        loss=CustomBinaryCrossEntropy,
-        metrics=tf.keras.metrics.AUC(),
-    )
+    # model.compile(
+    #     optimizer=tf.keras.optimizers.Adam(),
+    #     loss=CustomBinaryCrossEntropy,
+    #     metrics=tf.keras.metrics.AUC(),
+    # )
+    # model.save("test-model/test.keras")
 
 
 def CustomBinaryCrossEntropy(y_true, y_pred):

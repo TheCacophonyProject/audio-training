@@ -1,11 +1,12 @@
 librosa
 tensorflow
-tensorflow_addons
 tensorflow_probability
 tensorflow_hub
+tensorflow_io
 numpy
 python-dateutil
 matplotlib
 psutil
 audiomentations
-pytz
+ydf
+pandas

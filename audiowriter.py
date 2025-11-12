@@ -47,12 +47,24 @@ import librosa
 
 from audiodataset import load_data, SpectrogramData
 from multiprocessing import Pool
+
 import tensorflow_hub as hub
-
+from audiodataset import load_features
 import psutil
+import subprocess
+
+# stuff to print out label
+# with open('perchlabels.csv') as f:
+#     df = f.read().splitlines()
+# ebird_map ={}
+# with open('eBird_taxonomy_v2024.csv') as f:
+#     for line in f:
+#         split_l = line.split(",")
+
+#         ebird_map[split_l[2]] = line
 
 
-def create_tf_example(sample, labels):
+def create_tf_example(sample):
     """Converts image and annotations to a tf.Example proto.
 
         Args:
@@ -84,12 +96,15 @@ def create_tf_example(sample, labels):
           ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
     data = sample.spectogram_data
-    # audio_data = librosa.amplitude_to_db(data.spect)
-    # mel = librosa.power_to_db(data.mel, ref=np.max)
-    # mel = data.mel
     tags = sample.tags_s
     track_ids = " ".join(map(str, sample.track_ids))
     feature_dict = {
+        "audio/lat": tfrecord_util.float_feature(
+            0 if sample.location is None else sample.location[0]
+        ),
+        "audio/lng": tfrecord_util.float_feature(
+            0 if sample.location is None else sample.location[1]
+        ),
         "audio/rec_id": tfrecord_util.bytes_feature(str(sample.rec_id).encode("utf8")),
         "audio/track_id": tfrecord_util.bytes_feature(track_ids.encode("utf8")),
         "audio/sample_rate": tfrecord_util.int64_feature(sample.sr),
@@ -103,11 +118,36 @@ def create_tf_example(sample, labels):
         "audio/signal_percent": tfrecord_util.float_feature(
             0 if sample.signal_percent is None else sample.signal_percent
         ),
+        "audio/low_sample": tfrecord_util.int64_feature(
+            sample.low_sample
+            # 1 if sample.low_sample else 0
+        ),
         "audio/raw_length": tfrecord_util.float_feature(data.raw_length),
         "audio/start_s": tfrecord_util.float_feature(sample.start),
-        "audio/class/text": tfrecord_util.bytes_feature(tags.encode("utf8")),
+        "audio/class/text": tfrecord_util.bytes_feature(
+            sample.text_tags_s.encode("utf8")
+        ),
+        "audio/class/ebird": tfrecord_util.bytes_feature(tags.encode("utf8")),
+        "audio/spectogram": tfrecord_util.float_list_feature(
+            np.float32(data.spectogram.ravel())
+        ),
         "audio/raw": tfrecord_util.float_list_feature(np.float32(data.raw.ravel())),
     }
+    if data.short_features is not None:
+        feature_dict["audio/short_f"] = tfrecord_util.float_list_feature(
+            np.float32(data.short_features.ravel())
+        )
+    if data.mid_features is not None:
+        feature_dict["audio/mid_f"] = tfrecord_util.float_list_feature(
+            np.float32(data.mid_features.ravel())
+        )
+
+    if sample.mixed_label is not None:
+        logging.info("Adding mixed label %s", sample.mixed_label)
+        feature_dict["audio/class/mixed_label"] = (
+            tfrecord_util.bytes_feature(sample.mixed_label.encode("utf8")),
+        )
+
     if data.buttered is not None:
         feature_dict["audio/buttered"] = tfrecord_util.float_list_feature(
             np.float32(data.buttered.ravel())
@@ -130,7 +170,6 @@ def create_tf_example(sample, labels):
             ),
         }
         feature_dict.update(pred_dic)
-        print("Adding embeddings", sample.embeddings.shape)
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
     return example, 0
 
@@ -197,94 +236,156 @@ DO_EMBEDDING = False
 #         embedding_labels = meta_data.get("labels")
 
 
-def process_job(queue, labels, config, base_dir):
+def process_job(queue, labels, config, base_dir, writer_i):
     import gc
 
+    shards = 4
     # Load the model.
     model = None
-
+    by_label = False
     embedding_model = None
     embedding_labels = None
     if DO_EMBEDDING:
-        model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
+        model = hub.load(
+            "https://www.kaggle.com/models/google/bird-vocalization-classifier/TensorFlow2/bird-vocalization-classifier/8"
+        )
+
+        # model = hub.load("https://tfhub.dev/google/bird-vocalization-classifier/1")
 
     pid = os.getpid()
 
-    writer_i = 1
     name = f"{writer_i}-{pid}.tfrecord"
 
     options = tf.io.TFRecordOptions(compression_type="GZIP")
-    writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
+    writers = {}
+    counts = {}
+
+    for l in labels:
+        counts[l] = 0
+    if by_label:
+        for l in labels:
+            l_dir = base_dir / l
+            l_dir.mkdir(exist_ok=True)
+            writers[l] = tf.io.TFRecordWriter(
+                str(l_dir / f"{writer_i}-{pid}.tfrecord"), options=options
+            )
+    else:
+        for shard in range(shards):
+            writers[f"all-{shard}"] = tf.io.TFRecordWriter(
+                str(base_dir / f"{writer_i}-{pid}-{shard}.tfrecord"),
+                options=options,
+            )
+
+    # writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
     i = 0
     saved = 0
+
     while True:
         i += 1
         rec = queue.get()
         try:
             if rec == "DONE":
-                writer.close()
+                for writer in writers.values():
+                    writer.close()
                 break
             else:
                 saved += save_data(
                     rec,
-                    writer,
+                    writers,
                     model,
                     embedding_model,
                     base_dir,
                     config,
                     embedding_labels,
-                    config.filter_frequency,
+                    # config.filter_frequency,
+                    counts,
+                    by_label,
+                    num_shards=shards,
+                    offset=saved,
                 )
-                del rec
-                if saved > 500:
-                    logging.info("Closing old writer")
-                    writer.close()
-                    writer_i += 1
-                    name = f"{writer_i}-{pid}.tfrecord"
-                    logging.info("Opening %s", name)
-                    saved = 0
-                    writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
                 if i % 10 == 0:
                     logging.info("Clear gc")
                     gc.collect()
+                del rec
         except:
             logging.error("Process_job error %s", rec.filename, exc_info=True)
 
 
-def close_writer(empty=None):
-    global writer
-    if writer is not None:
-        logging.info("Closing old writer")
-        writer.close()
+# def close_writer(empty=None):
+#     global writer
+#     if writer is not None:
+#         logging.info("Closing old writer")
+#         writer.close()
 
 
-def assign_writer():
-    close_writer()
-    pid = os.getpid()
-    global writer_i
-    writer_i += 1
-    w = name = f"{writer_i}-{pid}.tfrecord"
-    logging.info("assigning writer %s", w)
-    options = tf.io.TFRecordOptions(compression_type="GZIP")
-    global writer
-    writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
+# def assign_writer():
+#     close_writer()
+#     pid = os.getpid()
+#     global writer_i
+#     writer_i += 1
+#     w = name = f"{writer_i}-{pid}.tfrecord"
+#     logging.info("assigning writer %s", w)
+#     options = tf.io.TFRecordOptions(compression_type="GZIP")
+#     global writer
+#     writer = tf.io.TFRecordWriter(str(base_dir / name), options=options)
+
+
+def get_ffmpeg_duration(file):
+    command = (
+        f'ffprobe -i "{file}" -show_entries format=duration -v quiet -of csv="p=0"'
+    )
+
+    proc = subprocess.run(
+        command,
+        shell=True,
+        encoding="ascii",
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    output = proc.stdout
+    return float(output)
+
+
+def load_recording(file, resample=48000):
+    aro = audioread.ffdec.FFmpegAudioFile(file)
+    frames, sr = librosa.load(aro, sr=None)
+    aro.close()
+    if resample is not None and resample != sr:
+        frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
+        sr = resample
+    return frames, sr
 
 
 def save_data(
     rec,
-    writer,
+    writers,
     model,
     embedding_model,
     base_dir,
     config,
     embedding_labels,
-    filter_frequency,
+    # filter_frequency,
+    counts,
+    add_features=True,
+    by_label=False,
+    num_shards=4,
+    offset=0,
 ):
     resample = 48000
     try:
-        aro = audioread.ffdec.FFmpegAudioFile(rec.filename)
-        orig_frames, sr = librosa.load(aro, sr=None)
-        aro.close()
+        orig_frames, sr = load_recording(rec.filename, resample=None)
+
+        duration = get_ffmpeg_duration(rec.filename)
+        if abs(duration - len(orig_frames) / sr) > 1:
+            # print(abs(duration - len(orig_frames / sr)))
+            logging.error(
+                "Duration does not match ffmpeg %s librosa %s for %s ",
+                duration,
+                len(orig_frames) / sr,
+                rec.filename,
+            )
+            return 0
     except:
         logging.error("Error loading rec %s ", rec.filename, exc_info=True)
         try:
@@ -309,19 +410,24 @@ def save_data(
                 #     "Track end is none so setting to rec length %s", len(frames) / sr
                 # )
                 t.end = len(frames) / sr
+            t.ensure_track_length(rec.duration)
+            # if add_features:
+            # load_features(t, frames, sr)
         # rec.tracks[0].end = len0(frames) / sr
-        print(config.filter_frequency)
-        rec.load_samples(
-            config.segment_length,
-            config.segment_stride,
-            do_overlap=not config.filter_frequency,
-        )
+        rec.duration = len(frames) / sr
+        # logging.info("Loadeding sample but already have %s", len(rec.samples))
+        # rec.load_samples(
+        #     config.segment_length,
+        #     config.segment_stride,
+        #     # do_overlap=not config.filter_frequency,
+        # )
         samples = rec.samples
         rec.sample_rate = resample
         for i, sample in enumerate(samples):
             try:
                 min_freq = sample.min_freq
                 max_freq = sample.max_freq
+
                 spec = load_data(
                     config,
                     sample.start,
@@ -339,12 +445,15 @@ def save_data(
                         end = start + 32000 * config.segment_length
                     data = frames32[start:end]
                     data = np.pad(data, (0, 32000 * 5 - len(data)))
-                    logits, embeddings = model.infer_tf(data[np.newaxis, :])
+                    model_outputs = model.infer_tf(data[np.newaxis, :])
+                    logits = model_outputs["label"]
+                    embeddings = model_outputs["embedding"]
                     sample.logits = logits.numpy()[0]
                     sample.embeddings = embeddings.numpy()[0]
-                logging.info("Mem %s", psutil.virtual_memory()[2])
-                # print("mel is", mel.shape)
-                # print("adjusted start is", sample.start, " becomes", sample.start - start)
+                    max_l = np.argmax(sample.logits)
+                    # logging.info("For label %s got %s with score %s ebird %s",sample.tags,df[max_l],sample.logits[max_l],ebird_map[df[max_l]])
+                # logging.info("Mem %s", psutil.virtual_memory()[2])
+
                 if spec is None:
                     logging.warn("error loading spec for %s", rec.id)
                     continue
@@ -352,8 +461,18 @@ def save_data(
                 sample.spectogram_data = spec
                 sample.sr = resample
             except:
-                logging.error("Error %s ", rec.id, exc_info=True)
-            tf_example, num_annotations_skipped = create_tf_example(sample, labels)
+                logging.error(
+                    "Error %s with tracks %s ", rec.id, sample.track_ids, exc_info=True
+                )
+                continue
+            writer_lbl = sample.first_tag
+            tf_example, num_annotations_skipped = create_tf_example(sample)
+            if by_label:
+                writer = writers[writer_lbl]
+            else:
+                shard = (i + offset) % num_shards
+                writer = writers[f"all-{shard}"]
+            counts[writer_lbl] += 1
             writer.write(tf_example.SerializeToString())
             del sample
         saved = len(samples)
@@ -362,11 +481,10 @@ def save_data(
         del orig_frames
     except:
         logging.error("Got error %s", rec.filename, exc_info=True)
-        print("ERRR return None")
         return 0
     del rec
 
-    logging.info("Total Saved %s", saved)
+    # logging.info("Total Saved %s", saved)
     return saved
 
 
@@ -398,7 +516,9 @@ def save_embeddings(rec):
                 )
                 t.end = len(frames) / sr
         # rec.tracks[0].end = len0(frames) / sr
-        rec.load_samples(config.segment_length, config.segment_stride)
+        # this might be needed for other data from flickr etc but causes problems
+        #  when splitting tracks over multiple datasets
+        # rec.load_samples(config.segment_length, config.segment_stride)
         samples = rec.samples
         rec.sample_rate = resample
         for i, sample in enumerate(samples):
@@ -439,9 +559,9 @@ def save_embeddings(rec):
         print("ERRR return None")
         return None
 
-    logging.info("Total Saved %s", saved)
-    if saved > 200:
-        assign_writer()
+    # logging.info("Total Saved %s", saved)
+    # if saved > 200:
+    #     assign_writer()
 
 
 def get_embeddings(samples):
@@ -462,49 +582,60 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
         for child in output_path.glob("*"):
             if child.is_file():
                 child.unlink()
+            else:
+                for subc in child.iterdir():
+                    if subc.is_file():
+                        subc.unlink()
+                child.rmdir()
     output_path.mkdir(parents=True, exist_ok=True)
-    samples = dataset.recs
-    samples = sorted(
-        samples,
-        key=lambda sample: sample.id,
-    )
+    samples = list(dataset.recs.values())
+    # samples = sorted(
+    #     samples,
+    #     key=lambda sample: sample.id,
+    # )
     np.random.shuffle(samples)
 
     num_labels = len(labels)
     logging.info("writing to output path: %s for %s samples", output_path, len(samples))
     logging.info("labels are %s", labels)
+
     num_processes = 8
     total_recs = len(samples)
+    writer_i = 0
+    index = 0
+    jobs_per_process = 300 * num_processes
     try:
-        job_queue = Queue()
-        processes = []
-        for i in range(num_processes):
-            p = Process(
-                target=process_job,
-                args=(job_queue, labels, dataset.config, output_path),
-            )
-            processes.append(p)
-            p.start()
-        for s in samples:
-            job_queue.put(s)
-
-        logging.info("Processing %d", job_queue.qsize())
-        for i in range(len(processes)):
-            job_queue.put(("DONE"))
-        for process in processes:
-            try:
-                process.join()
-            except KeyboardInterrupt:
-                logging.info("KeyboardInterrupt, terminating.")
-                for process in processes:
-                    process.terminate()
-                exit()
-        logging.info("Saved %s", len(samples))
+        while index < len(samples):
+            job_queue = Queue()
+            processes = []
+            for i in range(num_processes):
+                p = Process(
+                    target=process_job,
+                    args=(job_queue, labels, dataset.config, output_path, writer_i),
+                )
+                processes.append(p)
+                p.start()
+            for s in samples[index : index + jobs_per_process]:
+                job_queue.put(s)
+            writer_i += 1
+            index += jobs_per_process
+            logging.info("Processing %d", job_queue.qsize())
+            for i in range(len(processes)):
+                job_queue.put(("DONE"))
+            for process in processes:
+                try:
+                    process.join()
+                except KeyboardInterrupt:
+                    logging.info("KeyboardInterrupt, terminating.")
+                    for process in processes:
+                        process.terminate()
+                    exit()
+            logging.info("Saved %s", len(samples))
 
     except:
         logging.error("Error saving track info", exc_info=True)
 
-    for r in dataset.recs:
+    for r in dataset.recs.values():
         r.rec_data = None
         for s in r.samples:
             s.spectogram_data = None
