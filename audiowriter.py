@@ -64,7 +64,7 @@ import subprocess
 #         ebird_map[split_l[2]] = line
 
 
-def create_tf_example(sample):
+def create_tf_example(samples):
     """Converts image and annotations to a tf.Example proto.
 
         Args:
@@ -95,8 +95,12 @@ def create_tf_example(sample):
     Raises:
           ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
-    data = sample.spectogram_data
-    tags = sample.tags_s
+    spec_data = []
+    for sample in samples:
+        spec_data.append(sample.spectogram_data.spectogram)
+        tags = sample.tags_s
+    spec_data= np.array(spec_data)
+    logging.info("WRiting data %s", spec_data.shape)
     track_ids = " ".join(map(str, sample.track_ids))
     feature_dict = {
         "audio/lat": tfrecord_util.float_feature(
@@ -122,25 +126,25 @@ def create_tf_example(sample):
             sample.low_sample
             # 1 if sample.low_sample else 0
         ),
-        "audio/raw_length": tfrecord_util.float_feature(data.raw_length),
+        "audio/raw_length": tfrecord_util.int64_feature(len(spec_data)),
         "audio/start_s": tfrecord_util.float_feature(sample.start),
         "audio/class/text": tfrecord_util.bytes_feature(
             sample.text_tags_s.encode("utf8")
         ),
         "audio/class/ebird": tfrecord_util.bytes_feature(tags.encode("utf8")),
         "audio/spectogram": tfrecord_util.float_list_feature(
-            np.float32(data.spectogram.ravel())
+            np.float32(spec_data.ravel())
         ),
-        "audio/raw": tfrecord_util.float_list_feature(np.float32(data.raw.ravel())),
+        # "audio/raw": tfrecord_util.float_list_feature(np.float32(data.raw.ravel())),
     }
-    if data.short_features is not None:
-        feature_dict["audio/short_f"] = tfrecord_util.float_list_feature(
-            np.float32(data.short_features.ravel())
-        )
-    if data.mid_features is not None:
-        feature_dict["audio/mid_f"] = tfrecord_util.float_list_feature(
-            np.float32(data.mid_features.ravel())
-        )
+    # if data.short_features is not None:
+    #     feature_dict["audio/short_f"] = tfrecord_util.float_list_feature(
+    #         np.float32(data.short_features.ravel())
+    #     )
+    # if data.mid_features is not None:
+    #     feature_dict["audio/mid_f"] = tfrecord_util.float_list_feature(
+    #         np.float32(data.mid_features.ravel())
+    #     )
 
     if sample.mixed_label is not None:
         logging.info("Adding mixed label %s", sample.mixed_label)
@@ -148,10 +152,10 @@ def create_tf_example(sample):
             tfrecord_util.bytes_feature(sample.mixed_label.encode("utf8")),
         )
 
-    if data.buttered is not None:
-        feature_dict["audio/buttered"] = tfrecord_util.float_list_feature(
-            np.float32(data.buttered.ravel())
-        )
+    # if data.buttered is not None:
+    #     feature_dict["audio/buttered"] = tfrecord_util.float_list_feature(
+    #         np.float32(data.buttered.ravel())
+    #     )
     if sample.predicted_labels is not None:
         predicted_labels = ",".join(sample.predicted_labels)
         pred_dic = {
@@ -423,6 +427,7 @@ def save_data(
         # )
         samples = rec.samples
         rec.sample_rate = resample
+        samples_by_track = {}
         for i, sample in enumerate(samples):
             try:
                 min_freq = sample.min_freq
@@ -460,13 +465,17 @@ def save_data(
                 # data[i] = spec
                 sample.spectogram_data = spec
                 sample.sr = resample
+                track_samples = samples_by_track.setdefault(sample.track_ids[0],[])
+                track_samples.append(sample)
             except:
                 logging.error(
                     "Error %s with tracks %s ", rec.id, sample.track_ids, exc_info=True
                 )
                 continue
-            writer_lbl = sample.first_tag
-            tf_example, num_annotations_skipped = create_tf_example(sample)
+        for k,v in samples_by_track.items():
+            logging.info("Writing %s  samples for %s", len(v),k)
+            writer_lbl = v[0].first_tag
+            tf_example, num_annotations_skipped = create_tf_example(v)
             if by_label:
                 writer = writers[writer_lbl]
             else:
@@ -474,7 +483,7 @@ def save_data(
                 writer = writers[f"all-{shard}"]
             counts[writer_lbl] += 1
             writer.write(tf_example.SerializeToString())
-            del sample
+        del sample
         saved = len(samples)
         del samples
         del frames
@@ -599,7 +608,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     logging.info("writing to output path: %s for %s samples", output_path, len(samples))
     logging.info("labels are %s", labels)
 
-    num_processes = 8
+    num_processes = 1
     total_recs = len(samples)
     writer_i = 0
     index = 0

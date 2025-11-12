@@ -835,6 +835,9 @@ def get_a_dataset(dir, labels, args):
     epoch_size = args.get("epoch_size")
     dist = None
     if epoch_size is None:
+
+        for x,y in dataset:
+            print(x.shape,y.shape)
         dist, epoch_size = get_distribution(
             dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
         )
@@ -869,7 +872,7 @@ def get_a_dataset(dir, labels, args):
         dataset = dataset.map(lambda x, y: butter_bitterns(bittern_mask, x, y))
 
     if batch_size is not None:
-        dataset = dataset.batch(batch_size, drop_remainder=False)
+        dataset = dataset.padded_batch(batch_size,padded_shapes=([ None, 160, 513, 3], [num_labels]))
 
     # dont think using this anymore GP
     if args.get("weight_specific", False):
@@ -984,10 +987,10 @@ def read_tfrecord(
     global_epoch=None,
     has_ebird=True,
 ):
-    tfrecord_format = {"audio/class/text": tf.io.FixedLenFeature((), tf.string)}
+    tfrecord_format = {"audio/class/text": tf.io.FixedLenFeature((), tf.string),"audio/raw_length":tf.io.FixedLenFeature((), tf.int64)}
     if has_ebird:
         tfrecord_format["audio/class/ebird"] = tf.io.FixedLenFeature((), tf.string)
-
+    
     tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
     tfrecord_format["audio/track_id"] = tf.io.FixedLenFeature((), tf.string)
     tfrecord_format["audio/low_sample"] = tf.io.FixedLenFeature((), tf.int64)
@@ -1011,8 +1014,8 @@ def read_tfrecord(
                 (48000 * 3), tf.float32
             )
         else:
-            tfrecord_format["audio/spectogram"] = tf.io.FixedLenFeature(
-                (2049 * 513), tf.float32
+            tfrecord_format["audio/spectogram"] = tf.io.FixedLenSequenceFeature(
+                [], tf.float32,allow_missing=True
             )
         if filter_freq:
             tfrecord_format["audio/buttered"] = tf.io.FixedLenFeature(
@@ -1030,6 +1033,8 @@ def read_tfrecord(
     tfrecord_format["audio/signal_percent"] = tf.io.FixedLenFeature((), tf.float32)
 
     example = tf.io.parse_single_example(example, tfrecord_format)
+    raw_length = tf.cast(example["audio/raw_length"], tf.int64)
+
     low_sample = tf.cast(example["audio/low_sample"], tf.int64)
     start_s = tf.cast(example["audio/start_s"], tf.float32)
 
@@ -1061,14 +1066,22 @@ def read_tfrecord(
         else:
 
             spectogram = example["audio/spectogram"]
-        spectogram = tf.reshape(spectogram, (2049, 513))
-        # conver to power
+        spectogram = tf.reshape(spectogram, (raw_length,2049, 513))
         spectogram = tf.math.pow(spectogram, 2)
-        spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
+
+        # conver to power
+        weights = tf.expand_dims(MEL_WEIGHTS, 0)
+        weights = tf.repeat(weights, raw_length, 0)
+        spectogram = tf.keras.backend.batch_dot(weights, spectogram)
+
+        # spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
         spectogram = tf.expand_dims(spectogram, axis=-1)
+
         if "efficientnet" in model_name:
             logging.info("Repeating last dim for efficient net")
-            spectogram = tf.repeat(spectogram, 3, 2)
+            spectogram = tf.repeat(spectogram, 3, -1)
+        # spectogram = tf.expand_dims(spectogram, axis=0)
+        print("Spect shape is ",spectogram.shape)
     if features or only_features:
         short_f = example["audio/short_f"]
         mid_f = example["audio/mid_f"]
@@ -1383,9 +1396,9 @@ def main():
         extra_label_map=extra_label_map,
         multi_label=args.multi_label,
         use_bird_tags=args.use_bird_tags,
-        load_all_y=True,
+        load_all_y=False,
         shuffle=False,
-        load_raw=True,
+        load_raw=False,
         n_fft=4096,
         fmin=fmin,
         fmax=fmax,
@@ -1578,40 +1591,41 @@ def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
     num_images = len(image_batch)
     i = 0
     for n in range(num_images):
-        predicted = ""
+        i = 0
+        for p,img in enumerate(image_batch[n]):
+            predicted = ""
 
-        if preds is not None:
-            pred = preds[n]
-            best_labels = np.argwhere(pred > prob_thresh).ravel()
-            for lbl in best_labels:
-                predicted = f"{predicted} {labels[lbl]}"
-        # print("Y is ", label_batch[n])
-        lbl = []
-        for l_i, l in enumerate(label_batch[n]):
-            if l > 0:
-                lbl.append(labels[l_i])
-        p = n
-        ax = plt.subplot(num_images // 3 + 1, 3, p + 1)
-        ax.get_xaxis().set_visible(False)
+            if preds is not None:
+                pred = preds[n]
+                best_labels = np.argwhere(pred > prob_thresh).ravel()
+                for lbl in best_labels:
+                    predicted = f"{predicted} {labels[lbl]}"
+            # print("Y is ", label_batch[n])
+            lbl = []
+            for l_i, l in enumerate(label_batch[n]):
+                if l > 0:
+                    lbl.append(labels[l_i])
+            ax = plt.subplot(num_images // 3 + 1, 3, p + 1)
+            ax.get_xaxis().set_visible(False)
 
-        i += 1
-        # plot_spec(image_batch[n][:, :, 0], ax)
-        # # plt.imshow(np.uint8(image_batch[n]))
-        plot_title = f"{lbl}"
-        if recs is not None:
-            track = tracks[n].numpy().decode("utf8")
-            rec = recs[n].numpy().decode("utf8")
-            start_s = np.round(starts[n].numpy(), 1)
-            signal_percent = np.round(signal_batch[n].numpy(), 1)
-            plot_title = f"{plot_title} - {rec}:{track} at {start_s:.1f} sig {signal_percent:.1f}"
-        plt.title(f"{plot_title}\n{predicted}")
-        img = image_batch[n]
-        ax.imshow(img)
-
+            i += 1
+            # plot_spec(image_batch[n][:, :, 0], ax)
+            # # plt.imshow(np.uint8(image_batch[n]))
+            plot_title = f"{lbl}"
+            if recs is not None:
+                track = tracks[n].numpy().decode("utf8")
+                rec = recs[n].numpy().decode("utf8")
+                start_s = np.round(starts[n].numpy(), 1)
+                signal_percent = np.round(signal_batch[n].numpy(), 1)
+                plot_title = f"{plot_title} - {rec}:{track} at {start_s:.1f} sig {signal_percent:.1f}"
+            plt.title(f"{plot_title}\n{predicted}")
+            ax.imshow(img[:,:,0])
+            print("IMg is ",img.shape,img.dtype, np.amax(img),np.amin(img))
+        plt.show()
+        plt.clf()
         # plot_mel(image_batch[n][:, :, 0], ax)
         # np.save(f"dataset-images/batch-{batch_i}-{rec}-{start_s:.1f}.npy",image_batch[n])
     # plt.savefig(f"dataset-images/batch-{batch_i}.png")
-    plt.show()
 
 
 def plot_mfcc(mfccs, ax):
