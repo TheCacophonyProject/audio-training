@@ -214,29 +214,32 @@ def split_by_file(dataset, split, test_clips=[], no_test=False):
             if clip_id in dataset.recs:
                 rec = dataset.recs[clip_id]
                 ds.add_recording(rec)
+                dataset.remove_rec(clip_id)
 
     return datasets
 
 
-def split_randomly(dataset, test_clips=[], no_test=False):
+def split_randomly(dataset, datasets=None, test_clips=[], no_test=False):
     # split data randomly such that a clip is only in one dataset
     # have tried many ways to split i.e. location and cameras found this is simplest
     # and the results are the same
-    train = AudioDataset("train", dataset.config)
-    train.enable_augmentation = True
-    validation = AudioDataset("validation", dataset.config)
-    test = AudioDataset("test", dataset.config)
+    if datasets is None:
+        train = AudioDataset("train", dataset.config)
+        train.enable_augmentation = True
+        validation = AudioDataset("validation", dataset.config)
+        test = AudioDataset("test", dataset.config)
+        datasets = [train, validation, test]
     labels = list(dataset.labels)
     labels.sort()
     for label in labels:
         split_label(
             dataset,
-            (train, validation, test),
+            datasets,
             label,
             no_test=no_test,
             # existing_test_count=existing_test_count,
         )
-    return train, validation, test
+    return datasets
 
 
 def dataset_from_signal(args):
@@ -638,16 +641,20 @@ def main():
     # return
     # dataset.load_meta()
     # return
-    dataset.print_counts()
+    dataset.print_sample_counts()
+    datasets = None
     if args.split_file:
         logging.info("Splitting by %s", args.split_file)
         with open(args.split_file, "r") as t:
             # add in some metadata stats
             meta = json.load(t)
         datasets = split_by_file(dataset, meta)
-    else:
-        datasets = split_randomly(dataset, no_test=args.no_test)
-    dataset.print_counts()
+        # else:
+        logging.info("Remaining samples")
+        dataset.print_sample_counts()
+
+    logging.info("Splitting randomly")
+    datasets = split_randomly(dataset, datasets=datasets, no_test=args.no_test)
 
     all_labels = set()
     for d in datasets:
@@ -846,7 +853,7 @@ def parse_args():
         "--slaney", action="count", help="Use slaney or htk (htk for custom break freq)"
     )
     parser.add_argument("--hop-length", default=281, help="Number of hops to use")
-    parser.add_argument("--fmin", default=50, help="Min freq")
+    parser.add_argument("--fmin", default=100, help="Min freq")
     parser.add_argument("--fmax", default=11000, help="Max Freq")
     parser.add_argument(
         "--seg-length", default=3, type=int, help="Segment length in seconds"

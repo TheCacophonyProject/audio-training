@@ -42,7 +42,7 @@ def main():
     #         if k in first_labels:
     #             first_labels.remove(k)
     #             print("Remvoing", k)
-    second_labels = second_meta["ebird_ids"]
+    second_labels = second_meta["labels"]
     pre_labels = ["bird", "human", "noise"]
 
     if len(first_cm[0]) != len(first_labels) + 1:

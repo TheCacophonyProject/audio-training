@@ -284,6 +284,14 @@ class AudioDataset:
         for t in sample.tags:
             self.labels.add(t)
 
+    def remove_rec(self, clip_id):
+        if clip_id not in self.recs:
+            return
+        rec = self.recs[clip_id]
+        for sample in rec.samples:
+            self.remove(sample)
+        del self.recs[clip_id]
+
     def remove(self, sample):
         # sample.rec.tracks.remove(sample)
         if sample in self.samples:
@@ -536,6 +544,14 @@ class Recording:
         for_label=None,
         extra_samples=True,
     ):
+        logging.info(
+            "Getting samples with length: %s stide: %s over: %s for: %s extra: %s",
+            segment_length,
+            segment_stride,
+            do_overlap,
+            for_label,
+            extra_samples,
+        )
         samples = []
         extra_small_strides = []
         unused_samples = []
