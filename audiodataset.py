@@ -146,14 +146,14 @@ class AudioDataset:
                     # at all files in dir or store file in metadata
                 r = Recording(meta, audio_f, self.config, tighten_tracks=False)
 
-                self.add_recording(r, audio_f)
+                self.add_recording(r)
             except:
                 logging.error("Error loading %s", f, exc_info=True)
 
     def add_recording(self, r):
         if r.id in self.recs:
             logging.info(
-                "Already have %s in recs from %s now trying to add %s",
+                "Already have %s in recs from %s now trying to add %s, Ignoring",
                 r.id,
                 self.recs[r.id].filename,
                 r.filename,

@@ -659,7 +659,7 @@ def main():
     logging.info("Splitting randomly")
     datasets = split_randomly(dataset, datasets=datasets, no_test=args.no_test)
     logging.info("Remaining samples")
-    d.print_sample_counts()
+    dataset.print_sample_counts()
 
     all_labels = set()
     for d in datasets:
