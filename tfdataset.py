@@ -592,7 +592,7 @@ def get_a_dataset(dir, labels, args):
             others_filter = lambda x, y: not tf.math.reduce_all(
                 tf.math.equal(tf.cast(y[0], tf.bool), morepork_mask)
             )
-            dataset_2.filter(others_filter)
+            dataset_2 = dataset_2.filter(others_filter)
             logging.info("filtering morepork from second ds")
             datasets.append(dataset_2)
         else:
