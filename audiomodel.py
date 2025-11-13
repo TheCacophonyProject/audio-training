@@ -397,6 +397,56 @@ class AudioModel:
 
     global_epoch = None
 
+    def custom_train(self, epochs):
+        loss_fn = loss()
+        optimizer_fn = optimizer(lr=self.learning_rate)
+        train_acc_metric = tf.keras.metrics.CategoricalAccuracy()
+        val_acc_metric = tf.keras.metrics.CategoricalAccuracy()
+
+        for epoch in range(epochs):
+            print("\nStart of epoch %d" % (epoch,))
+            start_time = time.time()
+
+            # Iterate over the batches of the dataset.
+            for step, (x_batch_train, y_batch_train) in enumerate(self.train):
+                print(x_batch_train.shape, y_batch_train.shape)
+                loss_value = 0
+                # probably could speed this up if ran on all data then meaned appropriately
+                for track_batch, y_track in zip(x_batch_train, y_batch_train):
+                    print("Running track batch ", track_batch.shape, y_track.shape)
+                    loss_value += train_step(
+                        self.model,
+                        track_batch,
+                        y_track,
+                        loss_fn,
+                        train_acc_metric,
+                        optimizer_fn,
+                    )
+
+                if step % 200 == 0:
+                    print(
+                        "Training loss (for one batch) at step %d: %.4f"
+                        % (step, float(loss_value))
+                    )
+                    print("Seen so far: %d samples" % ((step + 1) * self.batch_size))
+
+            # Display metrics at the end of each epoch.
+            train_acc = train_acc_metric.result()
+            print("Training acc over epoch: %.4f" % (float(train_acc),))
+
+            # Reset training metrics at the end of each epoch
+            train_acc_metric.reset_states()
+
+            # Run a validation loop at the end of each epoch.
+            for x_batch_val, y_batch_val in self.validation:
+                for track_batch, y_track in zip(x_batch_val, y_batch_val):
+                    test_step(self.model, track_batch, y_track, val_acc_metric)
+
+            val_acc = val_acc_metric.result()
+            val_acc_metric.reset_states()
+            print("Validation acc: %.4f" % (float(val_acc),))
+            print("Time taken: %.2fs" % (time.time() - start_time))
+
     def train_model(
         self,
         run_name="test",
@@ -542,19 +592,22 @@ class AudioModel:
         else:
             policy = tf.keras.mixed_precision.global_policy()
             logging.info("Policy is %s", policy)
-            history = self.model.fit(
-                self.train,
-                validation_data=self.validation,
-                epochs=epochs,
-                shuffle=False,
-                callbacks=[
-                    tf.keras.callbacks.TensorBoard(
-                        self.log_dir, write_graph=True, write_images=True
-                    ),
-                    *checkpoints,
-                ],  # log metricslast_stats
-                class_weight=class_weights,
-            )
+
+            history = self.custom_train(epochs)
+
+            # history = self.model.fit(
+            #     self.train,
+            #     validation_data=self.validation,
+            #     epochs=epochs,
+            #     shuffle=False,
+            #     callbacks=[
+            #         tf.keras.callbacks.TensorBoard(
+            #             self.log_dir, write_graph=True, write_images=True
+            #         ),
+            #         *checkpoints,
+            #     ],  # log metricslast_stats
+            #     class_weight=class_weights,
+            # )
 
             history = history.history
         test_accuracy = None
@@ -777,10 +830,11 @@ class AudioModel:
             # norm_layer = tf.keras.layers.Normalization()
             # norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
             input = tf.keras.Input(shape=self.input_shape, name="input")
-
             base_model, self.preprocess_fn = self.get_base_model(self.input_shape)
             # x = norm_layer(input)
-            x = badwinner2.MagTransform()(input)
+            mask_layer = tf.keras.layers.Masking(mask_value=0)
+            x = mask_layer(input)
+            x = badwinner2.MagTransform()(x)
 
             x = base_model(x)
             # , training=True)
@@ -3012,6 +3066,33 @@ class EpochUpdater(tf.keras.callbacks.Callback):
         global global_epoch
         # global_epoch = tf.Variable(1, name='global_epoch', trainable=False, dtype=tf.int32)
         global_epoch.assign(epoch + 1)
+
+
+@tf.function
+def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
+    with tf.GradientTape() as tape:
+        mask = tf.not_equal(x, 0)
+        mask = tf.math.reduce_any(mask, axis=-1)
+        x = tf.boolean_mask(x, mask)
+        x = tf.reshape(x, [-1, 160, 513, 3])
+
+        logits = model(x, training=True)
+        # mean results as these are all for 1 track
+        logits = tf.reduce_mean(logits, axis=0)
+
+        loss_value = loss_fn(y, logits)
+        # Add any extra losses created during the forward pass.
+        loss_value += sum(model.losses)
+    grads = tape.gradient(loss_value, model.trainable_weights)
+    optimizer.apply_gradients(zip(grads, model.trainable_weights))
+    train_acc_metric.update_state(y, logits)
+    return loss_value
+
+
+@tf.function
+def test_step(model, x, y, val_acc_metric):
+    val_logits = model(x, training=False)
+    val_acc_metric.update_state(y, val_logits)
 
 
 if __name__ == "__main__":

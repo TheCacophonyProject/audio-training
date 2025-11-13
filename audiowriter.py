@@ -99,7 +99,7 @@ def create_tf_example(samples):
     for sample in samples:
         spec_data.append(sample.spectogram_data.spectogram)
         tags = sample.tags_s
-    spec_data= np.array(spec_data)
+    spec_data = np.array(spec_data)
     logging.info("WRiting data %s", spec_data.shape)
     track_ids = " ".join(map(str, sample.track_ids))
     feature_dict = {
@@ -465,15 +465,15 @@ def save_data(
                 # data[i] = spec
                 sample.spectogram_data = spec
                 sample.sr = resample
-                track_samples = samples_by_track.setdefault(sample.track_ids[0],[])
+                track_samples = samples_by_track.setdefault(sample.track_ids[0], [])
                 track_samples.append(sample)
             except:
                 logging.error(
                     "Error %s with tracks %s ", rec.id, sample.track_ids, exc_info=True
                 )
                 continue
-        for k,v in samples_by_track.items():
-            logging.info("Writing %s  samples for %s", len(v),k)
+        for k, v in samples_by_track.items():
+            logging.info("Writing %s  samples for %s", len(v), k)
             writer_lbl = v[0].first_tag
             tf_example, num_annotations_skipped = create_tf_example(v)
             if by_label:

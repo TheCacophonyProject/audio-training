@@ -835,9 +835,6 @@ def get_a_dataset(dir, labels, args):
     epoch_size = args.get("epoch_size")
     dist = None
     if epoch_size is None:
-
-        for x,y in dataset:
-            print(x.shape,y.shape)
         dist, epoch_size = get_distribution(
             dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
         )
@@ -872,7 +869,9 @@ def get_a_dataset(dir, labels, args):
         dataset = dataset.map(lambda x, y: butter_bitterns(bittern_mask, x, y))
 
     if batch_size is not None:
-        dataset = dataset.padded_batch(batch_size,padded_shapes=([ None, 160, 513, 3], [num_labels]))
+        dataset = dataset.padded_batch(
+            batch_size, padded_shapes=([None, 160, 513, 3], [num_labels])
+        )
 
     # dont think using this anymore GP
     if args.get("weight_specific", False):
@@ -987,10 +986,13 @@ def read_tfrecord(
     global_epoch=None,
     has_ebird=True,
 ):
-    tfrecord_format = {"audio/class/text": tf.io.FixedLenFeature((), tf.string),"audio/raw_length":tf.io.FixedLenFeature((), tf.int64)}
+    tfrecord_format = {
+        "audio/class/text": tf.io.FixedLenFeature((), tf.string),
+        "audio/raw_length": tf.io.FixedLenFeature((), tf.int64),
+    }
     if has_ebird:
         tfrecord_format["audio/class/ebird"] = tf.io.FixedLenFeature((), tf.string)
-    
+
     tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
     tfrecord_format["audio/track_id"] = tf.io.FixedLenFeature((), tf.string)
     tfrecord_format["audio/low_sample"] = tf.io.FixedLenFeature((), tf.int64)
@@ -1015,7 +1017,7 @@ def read_tfrecord(
             )
         else:
             tfrecord_format["audio/spectogram"] = tf.io.FixedLenSequenceFeature(
-                [], tf.float32,allow_missing=True
+                [], tf.float32, allow_missing=True
             )
         if filter_freq:
             tfrecord_format["audio/buttered"] = tf.io.FixedLenFeature(
@@ -1066,7 +1068,7 @@ def read_tfrecord(
         else:
 
             spectogram = example["audio/spectogram"]
-        spectogram = tf.reshape(spectogram, (raw_length,2049, 513))
+        spectogram = tf.reshape(spectogram, (raw_length, 2049, 513))
         spectogram = tf.math.pow(spectogram, 2)
 
         # conver to power
@@ -1081,7 +1083,6 @@ def read_tfrecord(
             logging.info("Repeating last dim for efficient net")
             spectogram = tf.repeat(spectogram, 3, -1)
         # spectogram = tf.expand_dims(spectogram, axis=0)
-        print("Spect shape is ",spectogram.shape)
     if features or only_features:
         short_f = example["audio/short_f"]
         mid_f = example["audio/mid_f"]
@@ -1592,7 +1593,7 @@ def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
     i = 0
     for n in range(num_images):
         i = 0
-        for p,img in enumerate(image_batch[n]):
+        for p, img in enumerate(image_batch[n]):
             predicted = ""
 
             if preds is not None:
@@ -1619,8 +1620,8 @@ def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
                 signal_percent = np.round(signal_batch[n].numpy(), 1)
                 plot_title = f"{plot_title} - {rec}:{track} at {start_s:.1f} sig {signal_percent:.1f}"
             plt.title(f"{plot_title}\n{predicted}")
-            ax.imshow(img[:,:,0])
-            print("IMg is ",img.shape,img.dtype, np.amax(img),np.amin(img))
+            ax.imshow(img[:, :, 0])
+            print("IMg is ", img.shape, img.dtype, np.amax(img), np.amin(img))
         plt.show()
         plt.clf()
         # plot_mel(image_batch[n][:, :, 0], ax)
