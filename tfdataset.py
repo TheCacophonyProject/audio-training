@@ -988,7 +988,7 @@ def read_tfrecord(
 ):
     tfrecord_format = {
         "audio/class/text": tf.io.FixedLenFeature((), tf.string),
-        "audio/raw_length": tf.io.FixedLenFeature((), tf.int64),
+        "audio/num_samples": tf.io.FixedLenFeature((), tf.int64,default_value=1),
     }
     if has_ebird:
         tfrecord_format["audio/class/ebird"] = tf.io.FixedLenFeature((), tf.string)
@@ -1035,7 +1035,7 @@ def read_tfrecord(
     tfrecord_format["audio/signal_percent"] = tf.io.FixedLenFeature((), tf.float32)
 
     example = tf.io.parse_single_example(example, tfrecord_format)
-    raw_length = tf.cast(example["audio/raw_length"], tf.int64)
+    raw_length = tf.cast(example["audio/num_samples"], tf.int64)
 
     low_sample = tf.cast(example["audio/low_sample"], tf.int64)
     start_s = tf.cast(example["audio/start_s"], tf.float32)

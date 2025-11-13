@@ -126,7 +126,7 @@ def create_tf_example(samples):
             sample.low_sample
             # 1 if sample.low_sample else 0
         ),
-        "audio/raw_length": tfrecord_util.int64_feature(len(spec_data)),
+        "audio/num_samples": tfrecord_util.int64_feature(len(spec_data)),
         "audio/start_s": tfrecord_util.float_feature(sample.start),
         "audio/class/text": tfrecord_util.bytes_feature(
             sample.text_tags_s.encode("utf8")
