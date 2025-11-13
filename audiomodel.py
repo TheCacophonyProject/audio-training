@@ -397,12 +397,28 @@ class AudioModel:
 
     global_epoch = None
 
-    def custom_train(self, epochs):
+    def custom_train(self, epochs, checkpoints):
+        early_stopping = None
+        for checkpoint in checkpoints:
+            if isinstance(checkpoint, tf.keras.callbacks.EarlyStopping):
+                early_stopping = checkpoint
+                print("Got early stopper", early_stopping)
+                break
         loss_fn = loss()
         optimizer_fn = optimizer(lr=self.learning_rate)
         train_acc_metric = tf.keras.metrics.CategoricalAccuracy()
         val_acc_metric = tf.keras.metrics.CategoricalAccuracy()
 
+        history = {
+            "val_loss": [],
+            "loss": [],
+            "val_categorical_accuracy": [],
+            "categorical_accuracy": [],
+        }
+
+        for ckp in checkpoints:
+            ckp.set_model(self.model)  # Set the model to be checkpointed
+            ckp.on_train_begin()
         for epoch in range(epochs):
             print("\nStart of epoch %d" % (epoch,))
             start_time = time.time()
@@ -435,17 +451,40 @@ class AudioModel:
             print("Training acc over epoch: %.4f" % (float(train_acc),))
 
             # Reset training metrics at the end of each epoch
-            train_acc_metric.reset_states()
+            train_acc_metric.reset_state()
 
             # Run a validation loop at the end of each epoch.
+            val_loss = 0
             for x_batch_val, y_batch_val in self.validation:
                 for track_batch, y_track in zip(x_batch_val, y_batch_val):
-                    test_step(self.model, track_batch, y_track, val_acc_metric)
+                    val_loss += test_step(
+                        self.model, track_batch, y_track, loss_fn, val_acc_metric
+                    )
 
             val_acc = val_acc_metric.result()
-            val_acc_metric.reset_states()
+            val_acc_metric.reset_state()
             print("Validation acc: %.4f" % (float(val_acc),))
             print("Time taken: %.2fs" % (time.time() - start_time))
+            history["val_loss"].append(val_loss)
+            history["loss"].append(loss_value)
+            history["val_categorical_accuracy"].append(train_acc.numpy())
+            history["categorical_accuracy"].append(val_acc.numpy())
+
+            logs = {
+                "val_loss": val_loss,
+                "val_categorical_accuracy": val_acc.numpy(),
+                "categorical_accuracy": train_acc.numpy(),
+                "loss": loss_value,
+            }
+            for ckp in checkpoints:
+                ckp.on_epoch_end(epoch, logs=logs)
+
+            if early_stopping is not None and early_stopping.model.stop_training:
+                print(f"Early stopping triggered at epoch {epoch + 1}")
+                break
+        for ckp in checkpoints:
+            ckp.on_train_end(epoch, logs=history)
+        return history
 
     def train_model(
         self,
@@ -593,7 +632,7 @@ class AudioModel:
             policy = tf.keras.mixed_precision.global_policy()
             logging.info("Policy is %s", policy)
 
-            history = self.custom_train(epochs)
+            history = self.custom_train(epochs, checkpoints)
 
             # history = self.model.fit(
             #     self.train,
@@ -3090,9 +3129,19 @@ def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
 
 
 @tf.function
-def test_step(model, x, y, val_acc_metric):
+def test_step(model, x, y, loss_fn, val_acc_metric):
+    mask = tf.not_equal(x, 0)
+    mask = tf.math.reduce_any(mask, axis=-1)
+    x = tf.boolean_mask(x, mask)
+    x = tf.reshape(x, [-1, 160, 513, 3])
+
     val_logits = model(x, training=False)
+    val_logits = tf.reduce_mean(val_logits, axis=0)
+
     val_acc_metric.update_state(y, val_logits)
+    loss_value = loss_fn(y, val_logits)
+    loss_value += sum(model.losses)
+    return loss_value
 
 
 if __name__ == "__main__":
