@@ -23,7 +23,7 @@ RELABEL_MAP = {
     "sackin1": "sackin3",
     "brncre": "pipipi1",
     "criros2": "rosella",
-    "easros1": "easros1",
+    "easros1": "rosella",
 }
 
 
@@ -46,6 +46,7 @@ BIRD_TRAIN_LABELS = [
     "sonthr1",
     "tui1",
     "y01193",
+    "kokako3",
 ]
 from utils import get_all_birds
 

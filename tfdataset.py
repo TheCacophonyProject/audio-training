@@ -378,11 +378,11 @@ def get_remappings(
             continue
         remap_label = None
         # until we rewrite records if ebird ids need to remape all labels to ebird ids
-        text_labels = ebird_map.get(l.lower().replace(" ", "-"))
-        if text_labels is not None and l in new_labels:
-            for text_l in text_labels:
-                re_dic[text_l] = new_labels.index(l)
-                # logging.info("Adding remap %s to %s", text_l, l)
+        # text_labels = ebird_map.get(l.lower().replace(" ", "-"))
+        # if text_labels is not None and l in new_labels:
+        #     for text_l in text_labels:
+        #         re_dic[text_l] = new_labels.index(l)
+        # logging.info("Adding remap %s to %s", text_l, l)
 
         if l in NOISE_LABELS:
             if "noise" in new_labels:
@@ -515,7 +515,8 @@ def get_a_dataset(dir, labels, args):
             labels, excluded_labels, use_generic_bird=use_generic_bird
         )
         for k, v in remapped.items():
-            logging.info("Remapping %s to %s", k, labels[v])
+
+            logging.info("Remapping %s to %s", k, " nothing " if v == -1 else labels[v])
         logging.info(
             "Remapped %s extra mapping %s new labels %s Use gen bird %s",
             remapped,
@@ -592,7 +593,7 @@ def get_a_dataset(dir, labels, args):
             others_filter = lambda x, y: not tf.math.reduce_all(
                 tf.math.equal(tf.cast(y[0], tf.bool), morepork_mask)
             )
-            dataset_2.filter(others_filter)
+            dataset_2 = dataset_2.filter(others_filter)
             logging.info("filtering morepork from second ds")
             datasets.append(dataset_2)
         else:

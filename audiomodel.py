@@ -1892,6 +1892,7 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
         second_dir=second_dir,
         embeddings=model_name == "embeddings",
         human_dir=human_dir,
+        load_seperate_ds=True,
         **args,
     )
 
