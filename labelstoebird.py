@@ -17,11 +17,9 @@ new_labels = [
     "comcha",
     "commyn",
     "comred",
-    "criros2",
     "duck",
     "dunnoc1",
     "eurbla",
-    "eurgol",
     "eurgre1",
     "eursta",
     "fernbi1",
@@ -32,7 +30,7 @@ new_labels = [
     "insect",
     "kea1",
     "kiwi",
-    "litowl1",
+    "kokako3",
     "lotkoe1",
     "maslap1",
     "morepo2",
@@ -50,9 +48,10 @@ new_labels = [
     "pipipi1",
     "purswa6",
     "rebdot1",
-    "redjun",
     "rettro",
     "riflem1",
+    "rooster",
+    "rosella",
     "sackin3",
     "sbweye1",
     "shbcuc1",
@@ -70,6 +69,7 @@ new_labels = [
     "yellow2",
     "yellow3",
 ]
+
 
 current_labels = [
     "ausmag2",
@@ -309,9 +309,9 @@ def labels_to_api_old(metadata_f):
 
 
 def main():
-    # compare_labels()
+    compare_labels()
     # test_labels()
-    # return
+    return
     metadata_f = Path(sys.argv[1])
     # labels_to_api_old(metadata_f)
     # return
