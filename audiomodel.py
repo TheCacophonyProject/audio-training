@@ -588,7 +588,7 @@ class AudioModel:
                 if weights_metadata.exists():
                     with weights_metadata.open("r") as f:
                         weights_meta = json.load(f)
-                    weights_labels = weights_meta.get("labels")
+                    weights_labels = weights_meta.get("ebird_labels")
                     print("Weight labels are ", weights_labels)
             self.build_model(
                 multi_label=args.get("multi_label", True),
