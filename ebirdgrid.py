@@ -26,11 +26,11 @@ MAX_LAT = 0.10025559492370206
 
 
 def read_ebird_atlas_squares():
-    
+
     global MAX_LNG, MAX_LAT
 
     kml_file = "Atlas Grid Squares with names_June 2020.kml"
-    logging.info("Reading NZ ebird squares from %s",kml_file)
+    logging.info("Reading NZ ebird squares from %s", kml_file)
     gdf = gpd.read_file(kml_file, driver="KML")
     all_bounds = []
     max_lng = None
@@ -163,32 +163,107 @@ def set_neighbours(squares):
         square["neighbours_i"] = neighbours
 
 
-model_ebirds = {'gobwhi1', 'x01059', 'sobkiw2', 'kea1', 'whiteh1', 'blknod', 'sobkiw1', 'yellow2', 'rettro', 'criros2', 'kelgul', 'okbkiw1', 'shbcuc1', 'nezrob3', 'eursta', 'whiter', 'purswa6', 'yefpar3', 'comcha', 'auspip3', 'houspa', 'x00458', 'ausmag2', 'cangoo', 'oyster1', 'riflem1', 'comred', 'noiger1', 'mallar3', 'gryger1', 'parshe1', 'nezbel1', 'yellow3', 'nezrob2', 'sobkiw3', 'pacrob2', 'skylar', 'sbweye1', 'liskiw1', 'grskiw1', 'y01193', 'commyn', 'kiwi1', 'fernbi1', 'blkswa', 'nezpig2', 'lotkoe1', 'redpol1', 'parake', 'silver3', 'eurbla', 'nezfal1', 'sooter1', 'maslap1', 'tomtit1', 'eurgre1', 'dunnoc1', 'nezfan1', 'brncre', 'nezkak1', 'sackin3', 'baicra1', 'sonthr1', 'calqua', 'weka1', 'tui1', 'morepo2', 'nibkiw1'}
+model_ebirds = {
+    "gobwhi1",
+    "x01059",
+    "sobkiw2",
+    "kea1",
+    "whiteh1",
+    "blknod",
+    "sobkiw1",
+    "yellow2",
+    "rettro",
+    "criros2",
+    "kelgul",
+    "okbkiw1",
+    "shbcuc1",
+    "nezrob3",
+    "eursta",
+    "whiter",
+    "purswa6",
+    "yefpar3",
+    "comcha",
+    "auspip3",
+    "houspa",
+    "x00458",
+    "ausmag2",
+    "cangoo",
+    "oyster1",
+    "riflem1",
+    "comred",
+    "noiger1",
+    "mallar3",
+    "gryger1",
+    "parshe1",
+    "nezbel1",
+    "yellow3",
+    "nezrob2",
+    "sobkiw3",
+    "pacrob2",
+    "skylar",
+    "sbweye1",
+    "liskiw1",
+    "grskiw1",
+    "y01193",
+    "commyn",
+    "kiwi1",
+    "fernbi1",
+    "blkswa",
+    "nezpig2",
+    "lotkoe1",
+    "redpol1",
+    "parake",
+    "silver3",
+    "eurbla",
+    "nezfal1",
+    "sooter1",
+    "maslap1",
+    "tomtit1",
+    "eurgre1",
+    "dunnoc1",
+    "nezfan1",
+    "brncre",
+    "nezkak1",
+    "sackin3",
+    "baicra1",
+    "sonthr1",
+    "calqua",
+    "weka1",
+    "tui1",
+    "morepo2",
+    "nibkiw1",
+}
+
+
 def labels_with_one_samples(grid_file):
     common_ebird_map = common_to_ebird()
-    id_common ={}
+    id_common = {}
     for k, v in common_ebird_map.items():
         id_common[v] = k
-    with open(grid_file,"r") as f:
+    with open(grid_file, "r") as f:
         metadata = json.load(f)
-    low_data_birds =set()
+    low_data_birds = set()
     for square in metadata["grid_meta"]:
         species_meta = merge_neighbours(square, metadata["grid_meta"])
         found = False
         total_birds = 0
-        for k,v in species_meta.items():
+        for k, v in species_meta.items():
             total_birds += np.sum(list(v.values()))
             if k not in model_ebirds:
                 continue
-            if np.sum(list(v.values()))<=1:
+            if np.sum(list(v.values())) <= 1:
                 print(f"{id_common[k]}:{v}")
                 low_data_birds.add(id_common[k])
                 found = True
         if found:
-            print( f"https://maps.google.com/?q={square["bounds"][1]},{square["bounds"][0]}")
+            print(
+                f"https://maps.google.com/?q={square["bounds"][1]},{square["bounds"][0]}"
+            )
             print(square["bounds"], " total birds ", total_birds)
 
-    print("Low ids are ",low_data_birds)
+    print("Low ids are ", low_data_birds)
+
+
 def merge_neighbours(square, species_meta):
     species_per_month = square["species_per_month"].copy()
     for neighbour in square["neighbours_i"]:
@@ -204,10 +279,12 @@ def merge_neighbours(square, species_meta):
                 species_per_month[species][m] += c
     return species_per_month
 
-def birds_at_location(grid_file,lat,lng):
-        with open(grid_file,"r") as f:
-            metadata = json.load(f)
-        grid_data = metadata["grid_meta"]
+
+def birds_at_location(grid_file, lat, lng):
+    with open(grid_file, "r") as f:
+        metadata = json.load(f)
+    grid_data = metadata["grid_meta"]
+
 
 def main():
     fmt = "%(process)d %(thread)s:%(levelname)7s %(message)s"
@@ -220,7 +297,7 @@ def main():
     squares = sorted(squares, key=lambda square: square[0])
 
     region_metafile = Path("ebird_species.json")
-    logging.info("Reading regoin ebird metadata from %s",region_metafile)
+    logging.info("Reading regoin ebird metadata from %s", region_metafile)
     with region_metafile.open("r") as f:
         region_meta = json.load(f)
     grid_meta = []

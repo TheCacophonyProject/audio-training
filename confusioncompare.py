@@ -106,7 +106,7 @@ def main():
     for i, label in enumerate(first_labels):
         # if label in pre_labels:
         # continue
-        if label in ["human","noise"]:
+        if label in ["human", "noise"]:
             continue
         first_count = first_cm[i][i]
         first_none = first_cm[i][-1]

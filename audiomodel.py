@@ -1318,24 +1318,27 @@ def confusion(
     recs = []
     tracks = []
     starts = []
-    if isinstance(true_categories,tuple):
-        all_y = true_categories[0]
-        recs = all_y[3]
-        tracks = all_y[4]
-        starts = all_y[7]
-        true_categories = all_y[0]
-        print("True cats is ",true_categories)
-        print("Recs are ",recs)
-            # true_categories = [y for x, y in dataset]
-
-    # true_categories = [y[0] if isinstance(y, tuple) else yfor x, y in dataset ]
-    true_categories = tf.concat(true_categories, axis=0)
     y_true = []
-    if one_hot:
-        y_true = np.int64(tf.argmax(true_categories, axis=1))
-    else:
-        y_true = np.array(true_categories)
 
+    if isinstance(true_categories[0], tuple):
+        for batch in true_categories:
+            recs.extend(batch[3].numpy())
+            tracks.extend(batch[4].numpy())
+            starts.extend(batch[7].numpy())
+            y_true.extend(batch[0])
+        true_categories = y_true
+        dataset = dataset.map(
+            lambda x, y: (x, y[0]),
+            num_parallel_calls=tf.data.AUTOTUNE,
+            deterministic=True,
+        )
+    else:
+        # true_categories = [y[0] if isinstance(y, tuple) else yfor x, y in dataset ]
+        y_true = tf.concat(true_categories, axis=0)
+    if one_hot:
+        y_true = np.int64(tf.argmax(y_true, axis=1))
+    else:
+        y_true = np.array(y_true)
     if model_name == "rf-features":
         dataset = tf_to_ydf(dataset)
     y_pred = model.predict(dataset)
@@ -1376,9 +1379,9 @@ def confusion(
         np.save(f, np.array(model_labels))
         np.save(f, y_pred)
         np.save(f, y_true)
-        np.save(f,np.array(tracks))
-        np.save(f,np.array(recs))
-        np.save(f,np.array(starts))
+        np.save(f, np.array(tracks))
+        np.save(f, np.array(recs))
+        np.save(f, np.array(starts))
 
         if pre_model is not None:
             np.save(f, np.array(["premodel"]))
@@ -1547,7 +1550,6 @@ def multi_confusion_single(
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
     plt.savefig(none_path.with_suffix(".png"), format="png")
-
 
 
 # from tensorflow examples
@@ -2176,7 +2178,7 @@ def main():
             n_fft=meta_data.get("n_fft"),
             model_name=model_name,
             cache=True,
-            load_all_y=True
+            load_all_y=True,
         )
         # acc = tf.metrics.binary_accuracy
         if model_name != "rf-features":
@@ -2256,8 +2258,6 @@ def main():
                         pre_model=pre_model,
                         pre_labels=pre_labels,
                     )
-
-                  
 
     else:
         am = AudioModel(args.model_name, args.dataset_dir, args.second_dataset_dir)

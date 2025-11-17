@@ -50,6 +50,13 @@ def main():
             bird_labels = np.load(f)
             bird_conf = np.load(f)
             bird_true = np.load(f)
+            tracks = np.load(f)
+            recs = np.load(f)
+
+            starts = np.load(f)
+            print("Tracks are", tracks)
+            print("Recs are ", recs)
+
             try:
                 model_type = np.load(f)
                 print("Extra model", model_type)
