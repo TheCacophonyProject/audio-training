@@ -126,7 +126,7 @@ class AudioModel:
         self.data_dir = data_dir
         self.second_data_dir = second_data_dir
         self.model_name = model_name
-        self.batch_size = 32
+        self.batch_size = 4 
         self.validation = None
         self.test = None
         self.train = None
@@ -425,20 +425,16 @@ class AudioModel:
 
             # Iterate over the batches of the dataset.
             for step, (x_batch_train, y_batch_train) in enumerate(self.train):
-                print(x_batch_train.shape, y_batch_train.shape)
                 loss_value = 0
-                # probably could speed this up if ran on all data then meaned appropriately
-                for track_batch, y_track in zip(x_batch_train, y_batch_train):
-                    print("Running track batch ", track_batch.shape, y_track.shape)
-                    loss_value += train_step(
-                        self.model,
-                        track_batch,
-                        y_track,
-                        loss_fn,
-                        train_acc_metric,
-                        optimizer_fn,
-                    )
-
+                loss_value += train_step(
+                    self.model,
+                    x_batch_train,
+                    y_batch_train,
+                    loss_fn,
+                    train_acc_metric,
+                    optimizer_fn,
+                )
+                1/0
                 if step % 200 == 0:
                     print(
                         "Training loss (for one batch) at step %d: %.4f"
@@ -3108,22 +3104,47 @@ class EpochUpdater(tf.keras.callbacks.Callback):
         global_epoch.assign(epoch + 1)
 
 
-@tf.function
-def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
+# @tf.function
+def train_step(model, orig_x, y, loss_fn, train_acc_metric, optimizer):
+    orig_shape = orig_x.shape
+    track_batch = orig_shape[1]
+    mask = tf.not_equal(orig_x, 0)
+    mask = tf.math.reduce_all(mask,axis = [2,3,4])
+
+    print("Mask is ",mask.shape,mask)
+    print("In shape is ",orig_x.shape)
+    orig_x =  tf.reshape(orig_x,[-1,orig_shape[2],orig_shape[3],orig_shape[4]])
+    # .shape]
+        # orig_x, axis=1, name='concat'
+
+    # )
+    i = 0
+    print("In shape is ",orig_x.shape)
+    masked_logits = tf.zeros(y.shape, tf.float32)
     with tf.GradientTape() as tape:
-        mask = tf.not_equal(x, 0)
-        mask = tf.math.reduce_any(mask, axis=-1)
-        x = tf.boolean_mask(x, mask)
-        x = tf.reshape(x, [-1, 160, 513, 3])
+        loss_value = 0
+        logits = model(orig_x, training=True)
+        print("Logits are ",logits.shape)
+        logits = np.reshape(logits,[-1,track_batch,logits.shape[1]])
+        print("NO wlogits are ",logits.shape)
+        for logit, mask in zip(logits,mask):
+            print("Have logits",logit.shape, mask.shape)
+            logit = tf.boolean_mask(logit,mask)
+            logit = np.reshape(logit,[-1,logits.shape[-1]])
+            print("after masking",logit.shape)
 
-        logits = model(x, training=True)
-        # mean results as these are all for 1 track
-        logits = tf.reduce_mean(logits, axis=0)
+            logit = tf.reduce_mean(logit, axis=0)
+            masked_logits[i] = logit
+            print("after meaning",logit.shape,t_y.shape)
+            
+            i+=1
+        loss_value= loss_fn(y, masked_logits)
 
-        loss_value = loss_fn(y, logits)
-        # Add any extra losses created during the forward pass.
+        print("Loss value is",loss_value)
         loss_value += sum(model.losses)
+        # Add any extra losses created during the forward pass.
     grads = tape.gradient(loss_value, model.trainable_weights)
+    print("Grads are ",grads)
     optimizer.apply_gradients(zip(grads, model.trainable_weights))
     train_acc_metric.update_state(y, logits)
     return loss_value
