@@ -10,3 +10,4 @@ psutil
 audiomentations
 ydf
 pandas
+opencv-python

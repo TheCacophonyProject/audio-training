@@ -33,7 +33,7 @@ def main():
     with second_cm_meta_file.open("r") as f:
         second_meta = json.load(f)
 
-    first_labels = first_meta["labels"]
+    first_labels = first_meta["ebird_labels"]
     # re_l = first_meta["remapped_labels"]
     # for k, v in re_l.items():
     #     mapped_lbl = first_labels[v]
@@ -106,8 +106,8 @@ def main():
     for i, label in enumerate(first_labels):
         # if label in pre_labels:
         # continue
-        # if label in ["human","noise"]:
-        #     continue
+        if label in ["human","noise"]:
+            continue
         first_count = first_cm[i][i]
         first_none = first_cm[i][-1]
         first_total = np.sum(first_cm[i])

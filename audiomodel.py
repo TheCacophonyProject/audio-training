@@ -1314,7 +1314,21 @@ def confusion(
     for ebird_id in ebird_labels:
         label = ebird_id_map.get(ebird_id, [ebird_id])
         labels.append(label[0])
-    true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
+    true_categories = [y for x, y in dataset]
+    recs = []
+    tracks = []
+    starts = []
+    if isinstance(true_categories,tuple):
+        all_y = true_categories[0]
+        recs = all_y[3]
+        tracks = all_y[4]
+        starts = all_y[7]
+        true_categories = all_y[0]
+        print("True cats is ",true_categories)
+        print("Recs are ",recs)
+            # true_categories = [y for x, y in dataset]
+
+    # true_categories = [y[0] if isinstance(y, tuple) else yfor x, y in dataset ]
     true_categories = tf.concat(true_categories, axis=0)
     y_true = []
     if one_hot:
@@ -1362,6 +1376,9 @@ def confusion(
         np.save(f, np.array(model_labels))
         np.save(f, y_pred)
         np.save(f, y_true)
+        np.save(f,np.array(tracks))
+        np.save(f,np.array(recs))
+        np.save(f,np.array(starts))
 
         if pre_model is not None:
             np.save(f, np.array(["premodel"]))
@@ -1402,136 +1419,6 @@ def confusion(
     cm = confusion_matrix(y_true, predicted_categories, labels=np.arange(len(labels)))
     figure = plot_confusion_matrix(cm, class_names=labels)
 
-    plt.savefig(filename.with_suffix(".png"), format="png")
-    np.save(str(filename.with_suffix(".npy")), cm)
-
-    # plt.savefig(f"./confusions/{filename}", format="png")
-
-
-def confusion_with_pre(
-    model,
-    labels,
-    dataset,
-    filename="confusion.png",
-    one_hot=True,
-    model_name=None,
-    other_models=None,
-    pre_model=None,
-    pre_labels=None,
-):
-    labels = labels.copy()
-    true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
-    true_categories = tf.concat(true_categories, axis=0)
-    y_true = []
-    if one_hot:
-        y_true = np.int64(tf.argmax(true_categories, axis=1))
-    else:
-        y_true = np.array(true_categories)
-
-    if model_name == "rf-features":
-        dataset = tf_to_ydf(dataset)
-    if pre_model:
-        pre_model_pred = pre_model.predict(dataset)
-
-        for l in pre_labels:
-            if l not in labels:
-                labels.append(l)
-    y_pred = model.predict(dataset)
-    all_preds = None
-    weighted_max = False
-    weights = [0.6, 0.4]
-
-    if other_models is not None:
-        all_preds = [y_pred]
-
-        for other in other_models:
-            y_pred_2 = other.predict(dataset)
-            all_preds.append(y_pred_2)
-        all_preds = np.array(all_preds)
-        if not weighted_max:
-            logging.info("Taking average all models")
-
-            # Calculate the weighted average
-            y_pred = np.mean(all_preds, axis=0)
-            logging.info("y_pred preds is %s", y_pred.shape)
-
-    predicted_categories = []
-
-    if "None" not in labels:
-        labels.append("None")
-
-    morepork_i = labels.index("morepo2")
-    if all_preds is not None and weighted_max:
-        logging.info("Running weighted max")
-        for row, pred in enumerate(all_preds[0]):
-            max_i = np.argmax(pred)
-            max_p = pred[max_i]
-            max_p_weighted = max_p * weights[0]
-            weights_i = 1
-            for other_preds in all_preds[1:]:
-                pred_2 = other_preds[row]
-                max_2 = np.argmax(pred_2)
-                max_2_p = pred_2[max_2] * weights[weights_i]
-                if max_2_p >= max_p_weighted:
-                    max_p_weighted = max_2_p
-                    max_p = pred_2[max_2]
-                    max_i = max_2
-            if max_p > 0.7:
-                predicted_categories.append(max_i)
-            else:
-                predicted_categories.append(len(labels) - 1)
-    else:
-        for i, pred in enumerate(y_pred):
-            max_i = np.argmax(pred)
-            max_p = pred[max_i]
-            lbl = labels[max_i]
-            if pre_model is not None and max_p <= 0.7:
-                pre_pred = pre_model_pred[i]
-                pre_max_i = np.argmax(pre_pred)
-                pre_max_p = pre_pred[pre_max_i]
-
-                pre_lbl = pre_labels[pre_max_i]
-                pre_max_i = labels.index(pre_lbl)
-                logging.info(
-                    "Pre labl is %s- %s max is %s - %s",
-                    pre_lbl,
-                    pre_max_p,
-                    labels[max_i],
-                    max_p,
-                )
-                filter_moreporks = False
-                if pre_max_p > 0.7:
-                    max_i = pre_max_i
-                    max_p = pre_max_p
-                    # only use as fallback
-                    continue
-                    if pre_lbl == "noise":
-                        if lbl not in ["insect", "tree-weta", "weta"] or max_p <= 0.7:
-                            max_i = pre_max_i
-                            max_p = pre_max_p
-                    elif pre_lbl in ["morepo2", "human"]:
-                        max_i = pre_max_i
-                        max_p = pre_max_p
-                    else:
-                        filter_moreporks = True
-                        if max_i == morepork_i or max_p <= 0.7:
-                            max_i = pre_max_i
-                            max_p = pre_max_p
-                # elif pre_max_p > 0.5 and pre_lbl in ["noise", "human"]:
-                #     if max_i == morepork_i:
-                #         predicted_categories.append(len(labels) - 1)
-                #         logging.info("Unknown")
-                #         continue
-            if max_p > 0.7:
-                # logging.info(
-                #     "Final result is %s true %s", labels[max_i], labels[y_true[i]]
-                # )
-                predicted_categories.append(max_i)
-            else:
-                # logging.info("Final unknown")
-                predicted_categories.append(len(labels) - 1)
-    cm = confusion_matrix(y_true, predicted_categories, labels=np.arange(len(labels)))
-    figure = plot_confusion_matrix(cm, class_names=labels)
     plt.savefig(filename.with_suffix(".png"), format="png")
     np.save(str(filename.with_suffix(".npy")), cm)
 
@@ -1661,36 +1548,6 @@ def multi_confusion_single(
     figure = plot_confusion_matrix(cm, class_names=labels)
     plt.savefig(none_path.with_suffix(".png"), format="png")
 
-
-#
-# def confusion(model, labels, dataset, filename="confusion.png"):
-#     true_categories = [y for x, y in dataset]
-#     true_categories = tf.concat(true_categories, axis=0)
-#     y_true = []
-#     for y in true_categories:
-#         non_zero = tf.where(y).numpy()
-#         y_true.append(non_zero.flatten())
-#     y_true = np.array(y_true)
-#
-#     true_categories = np.int64(tf.argmax(true_categories, axis=1))
-#     y_pred = model.predict(dataset)
-#
-#     predicted_categories = []
-#     for pred in y_pred:
-#         cur_preds = []
-#         for i, p in enumerate(pred):
-#             if p > 0.7:
-#                 cur_preds.append(i)
-#         predicted_categories.append(cur_preds)
-#     predicted_categories = np.array(predicted_categories)
-#     print(y_true, predicted_categories)
-#     cm = multiconfusion_matrix(
-#         true_categories, predi3cted_categories, labels=np.arange(len(labels))
-#     )
-#     # Log the confusion matrix as an image summary.
-#     figure = plot_confusion_matrix(cm, class_names=labels)
-#     logging.info("Saving confusion to %s", filename)
-#     plt.savefig(filename, format="png")
 
 
 # from tensorflow examples
@@ -2319,6 +2176,7 @@ def main():
             n_fft=meta_data.get("n_fft"),
             model_name=model_name,
             cache=True,
+            load_all_y=True
         )
         # acc = tf.metrics.binary_accuracy
         if model_name != "rf-features":
@@ -2399,17 +2257,7 @@ def main():
                         pre_labels=pre_labels,
                     )
 
-                    # confusion_with_pre(
-                    #     model,
-                    #     labels,
-                    #     dataset,
-                    #     confusion_file,
-                    #     one_hot=not meta_data.get("only_features"),
-                    #     model_name=model_name,
-                    #     other_models=other_models,
-                    #     pre_model=pre_model,
-                    #     pre_labels=pre_labels,
-                    # )
+                  
 
     else:
         am = AudioModel(args.model_name, args.dataset_dir, args.second_dataset_dir)
