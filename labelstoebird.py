@@ -308,10 +308,24 @@ def labels_to_api_old(metadata_f):
         json.dump(metadata, f, indent=4)
 
 
+def show_remapped(meta):
+    ebird_map = get_ebird_ids_to_labels()
+
+    labels = meta["ebird_labels"]
+    remapped = meta["remapped_labels"]
+    for k, v in remapped.items():
+        if v != -1:
+            k2 = ebird_map.get(k, [k])
+            # ()
+            print(
+                f"{k} {k2} is remapped to {labels[v]}-{ebird_map.get(labels[v],labels[v])}"
+            )
+
+
 def main():
-    compare_labels()
-    # test_labels()
-    return
+    # compare_labels()
+    # # test_labels()
+    # return
     metadata_f = Path(sys.argv[1])
     # labels_to_api_old(metadata_f)
     # return
@@ -319,7 +333,9 @@ def main():
 
     with metadata_f.open("r") as f:
         metadata = json.load(f)
-    labels_to_ebird_links(metadata)
+    show_remapped(metadata)
+
+    # labels_to_ebird_links(metadata)
     return
     ebird_ids = []
     for l in metadata["labels"]:
