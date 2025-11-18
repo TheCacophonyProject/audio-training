@@ -65,7 +65,7 @@ def main():
 
             except:
                 pass
-        bird_tracks = np.arange(len(bird_conf))
+        bird_tracks = tracks
         if rms_conf is not None:
             rms_tracks = bird_tracks
             rms_true = bird_true
@@ -115,13 +115,13 @@ def main():
     #     data_per_track[track] = (y_t, y_p, y_c)
 
     bird_data_per_track = {}
-    for track, y_t, y_p, y_c, all_preds in zip(
-        bird_tracks, bird_true, bird_pred, bird_conf, bird_all_conf
+    for track, y_t, y_p, y_c, all_preds, rec in zip(
+        bird_tracks, bird_true, bird_pred, bird_conf, bird_all_conf, recs
     ):
         # meaned = np.mean(all_preds, axis=0)
         # # print("Meaned ",meaned.shape,y_c.shape,meaned,y_c)
         # assert np.all(np.isclose(meaned, y_c))
-        bird_data_per_track[track] = (y_t, y_p, y_c, np.array(all_preds))
+        bird_data_per_track[track] = (y_t, y_p, y_c, np.array(all_preds), rec)
 
     # best_threshold(
     #     bird_labels,
@@ -225,7 +225,7 @@ def main():
 
     morepork_i = labels.index("morepo2")
     for track_id, data in bird_data_per_track.items():
-        y_t, y_p, y_c, all_preds = data
+        y_t, y_p, y_c, all_preds, rec = data
         # if y_p == 0:
         #     print("Bittern")
         #     1/0
@@ -244,7 +244,16 @@ def main():
         # print(labels[y_p], "Threshold is ", threshold)
         is_morepork = y_p == morepork_i
         # if is_morepork and
-
+        if (
+            y_t == labels.index("kiwi")
+            and y_p != labels.index("kiwi")
+            and y_c[y_p] > threshold
+        ):
+            print(
+                f"{rec}:{y_t} is kiwi but have predicted ",
+                labels[y_p],
+                round(y_c[y_p] * 100, 1),
+            )
         if rms_c is not None:
             pre_p = np.argmax(rms_c)
             pre_t = pre_thresh[pre_p]

@@ -779,6 +779,7 @@ class AudioModel:
             input = tf.keras.Input(shape=self.input_shape, name="input")
 
             base_model, self.preprocess_fn = self.get_base_model(self.input_shape)
+            base_model.summary()
             # x = norm_layer(input)
             x = badwinner2.MagTransform()(input)
 
@@ -789,6 +790,10 @@ class AudioModel:
                 x = badwinner2.LMELayer(axis=1, sharpness=5)(x)
                 x = badwinner2.LMELayer(axis=2, sharpness=5)(x)
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
+            # effnetv2b3 is 0.2
+            # v2bm is 0.2
+            x = tf.keras.layers.Dropout(0.2)(x)
+
             activation = "softmax"
             if multi_label:
                 activation = "sigmoid"
@@ -2063,7 +2068,7 @@ def main():
             meta_data = json.load(f)
         model_name = meta_data.get("name")
         multi = meta_data.get("multi_label", True)
-        labels = meta_data.get("labels")
+        labels = meta_data.get("ebird_labels")
         other_models = None
         if model_name == "rf-features":
             model = ydf.load_model(str(model_path.parent))

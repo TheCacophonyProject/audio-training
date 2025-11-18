@@ -336,7 +336,7 @@ def get_remappings(
     # for l in new_labels:
 
     for excluded in excluded_labels:
-        if excluded in labels:
+        if excluded in new_labels:
             new_labels.remove(excluded)
 
     merge_v = list(RELABEL_MAP.values())
