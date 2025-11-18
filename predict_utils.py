@@ -11,7 +11,7 @@ def load_samples(
     sr,
     tracks,
     segment_length=3,
-    stride=1.5,
+    stride=1,
     hop_length=281,
     mean_sub=False,
     use_mfcc=False,

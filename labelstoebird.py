@@ -322,6 +322,17 @@ def show_remapped(meta):
             )
 
 
+def text_labels(meta):
+    labels = meta["ebird_labels"]
+    ebird_map = get_ebird_ids_to_labels()
+    for l in labels:
+        print(l, ",", ebird_map.get(l, [l]))
+
+    for k, v in meta["remapped_labels"].items():
+        if v != -1:
+            print(k, ",", ebird_map.get(k, [k]))
+
+
 def main():
     # compare_labels()
     # # test_labels()
@@ -333,6 +344,8 @@ def main():
 
     with metadata_f.open("r") as f:
         metadata = json.load(f)
+    text_labels(metadata)
+    return
     show_remapped(metadata)
 
     # labels_to_ebird_links(metadata)
