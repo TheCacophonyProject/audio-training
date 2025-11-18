@@ -115,7 +115,7 @@ class Config:
         self.fmax = args.get("fmax", 11000)
         self.n_mels = args.get("mels", 160)
         self.filter_frequency = args.get("filter_freq", False)
-        self.tighten_tracks = args.get("tighten_tracks",False)
+        self.tighten_tracks = not args.get("dont_tighten_tracks",False)
         self.filter_rms = not args.get("dont_filter_rms",False)
 
 
@@ -472,7 +472,7 @@ class Recording:
             tracks_meta = metadata.get("tracks", [])
 
         for track in tracks_meta:
-            t = Track(track, self.filename, self.id, self, tighten=config.tighten_tracks if config is not None else False,filter_rms=config.filter_rms if config is not None else True)
+            t = Track(track, self.filename, self.id, self, tighten=config.tighten_tracks if config is not None else True,filter_rms=config.filter_rms if config is not None else True)
             if filter_track(t):
                 continue
             self.tracks.append(t)
@@ -892,7 +892,7 @@ def load_features(signal, sr):
 
 
 class Track:
-    def __init__(self, metadata, filename, rec_id, rec, segment_length=3, tighten=False,filter_rms = True):
+    def __init__(self, metadata, filename, rec_id, rec, segment_length=3, tighten=True,filter_rms = True):
         self.rec = rec
         self.filename = filename
         self.rec_id = rec_id

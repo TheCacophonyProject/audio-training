@@ -874,10 +874,10 @@ def parse_args():
         help="Filter frequency of tracks",
     )
     parser.add_argument(
-        "--tighten-tracks",
+        "--dont-tighten-tracks",
         default=False,
         action="store_true",
-        help="Tighten tracks to the best 3 seconds",
+        help="Dont Tighten tracks to the best 3 seconds",
     )
     parser.add_argument(
         "--dont-filter-rms",
