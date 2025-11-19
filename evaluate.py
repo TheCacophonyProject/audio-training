@@ -25,7 +25,7 @@ def evaluate_weakly_labelled_dir(model, model_meta, dir_name, filename):
 
     predicted_categories = []
     y_true = []
-    labels = model_meta["labels"]
+    labels = model_meta["ebird_labels"]
 
     include_labels = set(labels)
 
@@ -68,9 +68,12 @@ def evaluate_weakly_labelled_dir(model, model_meta, dir_name, filename):
     for sub_dir in dir_name.iterdir():
         if sub_dir.is_file():
             print("Ignoring ", sub_dir)
+        # if sub_dir.name !="kokako3":
+        #     continue
         files = [sub_f for sub_f in sub_dir.iterdir() if sub_f.is_file()]
         audio_files.extend(files)
     print("Audio_files are ", audio_files)
+    # audio_files = audio_files[1:2]
     # meta_data_f = meta_data_f[:1]
     pre_fn = partial(preprocess_weakly_lbl_audio, labels=include_labels)
     total_count = len(audio_files)
@@ -82,7 +85,7 @@ def evaluate_weakly_labelled_dir(model, model_meta, dir_name, filename):
     track_ids = []
     all_pred_confidences = []
     file_names = []
-    with Pool(processes=8) as pool:
+    with Pool(processes=1) as pool:
         for result in pool.imap_unordered(pre_fn, audio_files, chunksize=8):
             if count % 100 == 0:
                 logging.info("Done %s / %s", count, total_count)
@@ -115,14 +118,23 @@ def evaluate_weakly_labelled_dir(model, model_meta, dir_name, filename):
                 predictions = model.predict(all_samples)
                 offset = 0
                 threshold = 0.7
+                logging.info("FOr %s", file_name)
                 for track, count in zip(tracks, counts):
                     track_preds = predictions[offset : offset + count]
+                    logging.info("Track preds is %s",track_preds.shape)
+                    for i, p in enumerate(track_preds):
 
+                        max_i = np.argmax(p)
+                        max_p = p[max_i]
+                        if max_p >= threshold:
+                            logging.info("At %s have %s with %s",i, labels[max_i],round(100*max_p))
                     track_pred = np.mean(track_preds, axis=0)
                     confidences.append(track_pred)
                     track_ids.append(track.id)
                     max_i = np.argmax(track_pred)
                     max_p = track_pred[max_i]
+                    logging.info("Mean max arg is %s with %s", labels[max_i], round(100*max_p))
+
                     if max_p > 0.7:
                         predicted_mean.append(max_i)
                     else:
@@ -139,6 +151,9 @@ def evaluate_weakly_labelled_dir(model, model_meta, dir_name, filename):
                         predicted_counts.append(len(labels) - 1)
                     else:
                         counts = np.bincount(args_over_thresh)
+                        for i,c in enumerate(counts):
+                            if c > 0:
+                                logging.info("%s: %s times ",labels[i], c)
                         max_i = np.argmax(counts)
                         max_c = counts[max_i]
                         predicted_counts.append(max_i)
@@ -195,21 +210,22 @@ def preprocess_weakly_lbl_audio(audio_f, labels=None):
     try:
 
         frames, sr = load_recording(audio_f)
-        frames = frames[: int(sr * end)]
         end = get_end(frames, sr)
+        frames = frames[: int(sr * end)]
 
         ebird_id = audio_f.parent.name
         meta = {}
         meta["file"] = str(audio_f)
         tag = {"automatic": False, "what": ebird_id, "ebird_id": ebird_id}
         track_meta = {
-            "id": f"{id}_1",
+            "id": f"{0}_1",
             "start": 0,
             "end": end,
             "tags": [tag],
         }
-        meta["tracks"] = track_meta
-        rec = Recording(meta, audio_f, None, False, True)
+        meta["tracks"] = [track_meta]
+        print(meta)
+        rec = Recording(meta, audio_f, None, False, False)
 
         tracks = [track for track in rec.tracks if track.tag in labels]
         if len(tracks) == 0:

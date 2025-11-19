@@ -2000,7 +2000,7 @@ def main():
         else:
             if model_path.is_dir():
                 model_path = model_path / f"{model_path.stem}.keras"
-            logging.info("Loading %s with weights %s", model_path, "val_acc")
+            logging.info("Loading %s", model_path)
             model = tf.keras.models.load_model(
                 str(model_path),
                 compile=False,
@@ -2056,7 +2056,7 @@ def main():
                             continue
                         pre_lbl = pre_labels[v]
                         remapped_labels[k] = labels.index(pre_lbl)
-        if args.evaluate_weak_dir is not None:
+        if args.weak_dir is not None:
             if args.weights is not None:
                 logging.info("Loading weights %s", args.weights)
                 model.load_weights(args.weights)
@@ -2388,7 +2388,7 @@ def parse_args():
         default=None,
     )
 
-    parser.add_argument("--evaluate-weak-dir", default=False, action="store_true")
+    parser.add_argument("--weak-dir", default=False, action="store_true")
 
     args = parser.parse_args()
     args.extra_datasets = None
