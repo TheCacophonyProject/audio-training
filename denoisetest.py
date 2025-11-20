@@ -1062,7 +1062,7 @@ def rms(args):
 N_MELS = 160
 BREAK_FREQ = 1000
 
-MEL_WEIGHTS = mel_f(48000, N_MELS, 500, 11000, 2*4096, BREAK_FREQ)
+MEL_WEIGHTS = mel_f(48000, N_MELS, 500, 11000, 2 * 4096, BREAK_FREQ)
 MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 
 MEL_WEIGHTS_2 = mel_f(48000, N_MELS, 100, 3000, 2048, BREAK_FREQ)
@@ -1084,7 +1084,7 @@ def test_multi_rgb(frames, sr):
     N_MELS = 160
     BREAK_FREQ = 1750
 
-    n_fft = 2*4096
+    n_fft = 2 * 4096
     hop_length = 281
 
     spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
@@ -1237,7 +1237,7 @@ def main():
     # plot_mel_weights(MEL_WEIGHTS)
 
     frames, sr = load_recording(args.file)
-    test_multi_rgb(frames[10*sr: 10*sr+ sr * 3], sr)
+    test_multi_rgb(frames[10 * sr : 10 * sr + sr * 3], sr)
     return
     # mel = birdnet_mel(sr, frames, n_fft, hop_length=hop_length, mel_weights=MEL_WEIGHTS)
     # plot_mel(mel)

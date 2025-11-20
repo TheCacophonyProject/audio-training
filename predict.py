@@ -776,11 +776,14 @@ def main():
         if args.weights == "loss":
             model.load_weights(load_model.parent / "val_loss.weights.h5")
             print("loading val_loss")
-        else:
+        elif args.weights == "acc":
             model.load_weights(
                 load_model.parent / "val_categorical_accuracy.weights.h5"
             )
             print("Loading val_categorical_accuracy.weights.h5")
+        else:
+            print("Loading weights ", args.weights)
+            model.load_weights(args.weights)
     # save_dir = Path("frozen_model")
 
     # model.save(save_dir / load_model.parent.name/ load_model.name)
@@ -884,9 +887,9 @@ def main():
         print("Predictin", t)
         for start_i, p in enumerate(predictions):
             mel = d[start_i]
-            print("Showing mel for ",start_i)
+            print("Showing mel for ", start_i)
             # print("Showign spec ",mel[:,:].shape)
-            plot_mel(mel[:,:,0])
+            plot_mel(mel[:, :, 0])
             max_p = np.argmax(p)
             conf = p[max_p]
             print("At ", start_i, " this is now ", t.start + start_i * segment_stride)
@@ -995,7 +998,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--confusion", help="Save confusion matrix for model")
     parser.add_argument("--file", help="Audio file to predict")
-    parser.add_argument("--weights", help="loss or accuracy")
+    parser.add_argument("-w", "--weights", help="loss or acc or file path")
 
     parser.add_argument("--dataset", help="Dataset to predict")
     parser.add_argument("-d", "--dir", help="Directory to predict")

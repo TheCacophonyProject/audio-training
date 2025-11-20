@@ -115,8 +115,8 @@ class Config:
         self.fmax = args.get("fmax", 11000)
         self.n_mels = args.get("mels", 160)
         self.filter_frequency = args.get("filter_freq", False)
-        self.tighten_tracks = not args.get("dont_tighten_tracks",False)
-        self.filter_rms = not args.get("dont_filter_rms",False)
+        self.tighten_tracks = not args.get("dont_tighten_tracks", False)
+        self.filter_rms = not args.get("dont_filter_rms", False)
 
 
 class AudioDataset:
@@ -434,9 +434,7 @@ class AudioSample:
 
 
 class Recording:
-    def __init__(
-        self, metadata, filename, config, load_samples=True
-    ):
+    def __init__(self, metadata, filename, config, load_samples=True):
         self.filename = filename
         self.metadata = metadata
         self.id = metadata.get("id")
@@ -472,7 +470,14 @@ class Recording:
             tracks_meta = metadata.get("tracks", [])
 
         for track in tracks_meta:
-            t = Track(track, self.filename, self.id, self, tighten=config.tighten_tracks if config is not None else True,filter_rms=config.filter_rms if config is not None else True)
+            t = Track(
+                track,
+                self.filename,
+                self.id,
+                self,
+                tighten=config.tighten_tracks if config is not None else True,
+                filter_rms=config.filter_rms if config is not None else True,
+            )
             if filter_track(t):
                 continue
             self.tracks.append(t)
@@ -892,7 +897,16 @@ def load_features(signal, sr):
 
 
 class Track:
-    def __init__(self, metadata, filename, rec_id, rec, segment_length=3, tighten=True,filter_rms = True):
+    def __init__(
+        self,
+        metadata,
+        filename,
+        rec_id,
+        rec,
+        segment_length=3,
+        tighten=True,
+        filter_rms=True,
+    ):
         self.rec = rec
         self.filename = filename
         self.rec_id = rec_id
@@ -945,9 +959,9 @@ class Track:
             elif tag in NOISE_LABELS:
                 self.noise_track = True
         if tighten or filter_rms:
-            self.tighten_track(metadata, segment_length,tighten,filter_rms)
+            self.tighten_track(metadata, segment_length, tighten, filter_rms)
 
-    def tighten_track(self, metadata, segment_length,tighten, filter_rms):
+    def tighten_track(self, metadata, segment_length, tighten, filter_rms):
 
         if not self.bird_track:
             # dont do anything for noisy tracks
@@ -1004,7 +1018,7 @@ class Track:
         mean = np.mean(track_rms)
 
         percent_of_mean = std_dev / mean
-        if filter_rms and  percent_of_mean < MIN_STDDEV_PERCENT:
+        if filter_rms and percent_of_mean < MIN_STDDEV_PERCENT:
             logging.error(
                 "RMS below std %s percent of mean %s for rec %s track at %s - %s id %s",
                 std_dev,

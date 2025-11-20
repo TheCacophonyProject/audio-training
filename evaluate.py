@@ -68,11 +68,11 @@ def evaluate_weakly_labelled_dir(model, model_meta, dir_name, filename):
     for sub_dir in dir_name.iterdir():
         if sub_dir.is_file():
             print("Ignoring ", sub_dir)
-        if sub_dir.name !="kokako3":
+        if sub_dir.name != "yefpar3":
             continue
         files = [sub_f for sub_f in sub_dir.iterdir() if sub_f.is_file()]
         audio_files.extend(files)
-    print("Audio_files are ", audio_files)
+    print("Audio_files are ", len(audio_files))
     # audio_files = audio_files[1:2]
     # meta_data_f = meta_data_f[:1]
     pre_fn = partial(preprocess_weakly_lbl_audio, labels=include_labels)
@@ -121,19 +121,26 @@ def evaluate_weakly_labelled_dir(model, model_meta, dir_name, filename):
                 logging.info("FOr %s", file_name)
                 for track, count in zip(tracks, counts):
                     track_preds = predictions[offset : offset + count]
-                    logging.info("Track preds is %s",track_preds.shape)
+                    logging.info("Track preds is %s", track_preds.shape)
                     for i, p in enumerate(track_preds):
 
                         max_i = np.argmax(p)
                         max_p = p[max_i]
                         if max_p >= threshold:
-                            logging.info("At %s have %s with %s",i, labels[max_i],round(100*max_p))
+                            logging.info(
+                                "At %s have %s with %s",
+                                i,
+                                labels[max_i],
+                                round(100 * max_p),
+                            )
                     track_pred = np.mean(track_preds, axis=0)
                     confidences.append(track_pred)
                     track_ids.append(track.id)
                     max_i = np.argmax(track_pred)
                     max_p = track_pred[max_i]
-                    logging.info("Mean max arg is %s with %s", labels[max_i], round(100*max_p))
+                    logging.info(
+                        "Mean max arg is %s with %s", labels[max_i], round(100 * max_p)
+                    )
 
                     if max_p > 0.7:
                         predicted_mean.append(max_i)
@@ -147,21 +154,32 @@ def evaluate_weakly_labelled_dir(model, model_meta, dir_name, filename):
                     prob_max = track_preds[rows, arg_max]
                     over_thresh = prob_max >= threshold
                     args_over_thresh = arg_max[over_thresh]
-                    if len(args_over_thresh) == 0:
-                        predicted_counts.append(len(labels) - 1)
-                    else:
-                        counts = np.bincount(args_over_thresh)
-                        for i,c in enumerate(counts):
-                            if c > 0:
-                                logging.info("%s: %s times ",labels[i], c)
-                        max_i = np.argmax(counts)
-                        max_c = counts[max_i]
-                        predicted_counts.append(max_i)
 
                     if track.tag in remapped:
                         lbl_i = remapped[track.tag]
                     else:
                         lbl_i = labels.index(track.tag)
+
+                    if len(args_over_thresh) == 0:
+                        predicted_counts.append(len(labels) - 1)
+                    else:
+                        counts = np.bincount(args_over_thresh)
+                        for i, c in enumerate(counts):
+                            if c > 0:
+                                logging.info("%s: %s times ", labels[i], c)
+                        max_i = np.argmax(counts)
+                        max_c = counts[max_i]
+                        max_counts = np.where(counts == max_c)[0]
+                        logging.info(
+                            "MAx counts is %s max_i %s max_c %s",
+                            max_counts,
+                            max_i,
+                            max_c,
+                        )
+                        if lbl_i in max_counts:
+                            max_i = lbl_i
+                        predicted_counts.append(max_i)
+
                     y_true.append(lbl_i)
                     offset += count
             except:
