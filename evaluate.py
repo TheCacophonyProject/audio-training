@@ -68,8 +68,8 @@ def evaluate_weakly_labelled_dir(model, model_meta, dir_name, filename):
     for sub_dir in dir_name.iterdir():
         if sub_dir.is_file():
             print("Ignoring ", sub_dir)
-        # if sub_dir.name !="kokako3":
-        #     continue
+        if sub_dir.name !="kokako3":
+            continue
         files = [sub_f for sub_f in sub_dir.iterdir() if sub_f.is_file()]
         audio_files.extend(files)
     print("Audio_files are ", audio_files)
@@ -225,7 +225,7 @@ def preprocess_weakly_lbl_audio(audio_f, labels=None):
         }
         meta["tracks"] = [track_meta]
         print(meta)
-        rec = Recording(meta, audio_f, None, False, False)
+        rec = Recording(meta, audio_f, None, False)
 
         tracks = [track for track in rec.tracks if track.tag in labels]
         if len(tracks) == 0:

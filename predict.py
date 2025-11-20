@@ -786,7 +786,7 @@ def main():
     # model.save(save_dir / load_model.parent.name/ load_model.name)
     # 1 / 0
 
-    labels = meta.get("labels", [])
+    labels = meta.get("ebird_labels", [])
     multi_label = meta.get("multi_label", True)
     segment_length = meta.get("segment_length", 3)
     segment_stride = meta.get("segment_stride", 1)
@@ -884,8 +884,9 @@ def main():
         print("Predictin", t)
         for start_i, p in enumerate(predictions):
             mel = d[start_i]
+            print("Showing mel for ",start_i)
             # print("Showign spec ",mel[:,:].shape)
-            # plot_mel(mel[:,:,0])
+            plot_mel(mel[:,:,0])
             max_p = np.argmax(p)
             conf = p[max_p]
             print("At ", start_i, " this is now ", t.start + start_i * segment_stride)
