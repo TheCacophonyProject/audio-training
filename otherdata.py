@@ -1165,7 +1165,10 @@ def process_rms(metadata_file, tier1=False):
         # do per track so can be more precise with the frequencies?
         tracks = meta.get("tracks", [])
         y, sr = load_recording(file)
-
+        for t in tracks:
+            if "upper_rms" in t:
+                logging.info("Skipping as rms already")
+                return
         add_rms_data_to_tracks(y, sr, tracks)
         meta["file"] = str(file)
         meta["rms_version"] = 1.1
@@ -1187,7 +1190,6 @@ def add_rms_data_to_tracks(y, sr, tracks):
     n_fft = 4096
     hop_length = 281
     freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
-    print(freqs)
     # just for bittern as the calls are in 0-500Hz
     min_noise_max_freq = 100
     min_noise_bin = 0
