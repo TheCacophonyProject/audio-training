@@ -1163,7 +1163,7 @@ def process_rms(metadata_file, tier1=False):
 
         logging.info("Calcing %s", file)
         # do per track so can be more precise with the frequencies?
-        tracks = meta.get("tracks", [])
+        tracks = meta.get("Tracks", [])
         y, sr = load_recording(file)
         for t in tracks:
             if "upper_rms" in t:
@@ -1219,7 +1219,7 @@ def add_rms_data_to_tracks(y, sr, tracks):
 
     for t in tracks:
 
-        track = Track(t, None, 0, None, tighten=False)
+        track = Track(t, None, 0, None, tighten=False,filter_rms=False)
 
         # start = t["start"]
         # end = t["end"]
