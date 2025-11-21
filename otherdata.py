@@ -1161,14 +1161,14 @@ def process_rms(metadata_file, tier1=False):
             logging.info("Not recording for %s", metadata_file)
             return
 
-        logging.info("Calcing %s", file)
         # do per track so can be more precise with the frequencies?
         tracks = meta.get("Tracks", [])
         y, sr = load_recording(file)
         for t in tracks:
             if "upper_rms" in t:
-                logging.info("Skipping as rms already")
                 return
+        logging.info("Calcing %s", file)
+
         add_rms_data_to_tracks(y, sr, tracks)
         meta["file"] = str(file)
         meta["rms_version"] = 1.1
