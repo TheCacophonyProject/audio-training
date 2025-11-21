@@ -1059,7 +1059,6 @@ def add_rms_meta(dir, analyse=False):
     meta_files = dir.glob("**/*.txt")
     meta_files = list(meta_files)
     meta_files.sort()
-    meta_files = meta_files[:1]
     with Pool(processes=8) as pool:
         [0 for x in pool.imap_unordered(func, meta_files, chunksize=8)]
 
