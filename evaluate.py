@@ -154,8 +154,6 @@ def evaluate_weakly_labelled_dir(model, model_meta, dir_name, filename):
                     prob_max = track_preds[rows, arg_max]
                     over_thresh = prob_max >= threshold
                     args_over_thresh = arg_max[over_thresh]
-<<<<<<< HEAD
-=======
                     if len(args_over_thresh) == 0:
                         predicted_counts.append(len(labels) - 1)
                     else:
@@ -166,7 +164,6 @@ def evaluate_weakly_labelled_dir(model, model_meta, dir_name, filename):
                         max_i = np.argmax(counts)
                         max_c = counts[max_i]
                         predicted_counts.append(max_i)
->>>>>>> 805b20e (skip existing rms)
 
                     if track.tag in remapped:
                         lbl_i = remapped[track.tag]
