@@ -1218,7 +1218,7 @@ def add_rms_data_to_tracks(y, sr, tracks):
 
     for t in tracks:
 
-        track = Track(t, None, 0, None, tighten=False,filter_rms=False)
+        track = Track(t, None, 0, None, tighten=False, filter_rms=False)
 
         # start = t["start"]
         # end = t["end"]

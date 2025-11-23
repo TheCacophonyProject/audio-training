@@ -92,8 +92,8 @@ def load_samples(
                         sr_start = end_offset - sample_size
                         sr_start = max(sr_start, 0)
                     sr_end = end_offset
-                if len(frames) >=sample_size:
-                    assert  sr_end - sr_start == sample_size
+                if len(frames) >= sample_size:
+                    assert sr_end - sr_start == sample_size
 
             track_frames = frames[sr_start:sr_end]
 
