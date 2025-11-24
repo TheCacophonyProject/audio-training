@@ -63,7 +63,8 @@ def evaluate_weakly_labelled_dir(model, model_meta, dir_name, filename):
 
     include_labels = list(include_labels)
     include_labels.sort()
-
+    logging.info("Include labels are %s", include_labels)
+    logging.info("Remapped are %s", remapped)
     audio_files = []
     for sub_dir in dir_name.iterdir():
         if sub_dir.is_file():
@@ -101,7 +102,7 @@ def evaluate_weakly_labelled_dir(model, model_meta, dir_name, filename):
                 filtered_samples = []
                 counts = []
                 for track, samples in zip(tracks, all_samples):
-                    file_names.append(filename)
+                    file_names.append(file_name)
 
                     if len(samples) == 0:
                         logging.info("No samples for track %s", track)
@@ -257,6 +258,7 @@ def preprocess_weakly_lbl_audio(audio_f, labels=None):
 
         tracks = [track for track in rec.tracks if track.tag in labels]
         if len(tracks) == 0:
+            logging.info("SKipped tags for %s", ebird_id)
             return None
         samples = load_samples(frames, sr, tracks)
         for s, t in zip(samples, tracks):
