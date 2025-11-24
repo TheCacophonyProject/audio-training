@@ -126,7 +126,7 @@ class AudioModel:
         self.data_dir = data_dir
         self.second_data_dir = second_data_dir
         self.model_name = model_name
-        self.batch_size = 4 
+        self.batch_size = 4
         self.validation = None
         self.test = None
         self.train = None
@@ -409,6 +409,28 @@ class AudioModel:
         train_acc_metric = tf.keras.metrics.CategoricalAccuracy()
         val_acc_metric = tf.keras.metrics.CategoricalAccuracy()
 
+        # for testing
+        # loss_value = 0
+        # val_loss = 0
+        # for _ in range(2):
+        #     x_batch_train = np.random.rand(2,2,32,32,3)
+        #     x_batch_train[0][1][:,:,:]=0
+        #     y_batch_train = np.ones(2)
+        #     loss_value += train_step(
+        #             self.model,
+        #             x_batch_train,
+        #             y_batch_train,
+        #             loss_fn,
+        #             train_acc_metric,
+        #             optimizer_fn,
+        #         )
+
+        #     val_loss += test_step(
+        #         self.model, x_batch_train, y_batch_train, loss_fn, val_acc_metric
+        #     )
+        #     print("Tesitng")
+        # 1/0
+
         history = {
             "val_loss": [],
             "loss": [],
@@ -434,7 +456,6 @@ class AudioModel:
                     train_acc_metric,
                     optimizer_fn,
                 )
-                1/0
                 if step % 200 == 0:
                     print(
                         "Training loss (for one batch) at step %d: %.4f"
@@ -452,10 +473,10 @@ class AudioModel:
             # Run a validation loop at the end of each epoch.
             val_loss = 0
             for x_batch_val, y_batch_val in self.validation:
-                for track_batch, y_track in zip(x_batch_val, y_batch_val):
-                    val_loss += test_step(
-                        self.model, track_batch, y_track, loss_fn, val_acc_metric
-                    )
+                # for track_batch, y_track in zip(x_batch_val, y_batch_val):
+                val_loss += test_step(
+                    self.model, x_batch_val, y_batch_val, loss_fn, val_acc_metric
+                )
 
             val_acc = val_acc_metric.result()
             val_acc_metric.reset_state()
@@ -527,6 +548,7 @@ class AudioModel:
 
         if args.get("n_mels") != 160:
             self.input_shape = (args.get("n_mels"), self.input_shape[1], 3)
+        self.input_shape = (32, 32, 3)
         args["excluded_labels"] = excluded_labels
         args["remapped_labels"] = remapped
         args["extra_label_map"] = extra_label_map
@@ -1287,10 +1309,12 @@ def loss(multi_label=False, smoothing=0):
         )
         # loss_fn = sigmoid_binary_cross
     else:
-        logging.info("Using cross loss")
-        loss_fn = tf.keras.losses.CategoricalCrossentropy(
-            label_smoothing=smoothing,
-        )
+        loss_fn = MaskedMeanCrossEntropy()
+
+        # logging.info("Using cross loss")
+        # loss_fn = tf.keras.losses.CategoricalCrossentropy(
+        #     label_smoothing=smoothing,
+        # )
 
     return loss_fn
 
@@ -3104,47 +3128,21 @@ class EpochUpdater(tf.keras.callbacks.Callback):
         global_epoch.assign(epoch + 1)
 
 
-# @tf.function
-def train_step(model, orig_x, y, loss_fn, train_acc_metric, optimizer):
-    orig_shape = orig_x.shape
+@tf.function
+def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
+    orig_shape = x.shape
     track_batch = orig_shape[1]
-    mask = tf.not_equal(orig_x, 0)
-    mask = tf.math.reduce_all(mask,axis = [2,3,4])
+    mask = tf.not_equal(x, 0)
+    mask = tf.math.reduce_all(mask, axis=[2, 3, 4])
+    x = tf.reshape(x, [-1, orig_shape[2], orig_shape[3], orig_shape[4]])
 
-    print("Mask is ",mask.shape,mask)
-    print("In shape is ",orig_x.shape)
-    orig_x =  tf.reshape(orig_x,[-1,orig_shape[2],orig_shape[3],orig_shape[4]])
-    # .shape]
-        # orig_x, axis=1, name='concat'
-
-    # )
-    i = 0
-    print("In shape is ",orig_x.shape)
-    masked_logits = tf.zeros(y.shape, tf.float32)
     with tf.GradientTape() as tape:
-        loss_value = 0
-        logits = model(orig_x, training=True)
-        print("Logits are ",logits.shape)
-        logits = np.reshape(logits,[-1,track_batch,logits.shape[1]])
-        print("NO wlogits are ",logits.shape)
-        for logit, mask in zip(logits,mask):
-            print("Have logits",logit.shape, mask.shape)
-            logit = tf.boolean_mask(logit,mask)
-            logit = np.reshape(logit,[-1,logits.shape[-1]])
-            print("after masking",logit.shape)
-
-            logit = tf.reduce_mean(logit, axis=0)
-            masked_logits[i] = logit
-            print("after meaning",logit.shape,t_y.shape)
-            
-            i+=1
-        loss_value= loss_fn(y, masked_logits)
-
-        print("Loss value is",loss_value)
+        logits = model(x, training=True)
+        logits = tf.reshape(logits, [-1, track_batch, logits.shape[1]])
+        loss_value = loss_fn(y, [logits, mask])
         loss_value += sum(model.losses)
         # Add any extra losses created during the forward pass.
     grads = tape.gradient(loss_value, model.trainable_weights)
-    print("Grads are ",grads)
     optimizer.apply_gradients(zip(grads, model.trainable_weights))
     train_acc_metric.update_state(y, logits)
     return loss_value
@@ -3152,18 +3150,54 @@ def train_step(model, orig_x, y, loss_fn, train_acc_metric, optimizer):
 
 @tf.function
 def test_step(model, x, y, loss_fn, val_acc_metric):
+    orig_shape = x.shape
+    track_batch = orig_shape[1]
     mask = tf.not_equal(x, 0)
-    mask = tf.math.reduce_any(mask, axis=-1)
-    x = tf.boolean_mask(x, mask)
-    x = tf.reshape(x, [-1, 160, 513, 3])
+    mask = tf.math.reduce_all(mask, axis=[2, 3, 4])
+
+    x = tf.reshape(x, [-1, orig_shape[2], orig_shape[3], orig_shape[4]])
 
     val_logits = model(x, training=False)
-    val_logits = tf.reduce_mean(val_logits, axis=0)
 
     val_acc_metric.update_state(y, val_logits)
-    loss_value = loss_fn(y, val_logits)
+
+    val_logits = tf.reshape(val_logits, [-1, track_batch, val_logits.shape[1]])
+    loss_value = loss_fn(y, [val_logits, mask])
     loss_value += sum(model.losses)
     return loss_value
+
+
+_EPSILON = 1e-7
+
+
+class MaskedMeanCrossEntropy(tf.keras.losses.Loss):
+    def __init__(self, name="bird_cross_entropy", **kwargs):
+        super().__init__(name=name, **kwargs)
+        self.epsilon = tf.constant(_EPSILON)
+
+    def call(self, y_true, y_pred):
+        y_pred, masks = y_pred
+        last_dim = y_pred.shape[-1]
+        loss = 0
+
+        def masked_loss(input):
+            y, target, mask = input
+            target = tf.boolean_mask(target, mask)
+            target = tf.reshape(target, [-1, last_dim])
+            target = tf.reduce_mean(target, axis=0)
+
+            return tf.keras.losses.categorical_crossentropy(
+                tf.expand_dims(y, 0), target
+            )
+
+        loss = tf.map_fn(masked_loss, elems=(y_true, y_pred, masks), dtype=tf.float32)
+
+        return tf.reduce_sum(loss)
+
+    def get_config(self):
+        config = {}
+        base_config = super().get_config()
+        return {**base_config, **config}
 
 
 if __name__ == "__main__":
