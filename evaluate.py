@@ -41,25 +41,17 @@ def evaluate_weakly_labelled_dir(model, model_meta, dir_name, filename):
         if v >= 0:
             include_labels.add(k)
 
-    include_labels.add("noise")
-    include_labels.add("human")
+    # include_labels.add("noise")
+    # include_labels.add("human")
 
-    for l in NOISE_LABELS:
-        include_labels.add(l)
-        remapped[l] = labels.index("noise")
-    for l in HUMAN_LABELS:
-        include_labels.add(l)
+    # for l in NOISE_LABELS:
+    #     include_labels.add(l)
+    #     remapped[l] = labels.index("noise")
+    # for l in HUMAN_LABELS:
+    #     include_labels.add(l)
 
-        remapped[l] = labels.index("human")
-    remapped["human"] = labels.index("human")
-
-    for l in ALL_BIRDS:
-        if l in labels:
-            continue
-        include_labels.add(l)
-
-        remapped[l] = labels.index("bird")
-    remapped["bird"] = labels.index("bird")
+    #     remapped[l] = labels.index("human")
+    # remapped["human"] = labels.index("human")
 
     include_labels = list(include_labels)
     include_labels.sort()
@@ -69,8 +61,8 @@ def evaluate_weakly_labelled_dir(model, model_meta, dir_name, filename):
     for sub_dir in dir_name.iterdir():
         if sub_dir.is_file():
             print("Ignoring ", sub_dir)
-        if sub_dir.name != "yefpar3":
-            continue
+        # if sub_dir.name != "yefpar3":
+        # continue
         files = [sub_f for sub_f in sub_dir.iterdir() if sub_f.is_file()]
         audio_files.extend(files)
     print("Audio_files are ", len(audio_files))
@@ -155,16 +147,6 @@ def evaluate_weakly_labelled_dir(model, model_meta, dir_name, filename):
                     prob_max = track_preds[rows, arg_max]
                     over_thresh = prob_max >= threshold
                     args_over_thresh = arg_max[over_thresh]
-                    if len(args_over_thresh) == 0:
-                        predicted_counts.append(len(labels) - 1)
-                    else:
-                        counts = np.bincount(args_over_thresh)
-                        for i, c in enumerate(counts):
-                            if c > 0:
-                                logging.info("%s: %s times ", labels[i], c)
-                        max_i = np.argmax(counts)
-                        max_c = counts[max_i]
-                        predicted_counts.append(max_i)
 
                     if track.tag in remapped:
                         lbl_i = remapped[track.tag]
@@ -254,7 +236,7 @@ def preprocess_weakly_lbl_audio(audio_f, labels=None):
         }
         meta["tracks"] = [track_meta]
         print(meta)
-        rec = Recording(meta, audio_f, None, False)
+        rec = Recording(meta, audio_f, None, False, False)
 
         tracks = [track for track in rec.tracks if track.tag in labels]
         if len(tracks) == 0:
