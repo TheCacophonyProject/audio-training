@@ -257,7 +257,7 @@ def labels_with_one_samples(grid_file):
                 found = True
         if found:
             print(
-                f"https://maps.google.com/?q={square["bounds"][1]},{square["bounds"][0]}"
+                f"https://maps.google.com/?q={square['bounds'][1]},{square['bounds'][0]}"
             )
             print(square["bounds"], " total birds ", total_birds)
 
@@ -286,13 +286,58 @@ def birds_at_location(grid_file, lat, lng):
     grid_data = metadata["grid_meta"]
 
 
+def add_ebird_to_square(square, ebird):
+    if ebird in square["species_per_month"]:
+        month_data = square["species_per_month"][ebird]
+        logging.info("Already have %s for %s", ebird, month_data)
+    else:
+        month_data = {}
+        for i in range(12):
+            month_data[i] = 0
+        square["species_per_month"][ebird] = month_data
+    for month in month_data:
+        month_data[month] = 1
+
+    bounds = square["bounds"]
+    logging.info(
+        "Adding %s to square at %s",
+        ebird,
+        f"https://maps.google.com/?q={bounds[1]},{bounds[0]}",
+    )
+
+
+def add_ebird(lat, lng, ebird, meta_file, add_to_neighbours=False):
+    with open(meta_file, "r") as f:
+        metadata = json.load(f)
+
+    logging.info("Looking for square at lat %s lng %s", lat, lng)
+    square = find_square(metadata, lng, lat)
+    if square is None:
+        print(f"No square found at lat {lat} lng {lng}")
+        return
+    print("Found square ", square)
+    square = metadata[square[0]]
+    add_ebird_to_square(square, ebird)
+
+    if add_to_neighbours:
+        print("Adding to neighbours")
+        for neighbour in square["neighbours_i"]:
+            other_square = metadata[neighbour]
+            add_ebird_to_square(other_square, ebird)
+
+    with open(meta_file, "w") as f:
+        json.dump(metadata, f)
+
+
 def main():
     fmt = "%(process)d %(thread)s:%(levelname)7s %(message)s"
     logging.basicConfig(
         stream=sys.stderr, level=logging.INFO, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"
     )
     args = parse_args()
-
+    if args.ebird is not None:
+        add_ebird(args.lat, args.lng, args.ebird, args.csv)
+        return
     squares = read_ebird_atlas_squares()
     squares = sorted(squares, key=lambda square: square[0])
 
@@ -424,6 +469,10 @@ def find_square(square_meta, lng, lat):
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--lat", type=float, help="CSV file toload")
+    parser.add_argument("--lng", type=float, help="CSV file toload")
+    parser.add_argument("--ebird", help="CSV file toload")
+
     parser.add_argument("csv", help="CSV file toload")
     args = parser.parse_args()
     args.csv = Path(args.csv)
