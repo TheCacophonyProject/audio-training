@@ -236,7 +236,7 @@ def preprocess_weakly_lbl_audio(audio_f, labels=None):
         }
         meta["tracks"] = [track_meta]
         print(meta)
-        rec = Recording(meta, audio_f, None, False, False)
+        rec = Recording(meta, audio_f, None, False)
 
         tracks = [track for track in rec.tracks if track.tag in labels]
         if len(tracks) == 0:
