@@ -1,8 +1,10 @@
+import matplotlib.pyplot as plt
 import sys
 import json
 from pathlib import Path
 import csv
 from utils import get_label_to_ebird_map, get_ebird_id, get_ebird_ids_to_labels
+import numpy as np
 
 # bunch of debug and helper functions
 new_labels = [
@@ -333,11 +335,78 @@ def text_labels(meta):
             print(k, ",", ebird_map.get(k, [k]))
 
 
+def graph_counts_vs_accuracy(confusion_file, metadata_f, train_counts):
+    confusion_data = np.load(confusion_file)
+    with metadata_f.open("r") as f:
+        metadata = json.load(f)
+
+    labels = metadata["ebird_labels"]
+    accuracies = []
+    counts = []
+    print(
+        "Labels are ",
+        labels,
+    )
+    total_train_counts = np.sum(list(train_counts.values()))
+    total_train_counts /= len(labels) / 8
+    ebird_map = get_ebird_ids_to_labels()
+
+    graph_data = {}
+    for i, row in enumerate(confusion_data[:-1]):
+        correct = row[i]
+        total = np.sum(row)
+        accuracy = correct / total if total > 0 else 0
+        accuracies.append(accuracy)
+        label = labels[i]
+
+        train_count = train_counts.get(label, 0)
+        if accuracy < 0.01:
+            print(
+                "low acc for ",
+                ebird_map.get(label, [label])[0],
+                "train counts",
+                train_count,
+            )
+        train_count_percent = train_count / total_train_counts
+        # print("Total train acc for ",label, round(train_acc*100))
+        counts.append(train_count_percent)
+        # train_counts.get(label,0)/total_train_counts)
+        graph_data[label] = {
+            "acc": accuracy,
+            "train_count": train_count_percent,
+            "lbl": ebird_map.get(label, [label])[0],
+        }
+
+    sorted_by_acc = sorted(graph_data.values(), key=lambda item: item["train_count"])
+
+    counts = [item["train_count"] for item in sorted_by_acc]
+    accuracies = [item["acc"] for item in sorted_by_acc]
+    text_labels = [item["lbl"] for item in sorted_by_acc]
+
+    fig, ax = plt.subplots()
+    x = np.arange(len(text_labels))
+    rects1 = ax.bar(x, accuracies, 0.25, label="Accuracy", color="g")
+    rects2 = ax.bar(x + 0.25, counts, 0.25, label="Accuracy", color="b")
+
+    ax.set_xticklabels(text_labels)
+    ax.set_xticks(x)
+    ax.tick_params(axis="x", labelrotation=90)
+
+    plt.title("Accuracy vs data count")
+
+    plt.tight_layout()
+    plt.show()
+
+
 def main():
     # compare_labels()
     # # test_labels()
     # return
-    metadata_f = Path(sys.argv[1])
+    metadata_f = Path(sys.argv[2])
+    confusion_f = Path(sys.argv[1])
+
+    graph_counts_vs_accuracy(confusion_f, metadata_f, training_counts)
+    return
     # labels_to_api_old(metadata_f)
     # return
     ebird_map = get_label_to_ebird_map()
@@ -405,5 +474,69 @@ def main():
         print(f'"{k}":"{v}",')
 
 
+training_counts = {
+    "ausbit1": 187.0,
+    "ausmag2": 214.0,
+    "auspip3": 127.0,
+    "baicra4": 21.0,
+    "blknod": 1083.0,
+    "blkswa": 25.0,
+    "calqua": 160.0,
+    "cangoo": 111.0,
+    "comcha": 7104.0,
+    "commyn": 79.0,
+    "comred": 643.0,
+    "duck": 74.0,
+    "dunnoc1": 459.0,
+    "eurbla": 12717.0,
+    "eurgre1": 317.0,
+    "eursta": 144.0,
+    "fernbi1": 30.0,
+    "frog": 305.0,
+    "gryger1": 16248.0,
+    "gull": 132.0,
+    "houspa": 268.0,
+    "insect": 4393.0,
+    "kea1": 2032.0,
+    "kiwi": 2842.0,
+    "kokako3": 392.0,
+    "lotkoe1": 5389.0,
+    "maslap1": 134.0,
+    "morepo2": 3644.0,
+    "nezbel1": 31838.0,
+    "nezfal1": 180.0,
+    "nezfan1": 10818.0,
+    "nezkak1": 8599.0,
+    "nezpig2": 108.0,
+    "nezrob3": 3612.0,
+    "noiger1": 1790.0,
+    "oyster1": 54.0,
+    "pacrob2": 634.0,
+    "parake": 2378.0,
+    "parshe1": 83.0,
+    "pipipi1": 720.0,
+    "purswa6": 713.0,
+    "rebdot1": 303.0,
+    "rettro": 92.0,
+    "riflem1": 6379.0,
+    "rooster": 1249.0,
+    "rosella": 743.0,
+    "sackin3": 758.0,
+    "sbweye1": 931.0,
+    "shbcuc1": 636.0,
+    "silver3": 24948.0,
+    "skylar": 382.0,
+    "sonthr1": 2323.0,
+    "sooter1": 384.0,
+    "tomtit1": 25918.0,
+    "tui1": 8886.0,
+    "weka1": 2298.0,
+    "weta": 3367.0,
+    "whiteh1": 656.0,
+    "whiter": 1528.0,
+    "y01193": 10382.0,
+    "yellow2": 450.0,
+    "yellow3": 74.0,
+}
 if __name__ == "__main__":
     main()

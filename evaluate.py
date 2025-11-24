@@ -235,12 +235,11 @@ def preprocess_weakly_lbl_audio(audio_f, labels=None):
             "tags": [tag],
         }
         meta["tracks"] = [track_meta]
-        print(meta)
         rec = Recording(meta, audio_f, None, False)
 
         tracks = [track for track in rec.tracks if track.tag in labels]
         if len(tracks) == 0:
-            logging.info("SKipped tags for %s", ebird_id)
+            logging.info("SKipped tracks for %s %s", ebird_id, audio_f)
             return None
         samples = load_samples(frames, sr, tracks)
         for s, t in zip(samples, tracks):

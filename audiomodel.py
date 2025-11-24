@@ -2056,7 +2056,7 @@ def main():
                             continue
                         pre_lbl = pre_labels[v]
                         remapped_labels[k] = labels.index(pre_lbl)
-        if args.weak_dir is not None:
+        if args.weak_dir:
             if args.weights is not None:
                 logging.info("Loading weights %s", args.weights)
                 model.load_weights(args.weights)
