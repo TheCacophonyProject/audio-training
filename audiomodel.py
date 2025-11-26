@@ -548,7 +548,6 @@ class AudioModel:
 
         if args.get("n_mels") != 160:
             self.input_shape = (args.get("n_mels"), self.input_shape[1], 3)
-        self.input_shape = (32, 32, 3)
         args["excluded_labels"] = excluded_labels
         args["remapped_labels"] = remapped
         args["extra_label_map"] = extra_label_map
@@ -3131,6 +3130,9 @@ class EpochUpdater(tf.keras.callbacks.Callback):
 @tf.function
 def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
     orig_shape = x.shape
+    if orig_shape[1] > 4:
+        print("Skipping a shape to big", orig_shape.shape)
+        return 0
     track_batch = orig_shape[1]
     mask = tf.not_equal(x, 0)
     mask = tf.math.reduce_all(mask, axis=[2, 3, 4])
@@ -3138,13 +3140,12 @@ def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
 
     with tf.GradientTape() as tape:
         logits = model(x, training=True)
-        logits = tf.reshape(logits, [-1, track_batch, logits.shape[1]])
-        loss_value = loss_fn(y, [logits, mask])
+        track_logits = tf.reshape(logits, [-1, track_batch, logits.shape[1]])
+        loss_value = loss_fn(y, [track_logits, mask, train_acc_metric])
         loss_value += sum(model.losses)
         # Add any extra losses created during the forward pass.
     grads = tape.gradient(loss_value, model.trainable_weights)
     optimizer.apply_gradients(zip(grads, model.trainable_weights))
-    train_acc_metric.update_state(y, logits)
     return loss_value
 
 
@@ -3159,10 +3160,10 @@ def test_step(model, x, y, loss_fn, val_acc_metric):
 
     val_logits = model(x, training=False)
 
-    val_acc_metric.update_state(y, val_logits)
+    # val_acc_metric.update_state(y, val_logits)
 
     val_logits = tf.reshape(val_logits, [-1, track_batch, val_logits.shape[1]])
-    loss_value = loss_fn(y, [val_logits, mask])
+    loss_value = loss_fn(y, [val_logits, mask, val_acc_metric])
     loss_value += sum(model.losses)
     return loss_value
 
@@ -3176,7 +3177,7 @@ class MaskedMeanCrossEntropy(tf.keras.losses.Loss):
         self.epsilon = tf.constant(_EPSILON)
 
     def call(self, y_true, y_pred):
-        y_pred, masks = y_pred
+        y_pred, masks, metric = y_pred
         last_dim = y_pred.shape[-1]
         loss = 0
 
@@ -3185,10 +3186,9 @@ class MaskedMeanCrossEntropy(tf.keras.losses.Loss):
             target = tf.boolean_mask(target, mask)
             target = tf.reshape(target, [-1, last_dim])
             target = tf.reduce_mean(target, axis=0)
+            metric.update_state(y, target)
 
-            return tf.keras.losses.categorical_crossentropy(
-                tf.expand_dims(y, 0), target
-            )
+            return tf.keras.losses.categorical_crossentropy(y, target)
 
         loss = tf.map_fn(masked_loss, elems=(y_true, y_pred, masks), dtype=tf.float32)
 
