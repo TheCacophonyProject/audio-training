@@ -126,7 +126,7 @@ class AudioModel:
         self.data_dir = data_dir
         self.second_data_dir = second_data_dir
         self.model_name = model_name
-        self.batch_size = 32
+        self.batch_size = 4 
         self.validation = None
         self.test = None
         self.train = None
@@ -439,10 +439,10 @@ class AudioModel:
                 accumulated_gradients = [
                     tf.zeros_like(var) for var in self.model.trainable_variables
                 ]
-
+                total_loss_value = 0
                 # probably could speed this up if ran on all data then meaned appropriately
                 for track_batch, y_track in zip(x_batch_train, y_batch_train):
-                    print("Running track batch ", track_batch.shape, y_track.shape)
+                    # print("Running track batch ", track_batch.shape, y_track.shape)
                     with tf.GradientTape(persistent=True) as tape:
 
                         loss_value = train_step(
@@ -451,13 +451,12 @@ class AudioModel:
                             y_track,
                             loss_fn,
                             train_acc_metric,
-                            optimizer_fn,
                         )
                     gradients = tape.gradient(
                         loss_value, self.model.trainable_weights
                     )
-                    accumulated_gradients = tf.reduce_sum([gradients,accumulated_gradeints],axis = 1)
-                    # total_loss_value += loss_value
+                    accumulated_gradients = gradients + accumulated_gradients
+                    total_loss_value += loss_value
                     # for i in range(len(accumulated_gradients)):
                     #     if gradients[i] is not None:
                     #         accumulated_gradients[i] += gradients[i]
@@ -3201,10 +3200,10 @@ def train_step(model, x, y, loss_fn, train_acc_metric):
     # with tf.GradientTape(persistent =True) as tape:
     mask = tf.not_equal(x, 0)
     mask = tf.math.reduce_all(mask, axis=[1, 2, 3])
-    print("train ", x.shape)
+    # print("train ", x.shape)
     x = tf.boolean_mask(x, mask)
     x = tf.reshape(x, [-1, 160, 513, 3])
-    print("train reshaped", x.shape)
+    # print("train reshaped", x.shape)
 
     logits = model(x, training=True)
     # mean results as these are all for 1 track
