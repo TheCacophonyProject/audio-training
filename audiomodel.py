@@ -3136,30 +3136,62 @@ class EpochUpdater(tf.keras.callbacks.Callback):
 def train_step_2(
     model, x_batch_train, y_batch_train, loss_fn, train_acc_metric, optimizer_fn
 ):
+    with tf.GradientTape(persistent=True) as tape:
+        pass
 
-    accumulated_gradients = [tf.zeros_like(var) for var in model.trainable_variables]
+    # accumulated_gradients = [tf.zeros_like(var) for var in model.trainable_variables]
     total_loss_value = 0
-    # probably could speed this up if ran on all data then meaned appropriately
-    for track_batch, y_track in zip(x_batch_train, y_batch_train):
-        print("Running track batch ", track_batch.shape, y_track.shape)
-        with tf.GradientTape(persistent=True) as tape:
+    loss_values, gradients = tf.map_fn(
+        lambda x: train_step_map(model, x[0], x[1], loss_fn, train_acc_metric, tape),
+        (x_batch_train, y_batch_train),
+    )
+    # # probably could speed this up if ran on all data then meaned appropriately
+    # for track_batch, y_track in zip(x_batch_train, y_batch_train):
+    #     print("Running track batch ", track_batch.shape, y_track.shape)
+    #     with tf.GradientTape(persistent=True) as tape:
 
-            loss_value = train_step(
-                model,
-                track_batch,
-                y_track,
-                loss_fn,
-                train_acc_metric,
-            )
-        gradients = tape.gradient(loss_value, model.trainable_weights)
-        total_loss_value += loss_value
-        for i in range(len(accumulated_gradients)):
-            if gradients[i] is not None:
-                accumulated_gradients[i] += gradients[i]
-
+    #         loss_value = train_step(
+    #             model,
+    #             track_batch,
+    #             y_track,
+    #             loss_fn,
+    #             train_acc_metric,
+    #         )
+    #     gradients = tape.gradient(loss_value, model.trainable_weights)
+    #     total_loss_value += loss_value
+    #     for i in range(len(accumulated_gradients)):
+    #         if gradients[i] is not None:
+    #             accumulated_gradients[i] += gradients[i]
+    accumulated_gradients = tf.math.reduce_sum(gradients, axis=1)
     optimizer_fn.apply_gradients(zip(accumulated_gradients, model.trainable_weights))
     del tape
-    return total_loss_value
+    return tf.math.reduce_sum(total_loss_value)
+
+
+@tf.function
+def train_step_map(model, x, y, loss_fn, train_acc_metric, tape):
+    with tf.GradientTape(persistent=True) as tape:
+
+        model, x, y, loss_fn, train_acc_metric = input
+        # with tf.GradientTape(persistent =True) as tape:
+        mask = tf.not_equal(x, 0)
+        mask = tf.math.reduce_all(mask, axis=[1, 2, 3])
+        print("train ", x.shape)
+        x = tf.boolean_mask(x, mask)
+        x = tf.reshape(x, [-1, 160, 513, 3])
+        print("train reshaped", x.shape)
+
+        logits = model(x, training=True)
+        # mean results as these are all for 1 track
+        logits = tf.reduce_mean(logits, axis=0)
+
+        loss_value = loss_fn(y, logits)
+        # Add any extra losses created during the forward pass.
+        loss_value += sum(model.losses)
+        train_acc_metric.update_state(y, logits)
+    gradients = tape.gradient(loss_value, model.trainable_weights)
+
+    return loss_value, gradients
 
 
 @tf.function
