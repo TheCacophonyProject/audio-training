@@ -426,19 +426,35 @@ class AudioModel:
             # Iterate over the batches of the dataset.
             for step, (x_batch_train, y_batch_train) in enumerate(self.train):
                 print(x_batch_train.shape, y_batch_train.shape)
-                loss_value = 0
+                total_loss_value = 0
+                accumulated_gradients = [
+                    tf.zeros_like(var) for var in self.model.trainable_variables
+                ]
+
                 # probably could speed this up if ran on all data then meaned appropriately
                 for track_batch, y_track in zip(x_batch_train, y_batch_train):
                     print("Running track batch ", track_batch.shape, y_track.shape)
-                    loss_value += train_step(
-                        self.model,
-                        track_batch,
-                        y_track,
-                        loss_fn,
-                        train_acc_metric,
-                        optimizer_fn,
-                    )
+                    with tf.GradientTape(persistent=True) as tape:
 
+                        loss_value = train_step(
+                            self.model,
+                            track_batch,
+                            y_track,
+                            loss_fn,
+                            train_acc_metric,
+                            optimizer_fn,
+                        )
+                        gradients = tape.gradient(
+                            loss_value, self.model.trainable_weights
+                        )
+                        total_loss_value += loss_value
+                        for i in range(len(accumulated_gradients)):
+                            if gradients[i] is not None:
+                                accumulated_gradients[i] += gradients[i]
+                optimizer_fn.apply_gradients(
+                    zip(accumulated_gradients, self.batch_sizemodel.trainable_weights)
+                )
+                del tape
                 if step % 200 == 0:
                     print(
                         "Training loss (for one batch) at step %d: %.4f"
@@ -3110,21 +3126,19 @@ class EpochUpdater(tf.keras.callbacks.Callback):
 
 @tf.function
 def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
-    with tf.GradientTape() as tape:
-        mask = tf.not_equal(x, 0)
-        mask = tf.math.reduce_any(mask, axis=-1)
-        x = tf.boolean_mask(x, mask)
-        x = tf.reshape(x, [-1, 160, 513, 3])
+    # with tf.GradientTape(persistent =True) as tape:
+    mask = tf.not_equal(x, 0)
+    mask = tf.math.reduce_any(mask, axis=-1)
+    x = tf.boolean_mask(x, mask)
+    x = tf.reshape(x, [-1, 160, 513, 3])
 
-        logits = model(x, training=True)
-        # mean results as these are all for 1 track
-        logits = tf.reduce_mean(logits, axis=0)
+    logits = model(x, training=True)
+    # mean results as these are all for 1 track
+    logits = tf.reduce_mean(logits, axis=0)
 
-        loss_value = loss_fn(y, logits)
-        # Add any extra losses created during the forward pass.
-        loss_value += sum(model.losses)
-    grads = tape.gradient(loss_value, model.trainable_weights)
-    optimizer.apply_gradients(zip(grads, model.trainable_weights))
+    loss_value = loss_fn(y, logits)
+    # Add any extra losses created during the forward pass.
+    loss_value += sum(model.losses)
     train_acc_metric.update_state(y, logits)
     return loss_value
 

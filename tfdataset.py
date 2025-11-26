@@ -989,7 +989,7 @@ def read_tfrecord(
 ):
     tfrecord_format = {
         "audio/class/text": tf.io.FixedLenFeature((), tf.string),
-        "audio/num_samples": tf.io.FixedLenFeature((), tf.int64,default_value=1),
+        "audio/num_samples": tf.io.FixedLenFeature((), tf.int64, default_value=1),
     }
     if has_ebird:
         tfrecord_format["audio/class/ebird"] = tf.io.FixedLenFeature((), tf.string)
