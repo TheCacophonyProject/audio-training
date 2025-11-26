@@ -1888,7 +1888,7 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
         excluded_labels=excluded_labels,
         second_dir=second_dir,
         embeddings=model_name == "embeddings",
-        load_seperate_ds=True,
+        load_seperate_ds=False,
         cache=False,
         human_dir=human_dir,
         **args,
@@ -1911,7 +1911,8 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
         second_dir=second_dir,
         embeddings=model_name == "embeddings",
         human_dir=human_dir,
-        load_seperate_ds=True,
+        load_seperate_ds=False,
+        cache = False,
         **args,
     )
 
@@ -3126,9 +3127,11 @@ class EpochUpdater(tf.keras.callbacks.Callback):
         # global_epoch = tf.Variable(1, name='global_epoch', trainable=False, dtype=tf.int32)
         global_epoch.assign(epoch + 1)
 
-
+metric = None
 @tf.function
 def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
+    global metric
+    metric = train_acc_metric
     orig_shape = x.shape
     if orig_shape[1] > 4:
         print("Skipping a shape to big", orig_shape.shape)
@@ -3141,7 +3144,7 @@ def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
     with tf.GradientTape() as tape:
         logits = model(x, training=True)
         track_logits = tf.reshape(logits, [-1, track_batch, logits.shape[1]])
-        loss_value = loss_fn(y, [track_logits, mask, train_acc_metric])
+        loss_value = loss_fn(y, [track_logits, mask])
         loss_value += sum(model.losses)
         # Add any extra losses created during the forward pass.
     grads = tape.gradient(loss_value, model.trainable_weights)
@@ -3151,6 +3154,8 @@ def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
 
 @tf.function
 def test_step(model, x, y, loss_fn, val_acc_metric):
+    global metric
+    metric = val_acc_metric
     orig_shape = x.shape
     track_batch = orig_shape[1]
     mask = tf.not_equal(x, 0)
@@ -3163,7 +3168,7 @@ def test_step(model, x, y, loss_fn, val_acc_metric):
     # val_acc_metric.update_state(y, val_logits)
 
     val_logits = tf.reshape(val_logits, [-1, track_batch, val_logits.shape[1]])
-    loss_value = loss_fn(y, [val_logits, mask, val_acc_metric])
+    loss_value = loss_fn(y, [val_logits, mask])
     loss_value += sum(model.losses)
     return loss_value
 
@@ -3177,7 +3182,7 @@ class MaskedMeanCrossEntropy(tf.keras.losses.Loss):
         self.epsilon = tf.constant(_EPSILON)
 
     def call(self, y_true, y_pred):
-        y_pred, masks, metric = y_pred
+        y_pred, masks = y_pred
         last_dim = y_pred.shape[-1]
         loss = 0
 
