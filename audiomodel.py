@@ -444,13 +444,13 @@ class AudioModel:
                             train_acc_metric,
                             optimizer_fn,
                         )
-                        gradients = tape.gradient(
-                            loss_value, self.model.trainable_weights
-                        )
-                        total_loss_value += loss_value
-                        for i in range(len(accumulated_gradients)):
-                            if gradients[i] is not None:
-                                accumulated_gradients[i] += gradients[i]
+                    gradients = tape.gradient(
+                        loss_value, self.model.trainable_weights
+                    )
+                    total_loss_value += loss_value
+                    for i in range(len(accumulated_gradients)):
+                        if gradients[i] is not None:
+                            accumulated_gradients[i] += gradients[i]
                 optimizer_fn.apply_gradients(
                     zip(accumulated_gradients, self.model.trainable_weights)
                 )
@@ -3129,8 +3129,10 @@ def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
     # with tf.GradientTape(persistent =True) as tape:
     mask = tf.not_equal(x, 0)
     mask = tf.math.reduce_any(mask, axis=-1)
+    print("train ",x.shape)
     x = tf.boolean_mask(x, mask)
     x = tf.reshape(x, [-1, 160, 513, 3])
+    print("train reshaped",x.shape)
 
     logits = model(x, training=True)
     # mean results as these are all for 1 track
