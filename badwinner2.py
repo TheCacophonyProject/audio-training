@@ -33,6 +33,7 @@ import tensorflow as tf
 class MagTransform(tf.keras.layers.Layer):
     def __init__(self, **kwargs):
         super(MagTransform, self).__init__(**kwargs)
+        self.supports_masking = True 
         self.a = self.add_weight(
             initializer=tf.keras.initializers.Constant(value=-1.0),
             name="a-power",
