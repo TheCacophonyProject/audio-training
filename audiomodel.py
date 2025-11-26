@@ -452,13 +452,13 @@ class AudioModel:
                             if gradients[i] is not None:
                                 accumulated_gradients[i] += gradients[i]
                 optimizer_fn.apply_gradients(
-                    zip(accumulated_gradients, self.batch_sizemodel.trainable_weights)
+                    zip(accumulated_gradients, self.model.trainable_weights)
                 )
                 del tape
                 if step % 200 == 0:
                     print(
                         "Training loss (for one batch) at step %d: %.4f"
-                        % (step, float(loss_value))
+                        % (step, float(total_loss_value))
                     )
                     print("Seen so far: %d samples" % ((step + 1) * self.batch_size))
 
@@ -482,7 +482,7 @@ class AudioModel:
             print("Validation acc: %.4f" % (float(val_acc),))
             print("Time taken: %.2fs" % (time.time() - start_time))
             history["val_loss"].append(val_loss)
-            history["loss"].append(loss_value)
+            history["loss"].append(total_loss_value)
             history["val_categorical_accuracy"].append(train_acc.numpy())
             history["categorical_accuracy"].append(val_acc.numpy())
 
@@ -490,7 +490,7 @@ class AudioModel:
                 "val_loss": val_loss,
                 "val_categorical_accuracy": val_acc.numpy(),
                 "categorical_accuracy": train_acc.numpy(),
-                "loss": loss_value,
+                "loss": total_loss_value,
             }
             for ckp in checkpoints:
                 ckp.on_epoch_end(epoch, logs=logs)
