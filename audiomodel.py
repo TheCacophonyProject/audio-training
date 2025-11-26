@@ -3148,7 +3148,8 @@ def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
 @tf.function
 def test_step(model, x, y, loss_fn, val_acc_metric):
     mask = tf.not_equal(x, 0)
-    mask = tf.math.reduce_any(mask, axis=-1)
+    mask = tf.math.reduce_all(mask, axis=[2, 3, 4])
+
     x = tf.boolean_mask(x, mask)
     x = tf.reshape(x, [-1, 160, 513, 3])
 
