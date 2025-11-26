@@ -426,35 +426,43 @@ class AudioModel:
             # Iterate over the batches of the dataset.
             for step, (x_batch_train, y_batch_train) in enumerate(self.train):
                 print(x_batch_train.shape, y_batch_train.shape)
-                total_loss_value = 0
-                accumulated_gradients = [
-                    tf.zeros_like(var) for var in self.model.trainable_variables
-                ]
+                total_loss_value = train_step_2(
+                    self.model,
+                    x_batch_train,
+                    y_batch_train,
+                    loss_fn,
+                    train_acc_metric,
+                    optimizer_fn,
+                )
+
+                # accumulated_gradients = [
+                #     tf.zeros_like(var) for var in self.model.trainable_variables
+                # ]
 
                 # probably could speed this up if ran on all data then meaned appropriately
-                for track_batch, y_track in zip(x_batch_train, y_batch_train):
-                    print("Running track batch ", track_batch.shape, y_track.shape)
-                    with tf.GradientTape(persistent=True) as tape:
+                # for track_batch, y_track in zip(x_batch_train, y_batch_train):
+                #     print("Running track batch ", track_batch.shape, y_track.shape)
+                #     with tf.GradientTape(persistent=True) as tape:
 
-                        loss_value = train_step(
-                            self.model,
-                            track_batch,
-                            y_track,
-                            loss_fn,
-                            train_acc_metric,
-                            optimizer_fn,
-                        )
-                    gradients = tape.gradient(
-                        loss_value, self.model.trainable_weights
-                    )
-                    total_loss_value += loss_value
-                    for i in range(len(accumulated_gradients)):
-                        if gradients[i] is not None:
-                            accumulated_gradients[i] += gradients[i]
-                optimizer_fn.apply_gradients(
-                    zip(accumulated_gradients, self.model.trainable_weights)
-                )
-                del tape
+                #         loss_value = train_step(
+                #             self.model,
+                #             track_batch,
+                #             y_track,
+                #             loss_fn,
+                #             train_acc_metric,
+                #             optimizer_fn,
+                #         )
+                #     gradients = tape.gradient(
+                #         loss_value, self.model.trainable_weights
+                #     )
+                #     total_loss_value += loss_value
+                #     for i in range(len(accumulated_gradients)):
+                #         if gradients[i] is not None:
+                #             accumulated_gradients[i] += gradients[i]
+                # optimizer_fn.apply_gradients(
+                #     zip(accumulated_gradients, self.model.trainable_weights)
+                # )
+                # del tape
                 if step % 200 == 0:
                     print(
                         "Training loss (for one batch) at step %d: %.4f"
@@ -3125,14 +3133,44 @@ class EpochUpdater(tf.keras.callbacks.Callback):
 
 
 @tf.function
-def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
+def train_step_2(
+    model, x_batch_train, y_batch_train, loss_fn, train_acc_metric, optimizer_fn
+):
+
+    accumulated_gradients = [tf.zeros_like(var) for var in model.trainable_variables]
+    total_loss_value = 0
+    # probably could speed this up if ran on all data then meaned appropriately
+    for track_batch, y_track in zip(x_batch_train, y_batch_train):
+        print("Running track batch ", track_batch.shape, y_track.shape)
+        with tf.GradientTape(persistent=True) as tape:
+
+            loss_value = train_step(
+                model,
+                track_batch,
+                y_track,
+                loss_fn,
+                train_acc_metric,
+            )
+        gradients = tape.gradient(loss_value, model.trainable_weights)
+        total_loss_value += loss_value
+        for i in range(len(accumulated_gradients)):
+            if gradients[i] is not None:
+                accumulated_gradients[i] += gradients[i]
+
+    optimizer_fn.apply_gradients(zip(accumulated_gradients, model.trainable_weights))
+    del tape
+    return total_loss_value
+
+
+@tf.function
+def train_step(model, x, y, loss_fn, train_acc_metric):
     # with tf.GradientTape(persistent =True) as tape:
     mask = tf.not_equal(x, 0)
-    mask = tf.math.reduce_any(mask, axis=-1)
-    print("train ",x.shape)
+    mask = tf.math.reduce_all(mask, axis=[1, 2, 3])
+    print("train ", x.shape)
     x = tf.boolean_mask(x, mask)
     x = tf.reshape(x, [-1, 160, 513, 3])
-    print("train reshaped",x.shape)
+    print("train reshaped", x.shape)
 
     logits = model(x, training=True)
     # mean results as these are all for 1 track
@@ -3148,7 +3186,7 @@ def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
 @tf.function
 def test_step(model, x, y, loss_fn, val_acc_metric):
     mask = tf.not_equal(x, 0)
-    mask = tf.math.reduce_all(mask, axis=[2, 3, 4])
+    mask = tf.math.reduce_all(mask, axis=[1, 2, 3])
 
     x = tf.boolean_mask(x, mask)
     x = tf.reshape(x, [-1, 160, 513, 3])
