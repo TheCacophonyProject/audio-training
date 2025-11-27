@@ -468,10 +468,11 @@ class AudioModel:
             # Display metrics at the end of each epoch.
             train_acc = train_acc_metric.result()
             print("Training acc over epoch: %.4f" % (float(train_acc),))
-
             # Reset training metrics at the end of each epoch
             train_acc_metric.reset_state()
             avg_loss = epoch_loss_avg.result()
+            print("loss ", avg_loss)
+
             # Run a validation loop at the end of each epoch.
             epoch_val_loss_avg = tf.keras.metrics.Mean()
 
@@ -484,6 +485,8 @@ class AudioModel:
             val_loss = epoch_val_loss_avg.result()
             val_acc = val_acc_metric.result()
             val_acc_metric.reset_state()
+            print("loss ", val_loss)
+
             print("Validation acc: %.4f" % (float(val_acc),))
             print("Time taken: %.2fs" % (time.time() - start_time))
             history["val_loss"].append(val_loss)
@@ -3138,7 +3141,7 @@ def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
     metric = train_acc_metric
     orig_shape = x.shape
     if orig_shape[1] > 4:
-        print("Skipping a shape to big", orig_shape.shape)
+        print("Skipping a shape to big", orig_shape)
         return 0
     track_batch = orig_shape[1]
     mask = tf.not_equal(x, 0)
