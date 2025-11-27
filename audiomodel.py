@@ -444,11 +444,12 @@ class AudioModel:
         for epoch in range(epochs):
             print("\nStart of epoch %d" % (epoch,))
             start_time = time.time()
+            loss_value = 0
+            epoch_loss_avg = tf.keras.metrics.Mean()
 
             # Iterate over the batches of the dataset.
             for step, (x_batch_train, y_batch_train) in enumerate(self.train):
-                loss_value = 0
-                loss_value += train_step(
+                loss_value = train_step(
                     self.model,
                     x_batch_train,
                     y_batch_train,
@@ -456,6 +457,7 @@ class AudioModel:
                     train_acc_metric,
                     optimizer_fn,
                 )
+                epoch_loss_avg.update_state(loss_value)
                 if step % 200 == 0:
                     print(
                         "Training loss (for one batch) at step %d: %.4f"
@@ -469,21 +471,23 @@ class AudioModel:
 
             # Reset training metrics at the end of each epoch
             train_acc_metric.reset_state()
-
+            avg_loss = epoch_loss_avg.result()
             # Run a validation loop at the end of each epoch.
-            val_loss = 0
+            epoch_val_loss_avg = tf.keras.metrics.Mean()
+
             for x_batch_val, y_batch_val in self.validation:
                 # for track_batch, y_track in zip(x_batch_val, y_batch_val):
-                val_loss += test_step(
+                val_loss = test_step(
                     self.model, x_batch_val, y_batch_val, loss_fn, val_acc_metric
                 )
-
+                epoch_val_loss_avg.update_state(val_loss)
+            val_loss = epoch_val_loss_avg.result()
             val_acc = val_acc_metric.result()
             val_acc_metric.reset_state()
             print("Validation acc: %.4f" % (float(val_acc),))
             print("Time taken: %.2fs" % (time.time() - start_time))
             history["val_loss"].append(val_loss)
-            history["loss"].append(loss_value)
+            history["loss"].append(avg_loss)
             history["val_categorical_accuracy"].append(train_acc.numpy())
             history["categorical_accuracy"].append(val_acc.numpy())
 
@@ -491,7 +495,7 @@ class AudioModel:
                 "val_loss": val_loss,
                 "val_categorical_accuracy": val_acc.numpy(),
                 "categorical_accuracy": train_acc.numpy(),
-                "loss": loss_value,
+                "loss": avg_loss,
             }
             for ckp in checkpoints:
                 ckp.on_epoch_end(epoch, logs=logs)
