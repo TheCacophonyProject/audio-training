@@ -1342,7 +1342,7 @@ def nan_check(dataset):
                     "Bad data for rec %s track %s less than 1 %s over 1 %s max %s min %s",
                     rec,
                     track,
-                    x[np.where(x < 1)],
+                    x[np.where(x < -1)],
                     x[np.where(x > 1.000002)],
                     a_max,
                     a_min,
