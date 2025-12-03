@@ -282,7 +282,7 @@ def preprocess_file(
         # mel = librosa.power_to_db(mel, ref=np.max)
         # break
         # if i == 10:
-        #     break
+        #     breakdef
         # mel2 = np.power(mel, 0.1)
         # plot_mel(mel2, i)
         # pcen_S = librosa.pcen(mel * (2**31))
@@ -738,6 +738,8 @@ def main():
     signals, _ = signal_noise(frames, sr)
 
     tracks = get_tracks_from_signals(signals, end)
+    # tracks = tracks[:1]
+    # tracks = [trackfor track in tracks if track.start > 55 and track.end < 57]
     load_model = Path(args.model)
 
     logging.info("Loading %s with weights %s", load_model, args.weights)
@@ -749,6 +751,7 @@ def main():
         # },
         compile=False,
     )
+    model.trainable = False
     model.summary()
     with open(load_model.parent / "metadata.txt", "r") as f:
         meta = json.load(f)
@@ -889,7 +892,7 @@ def main():
             mel = d[start_i]
             print("Showing mel for ", start_i)
             # print("Showign spec ",mel[:,:].shape)
-            plot_mel(mel[:, :, 0])
+            # plot_mel(mel[:, :, 0])
             max_p = np.argmax(p)
             conf = p[max_p]
             print("At ", start_i, " this is now ", t.start + start_i * segment_stride)
