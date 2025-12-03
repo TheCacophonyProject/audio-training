@@ -1896,6 +1896,7 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
         second_dir=second_dir,
         embeddings=model_name == "embeddings",
         load_seperate_ds=False,
+        load_all_y =True,
         cache=False,
         human_dir=human_dir,
         **args,
@@ -3141,6 +3142,14 @@ metric = None
 @tf.function
 def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
     global metric
+
+    rec = y[3]
+    track = y[4]
+    start = y[7]
+    y = y[0]
+    y = tf.expand_dims(y,0)
+    x = tf.expand_dims(x,0)
+
     metric = train_acc_metric
     orig_shape = x.shape
     if orig_shape[1] > 4:
@@ -3155,6 +3164,10 @@ def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
         logits = model(x, training=True)
         track_logits = tf.reshape(logits, [-1, track_batch, logits.shape[1]])
         loss_value = loss_fn(y, [track_logits, mask])
+        if tf.math.is_nan(loss_value):
+            logging.info("Got loss for rec %s TRACK %s START %s loss %s",rec,track,start,loss_value)
+            logging.info("X is %s", x)
+            1/0
         loss_value += sum(model.losses)
         # Add any extra losses created during the forward pass.
     grads = tape.gradient(loss_value, model.trainable_weights)

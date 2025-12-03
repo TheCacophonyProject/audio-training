@@ -869,10 +869,10 @@ def get_a_dataset(dir, labels, args):
         bittern_mask = tf.constant(bittern_mask, dtype=tf.float32)
         dataset = dataset.map(lambda x, y: butter_bitterns(bittern_mask, x, y))
 
-    if batch_size is not None:
-        dataset = dataset.padded_batch(
-            batch_size, padded_shapes=([None, 160, 513, 3], [num_labels])
-        )
+    # if batch_size is not None:
+    #     dataset = dataset.padded_batch(
+    #         batch_size, padded_shapes=([None, 160, 513, 3], [num_labels])
+    #     )
 
     # dont think using this anymore GP
     if args.get("weight_specific", False):
