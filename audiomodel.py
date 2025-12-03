@@ -507,7 +507,7 @@ class AudioModel:
                 print(f"Early stopping triggered at epoch {epoch + 1}")
                 break
         for ckp in checkpoints:
-            ckp.on_train_end(epoch, logs=history)
+            ckp.on_train_end(logs=history)
         return history
 
     def train_model(
@@ -1919,7 +1919,7 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
         embeddings=model_name == "embeddings",
         human_dir=human_dir,
         load_seperate_ds=False,
-        cache = False,
+        cache=False,
         **args,
     )
 
@@ -3134,7 +3134,10 @@ class EpochUpdater(tf.keras.callbacks.Callback):
         # global_epoch = tf.Variable(1, name='global_epoch', trainable=False, dtype=tf.int32)
         global_epoch.assign(epoch + 1)
 
+
 metric = None
+
+
 @tf.function
 def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
     global metric

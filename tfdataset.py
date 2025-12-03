@@ -1326,6 +1326,41 @@ def debug_labels(dataset, labels):
     # print("Mapped labels are ",mapped)
 
 
+def nan_check(dataset):
+    for batch_x, batch_y in dataset:
+        recs = batch_y[3]
+        tracks = batch_y[4]
+        for x, rec, track in zip(batch_x, recs, tracks):
+            data_ok = np.all(x >= -1.00002) and np.all(x <= 1.000002)
+            has_nan = np.any(np.isnan(x))
+            a_max = np.amax(x)
+            a_min = np.amin(x)
+            if not data_ok or has_nan:
+                # print(x)
+                x = x.numpy()
+                logging.info(
+                    "Bad data for rec %s track %s less than 1 %s over 1 %s max %s min %s",
+                    rec,
+                    track,
+                    x[np.where(x < 1)],
+                    x[np.where(x > 1.000002)],
+                    a_max,
+                    a_min,
+                )
+                logging.info("Has nan %s", has_nan)
+
+            if a_max == a_min:
+                logging.info(
+                    "Max = Min for rec %s track %s max %s min %s",
+                    rec,
+                    track,
+                    a_max,
+                    a_min,
+                )
+
+    return
+
+
 # test stuff
 def main():
     init_logging()
@@ -1415,6 +1450,7 @@ def main():
         augment=False,
         # signal_less_than = 0.1
     )
+    nan_check(dataset)
     # return
     # for epoch in range(5):
     #     global_epoch.assign(epoch)
@@ -1424,38 +1460,7 @@ def main():
     #         print("Epoch is ", epoch, epoch_batch[0].numpy())
     # debug_labels(dataset, labels)
     # return
-    # for batch_x, batch_y in dataset:
-    #     recs = batch_y[3]
-    #     tracks = batch_y[4]
-    #     for x, rec, track in zip(batch_x, recs, tracks):
-    #         data_ok = np.all(x >= -1.00002) and np.all(x <= 1.000002)
-    #         has_nan = np.any(np.isnan(x))
-    #         a_max = np.amax(x)
-    #         a_min = np.amin(x)
-    #         if not data_ok or has_nan:
-    #             # print(x)
-    #             x = x.numpy()
-    #             logging.info(
-    #                 "Bad data for rec %s track %s less than 1 %s over 1 %s max %s min %s",
-    #                 rec,
-    #                 track,
-    #                 x[np.where(x < 1)],
-    #                 x[np.where(x > 1.000002)],
-    #                 a_max,
-    #                 a_min,
-    #             )
-    #             logging.info("Has nan %s", has_nan)
 
-    #         if a_max == a_min:
-    #             logging.info(
-    #                 "Max = Min for rec %s track %s max %s min %s",
-    #                 rec,
-    #                 track,
-    #                 a_max,
-    #                 a_min,
-    #             )
-
-    # return
     preds = None
     if args.model is not None:
         model_path = Path(args.model)
