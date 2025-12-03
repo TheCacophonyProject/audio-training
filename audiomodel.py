@@ -906,6 +906,8 @@ class AudioModel:
                 x = badwinner2.LMELayer(axis=1, sharpness=5)(x)
                 x = badwinner2.LMELayer(axis=2, sharpness=5)(x)
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
+            x = tf.keras.layers.Dropout(0.2)(x)
+
             activation = "softmax"
             if multi_label:
                 activation = "sigmoid"
