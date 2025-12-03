@@ -3150,7 +3150,7 @@ def train_step(model, x, y, loss_fn, train_acc_metric, optimizer):
         return 0
     track_batch = orig_shape[1]
     mask = tf.not_equal(x, 0)
-    mask = tf.math.reduce_all(mask, axis=[2, 3, 4])
+    mask = tf.math.reduce_any(mask, axis=[2, 3, 4])
     x = tf.reshape(x, [-1, orig_shape[2], orig_shape[3], orig_shape[4]])
 
     with tf.GradientTape() as tape:
@@ -3171,7 +3171,7 @@ def test_step(model, x, y, loss_fn, val_acc_metric):
     orig_shape = x.shape
     track_batch = orig_shape[1]
     mask = tf.not_equal(x, 0)
-    mask = tf.math.reduce_all(mask, axis=[2, 3, 4])
+    mask = tf.math.reduce_any(mask, axis=[2, 3, 4])
 
     x = tf.reshape(x, [-1, orig_shape[2], orig_shape[3], orig_shape[4]])
 
