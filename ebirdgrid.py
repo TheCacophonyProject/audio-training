@@ -329,6 +329,32 @@ def add_ebird(lat, lng, ebird, meta_file, add_to_neighbours=False):
         json.dump(metadata, f)
 
 
+    with open(grid_file,"r") as f:
+        metadata = json.load(f)
+    grid_data = metadata
+    grid_i, res = find_square(grid_data,lng,lat)
+    monthly_data = grid_data[grid_i]["species_per_month"]
+
+    label_map = get_ebird_ids_to_labels()
+    birds = set()
+    neighbours = grid_data[grid_i]["neighbours_i"]
+    all_data = [monthly_data]
+    for grid_i in neighbours:
+        all_data.append(grid_data[grid_i]["species_per_month"])
+
+    for monthly_data in all_data:
+        for bird,month in monthly_data.items():
+            total = np.sum(list(month.values()))
+            if total == 0:
+                continue
+            if bird not in label_map:
+                print("Not found ebird: ",bird)
+            bird = label_map.get(bird,[bird])[0]
+            birds.add(bird)
+    birds = list(birds)
+    birds.sort()
+    print(birds)
+        # , np.sum(list(month.values())))
 def main():
     fmt = "%(process)d %(thread)s:%(levelname)7s %(message)s"
     logging.basicConfig(
