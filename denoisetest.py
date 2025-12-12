@@ -88,6 +88,7 @@ def signal_noise(file, hop_length=281):
     # frames = frames[int(20*sr): int(sr * 40)]
 
     frames = frames[: int(sr * end)]
+    
     # frames = frames[: sr * 120]
     # n_fft = sr // 10
     n_fft = 4096
@@ -1230,49 +1231,8 @@ def main():
     N_MELS = 160
     BREAK_FREQ = 1000
     MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, n_fft, BREAK_FREQ)
-    # plot_mel_weights(MEL_WEIGHTS)
-    # MEL_WEIGHTS = librosa.filters.mel(
-    #     sr=48000, n_fft=n_fft, n_mels=N_MELS, fmin=50, fmax=11000
-    # )
-    # plot_mel_weights(MEL_WEIGHTS)
-
-    frames, sr = load_recording(args.file)
-    test_multi_rgb(frames[10 * sr : 10 * sr + sr * 3], sr)
-    return
-    # mel = birdnet_mel(sr, frames, n_fft, hop_length=hop_length, mel_weights=MEL_WEIGHTS)
-    # plot_mel(mel)
-    # # return
-
-    # spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
-    # plot_spec(spectogram)
-    # mel = spectogram
-    # mel = tf.tensordot(MEL_WEIGHTS, mel, 1)
-    # mel = tf.math.pow(mel, 2)
-
-    # mel = mel.numpy()
-    # print(mel.shape)
-    # plot_mel(mel)
-    # return
-    # test_image = np.zeros((40,40),dtype = np.uint8)
-    # test_image[10][10] = 255
-    # kernel = np.ones((4, 10), np.uint8)
-    # image = cv2.dilate(test_image, kernel)
-    # print("NUmber of non zeros ", len(image[image>0]))
-
-    # normed = scale_minmax(spectogram,0,255).astype(np.uint8)
-    # # normed = 255 - normed
-    # print(normed)
-    # plt.imshow(image,origin="lower")
-    # plt.show()
-
-    # mix_file(args.file, args.mix)
+    
     signals, noise, spectogram, frames, end = signal_noise(args.file)
-    freq_filter = 1000
-    total_signal = 0
-    for s in signals:
-        print("Sig is ", s)
-        total_signal += s.length
-    print("Sig percent ", 100 * total_signal / len(frames) / sr)
 
     plot_mel_signals(np.abs(spectogram), signals, noise)
     # return

@@ -3,6 +3,7 @@ import librosa
 from custommel import mel_spec
 import math
 import cv2
+import plot_utils
 
 MAX_FRQUENCY = 48000 / 2
 SIGNAL_WIDTH = 0.25
@@ -48,12 +49,28 @@ def get_end(frames, sr):
 
 
 def signal_noise(
-    frames, sr, hop_length=281, n_fft=4096, min_width=None, min_height=None
+    frames, sr, hop_length=281, n_fft=1024, min_width=None, min_height=None
 ):
     # frames = frames[:sr]
-    # n_fft = 4096
+    n_fft = 2048
     # frames = frames[: sr * 3]
     spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
+    lower_bin = None
+    upper_bin = 0
+    freq_range = 100
+    height = 0
+
+    for i , f in enumerate(freqs):
+        if f > 100 and lower_bin is None:
+            lower_bin = i-1
+        if f > 20000:
+            upper_bin  =i
+            break
+        if f > freq_range and height ==0:
+            height = i + 1
+    print(f"Zeroing spec data <{lower_bin} and >{upper_bin}")
+
     og_spec = spectogram.copy()
     a_max = np.amax(spectogram)
     spectogram = spectogram / a_max
@@ -66,33 +83,37 @@ def signal_noise(
     row_medians = np.repeat(row_medians, columns, axis=1)
     column_medians = np.repeat(column_medians, rows, axis=0)
     kernel = np.ones((4, 4), np.uint8)
-    signal = (spectogram > 3 * column_medians) & (spectogram > 3 * row_medians)
+    signal = (spectogram >2*  column_medians) & (spectogram > 3 * row_medians)
 
     signal = signal.astype(np.uint8)
     signal = cv2.morphologyEx(signal, cv2.MORPH_OPEN, kernel)
 
     width = SIGNAL_WIDTH * sr / hop_length
     width = int(width)
-    freq_range = 100
-    height = 0
-    freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
-    for i, f in enumerate(freqs):
-        if f > freq_range:
-            height = i + 1
-            break
+    import matplotlib.pyplot as plt
 
     signal = cv2.dilate(signal, np.ones((height, width), np.uint8))
     signal = cv2.erode(signal, np.ones((height // 10, width), np.uint8))
+    # plot_utils.plot_spec(signal)
 
+    # plt.imshow(signal)
+    # plt.show()
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(signal)
+    small_mask[small_mask>0]= 255
+    # plot_utils.plot_spec(small_mask)
+
+    # plt.imshow(small_mask)
+    # plt.show()
+
     stats = stats[1:]
     stats = sorted(stats, key=lambda stat: stat[0])
     if min_height is None:
         min_height = height - height // 10
     if min_width is None:
         min_width = 0.65 * width
-
-    # print("Min height", min_height, " min width", min_width, " equates to ", min_width * 281/sr, freqs[int(min_height)])
+    # min_height = 0
+    # min_width = 0
+    print("Min height", min_height, " min width", min_width, " equates to ", min_width * 281/sr, freqs[int(min_height)])
     stats = [s for s in stats if s[2] > min_width and s[3] > min_height]
 
     i = 0
@@ -107,7 +128,7 @@ def signal_noise(
         start = s[0] * 281 / sr
         end = (s[0] + s[2]) * 281 / sr
         signals.append(Signal(start, end, freq_range[0], freq_range[1], s[4]))
-
+        print("Added signal",signals[-1])
     return signals, og_spec
 
 
