@@ -79,7 +79,6 @@ def load_samples(
 
             missing = sample_size - (sr_end - sr_start)
             if missing > 0:
-                offset = np.random.randint(0, missing)
                 offset = missing //2
                 sr_start = sr_start - offset
 
