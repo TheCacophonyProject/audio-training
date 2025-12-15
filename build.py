@@ -469,7 +469,74 @@ def trim_noise(dataset):
 # And by allowing samples that start at strides of 0.5 seconds instead of just
 # one second
 # If still very low will repeat samples
-def balance_ds(original_ds, dataset, max_repeats=1):
+def undersample_ds(dataset):
+    lbl_counts = dataset.get_counts()
+    # if "bird" in lbl_counts:
+    # del lbl_counts["bird"]
+    # if "noise" in lbl_counts:
+    # del lbl_counts["noise"]
+    counts = list(lbl_counts.values())
+    counts.sort(reverse=True)
+    if len(counts) <= 1:
+        return
+    target_i = min(len(counts) - 1, 8)
+    target_count = counts[target_i]
+    target_count = target_count * 3 / 4
+    # median = np.mean(counts)
+
+    logging.info("COunts are %s", counts)
+    extra_samples = {}
+    high_samples = []
+    rng = np.random.default_rng()
+
+    for lbl, count in lbl_counts.items():
+        extra_samples[lbl] = 0
+        print(lbl, "Count ", count, target_count)
+        if count > target_count:
+            extra_samples[lbl] = count - target_count
+            high_samples.append(lbl)
+    logging.info(
+        "Remove extra samples for %s target count %s",
+        extra_samples,
+        target_count,
+    )
+    # dataset.samples = []
+    for lbl in high_samples:
+        remove_chance = extra_samples[lbl] / lbl_counts[lbl]
+        # print(f"Chance to remove {lbl} is {remove_chance}")
+        recs = list(dataset.recs.values())
+        random.shuffle(recs)
+        total_bird = 0
+
+        for rec in recs:
+            samples_by_track = {}
+            # should try remove samples from tracks with multiple samples
+            rec_samples = []
+            for sample in rec.samples:
+                if lbl in sample.tags:
+                    total_bird += 1
+                    track_samples = samples_by_track.setdefault(sample.track_id, [])
+                    track_samples.append(sample)
+                    chance = rng.random()
+                    # print("Checking against ",chance)
+                    if chance < remove_chance:
+                        # print(f"Remoing {lbl} sample")
+                        dataset.remove(sample)
+                    else:
+                        rec_samples.append(sample)
+                else:
+                    rec_samples.append(sample)
+
+            rec.samples = rec_samples
+        print(f"Total {lbl} samples are {total_bird}")
+
+
+# Try add some more samples for underpresented labels
+# Do this by not limiting long tracks to only 4 samples
+# And by allowing samples that start at strides of 0.5 seconds instead of just
+# one second
+# If still very low will repeat samples
+def oversample_ds(original_ds, dataset, max_repeats=1):
     lbl_counts = dataset.get_counts()
 
     if "bird" in lbl_counts:
@@ -677,8 +744,11 @@ def main():
     #         logging.info("Not Used samples are %s", unused)
     if args.balance:
         logging.info("Balancing datasets")
-        balance_ds(dataset, datasets[0], max_repeats=5)
-        balance_ds(dataset, datasets[1])
+        undersample_ds(datasets[0])
+        undersample_ds(datasets[1])
+
+        oversample_ds(dataset, datasets[0], max_repeats=5)
+        oversample_ds(dataset, datasets[1])
 
         logging.info("After balance")
         for d in datasets[:2]:
@@ -687,7 +757,6 @@ def main():
             d.print_sample_counts()
 
             all_labels.update(d.labels)
-
     all_labels = list(all_labels)
     all_labels.sort()
     for d in datasets:

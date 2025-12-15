@@ -55,7 +55,7 @@ def load_samples(
     length = len(frames) / sr
     end = segment_length
     mel_samples = []
-    
+
     for t in tracks:
         track_data = []
         if (
@@ -79,7 +79,7 @@ def load_samples(
 
             missing = sample_size - (sr_end - sr_start)
             if missing > 0:
-                offset = missing //2
+                offset = missing // 2
                 sr_start = sr_start - offset
 
                 if sr_start <= 0:
@@ -97,7 +97,7 @@ def load_samples(
                     assert sr_end - sr_start == sample_size
 
             track_frames = frames[sr_start:sr_end]
-            print("Track is ",sr_start/sr, sr_end/sr)
+            print("Track is ", sr_start / sr, sr_end / sr)
         sr_start = 0
         sr_end = min(sr_end, sample_size)
         if filter_freqs:

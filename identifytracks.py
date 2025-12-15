@@ -61,13 +61,13 @@ def signal_noise(
     freq_range = 100
     height = 0
 
-    for i , f in enumerate(freqs):
+    for i, f in enumerate(freqs):
         if f > 100 and lower_bin is None:
-            lower_bin = i-1
+            lower_bin = i - 1
         if f > 20000:
-            upper_bin  =i
+            upper_bin = i
             break
-        if f > freq_range and height ==0:
+        if f > freq_range and height == 0:
             height = i + 1
     print(f"Zeroing spec data <{lower_bin} and >{upper_bin}")
 
@@ -83,7 +83,7 @@ def signal_noise(
     row_medians = np.repeat(row_medians, columns, axis=1)
     column_medians = np.repeat(column_medians, rows, axis=0)
     kernel = np.ones((4, 4), np.uint8)
-    signal = (spectogram >2*  column_medians) & (spectogram > 3 * row_medians)
+    signal = (spectogram > 2 * column_medians) & (spectogram > 3 * row_medians)
 
     signal = signal.astype(np.uint8)
     signal = cv2.morphologyEx(signal, cv2.MORPH_OPEN, kernel)
@@ -99,7 +99,7 @@ def signal_noise(
     # plt.imshow(signal)
     # plt.show()
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(signal)
-    small_mask[small_mask>0]= 255
+    small_mask[small_mask > 0] = 255
     # plot_utils.plot_spec(small_mask)
 
     # plt.imshow(small_mask)
@@ -113,7 +113,15 @@ def signal_noise(
         min_width = 0.65 * width
     # min_height = 0
     # min_width = 0
-    print("Min height", min_height, " min width", min_width, " equates to ", min_width * 281/sr, freqs[int(min_height)])
+    print(
+        "Min height",
+        min_height,
+        " min width",
+        min_width,
+        " equates to ",
+        min_width * 281 / sr,
+        freqs[int(min_height)],
+    )
     stats = [s for s in stats if s[2] > min_width and s[3] > min_height]
 
     i = 0
@@ -128,7 +136,7 @@ def signal_noise(
         start = s[0] * 281 / sr
         end = (s[0] + s[2]) * 281 / sr
         signals.append(Signal(start, end, freq_range[0], freq_range[1], s[4]))
-        print("Added signal",signals[-1])
+        print("Added signal", signals[-1])
     return signals, og_spec
 
 
