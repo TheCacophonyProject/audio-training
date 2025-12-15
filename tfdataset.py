@@ -586,7 +586,7 @@ def get_a_dataset(dir, labels, args):
                 "Loading Second_ds %s files from %s", len(second_filenames), dir
             )
             dataset_2 = load_dataset(second_filenames, num_labels, labels, args)
-   =
+   
             logging.info("filtering morepork from second ds")
             datasets.append(dataset_2)
         else:

@@ -815,7 +815,6 @@ class AudioModel:
             outputs = [birds]
             self.model = tf.keras.models.Model(input, outputs=outputs)
             self.model.summary()
-            1/0
         if multi_label:
             acc = tf.metrics.binary_accuracy
         else:
