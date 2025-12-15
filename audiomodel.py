@@ -781,23 +781,27 @@ class AudioModel:
         else:
             # norm_layer = tf.keras.layers.Normalization()
             # norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
-            input = tf.keras.Input(shape=self.input_shape, name="input")
+            input = tf.keras.Input(shape=(4,*self.input_shape), name="input")
 
             base_model, self.preprocess_fn = self.get_base_model(self.input_shape)
             base_model.summary()
             # x = norm_layer(input)
             x = badwinner2.MagTransform()(input)
 
-            x = base_model(x)
+            # x = base_model(x)
             # , training=True)
-
+            cnn_features = tf.keras.layers.TimeDistributed(base_model)(x)
             if self.lme:
                 x = badwinner2.LMELayer(axis=1, sharpness=5)(x)
                 x = badwinner2.LMELayer(axis=2, sharpness=5)(x)
-            x = tf.keras.layers.GlobalAveragePooling2D()(x)
+            
+            cnn_features = layers.TimeDistributed(tf.keras.layers.Flatten())(cnn_features) 
+
+            rnn_output = tf.keras.layers.GRU(64)(cnn_features)
+            # x = tf.keras.layers.GlobalAveragePooling2D()(x)
             # effnetv2b3 is 0.2
             # v2bm is 0.2
-            x = tf.keras.layers.Dropout(0.2)(x)
+            x = tf.keras.layers.Dropout(0.5)(rnn_output)
 
             activation = "softmax"
             if multi_label:
