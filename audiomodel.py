@@ -784,7 +784,6 @@ class AudioModel:
             input = tf.keras.Input(shape=(4,*self.input_shape), name="input")
 
             base_model, self.preprocess_fn = self.get_base_model(self.input_shape)
-            base_model.summary()
             # x = norm_layer(input)
             x = badwinner2.MagTransform()(input)
 
@@ -795,7 +794,7 @@ class AudioModel:
                 x = badwinner2.LMELayer(axis=1, sharpness=5)(x)
                 x = badwinner2.LMELayer(axis=2, sharpness=5)(x)
             
-            cnn_features = layers.TimeDistributed(tf.keras.layers.Flatten())(cnn_features) 
+            cnn_features = layers.TimeDistributed(tf.keras.layers.GlobalAveragePooling2D())(cnn_features) 
 
             rnn_output = tf.keras.layers.GRU(64)(cnn_features)
             # x = tf.keras.layers.GlobalAveragePooling2D()(x)
@@ -815,7 +814,8 @@ class AudioModel:
 
             outputs = [birds]
             self.model = tf.keras.models.Model(input, outputs=outputs)
-
+            self.model.summary()
+            1/0
         if multi_label:
             acc = tf.metrics.binary_accuracy
         else:
