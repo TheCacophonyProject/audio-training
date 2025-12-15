@@ -797,7 +797,7 @@ class AudioModel:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
             # effnetv2b3 is 0.2
             # v2bm is 0.2
-            x = tf.keras.layers.Dropout(0.2)(x)
+            x = tf.keras.layers.Dropout(0.5)(x)
 
             activation = "softmax"
             if multi_label:

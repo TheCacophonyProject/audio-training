@@ -559,7 +559,7 @@ class Recording:
         for_label=None,
         extra_samples=True,
     ):
-        logging.info(
+        logging.debug(
             "Getting samples with length: %s stide: %s over: %s for: %s extra: %s",
             segment_length,
             segment_stride,
