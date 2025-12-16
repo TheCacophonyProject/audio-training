@@ -26,7 +26,8 @@ from identifytracks import signal_noise, get_tracks_from_signals, get_end, Signa
 import argparse
 import matplotlib.pyplot as plt
 import scipy
-from build import oversample_ds,undersample_ds
+from build import oversample_ds, undersample_ds
+
 
 def load_recording(file, resample=48000):
     try:
@@ -755,7 +756,7 @@ def chime_data():
         json.dump(meta_data, f, indent=4)
 
 
-def tier1_data(base_dir, split_file=None,balance = False):
+def tier1_data(base_dir, split_file=None, balance=False):
     print("Loading tier1")
     test_labels = [
         # "bellbird",
@@ -952,6 +953,10 @@ def tier1_data(base_dir, split_file=None,balance = False):
 
         oversample_ds(dataset, datasets[0], max_repeats=5)
         oversample_ds(dataset, datasets[1])
+
+        for dataset in datasets[:2]:
+            logging.info("Afer balance %s", dataset.name)
+            dataset.print_sample_counts()
     save_data(datasets, base_dir, dataset.config)
 
 
@@ -1838,7 +1843,7 @@ def main():
             generate_tier_metadata_folder(args.dir)
         else:
             print("Doing tier 1 training data")
-            tier1_data(args.dir, args.split_file,args.balance)
+            tier1_data(args.dir, args.split_file, args.balance)
     elif args.rms:
         logging.info("Adding rms data %s", args.analyse)
         if args.analyse:
@@ -1949,12 +1954,11 @@ def main():
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--balance,
+        "--balance",
         default=False,
         action="store_true",
         help="Balance tags",
     )
-
 
     parser.add_argument("-d", "--dir", help="Dir to load")
     parser.add_argument(
