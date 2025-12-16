@@ -26,7 +26,7 @@ from identifytracks import signal_noise, get_tracks_from_signals, get_end, Signa
 import argparse
 import matplotlib.pyplot as plt
 import scipy
-
+from build import oversample_ds,undersample_ds
 
 def load_recording(file, resample=48000):
     try:
@@ -755,7 +755,7 @@ def chime_data():
         json.dump(meta_data, f, indent=4)
 
 
-def tier1_data(base_dir, split_file=None):
+def tier1_data(base_dir, split_file=None,balance = False):
     print("Loading tier1")
     test_labels = [
         # "bellbird",
@@ -907,7 +907,6 @@ def tier1_data(base_dir, split_file=None):
         tootal = list(counts.values())
         print("total is ", np.sum(tootal))
         counts = {}
-        1 / 0
         if plot_signal:
             save_dir = dataset_dir / "signal-graphs"
             save_dir.mkdir(parents=True, exist_ok=True)
@@ -946,6 +945,13 @@ def tier1_data(base_dir, split_file=None):
                     logging.error("Missing clip id %s", clip_id)
     else:
         datasets = split_randomly(dataset)
+    if balance:
+        logging.info("Balancing datasets")
+        undersample_ds(datasets[0])
+        undersample_ds(datasets[1])
+
+        oversample_ds(dataset, datasets[0], max_repeats=5)
+        oversample_ds(dataset, datasets[1])
     save_data(datasets, base_dir, dataset.config)
 
 
@@ -1832,7 +1838,7 @@ def main():
             generate_tier_metadata_folder(args.dir)
         else:
             print("Doing tier 1 training data")
-            tier1_data(args.dir, args.split_file)
+            tier1_data(args.dir, args.split_file,args.balance)
     elif args.rms:
         logging.info("Adding rms data %s", args.analyse)
         if args.analyse:
@@ -1942,6 +1948,14 @@ def main():
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--balance,
+        default=False,
+        action="store_true",
+        help="Balance tags",
+    )
+
+
     parser.add_argument("-d", "--dir", help="Dir to load")
     parser.add_argument(
         "-s", "--signal", action="store_true", help="Add signal data to dir"
