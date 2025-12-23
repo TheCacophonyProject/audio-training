@@ -232,6 +232,7 @@ def merge_signals(signals):
 def get_tracks_from_signals(signals, end):
     # probably a much more efficient way of doing this
     # just keep merging until there are no more valid merges
+    max_length = 6
     merged = True
     min_mel_range = 50
     while merged:
@@ -276,7 +277,22 @@ def get_tracks_from_signals(signals, end):
             to_delete.append(s)
     for s in to_delete:
         signals.remove(s)
-    return signals
+
+    final_signals = []
+    for s in signals:
+        if s.length > max_length:
+            splits = math.ceil(s.length / max_length)
+            length = s.length / splits
+            start = s.start
+            for _ in range(splits):
+                new_signal = s.copy()
+                new_signal.start = start
+                new_signal.end = start + length
+                final_signals.append(new_signal)
+                start = new_signal.end
+        else:
+            final_signals.append(s)
+    return final_signals
 
 
 # def get_tracks_from_signals(signals, end, filter_short=True):
@@ -395,7 +411,7 @@ class Signal:
         return a
 
     def copy(self):
-        return Signal(self.start, self.end, self.freq_start, self.freq_end)
+        return Signal(self.start, self.end, self.freq_start, self.freq_end,self.mass)
 
     def time_overlap(self, other):
         return segment_overlap(

@@ -1234,7 +1234,7 @@ def main():
 
     signals, noise, spectogram, frames, end = signal_noise(args.file)
 
-    plot_mel_signals(np.abs(spectogram), signals, noise)
+    # plot_mel_signals(np.abs(spectogram), signals, noise)
     # return
     # print(signals)
     # means_merge(spectogram,signals)
