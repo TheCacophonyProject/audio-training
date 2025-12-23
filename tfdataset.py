@@ -810,6 +810,7 @@ def get_a_dataset(dir, labels, args):
         datasets[0] = datasets[0].cache()
     if args.get("shuffle", True):
         for i, ds in enumerate(datasets):
+            # datasets[i] = ds.take(100)
             datasets[i] = ds.shuffle(
                 4096, reshuffle_each_iteration=args.get("reshuffle", True)
             )
@@ -863,9 +864,13 @@ def get_a_dataset(dir, labels, args):
         dataset = dataset.map(lambda x, y: butter_bitterns(bittern_mask, x, y))
 
     if batch_size is not None:
-        dataset = dataset.padded_batch(
-            batch_size, padded_shapes=([None, 160, 513, 3], [num_labels])
-        )
+        dataset = dataset.bucket_by_sequence_length(
+            element_length_func=lambda elem,y: tf.shape(elem)[0],
+            bucket_boundaries=[3, 5],
+            bucket_batch_sizes=[2, 2, 2])
+        # dataset = dataset.padded_batch(
+        #     batch_size, padded_shapes=([None, 160, 513, 3], [num_labels])
+        # )
 
     # dont think using this anymore GP
     if args.get("weight_specific", False):
