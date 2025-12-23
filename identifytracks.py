@@ -72,6 +72,9 @@ def signal_noise(
     print(f"Zeroing spec data <{lower_bin} and >{upper_bin}")
 
     og_spec = spectogram.copy()
+
+    # spectogram[:lower_bin,:]= 0
+    # spectogram[upper_bin:,:]= 0
     a_max = np.amax(spectogram)
     spectogram = spectogram / a_max
     row_medians = np.median(spectogram, axis=1)
@@ -235,12 +238,12 @@ def get_tracks_from_signals(signals, end):
         signals, merged = merge_signals(signals)
 
     to_delete = []
-    min_length = 0.35
+    min_length_base = 0.35
     min_track_length = 0.7
     for s in signals:
         if s in to_delete:
             continue
-        if s.length < min_length:
+        if s.length < min_length_base:
             to_delete.append(s)
             continue
 
