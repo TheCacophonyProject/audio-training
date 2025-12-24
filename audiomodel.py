@@ -796,9 +796,10 @@ class AudioModel:
                 x = badwinner2.LMELayer(axis=2, sharpness=5)(x)
             
             cnn_features = layers.TimeDistributed(tf.keras.layers.GlobalAveragePooling2D())(cnn_features) 
+            cnn_features = layers.TimeDistributed(layers.Dense(512, activation='relu'))(cnn_features)
 
             cnn_features = tf.keras.layers.Masking(mask_value=0.0)(cnn_features)
-            rnn_output = tf.keras.layers.GRU(64)(cnn_features)
+            rnn_output = tf.keras.layers.GRU(512,dropout=0.2)(cnn_features)
             # x = tf.keras.layers.GlobalAveragePooling2D()(x)
             # effnetv2b3 is 0.2
             # v2bm is 0.2
