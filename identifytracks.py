@@ -164,10 +164,10 @@ def merge_signals(signals):
     to_delete = []
     something_merged = False
     i = 0
-
+    # if a track over laps by more than this merge them
+    overlap_seconds = 1.5
     signals = sorted(signals, key=lambda s: s.mel_freq_end, reverse=True)
     signals = sorted(signals, key=lambda s: s.start)
-
     for s in signals:
         if s in to_delete:
             continue
@@ -194,7 +194,11 @@ def merge_signals(signals):
             else:
                 time_diff = u.start - s.end
             mel_overlap = s.mel_freq_overlap(u)
-            if overlap > u.length * 0.75 and mel_overlap > -20:
+            if (
+                overlap > u.length * 0.75
+                and mel_overlap > -20
+                or overlap > overlap_seconds
+            ):
                 s.merge(u)
                 merged = True
 
@@ -241,6 +245,8 @@ def get_tracks_from_signals(signals, end):
     to_delete = []
     min_length_base = 0.35
     min_track_length = 0.7
+    # if a track over laps by more than this merge them
+    overlap_seconds = 1.5
     for s in signals:
         if s in to_delete:
             continue
@@ -262,7 +268,7 @@ def get_tracks_from_signals(signals, end):
             min_length = min(s.length, s2.length)
             # 2200 chosen on testing some files may be too leniant
             # was also filtering by  and abs(mel_overlap) < 2200:
-            if overlap > 0.7 * min_length:
+            if overlap > 0.7 * min_length or overlap > overlap_seconds:
                 s.merge(s2)
                 to_delete.append(s2)
 
@@ -411,7 +417,7 @@ class Signal:
         return a
 
     def copy(self):
-        return Signal(self.start, self.end, self.freq_start, self.freq_end,self.mass)
+        return Signal(self.start, self.end, self.freq_start, self.freq_end, self.mass)
 
     def time_overlap(self, other):
         return segment_overlap(
@@ -443,11 +449,14 @@ class Signal:
     def length(self):
         return self.end - self.start
 
-    def enlarge(self, scale, min_track_length):
+    def enlarge(self, scale, min_track_length, max_extra=1):
         new_length = self.length * scale
         if new_length < min_track_length:
             new_length = min_track_length
-        extension = (new_length - self.length) / 2
+
+        extra_length = new_length - self.length
+        extra_length = min(max_extra, extra_length)
+        extension = extra_length / 2
         self.start = self.start - extension
         self.end = self.end + extension
         self.start = max(self.start, 0)
