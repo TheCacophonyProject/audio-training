@@ -88,7 +88,7 @@ def signal_noise(file, hop_length=281):
     # frames = frames[int(20*sr): int(sr * 40)]
 
     frames = frames[: int(sr * end)]
-    
+
     # frames = frames[: sr * 120]
     # n_fft = sr // 10
     n_fft = 4096
@@ -1231,7 +1231,7 @@ def main():
     N_MELS = 160
     BREAK_FREQ = 1000
     MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, n_fft, BREAK_FREQ)
-    
+
     signals, noise, spectogram, frames, end = signal_noise(args.file)
 
     plot_mel_signals(np.abs(spectogram), signals, noise)

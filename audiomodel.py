@@ -131,7 +131,7 @@ class AudioModel:
         self.data_dir = data_dir
         self.second_data_dir = second_data_dir
         self.model_name = model_name
-        self.batch_size = 4 
+        self.batch_size = 4
         self.validation = None
         self.test = None
         self.train = None
@@ -781,12 +781,11 @@ class AudioModel:
         else:
             # norm_layer = tf.keras.layers.Normalization()
             # norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
-            input = tf.keras.Input(shape=(None,*self.input_shape), name="input")
-            #x = input
-            x = tf.keras.layers.Masking(mask_value=0.0)(input)
+            input = tf.keras.Input(shape=(4, *self.input_shape), name="input")
+            # x = input
             base_model, self.preprocess_fn = self.get_base_model(self.input_shape)
             # x = norm_layer(input)
-            x = badwinner2.MagTransform()(x)
+            x = badwinner2.MagTransform()(input)
 
             # x = base_model(x)
             # , training=True)
@@ -794,12 +793,15 @@ class AudioModel:
             if self.lme:
                 x = badwinner2.LMELayer(axis=1, sharpness=5)(x)
                 x = badwinner2.LMELayer(axis=2, sharpness=5)(x)
-            
-            cnn_features = layers.TimeDistributed(tf.keras.layers.GlobalAveragePooling2D())(cnn_features) 
-            cnn_features = layers.TimeDistributed(layers.Dense(512, activation='relu'))(cnn_features)
 
-            cnn_features = tf.keras.layers.Masking(mask_value=0.0)(cnn_features)
-            rnn_output = tf.keras.layers.GRU(512,dropout=0.2)(cnn_features)
+            cnn_features = layers.TimeDistributed(
+                tf.keras.layers.GlobalAveragePooling2D()
+            )(cnn_features)
+            cnn_features = layers.TimeDistributed(layers.Dense(512, activation="relu"))(
+                cnn_features
+            )
+
+            rnn_output = tf.keras.layers.GRU(512, dropout=0.2)(cnn_features)
             # x = tf.keras.layers.GlobalAveragePooling2D()(x)
             # effnetv2b3 is 0.2
             # v2bm is 0.2

@@ -297,6 +297,9 @@ def load_dataset(filenames, num_labels, labels, args, has_ebird=True):
         filter_excluded = lambda x, y: tf.math.greater(y[0], -1)
 
     dataset = dataset.filter(filter_excluded)
+
+    filter_short = lambda x, y: not y[-1]
+    dataset = dataset.filter(filter_short)
     return dataset
 
 
@@ -586,7 +589,7 @@ def get_a_dataset(dir, labels, args):
                 "Loading Second_ds %s files from %s", len(second_filenames), dir
             )
             dataset_2 = load_dataset(second_filenames, num_labels, labels, args)
-   
+
             logging.info("filtering morepork from second ds")
             datasets.append(dataset_2)
         else:
@@ -810,7 +813,6 @@ def get_a_dataset(dir, labels, args):
         datasets[0] = datasets[0].cache()
     if args.get("shuffle", True):
         for i, ds in enumerate(datasets):
-            # datasets[i] = ds.take(100)
             datasets[i] = ds.shuffle(
                 4096, reshuffle_each_iteration=args.get("reshuffle", True)
             )
@@ -864,10 +866,13 @@ def get_a_dataset(dir, labels, args):
         dataset = dataset.map(lambda x, y: butter_bitterns(bittern_mask, x, y))
 
     if batch_size is not None:
-        dataset = dataset.bucket_by_sequence_length(
-            element_length_func=lambda elem,y: tf.shape(elem)[0],
-            bucket_boundaries=[3, 5],
-            bucket_batch_sizes=[2, 2, 2])
+        # dataset = dataset.bucket_by_sequence_length(
+        #    element_length_func=lambda elem,y: tf.shape(elem)[0],
+        #    bucket_boundaries=[3, 5],
+        #    bucket_batch_sizes=[2, 2, 2])
+        #    input)
+        dataset = dataset.batch(batch_size)
+
         # dataset = dataset.padded_batch(
         #     batch_size, padded_shapes=([None, 160, 513, 3], [num_labels])
         # )
@@ -1044,6 +1049,7 @@ def read_tfrecord(
     #     labels = tf.reduce_max(labels)
     #     print("Labels becomes ",labels)
     embed_preds = None
+    too_long = False
     if load_raw:
         spectogram = example["audio/raw"]
 
@@ -1081,6 +1087,21 @@ def read_tfrecord(
         if "efficientnet" in model_name:
             logging.info("Repeating last dim for efficient net")
             spectogram = tf.repeat(spectogram, 3, -1)
+        x_times = 4 - raw_length
+        if x_times > 0:
+            rank = tf.rank(spectogram)
+
+            multiples = tf.concat(
+                [[x_times], tf.ones([rank - 1], dtype=tf.int32)], axis=0
+            )
+
+            tiled = tf.tile(spectogram[-1:], multiples)
+            spectogram = tf.concat([spectogram, tiled], axis=0)
+        if x_times < 0:
+            too_long = True
+        else:
+            spectogram = tf.ensure_shape(spectogram, (4, 160, 513, 3))
+
         # spectogram = tf.expand_dims(spectogram, axis=0)
     if features or only_features:
         short_f = example["audio/short_f"]
@@ -1205,6 +1226,7 @@ def read_tfrecord(
             low_sample,
             start_s,
             tf.cast(example["audio/class/text"], tf.string),
+            too_long,
         )
 
     return spectogram
