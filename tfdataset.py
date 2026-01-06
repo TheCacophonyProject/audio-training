@@ -1447,13 +1447,13 @@ def main():
         tf_dir,
         labels,
         deterministic=True,
-        batch_size=32,
+        batch_size=4,
         excluded_labels=excluded_labels,
         remapped_labels=remapped_labels,
         extra_label_map=extra_label_map,
         multi_label=args.multi_label,
         use_bird_tags=args.use_bird_tags,
-        load_all_y=False,
+        load_all_y=True,
         shuffle=False,
         load_raw=False,
         n_fft=4096,
@@ -1465,12 +1465,12 @@ def main():
         # debug_bird="whistler",
         model_name="efficientnet",
         use_generic_bird=False,
-        cache=True,
+        cache=False,
         global_epoch=global_epoch,
         augment=False,
         # signal_less_than = 0.1
     )
-    nan_check(dataset)
+    # nan_check(dataset)
     # return
     # for epoch in range(5):
     #     global_epoch.assign(epoch)
@@ -1614,12 +1614,15 @@ def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
     # label_batch = label_batch[0]
     fig = plt.figure(figsize=(30, 30))
     plt.subplots_adjust(hspace=0.6)
-    print("images in batch", len(image_batch), len(label_batch))
-    num_images = len(image_batch)
-    i = 0
-    for n in range(num_images):
-        i = 0
-        for p, img in enumerate(image_batch[n]):
+    # print("images in batch", len(image_batch), len(label_batch))
+    num_images = len(image_batch) * 4
+    plt_i = 0
+
+    for n in range(len(image_batch)):
+
+        timeseries = image_batch[n]
+        for img in timeseries:
+            plt_i += 1
             predicted = ""
 
             if preds is not None:
@@ -1627,15 +1630,13 @@ def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
                 best_labels = np.argwhere(pred > prob_thresh).ravel()
                 for lbl in best_labels:
                     predicted = f"{predicted} {labels[lbl]}"
-            # print("Y is ", label_batch[n])
             lbl = []
             for l_i, l in enumerate(label_batch[n]):
                 if l > 0:
                     lbl.append(labels[l_i])
-            ax = plt.subplot(num_images // 3 + 1, 3, p + 1)
+            ax = plt.subplot(num_images // 4 + 1, 4, plt_i)
             ax.get_xaxis().set_visible(False)
 
-            i += 1
             # plot_spec(image_batch[n][:, :, 0], ax)
             # # plt.imshow(np.uint8(image_batch[n]))
             plot_title = f"{lbl}"
@@ -1647,12 +1648,14 @@ def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
                 plot_title = f"{plot_title} - {rec}:{track} at {start_s:.1f} sig {signal_percent:.1f}"
             plt.title(f"{plot_title}\n{predicted}")
             ax.imshow(img[:, :, 0])
-            print("IMg is ", img.shape, img.dtype, np.amax(img), np.amin(img))
-        plt.show()
-        plt.clf()
+            # plt.show()
+            # plt.clf()
         # plot_mel(image_batch[n][:, :, 0], ax)
         # np.save(f"dataset-images/batch-{batch_i}-{rec}-{start_s:.1f}.npy",image_batch[n])
-    # plt.savefig(f"dataset-images/batch-{batch_i}.png")
+    plt.savefig(f"dataset-images/batch-{batch_i}.png")
+    plt.show()
+
+    # 1/0
 
 
 def plot_mfcc(mfccs, ax):
