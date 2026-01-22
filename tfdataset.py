@@ -276,12 +276,11 @@ def load_dataset(filenames, num_labels, labels, args, has_ebird=True):
     #     logging.info("Filtering bad")
     #     dataset = dataset.filter(lambda x, y: not filter_bad_tracks(x, y, labels))
     if args.get("only_features", False):
-        filter_nan = (
-            lambda x, y: tf.math.count_nonzero(x[0]) > 0
-            and tf.math.count_nonzero(x[1]) > 0
-        )
-    else:
         logging.info("Removing Nan")
+
+        filter_nan = lambda x, y: filter_nan_samples(x)
+    else:
+        logging.info("Removing feature Nan")
         if args.get("features"):
             filter_nan = (
                 lambda x, y: not tf.reduce_any(tf.math.is_nan(x[0]))
@@ -298,6 +297,13 @@ def load_dataset(filenames, num_labels, labels, args, has_ebird=True):
 
     dataset = dataset.filter(filter_excluded)
     return dataset
+
+
+@tf.function
+def filter_nan_samples(features):
+    is_nan_mask = tf.math.is_nan(features)
+    has_nan = tf.math.reduce_any(is_nan_mask)
+    return tf.math.logical_not(has_nan)
 
 
 def get_distribution(dataset, num_labels, batched=True, one_hot=True):
@@ -1072,6 +1078,13 @@ def read_tfrecord(
         spectogram = tf.math.pow(spectogram, 2)
         spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
         spectogram = tf.expand_dims(spectogram, axis=-1)
+
+        # power db
+
+        # spectogram = tf.math.log10(spectogram+tf.keras.backend.epsilon())
+        spectogram = power_to_db(spectogram)
+        spectogram = normalize_minmax(spectogram)
+
         if "efficientnet" in model_name:
             logging.info("Repeating last dim for efficient net")
             spectogram = tf.repeat(spectogram, 3, 2)
@@ -1391,15 +1404,15 @@ def main():
         use_bird_tags=args.use_bird_tags,
         load_all_y=True,
         shuffle=False,
-        load_raw=True,
+        load_raw=False,
         n_fft=4096,
         fmin=fmin,
         fmax=fmax,
         # MOREPORK_MAX,
         only_features=args.only_features,
-        # debug=True,
-        # debug_bird="whistler",
-        model_name="efficientnet",
+        debug=True,
+        debug_bird="tomtit1",
+        model_name="mymodel",
         use_generic_bird=False,
         cache=True,
         global_epoch=global_epoch,
@@ -1616,8 +1629,8 @@ def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
 
         # plot_mel(image_batch[n][:, :, 0], ax)
         # np.save(f"dataset-images/batch-{batch_i}-{rec}-{start_s:.1f}.npy",image_batch[n])
-    # plt.savefig(f"dataset-images/batch-{batch_i}.png")
-    plt.show()
+    plt.savefig(f"dataset-images/batch-{batch_i}.png")
+    # plt.show()
 
 
 def plot_mfcc(mfccs, ax):
@@ -1853,6 +1866,39 @@ def butter_bitterns(mask, input, y):
     logging.info("Input now is %s", input.shape)
 
     return input, y
+
+
+@tf.function
+def normalize_std(data):
+
+    mean = tf.reduce_mean(data)
+    stddev = tf.math.reduce_std(data)
+
+    # Add a small epsilon to avoid division by zero
+    stddev = stddev + tf.keras.backend.epsilon()
+
+    # 2. Standardize the data
+    return (data - mean) / stddev
+
+
+# normalize between 0 and 1
+@tf.function
+def normalize_minmax(data):
+
+    max_v = tf.reduce_max(data)
+    min_v = tf.reduce_min(data)
+    return 2 * (data - min_v) / (max_v - min_v) - 1
+
+
+# equipvalent of librosa.power_to_db
+@tf.function
+def power_to_db(mel):
+    ref_v = tf.reduce_max(mel)
+    amin = 1e-10
+    mel = 10.0 * tf.keras.ops.log10(tf.math.maximum(amin, mel))
+    mel -= 10.0 * tf.keras.ops.log10(tf.math.maximum(amin, ref_v))
+    mel = tf.math.maximum(mel, tf.reduce_max(mel) - 80)
+    return mel
 
 
 @tf.function
