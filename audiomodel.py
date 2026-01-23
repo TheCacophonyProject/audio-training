@@ -784,7 +784,7 @@ class AudioModel:
             input = tf.keras.Input(shape=self.input_shape, name="input")
 
             base_model, self.preprocess_fn = self.get_base_model(self.input_shape)
-            base_model.summary()
+            # base_model.summary()
             # x = norm_layer(input)
             x = badwinner2.MagTransform()(input)
 
