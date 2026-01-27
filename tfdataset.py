@@ -280,15 +280,20 @@ def load_dataset(filenames, num_labels, labels, args, has_ebird=True):
 
         filter_nan = lambda x, y: filter_nan_samples(x)
     else:
-        logging.info("Removing feature Nan")
         if args.get("features"):
+            logging.info("Removing feature Nan")
+
             filter_nan = (
                 lambda x, y: not tf.reduce_any(tf.math.is_nan(x[0]))
                 and tf.math.count_nonzero(x[1]) > 0
                 and tf.math.count_nonzero(x[2]) > 0
             )
         else:
-            filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
+            logging.info("Removing Nan")
+
+            filter_nan = lambda x, y: filter_nan_samples(x)
+
+            # filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
     dataset = dataset.filter(filter_nan)
     if args.get("one_hot", True):
         filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y[0]), 0)
@@ -302,7 +307,8 @@ def load_dataset(filenames, num_labels, labels, args, has_ebird=True):
 @tf.function
 def filter_nan_samples(features):
     is_nan_mask = tf.math.is_nan(features)
-    has_nan = tf.math.reduce_any(is_nan_mask)
+    inf_mask = tf.math.is_inf(features)
+    has_nan = tf.math.reduce_any(tf.math.logical_or(is_nan_mask,inf_mask))
     return tf.math.logical_not(has_nan)
 
 
@@ -1411,7 +1417,6 @@ def main():
         # MOREPORK_MAX,
         only_features=args.only_features,
         debug=True,
-        debug_bird="tomtit1",
         model_name="mymodel",
         use_generic_bird=False,
         cache=True,
@@ -1428,38 +1433,39 @@ def main():
     #         print("Epoch is ", epoch, epoch_batch[0].numpy())
     # debug_labels(dataset, labels)
     # return
-    # for batch_x, batch_y in dataset:
-    #     recs = batch_y[3]
-    #     tracks = batch_y[4]
-    #     for x, rec, track in zip(batch_x, recs, tracks):
-    #         data_ok = np.all(x >= -1.00002) and np.all(x <= 1.000002)
-    #         has_nan = np.any(np.isnan(x))
-    #         a_max = np.amax(x)
-    #         a_min = np.amin(x)
-    #         if not data_ok or has_nan:
-    #             # print(x)
-    #             x = x.numpy()
-    #             logging.info(
-    #                 "Bad data for rec %s track %s less than 1 %s over 1 %s max %s min %s",
-    #                 rec,
-    #                 track,
-    #                 x[np.where(x < 1)],
-    #                 x[np.where(x > 1.000002)],
-    #                 a_max,
-    #                 a_min,
-    #             )
-    #             logging.info("Has nan %s", has_nan)
+    for batch_x, batch_y in dataset:
+        recs = batch_y[3]
+        tracks = batch_y[4]
+        for x, rec, track in zip(batch_x, recs, tracks):
+            data_ok = np.all(x >= -1.00002) and np.all(x <= 1.000002)
+            has_nan = np.any(np.isnan(x))
+            has_inf =  np.any(np.isinf(x))
+            a_max = np.amax(x)
+            a_min = np.amin(x)
+            if not data_ok or has_nan or has_inf:
+                # print(x)
+                x = x.numpy()
+                logging.info(
+                    "Bad data for rec %s track %s less than 1 %s over 1 %s max %s min %s",
+                    rec,
+                    track,
+                    x[np.where(x < -1.000002)],
+                    x[np.where(x > 1.000002)],
+                    a_max,
+                    a_min,
+                )
+                logging.info("Has nan %s has infinity", has_nan, has_inf)
 
-    #         if a_max == a_min:
-    #             logging.info(
-    #                 "Max = Min for rec %s track %s max %s min %s",
-    #                 rec,
-    #                 track,
-    #                 a_max,
-    #                 a_min,
-    #             )
+            if a_max == a_min:
+                logging.info(
+                    "Max = Min for rec %s track %s max %s min %s",
+                    rec,
+                    track,
+                    a_max,
+                    a_min,
+                )
 
-    # return
+    return
     preds = None
     if args.model is not None:
         model_path = Path(args.model)
@@ -1887,7 +1893,7 @@ def normalize_minmax(data):
 
     max_v = tf.reduce_max(data)
     min_v = tf.reduce_min(data)
-    return 2 * (data - min_v) / (max_v - min_v) - 1
+    return 2 * ((data - min_v) / (max_v - min_v)) - 1
 
 
 # equipvalent of librosa.power_to_db
