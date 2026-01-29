@@ -25,6 +25,15 @@ RELABEL_MAP = {
     "criros2": "rosella",
     "easros1": "rosella",
     "litowl1": "morepo2",
+    "grskiw1": "kiwi",
+    "sobkiw2": "kiwi",
+    "sobkiw1": "kiwi",
+    "okiwoo1": "kiwi",
+    "okbkiw1": "kiwi",
+    "kiwi1": "kiwi",
+    "nibkiw1": "kiwi",
+    "liskiw1": "kiwi",
+    "sobkiw3": "kiwi",
 }
 
 
