@@ -35,6 +35,9 @@ def format_metadata(metadata):
     # metadata["ebird_labels"] = metadata["labels"].copy()
     ebird_labels = metadata["ebird_labels"]
     ebird_map = get_ebird_ids_to_labels()
+    # this shouldn't be in there as isn't a proper id, comes from `classes.csv` helper file from Doc
+    del ebird_map["weta"]
+
     text_labels = []
     for ebird_id in ebird_labels:
         e_text_labels = ebird_map.get(ebird_id, [ebird_id])
@@ -58,12 +61,30 @@ def format_metadata(metadata):
     for k, v in remapped_lbls.items():
         if v == -1:
             continue
+
         if k not in ebird_map:
             continue
         ebird_id = ebird_labels[v]
+        if k not in ebird_map:
+            continue
         if ebird_id not in lbl_to_ebirds:
             lbl_to_ebirds[ebird_id] = []
         lbl_to_ebirds[ebird_id].append(k)
+
+    # this should be in metadata but we changed these labels in the dataset stage, should be in the metadata for future models
+    extra_kiwis = [
+        "grskiw1",
+        "sobkiw2",
+        "sobkiw1",
+        "okiwoo1",
+        "okbkiw1",
+        "kiwi1",
+        "nibkiw1",
+        "liskiw1",
+        "sobkiw3",
+    ]
+    extra_kiwis.sort()
+    lbl_to_ebirds["kiwi"] = extra_kiwis
 
     ebird_ids = []
     for lbl in ebird_labels:
@@ -72,7 +93,9 @@ def format_metadata(metadata):
             lbl_ebird_ids.add(lbl)
         if lbl in lbl_to_ebirds:
             lbl_ebird_ids.update(lbl_to_ebirds[lbl])
-        ebird_ids.append(list(lbl_ebird_ids))
+        lbl_ebird_ids = list(lbl_ebird_ids)
+        lbl_ebird_ids.sort()
+        ebird_ids.append(lbl_ebird_ids)
     metadata["ebird_ids"] = ebird_ids
     return metadata
 
