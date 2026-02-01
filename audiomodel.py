@@ -786,7 +786,14 @@ class AudioModel:
             base_model, self.preprocess_fn = self.get_base_model(self.input_shape)
             # base_model.summary()
             # x = norm_layer(input)
-            x = badwinner2.MagTransform()(input)
+            pcen = True
+            if pcen:
+                logging.info("Adding pcen layer")
+                from tfpcen import PCEN
+                x = PCEN()(input)
+            else:
+                logging.info("Adding mag transform")
+                x = badwinner2.MagTransform()(input)
 
             x = base_model(x)
             # , training=True)

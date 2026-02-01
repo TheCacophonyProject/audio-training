@@ -1080,17 +1080,23 @@ def read_tfrecord(
 
             spectogram = example["audio/spectogram"]
         spectogram = tf.reshape(spectogram, (2049, 513))
+
+
+        pcen = True
         # conver to power
-        spectogram = tf.math.pow(spectogram, 2)
+        if not pcen:
+            spectogram = tf.math.pow(spectogram, 2)
         spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
         spectogram = tf.expand_dims(spectogram, axis=-1)
 
         # power db
 
         # spectogram = tf.math.log10(spectogram+tf.keras.backend.epsilon())
-        spectogram = power_to_db(spectogram)
-        spectogram = normalize_minmax(spectogram)
-
+        if not pcen:
+            spectogram = power_to_db(spectogram)
+            spectogram = normalize_minmax(spectogram)
+        else:
+            logging.info("Doing PCEN leaving spect as magnitude")
         if "efficientnet" in model_name:
             logging.info("Repeating last dim for efficient net")
             spectogram = tf.repeat(spectogram, 3, 2)
