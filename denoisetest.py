@@ -1221,13 +1221,13 @@ def raw_to_mel_rgb(x, y):
     return image
 
 
-
 def test_values(file):
     from tfpcen import PCEN
+
     n_fft = 4096
     hop_length = 281
     frames, sr = load_recording(file)
-    frames = frames[:sr*10]
+    frames = frames[: sr * 10]
     spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
     og_mel = mel_spec(
         spectogram,
@@ -1242,14 +1242,14 @@ def test_values(file):
     )
     pcen_layer = PCEN()
 
-    mel = np.transpose(og_mel.copy(),(1,0))
-    mel = np.expand_dims(mel,0)
-    print("Mel shape i s",mel.shape)
+    mel = np.transpose(og_mel.copy(), (1, 0))
+    mel = np.expand_dims(mel, 0)
+    print("Mel shape i s", mel.shape)
     # [np.newaxis,]
-    tf_pcen =pcen_layer(mel)
-    print("Tf pcen out isd ",tf_pcen.shape)
+    tf_pcen = pcen_layer(mel)
+    print("Tf pcen out isd ", tf_pcen.shape)
     tf_pcen = tf_pcen[0]
-    tf_pcen = np.transpose(tf_pcen, (1,0))
+    tf_pcen = np.transpose(tf_pcen, (1, 0))
     plot_spec(tf_pcen)
 
     # print("Zero values in mel are ",np.amin(og_mel))
@@ -1258,6 +1258,8 @@ def test_values(file):
     # print("PCEN MAx is ",np.amax(pcen_S),np.amin(pcen_S))
     # return
     plot_spec(pcen_S)
+
+
 def main():
     init_logging()
     args = parse_args()

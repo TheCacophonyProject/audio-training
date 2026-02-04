@@ -50,7 +50,6 @@ def mel_f(sr, n_mels, fmin, fmax, n_fft, break_freq):
             "Try increasing your sampling rate (and fmax) or "
             "reducing n_mels."
         )
-
     return weights
 
 

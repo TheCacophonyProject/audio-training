@@ -161,7 +161,9 @@ def main():
 
             # if second_total != first_total:
             # print(f"{label} First total is {first_total} second is {second_total}")
-            assert second_total == first_total, f"{label} First total is {first_total} second is {second_total}"
+            assert (
+                second_total == first_total
+            ), f"{label} First total is {first_total} second is {second_total}"
             # if first_total == 0:
             #     continue
             bird_c = 0

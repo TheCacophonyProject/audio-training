@@ -177,7 +177,7 @@ DIMENSIONS = (160, 188)
 mel_s = (N_MELS, 513)
 sftf_s = (2049, 188)
 mfcc_s = (20, 188)
-DIMENSIONS = (*mel_s, 1)
+DIMENSIONS = (mel_s[1], mel_s[0], 1)
 YAMNET_EMBEDDING_SHAPE = (6, 1024)
 EMBEDDING_SHAPE = (1280,)
 
@@ -308,7 +308,7 @@ def load_dataset(filenames, num_labels, labels, args, has_ebird=True):
 def filter_nan_samples(features):
     is_nan_mask = tf.math.is_nan(features)
     inf_mask = tf.math.is_inf(features)
-    has_nan = tf.math.reduce_any(tf.math.logical_or(is_nan_mask,inf_mask))
+    has_nan = tf.math.reduce_any(tf.math.logical_or(is_nan_mask, inf_mask))
     return tf.math.logical_not(has_nan)
 
 
@@ -834,9 +834,10 @@ def get_a_dataset(dir, labels, args):
         datasets[0] = datasets[0].cache()
     if args.get("shuffle", True):
         for i, ds in enumerate(datasets):
-            datasets[i] = ds.shuffle(
-                4096, reshuffle_each_iteration=args.get("reshuffle", True)
-            )
+            datasets[i].take(100)
+            # datasets[i] = ds.shuffle(
+            #    4096, reshuffle_each_iteration=args.get("reshuffle", True)
+            # )
 
     if len(datasets) > 0:
         # logging.info("Adding second dataset with weights [0.6,0.4]")
@@ -1081,23 +1082,24 @@ def read_tfrecord(
             spectogram = example["audio/spectogram"]
         spectogram = tf.reshape(spectogram, (2049, 513))
 
-
         pcen = True
         # conver to power
         if not pcen:
             spectogram = tf.math.pow(spectogram, 2)
         spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
-        spectogram = tf.expand_dims(spectogram, axis=-1)
-
+        spectogram = tf.moveaxis(spectogram, 0, 1)
+        print("Spect shape is ", spectogram.shape)
         # power db
 
         # spectogram = tf.math.log10(spectogram+tf.keras.backend.epsilon())
         if not pcen:
+            spectogram = tf.expand_dims(spectogram, axis=-1)
             spectogram = power_to_db(spectogram)
             spectogram = normalize_minmax(spectogram)
         else:
             logging.info("Doing PCEN leaving spect as magnitude")
-        if "efficientnet" in model_name:
+            logging.info("Shape is %s ", spectogram.shape)
+        if not pcen and "efficientnet" in model_name:
             logging.info("Repeating last dim for efficient net")
             spectogram = tf.repeat(spectogram, 3, 2)
     if features or only_features:
@@ -1445,7 +1447,7 @@ def main():
         for x, rec, track in zip(batch_x, recs, tracks):
             data_ok = np.all(x >= -1.00002) and np.all(x <= 1.000002)
             has_nan = np.any(np.isnan(x))
-            has_inf =  np.any(np.isinf(x))
+            has_inf = np.any(np.isinf(x))
             a_max = np.amax(x)
             a_min = np.amin(x)
             if not data_ok or has_nan or has_inf:
