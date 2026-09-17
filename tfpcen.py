@@ -34,10 +34,12 @@ class ExponentialMovingAverage(tf.keras.layers.Layer):
         w = tf.clip_by_value(self._weights, clip_value_min=0.0, clip_value_max=1.0)
         result = tf.scan(
             lambda a, x: w * x + (1.0 - w) * a,
-            tf.transpose(inputs, (1, 0, 2)),
+            tf.keras.ops.moveaxis(inputs, 0, 1),
             initializer=initial_state,
         )
-        return tf.transpose(result, (1, 0, 2))
+        # return tf.keras.ops.moveaxis(inputs, 0 , 1),
+
+        return tf.transpose(result, (1, 0, 2,3))
 
 
 import tensorflow as tf
@@ -77,17 +79,6 @@ class PCEN(tf.keras.layers.Layer):
             trainable=True,
         )
 
-        self.a = self.add_weight(
-            initializer=tf.keras.initializers.Constant(value=-1.0),
-            name="a-power",
-            dtype="float32",
-            shape=[1],
-            trainable=True,
-            constraint=tf.keras.constraints.MinMaxNorm(
-                min_value=-2.0, max_value=1.0, rate=1.0, axis=-1
-            ),
-        )
-
     def call(self, inputs):
         gain = tf.math.minimum(self.gain, 1.0)
         root = tf.math.maximum(self.root, 1.0)
@@ -98,15 +89,14 @@ class PCEN(tf.keras.layers.Layer):
         ) ** one_over_root - self.bias**one_over_root
 
         output = normalize_minmax(output)
-        output = tf.expand_dims(output, axis=-1)
-        output = tf.repeat(output, 3, 3)
+        # output = tf.expand_dims(output, axis=-1)
+        # output = tf.repeat(output, 3, 3)
         return output
 
 
 # normalize between 0 and 1
 @tf.function
 def normalize_minmax(data):
-
-    max_v = tf.reduce_max(data)
-    min_v = tf.reduce_min(data)
+    max_v = tf.reduce_max(data, axis=(1,2,3),keepdims=True)
+    min_v = tf.reduce_min(data, axis=(1,2,3),keepdims=True)
     return 2 * ((data - min_v) / (max_v - min_v)) - 1

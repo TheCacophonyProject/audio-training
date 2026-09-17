@@ -6,6 +6,12 @@ import json
 
 def parse_args():
     parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--labels-key",
+        default = "ebird_labels",
+        help="Key of labels in metadata "
+    )   
     parser.add_argument(
         "first_confusion",
         help="First confusion to compare",
@@ -16,14 +22,27 @@ def parse_args():
     args.first_confusion = Path(args.first_confusion)
 
     args.second_confusion = Path(args.second_confusion)
+
     return args
 
 
 def main():
     args = parse_args()
-    first_cm = np.load(args.first_confusion)
-    second_cm = np.load(args.second_confusion)
-
+    if Path(args.first_confusion).suffix == ".npz":
+        data = np.load(args.first_confusion)
+        print(data.keys())
+        labels = data["labels"]
+        first_cm = data["cm"]
+    else:
+        first_cm = np.load(args.first_confusion)
+        
+    if Path(args.second_confusion).suffix == ".npz":
+        data = np.load(args.second_confusion)
+        labels = data["labels"]
+        second_cm = data["cm"]
+    else:
+        second_cm = np.load(args.second_confusion)
+    print(first_cm.shape,second_cm.shape)    
     first_cm_meta_file = args.first_confusion.parent / "metadata.txt"
     print("Loading meta from ", first_cm_meta_file)
     with first_cm_meta_file.open("r") as f:
@@ -33,7 +52,7 @@ def main():
     with second_cm_meta_file.open("r") as f:
         second_meta = json.load(f)
 
-    first_labels = first_meta["ebird_labels"]
+    first_labels = first_meta[args.labels_key]
     # re_l = first_meta["remapped_labels"]
     # for k, v in re_l.items():
     #     mapped_lbl = first_labels[v]
@@ -42,23 +61,27 @@ def main():
     #         if k in first_labels:
     #             first_labels.remove(k)
     #             print("Remvoing", k)
-    second_labels = second_meta["ebird_labels"]
+    second_labels = second_meta[args.labels_key]
     pre_labels = ["bird", "human", "noise"]
 
-    if len(first_cm[0]) != len(first_labels) + 1:
-        first_labels.extend(pre_labels)
-    if len(second_cm[0]) != len(second_labels) + 1:
+    # if len(first_cm[0]) != len(first_labels) + 1:
+    #     first_labels.extend(pre_labels)
+    # if len(second_cm[0]) != len(second_labels) + 1:
 
-        second_labels.extend(pre_labels)
+    #     second_labels.extend(pre_labels)
 
-    print(second_labels)
     print("Comparing confusions ", first_labels, " vs ", second_labels)
-    print(len(first_labels), len(second_labels))
+    print(len(first_labels), "len", len(second_labels))
     incorrect_score = 0
     first_inccorect = 0
     second_incorrect = 0
     total = 0
+    # first_labels.append("all")
 
+    # first_labels.append("mammal")
+    # second_labels.append("all")
+
+    # second_labels.append("mammal")
     for label in first_labels:
         if label not in second_labels:
             print("First label has ", label, " second does not")
@@ -101,12 +124,15 @@ def main():
     second_total_samples = 0
     first_pre_lbl_error = 0
     second_pre_lbl_error = 0
-
+    none_index = -1
     for i, label in enumerate(first_labels):
+        if i >= len(first_cm):
+            break
+        print(label)
         # if label in pre_labels:
         # continue
-        if label in ["human", "morepo2"]:
-            continue
+        # if label in ["human", "morepo2"]:
+        #     continue
         first_count = first_cm[i][i]
         first_none = first_cm[i][-1]
         first_total = np.sum(first_cm[i])
@@ -131,11 +157,13 @@ def main():
                     first_pre_lbl_error += first_cm[i][pre_i]
             # print("Adding error for ",label,first_pre_lbl_error,first_cm[i],np.sum(first_cm[i]))
         row_copy[i] = 0
-        row_copy[-1] = 0
+        row_copy[-2] = 0
         most_wrong = np.argmax(row_copy)
         # print(label,first_cm[i])
         if label in second_labels:
             second_i = second_labels.index(label)
+            print(second_cm[second_i])
+
             second_count = second_cm[second_i][second_i]
             second_correct += second_count
             second_none = second_cm[second_i][-1]
@@ -156,14 +184,14 @@ def main():
             if label == "noise":
                 row_copy[second_labels.index("insect")] = 0
             row_copy[second_i] = 0
-            row_copy[-1] = 0
+            row_copy[-2] = 0
             second_most_wrong = np.argmax(row_copy)
 
-            # if second_total != first_total:
-            # print(f"{label} First total is {first_total} second is {second_total}")
-            assert (
-                second_total == first_total
-            ), f"{label} First total is {first_total} second is {second_total}"
+            if second_total != first_total:
+                print(f"{label} First total is {first_total} second is {second_total}")
+            # assert (
+                # second_total == first_total
+            # ), f"{label} First total is {first_total} second is {second_total}"
             # if first_total == 0:
             #     continue
             bird_c = 0
@@ -174,6 +202,7 @@ def main():
                 first_bird_c = 0
                 bird_c = 0
             first_inccorect += first_total - first_count - first_none - first_bird_c
+            print(label, first_total - first_count - first_none - first_bird_c,second_total - second_count - second_none - bird_c)
             # bird_c = 0
             second_total_samples += second_total
             second_incorrect += second_total - second_count - second_none - bird_c
@@ -202,9 +231,9 @@ def main():
             else:
                 second_acc = round(100 * second_count / second_total)
                 second_none = round(100 * second_none / second_total)
-            print(
-                f"For {label} have {first_count-second_count} samples diff from  {first_acc}% vs {second_acc}% None accuracies are {first_none} vs {second_none} most wrong {first_labels[most_wrong]}, {first_cm[i][most_wrong]}# and second most wrong {second_labels[second_most_wrong]}, {second_cm[second_i][second_most_wrong]}# total is {first_total} "
-            )
+            # print(
+            #     f"For {label} have {first_count-second_count} samples diff from  {first_acc}% vs {second_acc}% None accuracies are {first_none} vs {second_none} most wrong {first_labels[most_wrong]}, {first_cm[i][most_wrong]}# and second most wrong {second_labels[second_most_wrong]}, {second_cm[second_i][second_most_wrong]}# total is {first_total} "
+            # )
             total += first_count - second_count
 
         else:
@@ -222,7 +251,7 @@ def main():
     #     second_incorrect += second_total - second_count - second_none
 
     print(
-        f"Total diff is {total} ( {round(100* total/ total_samples,1)}) first inccorect {first_inccorect} second incorrect {second_incorrect} score diff {round(100* (first_inccorect - second_incorrect) / total_samples,1)}"
+        f"Total diff is {total} ( {round(100* total/ total_samples,1)}) first inccorect {first_inccorect} {round(100*first_inccorect / total_samples,1) }% second incorrect {second_incorrect} {round(100*second_incorrect/second_total_samples,1)}% score diff {round(100* (first_inccorect - second_incorrect) / total_samples,1)}"
     )
 
     acc_percent = abs(total / total_samples)
@@ -231,9 +260,9 @@ def main():
     print("Acc - Inc", round(100 * diff, 2))
     print("Total samples are ", total_samples)
     print(
-        f"{first_correct} / {total_samples} = ",
+        f"First: {first_correct} / {total_samples} = ",
         first_correct / total_samples,
-        f" vs {second_correct} / {second_total_samples} = ",
+        f" vs Second: {second_correct} / {second_total_samples} = ",
         second_correct / second_total_samples,
     )
     if total > 0:

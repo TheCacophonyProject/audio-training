@@ -1087,13 +1087,13 @@ def read_tfrecord(
         if not pcen:
             spectogram = tf.math.pow(spectogram, 2)
         spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
-        spectogram = tf.moveaxis(spectogram, 0, 1)
+        spectogram = tf.keras.ops.moveaxis(spectogram, 0, 1)
         print("Spect shape is ", spectogram.shape)
         # power db
+        spectogram = tf.expand_dims(spectogram, axis=-1)
 
         # spectogram = tf.math.log10(spectogram+tf.keras.backend.epsilon())
         if not pcen:
-            spectogram = tf.expand_dims(spectogram, axis=-1)
             spectogram = power_to_db(spectogram)
             spectogram = normalize_minmax(spectogram)
         else:
@@ -1101,7 +1101,7 @@ def read_tfrecord(
             logging.info("Shape is %s ", spectogram.shape)
         if not pcen and "efficientnet" in model_name:
             logging.info("Repeating last dim for efficient net")
-            spectogram = tf.repeat(spectogram, 3, 2)
+        spectogram = tf.repeat(spectogram, 3, 2)
     if features or only_features:
         short_f = example["audio/short_f"]
         mid_f = example["audio/mid_f"]
