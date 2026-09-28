@@ -791,7 +791,7 @@ class AudioModel:
                 logging.info("Adding pcen layer")
                 from tfpcen import PCEN
 
-                x = PCEN()(input)
+                x = PCEN(dtype="float32")(input)
             else:
                 logging.info("Adding mag transform")
                 x = badwinner2.MagTransform()(input)

@@ -10,17 +10,19 @@ import tensorflow as tf
 class ExponentialMovingAverage(tf.keras.layers.Layer):
     """Computes of an exponential moving average of an sequential input."""
 
-    def __init__(self, coeff_init, trainable=False):
+    def __init__(self, coeff_init, trainable=False, kernel_len=128, **kwargs):
         """Initializes the ExponentialMovingAverage.
 
         Args:
           coeff_init: the value of the initial coeff.
-          per_channel: whether the smoothing should be different per channel.
           trainable: whether the smoothing should be trained or not.
+          kernel_len: number of time frames the EMA is truncated to. The
+            ignored tail weight is (1 - coeff) ** kernel_len.
         """
-        super().__init__(name="EMA")
+        super().__init__(name="EMA", **kwargs)
         self._coeff_init = coeff_init
         self._trainable = trainable
+        self.kernel_len = kernel_len
 
         self._weights = self.add_weight(
             name="smooth",
@@ -29,23 +31,36 @@ class ExponentialMovingAverage(tf.keras.layers.Layer):
             trainable=self._trainable,
         )
 
-    def call(self, inputs: tf.Tensor, initial_state: tf.Tensor):
-        """Inputs is of shape [batch, seq_length, num_filters]."""
-        w = tf.clip_by_value(self._weights, clip_value_min=0.0, clip_value_max=1.0)
-        result = tf.scan(
-            lambda a, x: w * x + (1.0 - w) * a,
-            tf.keras.ops.moveaxis(inputs, 0, 1),
-            initializer=initial_state,
-        )
-        # return tf.keras.ops.moveaxis(inputs, 0 , 1),
+    def call(self, inputs: tf.Tensor):
+        """Inputs is of shape [batch, mels, time, channels], smoothed over time.
 
-        return tf.transpose(result, (1, 0, 2,3))
+        Equivalent to s_t = w * x_t + (1 - w) * s_{t-1} with s_{-1} = x_0, but
+        computed as a causal convolution with kernel w * (1 - w) ** n instead
+        of tf.scan, which has to keep every step around for backprop.
+        """
+        w = tf.clip_by_value(self._weights, clip_value_min=0.0, clip_value_max=1.0)
+        w = tf.cast(w, inputs.dtype)
+        n = tf.range(self.kernel_len, dtype=inputs.dtype)
+        kernel = w * (1.0 - w) ** n
+        # conv2d correlates, so reverse to put the newest frame last
+        kernel = tf.reverse(kernel, [0])
+        channels = tf.shape(inputs)[-1]
+        kernel = tf.tile(kernel[None, :, None, None], [1, 1, channels, 1])
+
+        # left pad with the first frame, same as using it as the initial state
+        first = inputs[:, :, :1, :]
+        padded = tf.concat(
+            [tf.repeat(first, self.kernel_len - 1, axis=2), inputs], axis=2
+        )
+        return tf.nn.depthwise_conv2d(
+            padded, kernel, strides=[1, 1, 1, 1], padding="VALID"
+        )
 
 
 import tensorflow as tf
 
 
-@tf.keras.utils.register_keras_serializable(package="MyLayers", name="MagTransform")
+@tf.keras.utils.register_keras_serializable(package="MyLayers", name="PCEN")
 class PCEN(tf.keras.layers.Layer):
     def __init__(self, **kwargs):
         super(PCEN, self).__init__(**kwargs)
@@ -77,12 +92,13 @@ class PCEN(tf.keras.layers.Layer):
         self.ema = ExponentialMovingAverage(
             coeff_init=0.04,
             trainable=True,
+            dtype=self.dtype_policy,
         )
 
     def call(self, inputs):
         gain = tf.math.minimum(self.gain, 1.0)
         root = tf.math.maximum(self.root, 1.0)
-        ema_smoother = self.ema(inputs, initial_state=tf.gather(inputs, 0, axis=1))
+        ema_smoother = self.ema(inputs)
         one_over_root = 1.0 / root
         output = (
             inputs / (self.eps + ema_smoother) ** gain + self.bias

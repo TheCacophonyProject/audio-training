@@ -313,29 +313,33 @@ def filter_nan_samples(features):
 
 
 def get_distribution(dataset, num_labels, batched=True, one_hot=True):
-    true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
     dist = np.zeros((num_labels), dtype=np.float32)
-    if len(true_categories) == 0:
+    counts = None
+    total = 0
+    # only pull the labels out, so x is never copied into python
+    dataset = dataset.map(
+        lambda x, y: y[0] if isinstance(y, tuple) else y,
+        num_parallel_calls=tf.data.AUTOTUNE,
+    )
+    if not batched:
+        # iterating element by element is slow, count in chunks instead
+        dataset = dataset.batch(1024)
+    for y in dataset.as_numpy_iterator():
+        if one_hot:
+            y = y.reshape(-1, y.shape[-1])
+            batch_counts = np.count_nonzero(y, axis=0)
+            total += len(y)
+        else:
+            y = np.asarray(y).reshape(-1).astype(np.int64)
+            total += len(y)
+            y = y[(y >= 0) & (y < num_labels)]
+            batch_counts = np.bincount(y, minlength=num_labels)
+        counts = batch_counts if counts is None else counts + batch_counts
+    if counts is None:
         return dist, 0
-
-    if len(true_categories) == 0:
-        return dist, 0
-    if batched:
-        true_categories = tf.concat(true_categories, axis=0)
-    if len(true_categories) == 0:
-        return dist, 0
-    classes = []
-    if one_hot:
-        for y in true_categories:
-            non_zero = tf.where(y).numpy()
-            classes.extend(non_zero.flatten())
-        classes = np.array(classes)
-    else:
-        classes = np.array(true_categories)
-    c = Counter(list(classes))
-    for i in range(num_labels):
-        dist[i] = c[i]
-    return dist, len(true_categories)
+    n = min(num_labels, len(counts))
+    dist[:n] = counts[:n]
+    return dist, total
 
 
 def get_remappings(
