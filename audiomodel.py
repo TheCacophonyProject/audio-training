@@ -119,7 +119,7 @@ class AudioModel:
 
     def __init__(
         self,
-        model_name="badwinner2",
+        model_name="efficientnetv2b3",
         data_dir="/data/audio-data",
         second_data_dir=None,
         training_dir="./train",

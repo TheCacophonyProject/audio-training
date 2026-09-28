@@ -35,27 +35,23 @@ class ExponentialMovingAverage(tf.keras.layers.Layer):
         """Inputs is of shape [batch, mels, time, channels], smoothed over time.
 
         Equivalent to s_t = w * x_t + (1 - w) * s_{t-1} with s_{-1} = x_0, but
-        computed as a causal convolution with kernel w * (1 - w) ** n instead
-        of tf.scan, which has to keep every step around for backprop.
+        computed as a single matmul with a [time, time] lower triangular decay
+        matrix. The depthwise conv version was very slow on GPU because the
+        filter gradient for a 1x128 depthwise kernel has no fast cuDNN path.
+        kernel_len is no longer used, the average is exact over all frames.
         """
-        w = tf.clip_by_value(self._weights, clip_value_min=0.0, clip_value_max=1.0)
+        w = tf.clip_by_value(self._weights, clip_value_min=0.0, clip_value_max=1.0 - 1e-6)
         w = tf.cast(w, inputs.dtype)
-        n = tf.range(self.kernel_len, dtype=inputs.dtype)
-        kernel = w * (1.0 - w) ** n
-        # conv2d correlates, so reverse to put the newest frame last
-        kernel = tf.reverse(kernel, [0])
-        channels = tf.shape(inputs)[-1]
-        kernel = tf.tile(kernel[None, :, None, None], [1, 1, channels, 1])
-
-        # left pad with the first frame, same as using it as the initial state
-        first = inputs[:, :, :1, :]
-        padded = tf.concat(
-            [tf.repeat(first, self.kernel_len - 1, axis=2), inputs], axis=2
-        )
-        return tf.nn.depthwise_conv2d(
-            padded, kernel, strides=[1, 1, 1, 1], padding="VALID"
-        )
-
+        T = tf.shape(inputs)[2]
+        t = tf.range(T, dtype=inputs.dtype)
+        # diff[k, t] = t - k, how far input frame k is behind output frame t
+        diff = t[None, :] - t[:, None]
+        mask = tf.cast(diff >= 0, inputs.dtype)
+        m = w * (1.0 - w) ** tf.maximum(diff, 0.0) * mask
+        # initial state s_{-1} = x_0 adds (1 - w) ** (t + 1) * x_0
+        init = (1.0 - w) ** (t + 1.0)
+        m = m + tf.pad(init[None, :], [[0, T - 1], [0, 0]])
+        return tf.einsum("bmkc,kt->bmtc", inputs, m)
 
 import tensorflow as tf
 
