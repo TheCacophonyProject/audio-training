@@ -1611,6 +1611,7 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
         global_epoch=global_epoch,
         batch_size=batch_size,
         augment=True,  # seems to perform worse
+        drop_remainder=True,  # keep batch shape fixed so XLA only compiles once
         excluded_labels=excluded_labels,
         second_dir=second_dir,
         embeddings=model_name == "embeddings",

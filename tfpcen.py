@@ -106,9 +106,9 @@ class PCEN(tf.keras.layers.Layer):
         return output
 
 
-# normalize between 0 and 1
-@tf.function
+# normalize between -1 and 1
+# not a tf.function, a nested function call made XLA training steps ~50x slower
 def normalize_minmax(data):
-    max_v = tf.reduce_max(data, axis=(1,2,3),keepdims=True)
-    min_v = tf.reduce_min(data, axis=(1,2,3),keepdims=True)
-    return 2 * ((data - min_v) / (max_v - min_v)) - 1
+    max_v = tf.reduce_max(data, axis=(1, 2, 3), keepdims=True)
+    min_v = tf.reduce_min(data, axis=(1, 2, 3), keepdims=True)
+    return 2 * ((data - min_v) / (max_v - min_v + 1e-6)) - 1

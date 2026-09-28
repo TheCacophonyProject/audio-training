@@ -892,7 +892,9 @@ def get_a_dataset(dir, labels, args):
         dataset = dataset.map(lambda x, y: butter_bitterns(bittern_mask, x, y))
 
     if batch_size is not None:
-        dataset = dataset.batch(batch_size, drop_remainder=False)
+        dataset = dataset.batch(
+            batch_size, drop_remainder=args.get("drop_remainder", False)
+        )
 
     # dont think using this anymore GP
     if args.get("weight_specific", False):
