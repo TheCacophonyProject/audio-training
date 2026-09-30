@@ -801,11 +801,12 @@ class AudioModel:
                 x = PCEN(time_axis=2, dtype="float32")(input)
             else:
                 # dataset gives power mels, MagTransform is pow(x, a) so needs
-                # non negative inputs, batch norm then normalizes each mel bin
+                # non negative inputs, batch norm then normalizes per channel
+                # over batch, mels and time
                 # inputs are [batch, mels, time, channels]
                 logging.info("Adding mag transform and batch norm")
                 x = badwinner2.MagTransform()(input)
-                x = tf.keras.layers.BatchNormalization(axis=1)(x)
+                x = tf.keras.layers.BatchNormalization(axis=-1)(x)
 
             x = base_model(x)
             # , training=True)

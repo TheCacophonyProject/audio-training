@@ -1035,7 +1035,7 @@ def spectogram_to_mel(spectogram, pcen=False):
     if pcen:
         logging.info("Doing PCEN leaving spect as magnitude")
     else:
-        spectogram = power_to_root_compressed(spectogram)
+        # spectogram = power_to_root_compressed(spectogram)
 
         logging.info("Leaving spect as power for MagTransform")
     logging.info("Shape is %s ", spectogram.shape)

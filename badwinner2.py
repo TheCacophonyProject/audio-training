@@ -33,20 +33,18 @@ import tensorflow as tf
 class MagTransform(tf.keras.layers.Layer):
     def __init__(self, **kwargs):
         super(MagTransform, self).__init__(**kwargs)
-        self.a = self.add_weight(
-            initializer=tf.keras.initializers.Constant(value=-1.0),
-            name="a-power",
+        self.mag_scale = self.add_weight(
+            initializer=tf.keras.initializers.Constant(value=1.23),
+            name="mag_scale",
             dtype="float32",
-            shape=[1],
-            trainable=True,
-            constraint=tf.keras.constraints.MinMaxNorm(
-                min_value=-2.0, max_value=1.0, rate=1.0, axis=-1
-            ),
+            shape=[], 
+            trainable=True
+            # the sigmoid structure naturally bounds the exponent between 0 and 1!
         )
 
     def call(self, inputs):
-        c = tf.math.pow(inputs, tf.math.sigmoid(self.a))
-        return c
+        exponent = 1.0 / (1.0 + tf.math.exp(self.mag_scale))
+        return tf.math.pow(inputs, exponent)
 
 
 #         arch = 'conv:32x3x3
