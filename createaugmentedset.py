@@ -280,7 +280,6 @@ def read_all_tfrecord(
     example,
     image_size,
     num_labels,
-    labeled,
     augment=False,
     preprocess_fn=None,
     one_hot=True,

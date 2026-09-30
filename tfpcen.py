@@ -10,19 +10,25 @@ import tensorflow as tf
 class ExponentialMovingAverage(tf.keras.layers.Layer):
     """Computes of an exponential moving average of an sequential input."""
 
-    def __init__(self, coeff_init, trainable=False, kernel_len=128, **kwargs):
+    def __init__(
+        self, coeff_init, trainable=False, kernel_len=128, time_axis=2, **kwargs
+    ):
         """Initializes the ExponentialMovingAverage.
 
         Args:
           coeff_init: the value of the initial coeff.
           trainable: whether the smoothing should be trained or not.
-          kernel_len: number of time frames the EMA is truncated to. The
-            ignored tail weight is (1 - coeff) ** kernel_len.
+          kernel_len: unused, kept so older configs still load.
+          time_axis: axis of the [batch, x, y, channels] input that is time,
+            1 for [batch, time, mels, channels], 2 for [batch, mels, time, channels].
         """
         super().__init__(name="EMA", **kwargs)
+        if time_axis not in (1, 2):
+            raise ValueError(f"time_axis must be 1 or 2, got {time_axis}")
         self._coeff_init = coeff_init
         self._trainable = trainable
         self.kernel_len = kernel_len
+        self.time_axis = time_axis
 
         self._weights = self.add_weight(
             name="smooth",
@@ -32,7 +38,7 @@ class ExponentialMovingAverage(tf.keras.layers.Layer):
         )
 
     def call(self, inputs: tf.Tensor):
-        """Inputs is of shape [batch, mels, time, channels], smoothed over time.
+        """Inputs is of shape [batch, x, y, channels], smoothed over time_axis.
 
         Equivalent to s_t = w * x_t + (1 - w) * s_{t-1} with s_{-1} = x_0, but
         computed as a single matmul with a [time, time] lower triangular decay
@@ -42,7 +48,9 @@ class ExponentialMovingAverage(tf.keras.layers.Layer):
         """
         w = tf.clip_by_value(self._weights, clip_value_min=0.0, clip_value_max=1.0 - 1e-6)
         w = tf.cast(w, inputs.dtype)
-        T = tf.shape(inputs)[2]
+        T = inputs.shape[self.time_axis]
+        if T is None:
+            T = tf.shape(inputs)[self.time_axis]
         t = tf.range(T, dtype=inputs.dtype)
         # diff[k, t] = t - k, how far input frame k is behind output frame t
         diff = t[None, :] - t[:, None]
@@ -51,6 +59,8 @@ class ExponentialMovingAverage(tf.keras.layers.Layer):
         # initial state s_{-1} = x_0 adds (1 - w) ** (t + 1) * x_0
         init = (1.0 - w) ** (t + 1.0)
         m = m + tf.pad(init[None, :], [[0, T - 1], [0, 0]])
+        if self.time_axis == 1:
+            return tf.einsum("bkmc,kt->btmc", inputs, m)
         return tf.einsum("bmkc,kt->bmtc", inputs, m)
 
 import tensorflow as tf
@@ -58,8 +68,13 @@ import tensorflow as tf
 
 @tf.keras.utils.register_keras_serializable(package="MyLayers", name="PCEN")
 class PCEN(tf.keras.layers.Layer):
-    def __init__(self, **kwargs):
+    def __init__(self, time_axis=2, **kwargs):
+        """time_axis is the input axis that is time, 1 for [batch, time, mels, channels]
+        or 2 for [batch, mels, time, channels]. Defaults to 2 so models saved before
+        this option existed load with the same behaviour.
+        """
         super(PCEN, self).__init__(**kwargs)
+        self.time_axis = time_axis
 
         self.gain = self.add_weight(
             initializer=tf.keras.initializers.Constant(value=0.98),
@@ -88,8 +103,14 @@ class PCEN(tf.keras.layers.Layer):
         self.ema = ExponentialMovingAverage(
             coeff_init=0.04,
             trainable=True,
+            time_axis=time_axis,
             dtype=self.dtype_policy,
         )
+
+    def get_config(self):
+        config = super().get_config()
+        config["time_axis"] = self.time_axis
+        return config
 
     def call(self, inputs):
         gain = tf.math.minimum(self.gain, 1.0)

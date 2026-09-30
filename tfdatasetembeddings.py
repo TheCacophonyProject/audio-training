@@ -103,7 +103,6 @@ def load_dataset(filenames, num_labels, args):
     )  # uses data as soon as it streams in, rather than in its original order
 
     image_size = args["image_size"]
-    labeled = args.get("labeled", True)
     augment = args.get("augment", False)
     preprocess_fn = args.get("preprocess_fn")
     one_hot = args.get("one_hot", True)
@@ -115,7 +114,6 @@ def load_dataset(filenames, num_labels, args):
             read_tfrecord,
             num_labels=num_labels,
             image_size=image_size,
-            labeled=labeled,
             augment=augment,
             preprocess_fn=preprocess_fn,
             one_hot=one_hot,
@@ -454,7 +452,6 @@ def read_tfrecord(
     example,
     image_size,
     num_labels,
-    labeled,
     augment=False,
     preprocess_fn=None,
     one_hot=True,
@@ -485,32 +482,30 @@ def read_tfrecord(
         logging.info("Preprocessing with %s", preprocess_fn)
         raise Exception("Done preprocess for audio")
 
-    if labeled:
-        # label = tf.cast(example["audio/class/label"], tf.int32)
+    # label = tf.cast(example["audio/class/label"], tf.int32)
 
-        if one_hot:
-            label = tf.reduce_max(
-                tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
-            )
-        if no_bird:
-            logging.info("no bird")
-            # dont use bird or noise label from mixed ones
-            no_bird_mask = np.ones(num_labels, dtype=bool)
-            no_bird_mask[bird_i] = 0
-            no_bird_mask = tf.constant(no_bird_mask)
-            label = tf.cast(label, tf.bool)
-            label = tf.math.logical_and(label, no_bird_mask)
-            no_noise_mask = np.ones(num_labels, dtype=bool)
-            no_noise_mask[noise_i] = 0
-            no_noise_mask = tf.constant(no_noise_mask)
-            label = tf.math.logical_and(label, no_noise_mask)
+    if one_hot:
+        label = tf.reduce_max(
+            tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
+        )
+    if no_bird:
+        logging.info("no bird")
+        # dont use bird or noise label from mixed ones
+        no_bird_mask = np.ones(num_labels, dtype=bool)
+        no_bird_mask[bird_i] = 0
+        no_bird_mask = tf.constant(no_bird_mask)
+        label = tf.cast(label, tf.bool)
+        label = tf.math.logical_and(label, no_bird_mask)
+        no_noise_mask = np.ones(num_labels, dtype=bool)
+        no_noise_mask[noise_i] = 0
+        no_noise_mask = tf.constant(no_noise_mask)
+        label = tf.math.logical_and(label, no_noise_mask)
 
-            label = tf.cast(label, tf.int32)
-        label = tf.cast(label, tf.float32)
+        label = tf.cast(label, tf.int32)
+    label = tf.cast(label, tf.float32)
 
-        return embeddings, label
+    return embeddings, label
 
-    return embeddings
 
 
 def class_func(features, label):

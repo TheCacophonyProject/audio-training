@@ -179,7 +179,6 @@ def load_dataset(filenames, num_labels, labels, args):
     )  # uses data as soon as it streams in, rather than in its original order
 
     image_size = args["image_size"]
-    labeled = args.get("labeled", True)
     augment = args.get("augment", False)
     preprocess_fn = args.get("preprocess_fn")
     one_hot = args.get("one_hot", True)
@@ -191,7 +190,6 @@ def load_dataset(filenames, num_labels, labels, args):
             read_tfrecord,
             num_labels=num_labels,
             image_size=image_size,
-            labeled=labeled,
             augment=augment,
             preprocess_fn=preprocess_fn,
             one_hot=one_hot,
@@ -408,7 +406,6 @@ def read_tfrecord(
     example,
     image_size,
     num_labels,
-    labeled,
     augment=False,
     preprocess_fn=None,
     one_hot=True,
@@ -486,23 +483,21 @@ def read_tfrecord(
         raise Exception("Done preprocess for audio")
         # image = preprocess_fn(image)
 
-    if labeled:
-        # label = tf.cast(example["audio/class/label"], tf.int32)
+    # label = tf.cast(example["audio/class/label"], tf.int32)
 
-        if one_hot:
-            label = tf.reduce_max(
-                tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
+    if one_hot:
+        label = tf.reduce_max(
+            tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
+        )
+        if embed_preds is not None:
+            embed_preds = tf.reduce_max(
+                tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
             )
-            if embed_preds is not None:
-                embed_preds = tf.reduce_max(
-                    tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
-                )
 
-        label = tf.cast(label, tf.float32)
+    label = tf.cast(label, tf.float32)
 
-        return image, (label, embed_preds, rec_id, track_id, start_s)
+    return image, (label, embed_preds, rec_id, track_id, start_s)
 
-    return image
 
 
 def class_func(features, label):

@@ -446,7 +446,8 @@ class AudioModel:
             self.input_shape = (96, 511, 1)
 
         if args.get("n_mels") != 160:
-            self.input_shape = (args.get("n_mels"), self.input_shape[1], 3)
+            # inputs are [time, mels, channels]
+            self.input_shape = (self.input_shape[0], args.get("n_mels"), 3)
         args["excluded_labels"] = excluded_labels
         args["remapped_labels"] = remapped
         args["extra_label_map"] = extra_label_map
@@ -511,6 +512,7 @@ class AudioModel:
                 loss_fn=args.get("loss_fn", "keras"),
                 weight_labels=weights_labels,
                 weights=weights,
+                pcen=args.get("pcen", False),
             )
             (self.checkpoint_folder / run_name).mkdir(parents=True, exist_ok=True)
             if self.model_name != "rf-features":
@@ -658,7 +660,12 @@ class AudioModel:
         )
 
     def build_model(
-        self, multi_label=False, loss_fn="keras", weight_labels=None, weights=None
+        self,
+        multi_label=False,
+        loss_fn="keras",
+        weight_labels=None,
+        weights=None,
+        pcen=False,
     ):
         if weights is not None and weight_labels is not None:
             # build model wight these labels then pop the dense layer and add a new one for our labels
@@ -786,12 +793,12 @@ class AudioModel:
             base_model, self.preprocess_fn = self.get_base_model(self.input_shape)
             # base_model.summary()
             # x = norm_layer(input)
-            pcen = True
             if pcen:
                 logging.info("Adding pcen layer")
                 from tfpcen import PCEN
 
-                x = PCEN(dtype="float32")(input)
+                # inputs are [batch, time, mels, channels]
+                x = PCEN(time_axis=1, dtype="float32")(input)
             else:
                 logging.info("Adding mag transform")
                 x = badwinner2.MagTransform()(input)
@@ -2119,6 +2126,7 @@ def main():
             loss_fn=meta_data.get("loss_fn"),
             load_raw=False,
             # meta_data.get("load_raw"),
+            pcen=meta_data.get("pcen", False),
             fmin=meta_data.get("fmin"),
             fmax=meta_data.get("fmax"),
             break_freq=meta_data.get("break_freq"),
@@ -2325,6 +2333,12 @@ def parse_args():
     )
 
     parser.add_argument("--shuffle", type=str2bool, default=True, help="Shuffle DS")
+    parser.add_argument(
+        "--pcen",
+        type=str2bool,
+        default=False,
+        help="Use a trainable PCEN layer on magnitude mels instead of normalized db mels",
+    )
     parser.add_argument(
         "--multi-label", type=str2bool, default=False, help="Multi label"
     )

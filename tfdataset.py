@@ -219,7 +219,6 @@ def load_dataset(filenames, num_labels, labels, args, has_ebird=True):
         ignore_order
     )  # uses data as soon as it streams in, rather than in its original order
 
-    labeled = args.get("labeled", True)
     augment = args.get("augment", False)
     preprocess_fn = args.get("preprocess_fn")
     one_hot = args.get("one_hot", True)
@@ -251,7 +250,6 @@ def load_dataset(filenames, num_labels, labels, args, has_ebird=True):
         partial(
             read_record,
             num_labels=num_labels,
-            labeled=labeled,
             augment=augment,
             preprocess_fn=preprocess_fn,
             one_hot=one_hot,
@@ -301,7 +299,32 @@ def load_dataset(filenames, num_labels, labels, args, has_ebird=True):
         filter_excluded = lambda x, y: tf.math.greater(y[0], -1)
 
     dataset = dataset.filter(filter_excluded)
+
+    # mel conversion is done after filtering so it only runs on kept samples
+    if (
+        read_record is read_tfrecord
+        and not args.get("load_raw", True)
+        and not args.get("embeddings", False)
+        and not args.get("only_features", False)
+    ):
+        dataset = dataset.map(
+            partial(
+                mel_map,
+                features=args.get("features", False),
+                pcen=args.get("pcen", False),
+            ),
+            num_parallel_calls=AUTOTUNE,
+            deterministic=deterministic,
+        )
     return dataset
+
+
+def mel_map(x, y, features=False, pcen=False):
+    if features:
+        x = (spectogram_to_mel(x[0], pcen), *x[1:])
+    else:
+        x = spectogram_to_mel(x, pcen)
+    return x, y
 
 
 @tf.function
@@ -453,7 +476,7 @@ def get_dataset(dir, labels, global_epoch=None, **args):
             N_MELS = 96
             global DIMENSIONS
             mel_s = (N_MELS, 513)
-            DIMENSIONS = (N_MELS, 513, 1)
+            DIMENSIONS = (mel_s[1], mel_s[0], 1)
             logging.info("Lower mels as nfft is to low %s", N_MELS)
         MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
         MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
@@ -987,11 +1010,42 @@ def mix_up(ds_one, ds_two, global_epoch, alpha=0.2, chance=0.25, single_label=Tr
 # return data, y
 
 
+def spectogram_to_mel(spectogram, pcen=False):
+    """Takes a (2049, 513) stft magnitude and returns a (513, mels, 3) mel spectogram.
+
+    With pcen the mels are left as magnitude for the PCEN layer in the model,
+    otherwise they are converted to normalized db.
+    """
+    # conver to power
+    if not pcen:
+        spectogram = tf.math.pow(spectogram, 2)
+        # if doing mix up needs to happen here
+
+    spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
+    spectogram = tf.keras.ops.moveaxis(spectogram, 0, 1)
+    print("Spect shape is ", spectogram.shape)
+    # power db
+    spectogram = tf.expand_dims(spectogram, axis=-1)
+
+    # spectogram = tf.math.log10(spectogram+tf.keras.backend.epsilon())
+    if not pcen:
+        spectogram = power_to_db(spectogram)
+        # change to normalized with db
+        spectogram = normalize_acoustic_fixed(spectogram)
+        # spectogram = normalize_minmax(spectogram)
+    else:
+        logging.info("Doing PCEN leaving spect as magnitude")
+        logging.info("Shape is %s ", spectogram.shape)
+    # if not pcen and "efficientnet" in model_name:
+    #     logging.info("Repeating last dim for efficient net")
+    spectogram = tf.repeat(spectogram, 3, 2)
+    return spectogram
+
+
 @tf.function
 def read_tfrecord(
     example,
     num_labels,
-    labeled,
     augment=False,
     preprocess_fn=None,
     one_hot=True,
@@ -1088,30 +1142,6 @@ def read_tfrecord(
             spectogram = example["audio/spectogram"]
         spectogram = tf.reshape(spectogram, (2049, 513))
 
-        pcen = True
-        # conver to power
-        if not pcen:
-            spectogram = tf.math.pow(spectogram, 2)
-            # if doing mix up needs to happen here
-
-        spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
-        spectogram = tf.keras.ops.moveaxis(spectogram, 0, 1)
-        print("Spect shape is ", spectogram.shape)
-        # power db
-        spectogram = tf.expand_dims(spectogram, axis=-1)
-
-        # spectogram = tf.math.log10(spectogram+tf.keras.backend.epsilon())
-        if not pcen:
-            spectogram = power_to_db(spectogram)
-            # change to normalized with db
-            spectogram = normalize_acoustic_fixed(spectogram)
-            # spectogram = normalize_minmax(spectogram)
-        else:
-            logging.info("Doing PCEN leaving spect as magnitude")
-            logging.info("Shape is %s ", spectogram.shape)
-        # if not pcen and "efficientnet" in model_name:
-        #     logging.info("Repeating last dim for efficient net")
-        spectogram = tf.repeat(spectogram, 3, 2)
     if features or only_features:
         short_f = example["audio/short_f"]
         mid_f = example["audio/mid_f"]
@@ -1132,105 +1162,103 @@ def read_tfrecord(
         # raw = tf.expand_dims(raw, axis=0)
     if augment:
         logging.info("Augmenting")
-    if labeled:
-        # label = tf.cast(example["audio/class/label"], tf.int32)
-        if has_ebird:
-            label = tf.cast(example["audio/class/ebird"], tf.string)
-        else:
-            label = tf.cast(example["audio/class/text"], tf.string)
+    # label = tf.cast(example["audio/class/label"], tf.int32)
+    if has_ebird:
+        label = tf.cast(example["audio/class/ebird"], tf.string)
+    else:
+        label = tf.cast(example["audio/class/text"], tf.string)
 
-        split_labels = tf.strings.split(label, sep="\n")
-        global remapped_y, extra_label_map
-        labels = remapped_y.lookup(split_labels)
-        extra = extra_label_map.lookup(split_labels)
-        if multi:
+    split_labels = tf.strings.split(label, sep="\n")
+    global remapped_y, extra_label_map
+    labels = remapped_y.lookup(split_labels)
+    extra = extra_label_map.lookup(split_labels)
+    if multi:
 
-            labels = tf.concat([labels, extra], axis=0)
-        if one_hot:
-            label = tf.reduce_max(
-                tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
-            )
-            if not multi:
-                logging.info("Choosing only one label as not multi")
-                if tf.math.count_nonzero(label) == 0:
-                    # if all normal labels are excluded choose an extra one
-                    label = tf.reduce_max(
-                        tf.one_hot(extra, num_labels, dtype=tf.int32), axis=0
-                    )
-                if tf.math.count_nonzero(label) == 0:
-                    label = tf.zeros(num_labels, dtype=tf.int32)
-                else:
-                    max_l = tf.argmax(label)
-                    label = tf.one_hot(max_l, num_labels, dtype=tf.int32)
-            if embed_preds is not None:
-                embed_preds = tf.reduce_max(
-                    tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
-                )
-        else:
-            # pretty sure this is wrong but never used
-            logging.error("Don't think non one hot works please check")
-            label = labels
-        signal_percent = 0.0
-        if no_bird:
-            logging.info("no bird")
-            # dont use bird or noise label from mixed ones
-            if one_hot:
-                no_bird_mask = np.ones(num_labels, dtype=bool)
-                no_bird_mask[bird_i] = 0
-                no_bird_mask = tf.constant(no_bird_mask)
-                label = tf.cast(label, tf.bool)
-                label = tf.math.logical_and(label, no_bird_mask)
-                no_noise_mask = np.ones(num_labels, dtype=bool)
-                no_noise_mask[noise_i] = 0
-                no_noise_mask = tf.constant(no_noise_mask)
-                label = tf.math.logical_and(label, no_noise_mask)
-            else:
-                print("Not doing no bird as not implemeneted")
-            label = tf.cast(label, tf.int32)
-        signal_percent = example["audio/signal_percent"]
-
-        label = tf.cast(label, tf.float32)
-        possible_labels = tf.ones(label.shape, tf.float32)
-
-        lat = example["audio/lat"]
-        lng = example["audio/lng"]
-        # if label has no specific bird in it and has generic bird, weight differently
-        if not tf.math.reduce_any(
-            tf.math.logical_and(
-                tf.cast(label, tf.bool), tf.cast(SPECIFIC_BIRD_MASK, tf.bool)
-            )
-        ) and tf.math.reduce_any(
-            tf.math.logical_and(
-                tf.cast(label, tf.bool), tf.cast(GENERIC_BIRD_MASK, tf.bool)
-            )
-        ):
-            if lat == 0 or lng == 0:
-                possible_labels = NZ_BIRD_LOSS_WEIGHTING
-            elif (
-                lat <= NZ_BOX[1]
-                and lat >= NZ_BOX[3]
-                and lng >= NZ_BOX[0]
-                and lng <= NZ_BOX[2]
-            ):
-                possible_labels = NZ_BIRD_LOSS_WEIGHTING
-            else:
-                possible_labels = BIRD_WEIGHTING
-
-        return spectogram, (
-            label,
-            embed_preds,
-            signal_percent,
-            # min_freq,
-            # max_freq,
-            example["audio/rec_id"],
-            example["audio/track_id"],
-            possible_labels,
-            low_sample,
-            start_s,
-            tf.cast(example["audio/class/text"], tf.string),
+        labels = tf.concat([labels, extra], axis=0)
+    if one_hot:
+        label = tf.reduce_max(
+            tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
         )
+        if not multi:
+            logging.info("Choosing only one label as not multi")
+            if tf.math.count_nonzero(label) == 0:
+                # if all normal labels are excluded choose an extra one
+                label = tf.reduce_max(
+                    tf.one_hot(extra, num_labels, dtype=tf.int32), axis=0
+                )
+            if tf.math.count_nonzero(label) == 0:
+                label = tf.zeros(num_labels, dtype=tf.int32)
+            else:
+                max_l = tf.argmax(label)
+                label = tf.one_hot(max_l, num_labels, dtype=tf.int32)
+        if embed_preds is not None:
+            embed_preds = tf.reduce_max(
+                tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
+            )
+    else:
+        # pretty sure this is wrong but never used
+        logging.error("Don't think non one hot works please check")
+        label = labels
+    signal_percent = 0.0
+    if no_bird:
+        logging.info("no bird")
+        # dont use bird or noise label from mixed ones
+        if one_hot:
+            no_bird_mask = np.ones(num_labels, dtype=bool)
+            no_bird_mask[bird_i] = 0
+            no_bird_mask = tf.constant(no_bird_mask)
+            label = tf.cast(label, tf.bool)
+            label = tf.math.logical_and(label, no_bird_mask)
+            no_noise_mask = np.ones(num_labels, dtype=bool)
+            no_noise_mask[noise_i] = 0
+            no_noise_mask = tf.constant(no_noise_mask)
+            label = tf.math.logical_and(label, no_noise_mask)
+        else:
+            print("Not doing no bird as not implemeneted")
+        label = tf.cast(label, tf.int32)
+    signal_percent = example["audio/signal_percent"]
 
-    return spectogram
+    label = tf.cast(label, tf.float32)
+    possible_labels = tf.ones(label.shape, tf.float32)
+
+    lat = example["audio/lat"]
+    lng = example["audio/lng"]
+    # if label has no specific bird in it and has generic bird, weight differently
+    if not tf.math.reduce_any(
+        tf.math.logical_and(
+            tf.cast(label, tf.bool), tf.cast(SPECIFIC_BIRD_MASK, tf.bool)
+        )
+    ) and tf.math.reduce_any(
+        tf.math.logical_and(
+            tf.cast(label, tf.bool), tf.cast(GENERIC_BIRD_MASK, tf.bool)
+        )
+    ):
+        if lat == 0 or lng == 0:
+            possible_labels = NZ_BIRD_LOSS_WEIGHTING
+        elif (
+            lat <= NZ_BOX[1]
+            and lat >= NZ_BOX[3]
+            and lng >= NZ_BOX[0]
+            and lng <= NZ_BOX[2]
+        ):
+            possible_labels = NZ_BIRD_LOSS_WEIGHTING
+        else:
+            possible_labels = BIRD_WEIGHTING
+
+    return spectogram, (
+        label,
+        embed_preds,
+        signal_percent,
+        # min_freq,
+        # max_freq,
+        example["audio/rec_id"],
+        example["audio/track_id"],
+        possible_labels,
+        low_sample,
+        start_s,
+        tf.cast(example["audio/class/text"], tf.string),
+    )
+
 
 
 def class_func(features, label):
@@ -2065,6 +2093,8 @@ def raw_to_mel(x, y):
     weights = tf.expand_dims(MEL_WEIGHTS, 0)
     weights = tf.repeat(weights, batch_size, 0)
     image = tf.keras.backend.batch_dot(weights, stft)
+    # [batch, mels, time] -> [batch, time, mels] to match stored spectograms
+    image = tf.transpose(image, [0, 2, 1])
     image = tf.expand_dims(image, axis=3)
     image = tf.repeat(image, 3, 3)
 
