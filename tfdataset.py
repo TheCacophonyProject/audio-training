@@ -177,7 +177,8 @@ DIMENSIONS = (160, 188)
 mel_s = (N_MELS, 513)
 sftf_s = (2049, 188)
 mfcc_s = (20, 188)
-DIMENSIONS = (mel_s[1], mel_s[0], 1)
+# [mels, time, channels] so image width is time
+DIMENSIONS = (mel_s[0], mel_s[1], 1)
 YAMNET_EMBEDDING_SHAPE = (6, 1024)
 EMBEDDING_SHAPE = (1280,)
 
@@ -476,7 +477,7 @@ def get_dataset(dir, labels, global_epoch=None, **args):
             N_MELS = 96
             global DIMENSIONS
             mel_s = (N_MELS, 513)
-            DIMENSIONS = (mel_s[1], mel_s[0], 1)
+            DIMENSIONS = (mel_s[0], mel_s[1], 1)
             logging.info("Lower mels as nfft is to low %s", N_MELS)
         MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
         MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
@@ -1011,31 +1012,33 @@ def mix_up(ds_one, ds_two, global_epoch, alpha=0.2, chance=0.25, single_label=Tr
 
 
 def spectogram_to_mel(spectogram, pcen=False):
-    """Takes a (2049, 513) stft magnitude and returns a (513, mels, 3) mel spectogram.
+    """Takes a (2049, 513) stft magnitude and returns a (mels, 513, 3) mel spectogram.
 
     With pcen the mels are left as magnitude for the PCEN layer in the model,
-    otherwise they are converted to normalized db.
+    otherwise they are power, for the MagTransform layer in the model.
     """
     # conver to power
     if not pcen:
         spectogram = tf.math.pow(spectogram, 2)
         # if doing mix up needs to happen here
 
+    # [mels, time]
     spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
-    spectogram = tf.keras.ops.moveaxis(spectogram, 0, 1)
     print("Spect shape is ", spectogram.shape)
     # power db
     spectogram = tf.expand_dims(spectogram, axis=-1)
 
     # spectogram = tf.math.log10(spectogram+tf.keras.backend.epsilon())
-    if not pcen:
-        spectogram = power_to_db(spectogram)
-        # change to normalized with db
-        spectogram = normalize_acoustic_fixed(spectogram)
-        # spectogram = normalize_minmax(spectogram)
-    else:
+    # no db or normalizing, the model compresses with PCEN or MagTransform
+    # spectogram = power_to_db(spectogram)
+    # spectogram = normalize_acoustic_fixed(spectogram)
+    if pcen:
         logging.info("Doing PCEN leaving spect as magnitude")
-        logging.info("Shape is %s ", spectogram.shape)
+    else:
+        spectogram = power_to_root_compressed(spectogram)
+
+        logging.info("Leaving spect as power for MagTransform")
+    logging.info("Shape is %s ", spectogram.shape)
     # if not pcen and "efficientnet" in model_name:
     #     logging.info("Repeating last dim for efficient net")
     spectogram = tf.repeat(spectogram, 3, 2)
@@ -1946,6 +1949,13 @@ def normalize_acoustic_fixed(data):
     # Scale exactly to the [-1, 1] range
     return 2 * ((data_clipped - min_v) / (max_v - min_v)) - 1
 
+
+def power_to_root_compressed(mel):
+    # Apply a fixed power-law compression (equivalent to BirdNET's initial state)
+    # 0.25 (quad-root) or 0.33 (cube-root) squashes the dynamic range perfectly
+    compressed_mel = tf.math.pow(mel, 0.25)
+    return compressed_mel
+
 # equipvalent of librosa.power_to_db
 @tf.function
 def power_to_db(mel):
@@ -2092,9 +2102,8 @@ def raw_to_mel(x, y):
 
     weights = tf.expand_dims(MEL_WEIGHTS, 0)
     weights = tf.repeat(weights, batch_size, 0)
+    # [batch, mels, time] to match stored spectograms
     image = tf.keras.backend.batch_dot(weights, stft)
-    # [batch, mels, time] -> [batch, time, mels] to match stored spectograms
-    image = tf.transpose(image, [0, 2, 1])
     image = tf.expand_dims(image, axis=3)
     image = tf.repeat(image, 3, 3)
 

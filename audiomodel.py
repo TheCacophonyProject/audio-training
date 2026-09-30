@@ -446,8 +446,8 @@ class AudioModel:
             self.input_shape = (96, 511, 1)
 
         if args.get("n_mels") != 160:
-            # inputs are [time, mels, channels]
-            self.input_shape = (self.input_shape[0], args.get("n_mels"), 3)
+            # inputs are [mels, time, channels]
+            self.input_shape = (args.get("n_mels"), self.input_shape[1], 3)
         args["excluded_labels"] = excluded_labels
         args["remapped_labels"] = remapped
         args["extra_label_map"] = extra_label_map
@@ -797,11 +797,15 @@ class AudioModel:
                 logging.info("Adding pcen layer")
                 from tfpcen import PCEN
 
-                # inputs are [batch, time, mels, channels]
-                x = PCEN(time_axis=1, dtype="float32")(input)
+                # inputs are [batch, mels, time, channels]
+                x = PCEN(time_axis=2, dtype="float32")(input)
             else:
-                logging.info("Adding mag transform")
+                # dataset gives power mels, MagTransform is pow(x, a) so needs
+                # non negative inputs, batch norm then normalizes each mel bin
+                # inputs are [batch, mels, time, channels]
+                logging.info("Adding mag transform and batch norm")
                 x = badwinner2.MagTransform()(input)
+                x = tf.keras.layers.BatchNormalization(axis=1)(x)
 
             x = base_model(x)
             # , training=True)
@@ -2335,8 +2339,7 @@ def parse_args():
     parser.add_argument("--shuffle", type=str2bool, default=True, help="Shuffle DS")
     parser.add_argument(
         "--pcen",
-        type=str2bool,
-        default=False,
+        action="store_true",
         help="Use a trainable PCEN layer on magnitude mels instead of normalized db mels",
     )
     parser.add_argument(
