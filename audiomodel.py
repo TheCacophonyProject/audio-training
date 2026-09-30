@@ -2344,7 +2344,7 @@ def parse_args():
         help="Use a trainable PCEN layer on magnitude mels instead of normalized db mels",
     )
     parser.add_argument(
-        "--multi-label", type=str2bool, default=False, help="Multi label"
+        "--multi-label", type=str2bool, default=True, help="Multi label"
     )
     parser.add_argument(
         "--use-generic-bird",
