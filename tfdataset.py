@@ -1092,6 +1092,8 @@ def read_tfrecord(
         # conver to power
         if not pcen:
             spectogram = tf.math.pow(spectogram, 2)
+            # if doing mix up needs to happen here
+
         spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
         spectogram = tf.keras.ops.moveaxis(spectogram, 0, 1)
         print("Spect shape is ", spectogram.shape)
@@ -1101,12 +1103,14 @@ def read_tfrecord(
         # spectogram = tf.math.log10(spectogram+tf.keras.backend.epsilon())
         if not pcen:
             spectogram = power_to_db(spectogram)
-            spectogram = normalize_minmax(spectogram)
+            # change to normalized with db
+            spectogram = normalize_acoustic_fixed(spectogram)
+            # spectogram = normalize_minmax(spectogram)
         else:
             logging.info("Doing PCEN leaving spect as magnitude")
             logging.info("Shape is %s ", spectogram.shape)
-        if not pcen and "efficientnet" in model_name:
-            logging.info("Repeating last dim for efficient net")
+        # if not pcen and "efficientnet" in model_name:
+        #     logging.info("Repeating last dim for efficient net")
         spectogram = tf.repeat(spectogram, 3, 2)
     if features or only_features:
         short_f = example["audio/short_f"]
@@ -1128,13 +1132,6 @@ def read_tfrecord(
         # raw = tf.expand_dims(raw, axis=0)
     if augment:
         logging.info("Augmenting")
-    if mean_sub:
-        print("Subbing mean")
-        mel_m = tf.reduce_mean(mel, axis=1)
-        # gp not sure to mean over axis 0 or 1
-        mel_m = tf.expand_dims(mel_m, axis=1)
-        # mean over each mel bank
-        mel = mel - mel_m
     if labeled:
         # label = tf.cast(example["audio/class/label"], tf.int32)
         if has_ebird:
@@ -1909,6 +1906,17 @@ def normalize_minmax(data):
     min_v = tf.reduce_min(data)
     return 2 * ((data - min_v) / (max_v - min_v)) - 1
 
+@tf.function
+def normalize_acoustic_fixed(data):
+    # Lock the boundaries to absolute decibel limits
+    max_v = 0.0      # Because librosa.power_to_db(..., ref=np.max) caps peaks at 0
+    min_v = -80.0    # Standard bioacoustic dynamic range floor
+    
+    # Clip the data first so any ultra-quiet outliers don't break the math
+    data_clipped = tf.clip_by_value(data, min_v, max_v)
+    
+    # Scale exactly to the [-1, 1] range
+    return 2 * ((data_clipped - min_v) / (max_v - min_v)) - 1
 
 # equipvalent of librosa.power_to_db
 @tf.function
