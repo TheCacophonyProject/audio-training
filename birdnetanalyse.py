@@ -1,3 +1,7 @@
+import os
+# Replace '1' with the actual index of the GPU you want to use
+os.environ["CUDA_VISIBLE_DEVICES"] = "0" 
+
 import argparse
 import json
 import logging
@@ -9,6 +13,8 @@ from pathlib import Path
 
 import birdnet
 import librosa
+
+# pip install "birdnet[pt]"
 
 AUDIO_EXTS = {".m4a", ".flac", ".wav", ".mp3", ".ogg"}
 
@@ -60,7 +66,7 @@ def main():
         "dir", help="Directory to search for audio files with a matching .txt"
     )
     parser.add_argument("--version", default="3.0", choices=["2.4", "3.0"])
-    parser.add_argument("--backend", default="onnx")
+    parser.add_argument("--backend", default="pt")
     parser.add_argument("--device", default="CPU", help="CPU or GPU")
     parser.add_argument(
         "--workers", type=int, default=None, help="Inference processes (use 1 for GPU)"
@@ -112,22 +118,29 @@ def main():
         geo_model = birdnet.load("geo", args.version, args.backend)
 
     for key, files in groups.items():
-        species_list = None
-        if key is not None:
-            lat, lng, week = key
-            geo = geo_model.predict(
-                lat, lng, week=week, min_confidence=args.geo_min_conf
-            )
-            # geo model knows some species the acoustic model doesn't
-            species_list = geo.to_set() & set(model.species_list)
-            logging.info(
-                "lat %s lng %s week %s: %s species", lat, lng, week, len(species_list)
-            )
+        try:
+            species_list = None
+            if key is not None:
+                lat, lng, week = key
+                geo = geo_model.predict(
+                    lat, lng, week=week, min_confidence=args.geo_min_conf
+                )
+                # geo model knows some species the acoustic model doesn't
+                species_list = geo.to_set() & set(model.species_list)
+                logging.info(
+                    "lat %s lng %s week %s: %s species",
+                    lat,
+                    lng,
+                    week,
+                    len(species_list),
+                )
 
-        for i in range(0, len(files), args.chunk):
-            analyse_chunk(
-                model, files[i : i + args.chunk], species_list, key, model_id, args
-            )
+            for i in range(0, len(files), args.chunk):
+                analyse_chunk(
+                    model, files[i : i + args.chunk], species_list, key, model_id, args
+                )
+        except Exception:
+            logging.exception("Failed on group %s (%s files), skipping rest of group", key, len(files))
 
 
 def analyse_chunk(model, files, species_list, key, model_id, args):
