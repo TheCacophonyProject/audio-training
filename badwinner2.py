@@ -37,8 +37,8 @@ class MagTransform(tf.keras.layers.Layer):
             initializer=tf.keras.initializers.Constant(value=1.23),
             name="mag_scale",
             dtype="float32",
-            shape=[], 
-            trainable=True
+            shape=[],
+            trainable=True,
             # the sigmoid structure naturally bounds the exponent between 0 and 1!
         )
 

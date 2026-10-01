@@ -486,9 +486,7 @@ def read_tfrecord(
     # label = tf.cast(example["audio/class/label"], tf.int32)
 
     if one_hot:
-        label = tf.reduce_max(
-            tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
-        )
+        label = tf.reduce_max(tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0)
         if embed_preds is not None:
             embed_preds = tf.reduce_max(
                 tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
@@ -497,7 +495,6 @@ def read_tfrecord(
     label = tf.cast(label, tf.float32)
 
     return image, (label, embed_preds, rec_id, track_id, start_s)
-
 
 
 def class_func(features, label):

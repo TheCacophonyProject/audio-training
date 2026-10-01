@@ -1173,15 +1173,14 @@ def process_rms(metadata_file, tier1=False):
 
         # do per track so can be more precise with the frequencies?
         tracks = meta.get("Tracks", [])
+        if meta.get("rms_version", 0) >= RMS_VERSION:
+            return
         y, sr = load_recording(file)
-        for t in tracks:
-            if "upper_rms" in t:
-                return
         logging.info("Calcing %s", file)
 
         add_rms_data_to_tracks(y, sr, tracks)
         meta["file"] = str(file)
-        meta["rms_version"] = 1.1
+        meta["rms_version"] = RMS_VERSION
 
         with metadata_file.open("w") as f:
             json.dump(
@@ -1193,6 +1192,12 @@ def process_rms(metadata_file, tier1=False):
     except:
         logging.error("Error processing %s", metadata_file, exc_info=True)
     return
+
+
+# 1.2 adds track_rms over each tracks own frequency range
+RMS_VERSION = 2.0
+# only calculate track_rms for tracks with a frequency range up to this many Hz
+MAX_TRACK_RMS_RANGE = 10000
 
 
 def add_rms_data_to_tracks(y, sr, tracks):
@@ -1263,6 +1268,29 @@ def add_rms_data_to_tracks(y, sr, tracks):
             upper_bin = morepork_upper_bin
             # choose different bins depending
         t["lower_nose_bin"] = lower_bin + 1
+
+        # rms of just the tracks frequency range, unless the range is so wide it
+        # is not much different to bird_rms, or a non noise track goes into the
+        # noise band which suggests the box frequencies weren't set properly
+        if (
+            track.min_freq is not None
+            and track.max_freq is not None
+            and track.max_freq - track.min_freq <= MAX_TRACK_RMS_RANGE
+            and (track.noise_track or track.min_freq >= noise_max_freq)
+        ):
+            track_lower_bin = int(np.searchsorted(freqs, track.min_freq))
+            track_upper_bin = int(np.searchsorted(freqs, track.max_freq, side="right"))
+            track_upper_bin = max(track_upper_bin, track_lower_bin + 1)
+            track_stft = np.zeros_like(stft)
+            track_stft[track_lower_bin:track_upper_bin, :] = stft[
+                track_lower_bin:track_upper_bin, :
+            ]
+            S, phase = librosa.magphase(track_stft)
+            track_rms = librosa.feature.rms(
+                S=S, frame_length=n_fft, hop_length=hop_length
+            )
+            t["track_rms_bin"] = [track_lower_bin, track_upper_bin]
+            t["track_rms"] = track_rms[0].tolist()
 
         stft[:lower_bin, :] = 0
         if upper_bin is not None:
@@ -1633,7 +1661,7 @@ def generate_tier_metadata_file(audio_file):
 
         tracks = meta.get("tracks", [])
         add_rms_data_to_tracks(frames, sr, tracks)
-        meta["rms_version"] = 1.1
+        meta["rms_version"] = RMS_VERSION
         meta["state"] = "complete"
         with open(metadata_file, "w") as f:
             json.dump(meta, f, indent=4)

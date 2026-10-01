@@ -46,7 +46,9 @@ class ExponentialMovingAverage(tf.keras.layers.Layer):
         filter gradient for a 1x128 depthwise kernel has no fast cuDNN path.
         kernel_len is no longer used, the average is exact over all frames.
         """
-        w = tf.clip_by_value(self._weights, clip_value_min=0.0, clip_value_max=1.0 - 1e-6)
+        w = tf.clip_by_value(
+            self._weights, clip_value_min=0.0, clip_value_max=1.0 - 1e-6
+        )
         w = tf.cast(w, inputs.dtype)
         T = inputs.shape[self.time_axis]
         if T is None:
@@ -62,6 +64,7 @@ class ExponentialMovingAverage(tf.keras.layers.Layer):
         if self.time_axis == 1:
             return tf.einsum("bkmc,kt->btmc", inputs, m)
         return tf.einsum("bmkc,kt->bmtc", inputs, m)
+
 
 import tensorflow as tf
 

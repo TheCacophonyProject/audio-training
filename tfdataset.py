@@ -1179,9 +1179,7 @@ def read_tfrecord(
 
         labels = tf.concat([labels, extra], axis=0)
     if one_hot:
-        label = tf.reduce_max(
-            tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
-        )
+        label = tf.reduce_max(tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0)
         if not multi:
             logging.info("Choosing only one label as not multi")
             if tf.math.count_nonzero(label) == 0:
@@ -1261,7 +1259,6 @@ def read_tfrecord(
         start_s,
         tf.cast(example["audio/class/text"], tf.string),
     )
-
 
 
 def class_func(features, label):
@@ -1937,15 +1934,16 @@ def normalize_minmax(data):
     min_v = tf.reduce_min(data)
     return 2 * ((data - min_v) / (max_v - min_v)) - 1
 
+
 @tf.function
 def normalize_acoustic_fixed(data):
     # Lock the boundaries to absolute decibel limits
-    max_v = 0.0      # Because librosa.power_to_db(..., ref=np.max) caps peaks at 0
-    min_v = -80.0    # Standard bioacoustic dynamic range floor
-    
+    max_v = 0.0  # Because librosa.power_to_db(..., ref=np.max) caps peaks at 0
+    min_v = -80.0  # Standard bioacoustic dynamic range floor
+
     # Clip the data first so any ultra-quiet outliers don't break the math
     data_clipped = tf.clip_by_value(data, min_v, max_v)
-    
+
     # Scale exactly to the [-1, 1] range
     return 2 * ((data_clipped - min_v) / (max_v - min_v)) - 1
 
@@ -1955,6 +1953,7 @@ def power_to_root_compressed(mel):
     # 0.25 (quad-root) or 0.33 (cube-root) squashes the dynamic range perfectly
     compressed_mel = tf.math.pow(mel, 0.25)
     return compressed_mel
+
 
 # equipvalent of librosa.power_to_db
 @tf.function

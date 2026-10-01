@@ -8,10 +8,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--labels-key",
-        default = "ebird_labels",
-        help="Key of labels in metadata "
-    )   
+        "--labels-key", default="ebird_labels", help="Key of labels in metadata "
+    )
     parser.add_argument(
         "first_confusion",
         help="First confusion to compare",
@@ -37,7 +35,7 @@ def main():
         first_cm = data["cm"]
     else:
         first_cm = np.load(args.first_confusion)
-        
+
     if Path(args.second_confusion).suffix == ".npz":
         data = np.load(args.second_confusion)
         second_cm_labels = list(data["labels"])
@@ -45,7 +43,7 @@ def main():
         second_cm = data["cm"]
     else:
         second_cm = np.load(args.second_confusion)
-    print(first_cm.shape,second_cm.shape)    
+    print(first_cm.shape, second_cm.shape)
     first_cm_meta_file = args.first_confusion.parent / "metadata.txt"
     print("Loading meta from ", first_cm_meta_file)
     with first_cm_meta_file.open("r") as f:
@@ -56,7 +54,7 @@ def main():
         second_meta = json.load(f)
 
     first_labels = first_meta[args.labels_key]
-   
+
     second_labels = second_meta[args.labels_key]
     pre_labels = ["bird", "human", "noise"]
 
@@ -79,7 +77,7 @@ def main():
     for label in second_labels:
         if label not in first_labels:
             print("Second label has ", label, " first does not")
-    
+
     total_samples = 0
     first_correct = 0
     second_correct = 0
@@ -107,7 +105,7 @@ def main():
         first_bird_c = 0
         # if "bird" in first_labels:
         #     first_bird_c = first_cm[i][first_labels.index("bird")]
-            # row_copy[first_labels.index("bird")] = 0
+        # row_copy[first_labels.index("bird")] = 0
 
         if label == "noise":
             row_copy[first_labels.index("insect")] = 0
@@ -153,7 +151,7 @@ def main():
             if second_total != first_total:
                 print(f"{label} First total is {first_total} second is {second_total}")
             # assert (
-                # second_total == first_total
+            # second_total == first_total
             # ), f"{label} First total is {first_total} second is {second_total}"
             # if first_total == 0:
             #     continue
@@ -198,8 +196,9 @@ def main():
             else:
                 second_acc = round(100 * second_count / second_total)
                 second_none = round(100 * second_none / second_total)
-                second_wrong_acc = round(second_cm[second_i][second_most_wrong] / second_total * 100)
-
+                second_wrong_acc = round(
+                    second_cm[second_i][second_most_wrong] / second_total * 100
+                )
 
             print(
                 f"For {label}:  {first_total}#  Correct diff:  {first_count-second_count}#, Accuracies  {first_acc}% vs {second_acc}%,  Percent None: {first_none} vs {second_none}, Animal most incorrect {first_wrong_acc} % ( {first_labels[most_wrong]} #), {first_cm[i][most_wrong]}# and second most wrong {second_labels[second_most_wrong]}, {second_wrong_acc}% ( {second_cm[second_i][second_most_wrong]} #)"

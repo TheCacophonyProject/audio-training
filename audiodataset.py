@@ -555,15 +555,13 @@ class Recording:
         self,
         segment_length,
         segment_stride,
-        do_overlap=False,
         for_label=None,
         extra_samples=True,
     ):
         logging.debug(
-            "Getting samples with length: %s stide: %s over: %s for: %s extra: %s",
+            "Getting samples with length: %s stide: %s for: %s extra: %s",
             segment_length,
             segment_stride,
-            do_overlap,
             for_label,
             extra_samples,
         )
@@ -593,71 +591,27 @@ class Recording:
         else:
             tracks = [t for t in self.tracks if for_label in t.human_tags]
 
-        tracks = [t for t in self.tracks if not t.rms_filtered]
+        tracks = [t for t in tracks if not t.rms_filtered]
+        # bird tracks first so they own samples shared with overlapping tracks
+        tracks = sorted(tracks, key=lambda t: not t.bird_track)
+        # samples made so far per pool, to skip duplicates from overlapping tracks
+        made = {"main": [], "small": [], "unused": []}
 
-        bin_id = f"{self.id}-0"
         for track in tracks:
-            if track.bird_track and (track.noise_track or track.animal_track):
-                logging.info("SKipping track as is noise/animal and bird")
-                continue
-            adjusted = False
-            # dont do noise tracks that happen at the same time as bird tracks
-            if not track.bird_track:
-                for other_track in tracks:
-                    if track == other_track:
-                        continue
-                    overlap = segment_overlap(
-                        [track.og_start, track.og_end],
-                        [other_track.og_start, other_track.og_end],
-                    )
-                    if other_track.bird_track and overlap > 0:
-                        # check track is still valid i.e. has over x seconds
-                        if track.og_start > other_track.og_start:
-                            track.start = other_track.og_end
-                            track.end = max(track.start, track.end)
-                        elif other_track.og_end > track.end:
-                            track.end = other_track.og_start
-                        else:
-                            start_section = other_track.og_start - track.start
-                            end_section = track.end - other_track.og_end
-                            if start_section > end_section:
-                                track.end = other_track.og_start
-                            else:
-                                track.start = other_track.og_end
-                        track.start = min(track.og_end, track.start)
-                        track.end = min(track.end, track.og_end)
-
-                        logging.info(
-                            "Rec %s Track %s overlaps a bird track %s adjusted track times to %s-%s",
-                            self.id,
-                            track.id,
-                            other_track.id,
-                            track.start,
-                            track.end,
-                        )
-                        adjusted = True
-            if adjusted and track.length < 1:
-                logging.error(
-                    "Skipping noise track as too short %s-%s", self.id, track.id
-                )
-                continue
-
+            bin_id = f"{self.id}-0"
             start_stride = segment_stride
-            max_samples = (track.length - segment_length) / segment_stride
-            if track.length > 3:
-                max_samples += 1
-            max_samples = round(max_samples)
-            max_samples = max(max_samples, 1)
+            # jitter starts by up to a quarter of the stride either way
+            jitter = start_stride / 4
 
             track_samples = (track.length - segment_length) / segment_stride
             # if track_samples < 1:
             # logging.info("Low track samples so small stride")
             # start_stride = segment_stride / 2
             # allow an extra track with we have over 1/2 segment stride
-            track_samples = round(track_samples)
             track_samples = max(track_samples, 0)
-            left_over = track_samples - int(track_samples)
-            track_samples = int(track_samples) + 1
+            # seconds of track past the last full stride, before rounding
+            left_over = (track_samples - int(track_samples)) * segment_stride
+            track_samples = int(round(track_samples)) + 1
 
             # max_track_length = segment_length + (max_samples - 1) * segment_stride
 
@@ -670,9 +624,18 @@ class Recording:
             max_samples = MAX_TRACK_SAMPLES
             if track_samples > 1:
                 sample_starts = (
-                    sample_starts + np.random.rand(len(sample_starts)) / 2 - 0.25
+                    sample_starts
+                    + (np.random.rand(len(sample_starts)) * 2 - 1) * jitter
                 )
-            if track_samples > max_samples:
+            # drop starts that would make a short sample, before choosing samples
+            sample_starts = filter_starts(
+                sample_starts,
+                track.end,
+                segment_length,
+                segment_length - SEG_LEEWAY,
+                first_min_length=0,
+            )
+            if len(sample_starts) > max_samples:
                 # track.length > max_track_length:
                 # might be worth letting more samples for some labels
 
@@ -690,15 +653,23 @@ class Recording:
             # end sometimes and start othertimes
 
             small_strides = (
-                np.arange(track_samples, step=start_stride, dtype=np.float32)
+                np.arange(track.length, step=start_stride, dtype=np.float32)
                 + track.start
                 + start_stride / 2
             )
 
             if track_samples > 1:
                 small_strides = (
-                    small_strides + np.random.rand(len(small_strides)) / 2 - 0.25
+                    small_strides
+                    + (np.random.rand(len(small_strides)) * 2 - 1) * jitter
                 )
+            small_strides = filter_starts(
+                small_strides,
+                track.end,
+                segment_length,
+                segment_length - SEG_LEEWAY,
+                first_min_length=1.5,
+            )
             # logging.info(
             #     "%s  Track times are %s-%s samples are %s num samples %s small strides %s",
             #     track.human_tags,
@@ -730,8 +701,7 @@ class Recording:
                 # )
                 # sample_i = 0
                 for start in starts:
-                    # no negative starts
-                    start = max(0, start)
+                    # starts are already clamped to >= 0 by filter_starts
                     used_sample = start in selected_samples and not small_stride
                     end = start + segment_length
                     end = min(end, track.end)
@@ -758,41 +728,40 @@ class Recording:
                     text_labels = set(track.human_text_tags)
 
                     other_tracks = []
-                    if do_overlap:
-                        for other_track in sorted_tracks:
-                            if track == other_track:
-                                continue
+                    for other_track in sorted_tracks:
+                        if track == other_track:
+                            continue
 
-                            # starts in this sample
-                            if other_track.start > end:
-                                break
-                            overlap = (
-                                (end - start)
-                                + (other_track.length)
-                                - (
-                                    max(end, other_track.end)
-                                    - min(start, other_track.start)
-                                )
+                        # starts in this sample
+                        if other_track.start > end:
+                            break
+                        overlap = (
+                            (end - start)
+                            + (other_track.length)
+                            - (
+                                max(end, other_track.end)
+                                - min(start, other_track.start)
                             )
-                            min_overlap = min(
-                                0.9 * segment_length, other_track.length * 0.9
-                            )
+                        )
+                        # 0.5s of the other track in this sample, or most of it if
+                        # it is shorter than that
+                        min_overlap = min(0.5, other_track.length * 0.9)
 
-                            # enough overlap or we engulf the track
-                            if overlap >= min_overlap:
-                                other_tracks.append(other_track)
-                                labels = labels | other_track.human_tags
-                                text_labels = text_labels | other_track.human_text_tags
-                                if min_freq is not None:
-                                    if other_track.min_freq is None:
-                                        min_freq = None
-                                    else:
-                                        min_freq = min(other_track.min_freq, min_freq)
-                                if max_freq is not None:
-                                    if other_track.max_freq is None:
-                                        max_freq = None
-                                    else:
-                                        max_freq = max(other_track.max_freq, max_freq)
+                        # enough overlap or we engulf the track
+                        if overlap >= min_overlap:
+                            other_tracks.append(other_track)
+                            labels = labels | other_track.human_tags
+                            text_labels = text_labels | other_track.human_text_tags
+                            if min_freq is not None:
+                                if other_track.min_freq is None:
+                                    min_freq = None
+                                else:
+                                    min_freq = min(other_track.min_freq, min_freq)
+                            if max_freq is not None:
+                                if other_track.max_freq is None:
+                                    max_freq = None
+                                else:
+                                    max_freq = max(other_track.max_freq, max_freq)
 
                     other_tracks.append(track)
                     if low_sample_track:
@@ -806,7 +775,7 @@ class Recording:
                         text_labels,
                         start,
                         end,
-                        [track.id for t in other_tracks],
+                        [t.id for t in other_tracks],
                         SAMPLE_GROUP_ID,
                         track.signal_percent,
                         bin_id=bin_id,
@@ -816,11 +785,25 @@ class Recording:
                         low_sample=low_sample_track,
                     )
                     if used_sample:
-                        samples.append(sample)
+                        pool = "main"
                     elif small_stride and extra_samples:
-                        extra_small_strides.append(sample)
+                        pool = "small"
                     elif extra_samples:
-                        unused_samples.append(sample)
+                        pool = "unused"
+                    else:
+                        pool = None
+                    # overlapping tracks share labels, so their samples over the
+                    # overlap are near duplicates, keep the first one made
+                    if pool is not None and not is_duplicate_sample(
+                        sample, track.id, made, pool, segment_length
+                    ):
+                        made[pool].append((sample, track.id))
+                        if pool == "main":
+                            samples.append(sample)
+                        elif pool == "small":
+                            extra_small_strides.append(sample)
+                        else:
+                            unused_samples.append(sample)
 
                     min_sample_length = segment_length - SEG_LEEWAY
 
@@ -939,6 +922,8 @@ class Track:
         self.short_features = None
         self.mixed_label = None
         self.rms_filtered = False
+        self.best_start = None
+        self.best_end = None
         tags = metadata.get("tags", [])
         for tag in tags:
             self.add_tag(tag)
@@ -1004,17 +989,56 @@ class Track:
         noise_peaks, noise_meta = scipy.signal.find_peaks(
             noise_rms, threshold=rms_thresh, height=rms_height, width=2
         )
+        pre_noise_rms = rms.copy()
         remove_rms_noise(rms, rms_peaks, rms_meta, noise_peaks, noise_meta, upper_peaks)
+        # removed noise is filled with the mean, so don't count it as active
+        noise_removed = rms != pre_noise_rms
 
+        # rms starts at the original track start
+        frame_length = rms_hop / rms_sr
         best_offset, _ = best_rms(rms, segment_length, rms_sr, rms_hop)
-        start = self.start + best_offset * rms_hop / rms_sr
+        start = self.start + best_offset * frame_length
         end = min(start + segment_length, self.end)
-        # logging.info("Track %s - %s becomes %s - %s", self.start, self.end, start, end)
+        track_rms = rms[best_offset : best_offset + int(segment_length / frame_length)]
         if tighten:
-            self.start = start
-            self.end = end
+            self.best_start = start
+            self.best_end = end
 
-        track_rms = rms[best_offset : int(end * rms_sr / rms_hop)]
+        # trim track box to where the bird rms is active, any length
+        # track_rms only covers the tracks own frequencies so faint calls stand out more
+        span_rms = rms
+        active_db = RMS_ACTIVE_DB
+        if metadata.get("track_rms") is not None:
+            box_rms = np.array(metadata["track_rms"])
+            if len(box_rms) == len(rms):
+                span_rms = box_rms
+                active_db = TRACK_RMS_ACTIVE_DB
+        active = rms_active_span(
+            span_rms, frame_length, ignore=noise_removed, active_db=active_db
+        )
+        if active is not None:
+            active_start, active_end = active
+            # only meant to remove loose padding so never trim more than
+            # RMS_MAX_TRIM_PERCENT of the track up to RMS_MAX_TRIM from either end
+            max_trim = min(
+                RMS_MAX_TRIM, (self.og_end - self.og_start) * RMS_MAX_TRIM_PERCENT
+            )
+            new_start = max(self.og_start, self.og_start + active_start)
+            new_start = min(new_start, self.og_start + max_trim)
+            new_end = min(self.og_end, self.og_start + active_end)
+            new_end = max(new_end, self.og_end - max_trim)
+            if new_end > new_start:
+                logging.debug(
+                    "Track %s %s - %s becomes %s - %s",
+                    self.id,
+                    self.start,
+                    self.end,
+                    new_start,
+                    new_end,
+                )
+                self.start = new_start
+                self.end = new_end
+
         std_dev = np.std(track_rms)
         mean = np.mean(track_rms)
 
@@ -1479,6 +1503,78 @@ def remove_rms_noise(
             rms[lower_bound:upper_bound] = 0
     non_zero_mean = np.mean(rms[rms != 0])
     rms[rms == 0] = non_zero_mean
+
+
+# frames this many dB above the tracks background level count as active
+RMS_ACTIVE_DB = 3
+# threshold when using track_rms, which only covers the tracks frequencies
+TRACK_RMS_ACTIVE_DB = 3
+# pad active span and round out to this resolution, as rms frames (~6ms) are
+# finer than we can trust and quiet call onsets can fall below the threshold
+RMS_ACTIVE_PAD = 0.2
+RMS_ACTIVE_RESOLUTION = 0.1
+# seconds rms must stay above threshold to count as active
+RMS_MIN_ACTIVE = 0.05
+# max seconds trimmed from each end of a track
+RMS_MAX_TRIM = 1.0
+# max percent of the track trimmed from each end
+RMS_MAX_TRIM_PERCENT = 0.25
+
+
+def rms_active_span(
+    rms, frame_length, ignore=None, active_db=RMS_ACTIVE_DB, pad=RMS_ACTIVE_PAD
+):
+    # returns start/end in seconds relative to rms start of first/last active frame
+    rms_db = librosa.amplitude_to_db(np.asarray(rms), ref=1.0)
+    if ignore is None:
+        ignore = np.zeros(len(rms_db), dtype=bool)
+    if ignore.all():
+        return None
+    floor = np.percentile(rms_db[~ignore], 20)
+    above = (rms_db > floor + active_db) & ~ignore
+    # only count sound lasting at least RMS_MIN_ACTIVE, narrow band rms
+    # fluctuates enough for single frames to cross the threshold
+    min_frames = max(1, int(round(RMS_MIN_ACTIVE / frame_length)))
+    edges = np.flatnonzero(np.diff(np.r_[0, above.astype(np.int8), 0]))
+    active = []
+    for run_start, run_end in zip(edges[::2], edges[1::2]):
+        if run_end - run_start >= min_frames:
+            active.append((run_start, run_end))
+    if len(active) == 0:
+        return None
+    active = [active[0][0], active[-1][1] - 1]
+    start = active[0] * frame_length - pad
+    end = (active[-1] + 1) * frame_length + pad
+    start = math.floor(start / RMS_ACTIVE_RESOLUTION) * RMS_ACTIVE_RESOLUTION
+    end = math.ceil(end / RMS_ACTIVE_RESOLUTION) * RMS_ACTIVE_RESOLUTION
+    return start, end
+
+
+def is_duplicate_sample(sample, track_id, made, pool, segment_length):
+    # duplicate if a sample from another track has the same labels and overlaps
+    # by more than half a segment, spare samples also check the main samples
+    pools = [pool] if pool == "main" else [pool, "main"]
+    labels = set(sample.tags)
+    for check_pool in pools:
+        for other, other_track_id in made[check_pool]:
+            if other_track_id == track_id:
+                continue
+            overlap = min(sample.end, other.end) - max(sample.start, other.start)
+            if overlap > segment_length / 2 and set(other.tags) == labels:
+                return True
+    return False
+
+
+def filter_starts(starts, track_end, segment_length, min_length, first_min_length=None):
+    # remove sample starts which would give samples shorter than min_length
+    # the first start is kept if its at least first_min_length so short tracks
+    # still get a sample
+    starts = np.maximum(starts, 0)
+    lengths = np.minimum(starts + segment_length, track_end) - starts
+    keep = lengths >= min_length
+    if first_min_length is not None and len(starts) > 0:
+        keep[0] = keep[0] or lengths[0] >= first_min_length
+    return starts[keep]
 
 
 def best_rms(rms, segment_length=3, sr=48000, hop_length=281):

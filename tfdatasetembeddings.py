@@ -485,9 +485,7 @@ def read_tfrecord(
     # label = tf.cast(example["audio/class/label"], tf.int32)
 
     if one_hot:
-        label = tf.reduce_max(
-            tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
-        )
+        label = tf.reduce_max(tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0)
     if no_bird:
         logging.info("no bird")
         # dont use bird or noise label from mixed ones
@@ -505,7 +503,6 @@ def read_tfrecord(
     label = tf.cast(label, tf.float32)
 
     return embeddings, label
-
 
 
 def class_func(features, label):
