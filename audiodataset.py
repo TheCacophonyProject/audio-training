@@ -568,7 +568,6 @@ class Recording:
         samples = []
         extra_small_strides = []
         unused_samples = []
-        max_samples = MAX_TRACK_SAMPLES
         if len(self.samples) > 0:
             logging.debug("Loading samples when we already have samples")
         global SAMPLE_GROUP_ID
@@ -582,8 +581,6 @@ class Recording:
         # does this make data unfair for shorter concise tracks
 
         SEG_LEEWAY = 0.5
-
-        min_sample_length = segment_length - SEG_LEEWAY
         # low_sample_rec = any([True for l in self.human_tags if l in LOW_SAMPLES_LABELS])
         # can be used to seperate among train/val/test
         if for_label is None:
@@ -615,7 +612,6 @@ class Recording:
 
             # max_track_length = segment_length + (max_samples - 1) * segment_stride
 
-            sample_jitter = None
             sample_starts = (
                 np.arange(track.length, step=start_stride, dtype=np.float32)
                 + track.start
@@ -684,8 +680,6 @@ class Recording:
             if left_over > 0 and track_samples == 1 and left_over < SEG_LEEWAY:
                 start_jitter = np.random.rand() * left_over
                 sample_starts += start_jitter
-            sample_i = 1
-
             low_sample_track = any(
                 [True for l in track.human_tags if l in LOW_SAMPLES_LABELS]
             )
@@ -700,28 +694,25 @@ class Recording:
                 #     "Loading from starts %s msmalll stride %s", starts, small_stride
                 # )
                 # sample_i = 0
-                for start in starts:
-                    # starts are already clamped to >= 0 by filter_starts
+                # starts are already filtered by filter_starts so are >= 0 and
+                # give samples of the required length
+                for start_i, start in enumerate(starts):
                     used_sample = start in selected_samples and not small_stride
                     end = start + segment_length
                     end = min(end, track.end)
 
-                    if sample_i > 1:
-                        if start > track.end or (end - start) < min_sample_length:
-                            # dont think this will ever happen
-                            break
                     if (
-                        left_over > 0
-                        and left_over < SEG_LEEWAY
-                        and sample_i == track_samples
+                        not small_stride
+                        and track_samples > 1
+                        and start_i == track_samples - 1
+                        and 0 < left_over < SEG_LEEWAY
                     ):
-                        # always include end
-                        # this is assuming segment_stride has already include a sample
-                        # with the start anyway
+                        # always include end, the last full sample is moved to
+                        # finish at the track end, single sample tracks are
+                        # randomly jittered instead
                         end = track.end
                         start = end - segment_length
 
-                    sample_i += 1
                     min_freq = track.min_freq
                     max_freq = track.max_freq
                     labels = set(track.human_tags)
@@ -800,18 +791,21 @@ class Recording:
                         made[pool].append((sample, track.id))
                         if pool == "main":
                             samples.append(sample)
+                            # spares from other tracks made earlier which duplicate
+                            # this main sample are no longer needed
+                            for spare_pool, spare_list in (
+                                ("small", extra_small_strides),
+                                ("unused", unused_samples),
+                            ):
+                                for spare in remove_duplicate_spares(
+                                    sample, track.id, made, spare_pool, segment_length
+                                ):
+                                    spare_list.remove(spare)
                         elif pool == "small":
                             extra_small_strides.append(sample)
                         else:
                             unused_samples.append(sample)
-
-                    min_sample_length = segment_length - SEG_LEEWAY
-
-                    if start > track.end or (end - start) < min_sample_length:
-                        break
                 small_stride = True
-                # just for first segment
-                min_sample_length = 1.5
             # for s in self.samples:
             #     if track.id in s.track_ids:
             #         logging.info("USed samples are %s", s)
@@ -1550,19 +1544,34 @@ def rms_active_span(
     return start, end
 
 
+def samples_match(sample, other, segment_length):
+    # same labels and overlapping by more than half a segment
+    overlap = min(sample.end, other.end) - max(sample.start, other.start)
+    return overlap > segment_length / 2 and set(other.tags) == set(sample.tags)
+
+
 def is_duplicate_sample(sample, track_id, made, pool, segment_length):
-    # duplicate if a sample from another track has the same labels and overlaps
-    # by more than half a segment, spare samples also check the main samples
+    # duplicate if a sample from another track matches, spare samples also check
+    # the main samples
     pools = [pool] if pool == "main" else [pool, "main"]
-    labels = set(sample.tags)
     for check_pool in pools:
         for other, other_track_id in made[check_pool]:
-            if other_track_id == track_id:
-                continue
-            overlap = min(sample.end, other.end) - max(sample.start, other.start)
-            if overlap > segment_length / 2 and set(other.tags) == labels:
+            if other_track_id != track_id and samples_match(
+                sample, other, segment_length
+            ):
                 return True
     return False
+
+
+def remove_duplicate_spares(sample, track_id, made, pool, segment_length):
+    # remove spares in pool from other tracks which match sample, returns them
+    removed = [
+        other
+        for other, other_track_id in made[pool]
+        if other_track_id != track_id and samples_match(sample, other, segment_length)
+    ]
+    made[pool] = [entry for entry in made[pool] if entry[0] not in removed]
+    return removed
 
 
 def filter_starts(starts, track_end, segment_length, min_length, first_min_length=None):
