@@ -717,6 +717,19 @@ class Recording:
                         end = track.end
                         start = end - segment_length
 
+                    # load_data always loads segment_length of audio, so expand
+                    # short samples here so overlaps include the extra audio
+                    missing = segment_length - (end - start)
+                    if missing > 0:
+                        start = start - np.random.rand() * missing
+                        end = start + segment_length
+                        if start < 0:
+                            start = 0
+                            end = segment_length
+                        if self.duration is not None and end > self.duration:
+                            end = self.duration
+                            start = max(0, end - segment_length)
+
                     min_freq = track.min_freq
                     max_freq = track.max_freq
                     labels = set(track.human_tags)
@@ -1001,7 +1014,6 @@ class Track:
         if tighten:
             self.best_start = start
             self.best_end = end
-
         # trim track box to where the bird rms is active, any length
         # track_rms only covers the tracks own frequencies so faint calls stand out more
         span_rms = rms
@@ -1197,19 +1209,11 @@ def load_data(
     sr,
     n_fft=None,
     end=None,
-    min_freq=None,
-    max_freq=None,
     use_padding=False,
 ):
     segment_l = config.segment_length
     segment_stride = config.segment_stride
-    sr_stride = int(segment_stride * sr)
     hop_length = config.hop_length
-    fmin = config.fmin
-    fmax = config.fmax
-    n_mels = config.n_mels
-    htk = config.htk
-    break_freq = config.break_freq
 
     if n_fft is None:
         n_fft = 4096  # power of 2 is best, otherwise need to know
@@ -1354,13 +1358,11 @@ def load_data(
 
 
 def normalize_data(x):
-    min_v = np.min(x, -1, keepdims=True)
-    x = x - min_v
-    max_v = np.max(x, -1, keepdims=True)
-    x = x / max_v + 0.000001
-    x = x - 0.5
-    x = x * 2
-    return x
+    # peak normalize to [-1, 1], keeping 0 as silence
+    peak = np.max(np.abs(x), -1, keepdims=True)
+    peak = np.maximum(peak, 1e-6)
+
+    return x / peak
 
 
 from scipy.signal import butter, sosfilt, sosfreqz, freqs

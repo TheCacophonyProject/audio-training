@@ -120,7 +120,7 @@ def create_tf_example(sample):
             0 if sample.signal_percent is None else sample.signal_percent
         ),
         "audio/low_sample": tfrecord_util.int64_feature(
-            sample.low_sample
+            int(sample.low_sample)
             # 1 if sample.low_sample else 0
         ),
         "audio/raw_length": tfrecord_util.float_feature(data.raw_length),

@@ -1222,10 +1222,13 @@ def loss(multi_label=False, smoothing=0):
         # return tf.keras.losses.BinaryFocalCrossentropy(
         #     gamma=2.0, from_logits=False, apply_class_balancing=True
         # )
-        logging.info("Using binary loss")
-        loss_fn = tf.keras.losses.BinaryCrossentropy(
-            label_smoothing=smoothing,
-        )
+        # logging.info("Using binary loss")
+        # loss_fn = tf.keras.losses.BinaryCrossentropy(
+        #     label_smoothing=smoothing,
+        # )
+        logging.info("Using MultiHotMixupBCE loss")
+
+        loss_fn = MultiHotMixupBCE()
         # loss_fn = sigmoid_binary_cross
     else:
         logging.info("Using cross loss")
@@ -2835,3 +2838,29 @@ class EpochUpdater(tf.keras.callbacks.Callback):
 
 if __name__ == "__main__":
     main()
+
+
+class MultiHotMixupBCE(tf.keras.losses.Loss):
+    def __init__(
+        self,
+        reduction=tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE,
+        name="multi_hot_mixup_bce",
+    ):
+        super().__init__(reduction=reduction, name=name)
+
+    def call(self, y_true, y_pred):
+        """
+        Computes Binary Cross Entropy for mixup-blended multi-hot labels.
+
+        y_true: [batch_size, num_classes] -> Blended multi-hot targets (floats between 0 and 1)
+        y_pred: [batch_size, num_classes] -> Model logits (raw, unactivated outputs)
+        """
+        # Ensure predictions are cast to float32
+        y_pred = tf.cast(y_pred, tf.float32)
+        y_true = tf.cast(y_true, tf.float32)
+
+        # We use from_logits=True for numerical stability rather than applying Sigmoid manually
+        bce = tf.nn.sigmoid_cross_entropy_with_logits(labels=y_true, logits=y_pred)
+
+        # Reduce across classes (average loss per sample), Keras handles the batch reduction
+        return tf.reduce_mean(bce, axis=-1)

@@ -467,6 +467,8 @@ def filter_birds(dataset, args):
                 for c in columns
             ),
         )
+    logging.info("Post filtering counts")
+    dataset.print_sample_counts()
 
 
 def trim_noise(dataset):
@@ -747,13 +749,15 @@ def main():
     # config = load_config(args.config_file)
     dataset = AudioDataset("all", config)
     dataset.load_meta(args.dir)
-
     if args.plot_signal:
         logging.info("Plotting signals")
         from otherdata import plot_signal
 
         plot_signal(dataset, Path(args.dir))
         return
+
+    dataset.print_sample_counts()
+
     if args.filter_birds:
         filter_birds(dataset, args)
     # for r in dataset.recs:
@@ -763,7 +767,6 @@ def main():
     # return
     # dataset.load_meta()
     # return
-    dataset.print_sample_counts()
     datasets = None
     if args.split_file:
         logging.info("Splitting by %s", args.split_file)

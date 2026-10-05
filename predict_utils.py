@@ -151,13 +151,10 @@ def load_samples(
 
 
 def normalize_data(x):
-    min_v = np.min(x, -1, keepdims=True)
-    x = x - min_v
-    max_v = np.max(x, -1, keepdims=True)
-    x = x / max_v + 0.000001
-    x = x - 0.5
-    x = x * 2
-    return x
+    # peak normalize to [-1, 1], keeping 0 as silence
+    peak = np.max(np.abs(x), -1, keepdims=True)
+    peak = np.maximum(peak, 1e-6)
+    return x / peak
 
 
 def get_spect(
