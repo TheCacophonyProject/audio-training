@@ -117,6 +117,8 @@ class Config:
         self.filter_frequency = args.get("filter_freq", False)
         self.tighten_tracks = not args.get("dont_tighten_tracks", False)
         self.filter_rms = not args.get("dont_filter_rms", False)
+        # only use each tracks best segment (track.best_start - track.best_end)
+        self.best_segment = args.get("best_segment", False)
         # seeds random generation so a dataset build can be reproduced exactly
         self.seed = args.get("seed")
 
@@ -148,6 +150,9 @@ class AudioDataset:
                     audio_f = f.with_suffix(".mp3")
                 if not audio_f.exists():
                     audio_f = f.with_suffix(".flac")
+                if not audio_f.exists():
+                    logging.error("No audio found for %s", f)
+                    continue
                     # hack to find files, probably should look
                     # at all files in dir or store file in metadata
                 r = Recording(meta, audio_f, self.config)
@@ -442,6 +447,7 @@ class Recording:
         self.filename = filename
         self.metadata = metadata
         self.id = metadata.get("id")
+        self.best_segment = config.best_segment if config is not None else False
         self.device_id = metadata.get("deviceId")
         self.group_id = metadata.get("groupId")
         self.rec_date = metadata.get("recordingDateTime")
@@ -514,6 +520,7 @@ class Recording:
 
     def clone(self):
         cloned = Recording(self.metadata, self.filename, None, load_samples=False)
+        cloned.best_segment = self.best_segment
         return cloned
 
     def signal_percent(self):
@@ -691,6 +698,14 @@ class Recording:
             if extra_samples:
                 all_starts = [sample_starts, small_strides]
             else:
+                all_starts = [sample_starts]
+            if self.best_segment and track.best_start is not None:
+                # the best segment is the only sample for this track, end is
+                # min(best_start + segment_length, track.end) so matches best_end
+                sample_starts = np.array([track.best_start])
+                selected_samples = sample_starts
+                track_samples = 1
+                left_over = 0
                 all_starts = [sample_starts]
 
             for starts in all_starts:

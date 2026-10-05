@@ -1009,6 +1009,12 @@ def parse_args():
         help="Dont Tighten tracks to the best 3 seconds",
     )
     parser.add_argument(
+        "--best-segment",
+        default=False,
+        action="store_true",
+        help="Only use each tracks best segment as its sample",
+    )
+    parser.add_argument(
         "--dont-filter-rms",
         default=False,
         action="store_true",
@@ -1068,6 +1074,9 @@ def parse_args():
         help="Split the dataset using clip ids specified in this file",
     )
     args = parser.parse_args()
+    if args.best_segment and args.dont_tighten_tracks:
+        # best_start and best_end are only set when tightening tracks
+        parser.error("--best-segment needs tracks to be tightened")
     args.dir = Path(args.dir)
     return args
 
