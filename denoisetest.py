@@ -92,13 +92,13 @@ def signal_noise(file, hop_length=281):
     # frames = frames[: sr * 120]
     # n_fft = sr // 10
     n_fft = 4096
-    # spectogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
-    # plot_spec(spectogram)
-    signals, spectogram = track_signals(frames, sr, hop_length=hop_length, n_fft=n_fft)
+    # spectrogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
+    # plot_spec(spectrogram)
+    signals, spectrogram = track_signals(frames, sr, hop_length=hop_length, n_fft=n_fft)
     # , min_width=0, min_height=0
     # )
     noise = []
-    return signals, noise, spectogram, frames, end
+    return signals, noise, spectrogram, frames, end
 
 
 def scale_minmax(X, min=0.0, max=1.0):
@@ -107,10 +107,10 @@ def scale_minmax(X, min=0.0, max=1.0):
     return X_scaled
 
 
-def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
+def signal_noise_data(spectrogram, sr, min_bin=None, hop_length=281, n_fft=None):
     # normed = librosa.display.specshow(
     #     # S,
-    #     librosa.amplitude_to_db(spectogram, ref=np.max),
+    #     librosa.amplitude_to_db(spectrogram, ref=np.max),
     #     x_axis="time",
     #     y_axis="linear",
     #     sr=48000,
@@ -118,43 +118,43 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     #     fmin=0,
     #     hop_length=281,
     # )
-    # normed = scale_minmax(spectogram,0,255).astype(np.uint8)
+    # normed = scale_minmax(spectrogram,0,255).astype(np.uint8)
     # # normed = 255 - normed
     # print(normed)
     # plt.imshow(normed,origin="lower")
     # plt.show()
-    # # plot_spec(spectogram)
-    # # a_max = np.amax(spectogram)
-    # # a_min = np.amin(spectogram)
-    # # normed = 255*(spectogram- a_min)/ (a_max-a_min)
+    # # plot_spec(spectrogram)
+    # # a_max = np.amax(spectrogram)
+    # # a_min = np.amin(spectrogram)
+    # # normed = 255*(spectrogram- a_min)/ (a_max-a_min)
     # # normed = np.uint8(normed)
     # # print(a_max,a_min)
     # edges = cv2.Canny(normed,100,200)
     # plt.imshow(edges,origin="lower")
     # plt.show()
 
-    a_max = np.amax(spectogram)
-    # spectogram = spectogram / a_max
-    row_medians = np.median(spectogram, axis=1)
-    column_medians = np.median(spectogram, axis=0)
-    rows, columns = spectogram.shape
+    a_max = np.amax(spectrogram)
+    # spectrogram = spectrogram / a_max
+    row_medians = np.median(spectrogram, axis=1)
+    column_medians = np.median(spectrogram, axis=0)
+    rows, columns = spectrogram.shape
 
     column_medians = column_medians[np.newaxis, :]
     row_medians = row_medians[:, np.newaxis]
     row_medians = np.repeat(row_medians, columns, axis=1)
     column_medians = np.repeat(column_medians, rows, axis=0)
     kernel = np.ones((4, 4), np.uint8)
-    spectogram = cv2.morphologyEx(spectogram, cv2.MORPH_OPEN, kernel)
+    spectrogram = cv2.morphologyEx(spectrogram, cv2.MORPH_OPEN, kernel)
 
     # kernel = np.ones((4, 4*3), np.uint8)
-    # signal = (spectogram > 3 * column_medians) & (spectogram > 3 * row_medians)
-    # noise = (spectogram > 2.5 * column_medians) & (spectogram > 2.5 * row_medians)
+    # signal = (spectrogram > 3 * column_medians) & (spectrogram > 3 * row_medians)
+    # noise = (spectrogram > 2.5 * column_medians) & (spectrogram > 2.5 * row_medians)
 
     # plt.imshow(np.uint8(signal)*255,origin="lower")
     # plt.show()
     # plt.imshow(np.uint8(noise) * 100 + np.uint8(signal)*255,origin="lower")
     # plt.show()
-    # normed =(spectogram > 1 * column_medians) & (spectogram > 1 * row_medians)
+    # normed =(spectrogram > 1 * column_medians) & (spectrogram > 1 * row_medians)
     # normed = np.uint8(normed)
 
     # normed = np.float32(normed*125)+ np.uint8(signal)*255
@@ -165,13 +165,13 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
 
     # 1/0
     signal_thresh = 2
-    signal = (spectogram > 3 * column_medians) & (spectogram > 3 * row_medians)
-    noise = (spectogram > 2.5 * column_medians) & (spectogram > 2.5 * row_medians)
+    signal = (spectrogram > 3 * column_medians) & (spectrogram > 3 * row_medians)
+    noise = (spectrogram > 2.5 * column_medians) & (spectrogram > 2.5 * row_medians)
     noise[signal == noise] = 0
     noise = noise.astype(np.uint8)
     signal = signal.astype(np.uint8)
-    normed = scale_minmax(spectogram, 0, 100).astype(np.uint8)
-    normed = (spectogram > 1 * column_medians) & (spectogram > 1 * row_medians)
+    normed = scale_minmax(spectrogram, 0, 100).astype(np.uint8)
+    normed = (spectrogram > 1 * column_medians) & (spectrogram > 1 * row_medians)
     normed = normed + signal * 255
     normed = normed.astype(np.uint8)
     normed = normed * 255
@@ -219,7 +219,7 @@ def signal_noise_data(spectogram, sr, min_bin=None, hop_length=281, n_fft=None):
     # noise[noise>0]= 128
     # print(noise)
     signal[signal > 0] = 255
-    normed = (spectogram > 1 * column_medians) & (spectogram > 1 * row_medians)
+    normed = (spectrogram > 1 * column_medians) & (spectrogram > 1 * row_medians)
     normed = np.uint8(normed)
     freq_range = 300
     height = 0
@@ -373,7 +373,7 @@ def process_signal(f):
         # r = Recording(meta, file, None)
 
         logging.info("Calcing %s", file)
-        signals, noise, spectogram, frames = signal_noise(file)
+        signals, noise, spectrogram, frames = signal_noise(file)
         signals = [s.to_array() for s in signals]
         meta["signal"] = signals
         meta["noise"] = noise
@@ -420,9 +420,9 @@ def mix_file(file, mix):
 
 def get_end(frames, sr):
     hop_length = 281
-    spectogram = np.abs(librosa.stft(frames, n_fft=sr // 10, hop_length=hop_length))
+    spectrogram = np.abs(librosa.stft(frames, n_fft=sr // 10, hop_length=hop_length))
     mel = mel_spec(
-        spectogram,
+        spectrogram,
         sr,
         sr // 10,
         hop_length,
@@ -434,7 +434,7 @@ def get_end(frames, sr):
     )
     start = 0
     chunk_length = sr // hop_length
-    # this is roughtly a third of our spectogram used for classification
+    # this is roughtly a third of our spectrogram used for classification
     end = start + chunk_length
     file_length = len(frames) / sr
     while end < mel.shape[1]:
@@ -580,7 +580,7 @@ def get_end(frames, sr):
 #     return unique_signals
 
 
-def tracks_to_audio(tracks, spectogram, frames, sr=48000, hop_length=281):
+def tracks_to_audio(tracks, spectrogram, frames, sr=48000, hop_length=281):
     import soundfile as sf
 
     n_fft = sr // 10
@@ -597,10 +597,10 @@ def tracks_to_audio(tracks, spectogram, frames, sr=48000, hop_length=281):
         data = frames[int(start) : int(end)]
         start = start / hop_length
         end = end / hop_length
-        end = min(spectogram.shape[1], end)
+        end = min(spectrogram.shape[1], end)
         start = int(start)
         end = int(end)
-        spect_data = spectogram[:, start:end].copy()
+        spect_data = spectrogram[:, start:end].copy()
         low_pass = t.freq_start
         high_pass = t.freq_end
         bins = 1 + n_fft / 2
@@ -622,7 +622,7 @@ def tracks_to_audio(tracks, spectogram, frames, sr=48000, hop_length=281):
         # 1 / 0
 
 
-def means_merge(spectogram, signals):
+def means_merge(spectrogram, signals):
     features = np.float32([s.to_features() for s in signals])
     from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN, OPTICS
 
@@ -670,7 +670,7 @@ def means_merge(spectogram, signals):
         rect_colours.append(possible_colours[l + 1])
 
     print("Signals are ", len(signals))
-    plot_mel_signals(np.abs(spectogram), signals, colours=rect_colours)
+    plot_mel_signals(np.abs(spectrogram), signals, colours=rect_colours)
 
 
 def test_plot(file):
@@ -708,16 +708,16 @@ def test_plot(file):
     # mel_2 = librosa.feature.melspectrogram(y=frames_2, sr=sr,power=1,fmin=50,fmax=11000,n_mels=160,hop_length=281)
     # plot_mel(mel_2,"default160.png")
 
-    # spectogram = librosa.stft(frames_2, n_fft=4096, hop_length=281)
-    # plot_spec(spectogram)
+    # spectrogram = librosa.stft(frames_2, n_fft=4096, hop_length=281)
+    # plot_spec(spectrogram)
     n_fft = 4096
-    spectogram = librosa.stft(normalize(frames), n_fft=n_fft, hop_length=281)
-    # plot_spec(spectogram)
+    spectrogram = librosa.stft(normalize(frames), n_fft=n_fft, hop_length=281)
+    # plot_spec(spectrogram)
     fmin = 500
     fmax = 11000
     # hop_length=281
     mel = mel_spec(
-        spectogram,
+        spectrogram,
         sr,
         n_fft,
         hop_length,
@@ -729,10 +729,10 @@ def test_plot(file):
     )
     plot_mel(mel, filename="mel4096")
 
-    # spectogram = librosa.stft(frames_2, n_fft=1024, hop_length=281)
+    # spectrogram = librosa.stft(frames_2, n_fft=1024, hop_length=281)
 
     # mel = mel_spec(
-    #     spectogram,
+    #     spectrogram,
     #     sr,
     #     1024,
     #     hop_length,
@@ -1088,27 +1088,27 @@ def test_multi_rgb(frames, sr):
     n_fft = 2 * 4096
     hop_length = 281
 
-    spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
-    print("SPec is ", spectogram.shape)
-    mel = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
+    spectrogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
+    print("SPec is ", spectrogram.shape)
+    mel = tf.tensordot(MEL_WEIGHTS, spectrogram, 1)
     mel = tf.math.pow(mel, 2)
     # 2048,
     # 278,
     n_fft = 2048
     hop_length = 281
-    spectogram_2 = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
+    spectrogram_2 = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
 
-    mel_2 = tf.tensordot(MEL_WEIGHTS_2, spectogram_2, 1)
+    mel_2 = tf.tensordot(MEL_WEIGHTS_2, spectrogram_2, 1)
     mel_2 = tf.math.pow(mel_2, 2)
 
     n_fft = 1024
     hop_length = 281
-    spectogram_3 = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
+    spectrogram_3 = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
 
-    mel_3 = tf.tensordot(MEL_WEIGHTS_3, spectogram_3, 1)
+    mel_3 = tf.tensordot(MEL_WEIGHTS_3, spectrogram_3, 1)
     mel_3 = tf.math.pow(mel_3, 2)
 
-    print(spectogram.shape, spectogram_2.shape, mel.shape, mel_2.shape, mel_3.shape)
+    print(spectrogram.shape, spectrogram_2.shape, mel.shape, mel_2.shape, mel_3.shape)
 
     fig, ax = plt.subplots(nrows=3, sharex=True)
     librosa.display.specshow(
@@ -1228,9 +1228,9 @@ def test_values(file):
     hop_length = 281
     frames, sr = load_recording(file)
     frames = frames[: sr * 10]
-    spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
+    spectrogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
     og_mel = mel_spec(
-        spectogram,
+        spectrogram,
         sr,
         n_fft,
         hop_length,
@@ -1273,12 +1273,12 @@ def main():
     BREAK_FREQ = 1000
     MEL_WEIGHTS = mel_f(48000, N_MELS, 50, 11000, n_fft, BREAK_FREQ)
 
-    signals, noise, spectogram, frames, end = signal_noise(args.file)
+    signals, noise, spectrogram, frames, end = signal_noise(args.file)
 
-    # plot_mel_signals(np.abs(spectogram), signals, noise)
+    # plot_mel_signals(np.abs(spectrogram), signals, noise)
     # return
     # print(signals)
-    # means_merge(spectogram,signals)
+    # means_merge(spectrogram,signals)
     # return
     # for s in signal:
     # print(s)
@@ -1338,7 +1338,7 @@ def main():
     print("Best signal is ", best_segment)
     for t in tracks:
         print("Track is ", t)
-    plot_mel_signals(np.abs(spectogram), tracks, noise, fmin=0, fmax=22000)
+    plot_mel_signals(np.abs(spectrogram), tracks, noise, fmin=0, fmax=22000)
 
     # tracks = merge_again(tracks)
     # ,time_overlap_percent = 0.5, freq_overlap_percent = 0.5)
@@ -1380,8 +1380,8 @@ def main():
     #         post_filter.append(current_track)
     # return
 
-    # tracks_to_audio(tracks, spectogram, frames)
-    # plot_mel_signals(np.abs(spectogram), signals, noise)
+    # tracks_to_audio(tracks, spectrogram, frames)
+    # plot_mel_signals(np.abs(spectrogram), signals, noise)
     return
     # process(args.file)
     process(args.file)

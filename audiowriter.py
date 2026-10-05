@@ -96,7 +96,7 @@ def create_tf_example(sample):
     Raises:
           ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
-    data = sample.spectogram_data
+    data = sample.spectrogram_data
     tags = sample.tags_s
     track_ids = " ".join(map(str, sample.track_ids))
     feature_dict = {
@@ -129,8 +129,8 @@ def create_tf_example(sample):
             sample.text_tags_s.encode("utf8")
         ),
         "audio/class/ebird": tfrecord_util.bytes_feature(tags.encode("utf8")),
-        "audio/spectogram": tfrecord_util.float_list_feature(
-            np.float32(data.spectogram.ravel())
+        "audio/spectrogram": tfrecord_util.float_list_feature(
+            np.float32(data.spectrogram.ravel())
         ),
         "audio/raw": tfrecord_util.float_list_feature(np.float32(data.raw.ravel())),
     }
@@ -439,8 +439,6 @@ def save_data(
                     frames,
                     sr,
                     end=sample.end,
-                    min_freq=min_freq,
-                    max_freq=max_freq,
                 )
                 if DO_EMBEDDING:
                     start = sample.start * 32000
@@ -463,7 +461,7 @@ def save_data(
                     logging.warn("error loading spec for %s", rec.id)
                     continue
                 # data[i] = spec
-                sample.spectogram_data = spec
+                sample.spectrogram_data = spec
                 sample.sr = resample
             except:
                 logging.error(
@@ -539,7 +537,7 @@ def save_embeddings(rec):
                     )
 
                 sample.sr = resample
-                sample.spectogram_data = s_data
+                sample.spectrogram_data = s_data
             except:
                 logging.error("Error %s ", rec.id, exc_info=True)
         get_embeddings(samples)
@@ -571,10 +569,10 @@ def save_embeddings(rec):
 
 def get_embeddings(samples):
     # model = models.TaxonomyModelTF(32000,"./models/chirp-model/", 5.0, 5.0)
-    input = np.array([s.spectogram_data for s in samples])
+    input = np.array([s.spectrogram_data for s in samples])
     logging.info("Getting embeddings %s", len(samples))
     for s in samples:
-        logits, embeddings = model.infer_tf(s.spectogram_data[np.newaxis, :])
+        logits, embeddings = model.infer_tf(s.spectrogram_data[np.newaxis, :])
         s.logits = logits.numpy()[0]
         s.embeddings = embeddings.numpy()[0]
     # return logits, embeddings
@@ -643,7 +641,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     for r in dataset.recs.values():
         r.rec_data = None
         for s in r.samples:
-            s.spectogram_data = None
+            s.spectrogram_data = None
     logging.info("Finished writing")
 
 

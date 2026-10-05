@@ -322,9 +322,9 @@ def load_dataset(filenames, num_labels, labels, args, has_ebird=True):
 
 def mel_map(x, y, features=False, pcen=False):
     if features:
-        x = (spectogram_to_mel(x[0], pcen), *x[1:])
+        x = (spectrogram_to_mel(x[0], pcen), *x[1:])
     else:
-        x = spectogram_to_mel(x, pcen)
+        x = spectrogram_to_mel(x, pcen)
     return x, y
 
 
@@ -1143,38 +1143,38 @@ def tf_batch_spec_augment(
     return augmented_batch
 
 
-def spectogram_to_mel(spectogram, pcen=False):
-    """Takes a (2049, 513) stft magnitude and returns a (mels, 513, 3) mel spectogram.
+def spectrogram_to_mel(spectrogram, pcen=False):
+    """Takes a (2049, 513) stft magnitude and returns a (mels, 513, 3) mel spectrogram.
 
     With pcen the mels are left as magnitude for the PCEN layer in the model,
     otherwise they are power, for the MagTransform layer in the model.
     """
     # conver to power
     if not pcen:
-        spectogram = tf.math.pow(spectogram, 2)
+        spectrogram = tf.math.pow(spectrogram, 2)
         # if doing mix up needs to happen here
 
     # [mels, time]
-    spectogram = tf.tensordot(MEL_WEIGHTS, spectogram, 1)
-    print("Spect shape is ", spectogram.shape)
+    spectrogram = tf.tensordot(MEL_WEIGHTS, spectrogram, 1)
+    print("Spect shape is ", spectrogram.shape)
     # power db
-    spectogram = tf.expand_dims(spectogram, axis=-1)
+    spectrogram = tf.expand_dims(spectrogram, axis=-1)
 
-    # spectogram = tf.math.log10(spectogram+tf.keras.backend.epsilon())
+    # spectrogram = tf.math.log10(spectrogram+tf.keras.backend.epsilon())
     # no db or normalizing, the model compresses with PCEN or MagTransform
-    # spectogram = power_to_db(spectogram)
-    # spectogram = normalize_acoustic_fixed(spectogram)
+    # spectrogram = power_to_db(spectrogram)
+    # spectrogram = normalize_acoustic_fixed(spectrogram)
     if pcen:
         logging.info("Doing PCEN leaving spect as magnitude")
     else:
-        # spectogram = power_to_root_compressed(spectogram)
+        # spectrogram = power_to_root_compressed(spectrogram)
 
         logging.info("Leaving spect as power for MagTransform")
-    logging.info("Shape is %s ", spectogram.shape)
+    logging.info("Shape is %s ", spectrogram.shape)
     # if not pcen and "efficientnet" in model_name:
     #     logging.info("Repeating last dim for efficient net")
-    spectogram = tf.repeat(spectogram, 3, 2)
-    return spectogram
+    spectrogram = tf.repeat(spectrogram, 3, 2)
+    return spectrogram
 
 
 @tf.function
@@ -1225,7 +1225,7 @@ def read_tfrecord(
                 (48000 * 3), tf.float32
             )
         else:
-            tfrecord_format["audio/spectogram"] = tf.io.FixedLenFeature(
+            tfrecord_format["audio/spectrogram"] = tf.io.FixedLenFeature(
                 (2049 * 513), tf.float32
             )
         if filter_freq:
@@ -1253,10 +1253,10 @@ def read_tfrecord(
     #     print("Labels becomes ",labels)
     embed_preds = None
     if load_raw:
-        spectogram = example["audio/raw"]
+        spectrogram = example["audio/raw"]
 
     elif embeddings:
-        spectogram = example["embedding"]
+        spectrogram = example["embedding"]
 
     elif not only_features:
         buttered = example["audio/buttered"] if filter_freq else None
@@ -1264,24 +1264,24 @@ def read_tfrecord(
             if random_butter > 0:
                 rand = tf.random.uniform((), 0, 1)
                 # do butter pass 3/5ths of the time
-                spectogram = tf.cond(
+                spectrogram = tf.cond(
                     rand <= random_butter,
                     lambda: tf.identity(example["audio/buttered"]),
-                    lambda: tf.identity(example["audio/spectogram"]),
+                    lambda: tf.identity(example["audio/spectrogram"]),
                 )
             else:
                 logging.info("USing buttered")
-                spectogram = example["audio/buttered"]
+                spectrogram = example["audio/buttered"]
         else:
 
-            spectogram = example["audio/spectogram"]
-        spectogram = tf.reshape(spectogram, (2049, 513))
+            spectrogram = example["audio/spectrogram"]
+        spectrogram = tf.reshape(spectrogram, (2049, 513))
 
     if features or only_features:
         short_f = example["audio/short_f"]
         mid_f = example["audio/mid_f"]
         # if only_features:
-        # spectogram = tf.concat((short_f, mid_f), axis=0)
+        # spectrogram = tf.concat((short_f, mid_f), axis=0)
         #     # mid_f = tf.reshape(mid_f, (136, 3))
         #     # short_f = tf.reshape(short_f, (68, 60))
 
@@ -1291,9 +1291,9 @@ def read_tfrecord(
         short_f = tf.reshape(short_f, (68, 60))
         if only_features:
             print("ONLY FEATURES")
-            spectogram = (short_f, mid_f)
+            spectrogram = (short_f, mid_f)
         else:
-            spectogram = (spectogram, short_f, mid_f)
+            spectrogram = (spectrogram, short_f, mid_f)
         # raw = tf.expand_dims(raw, axis=0)
     if augment:
         logging.info("Augmenting")
@@ -1378,7 +1378,7 @@ def read_tfrecord(
         else:
             possible_labels = BIRD_WEIGHTING
 
-    return spectogram, (
+    return spectrogram, (
         label,
         embed_preds,
         signal_percent,
@@ -2231,7 +2231,7 @@ def raw_to_mel(x, y):
 
     weights = tf.expand_dims(MEL_WEIGHTS, 0)
     weights = tf.repeat(weights, batch_size, 0)
-    # [batch, mels, time] to match stored spectograms
+    # [batch, mels, time] to match stored spectrograms
     image = tf.keras.backend.batch_dot(weights, stft)
     image = tf.expand_dims(image, axis=3)
     image = tf.repeat(image, 3, 3)

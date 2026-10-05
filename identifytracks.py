@@ -21,9 +21,9 @@ def get_nfft(sr):
 def get_end(frames, sr):
     hop_length = 281
     n_fft = get_nfft(sr)
-    spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
+    spectrogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
     mel = mel_spec(
-        spectogram,
+        spectrogram,
         sr,
         n_fft,
         hop_length,
@@ -35,7 +35,7 @@ def get_end(frames, sr):
     )
     start = 0
     chunk_length = sr // hop_length
-    # this is roughtly a third of our spectogram used for classification
+    # this is roughtly a third of our spectrogram used for classification
     end = start + chunk_length
     file_length = len(frames) / sr
     while end < mel.shape[1]:
@@ -54,7 +54,7 @@ def signal_noise(
     # frames = frames[:sr]
     n_fft = 2048
     # frames = frames[: sr * 3]
-    spectogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
+    spectrogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
     freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
     lower_bin = None
     upper_bin = 0
@@ -71,22 +71,22 @@ def signal_noise(
             height = i + 1
     print(f"Zeroing spec data <{lower_bin} and >{upper_bin}")
 
-    og_spec = spectogram.copy()
+    og_spec = spectrogram.copy()
 
-    # spectogram[:lower_bin,:]= 0
-    # spectogram[upper_bin:,:]= 0
-    a_max = np.amax(spectogram)
-    spectogram = spectogram / a_max
-    row_medians = np.median(spectogram, axis=1)
-    column_medians = np.median(spectogram, axis=0)
-    rows, columns = spectogram.shape
+    # spectrogram[:lower_bin,:]= 0
+    # spectrogram[upper_bin:,:]= 0
+    a_max = np.amax(spectrogram)
+    spectrogram = spectrogram / a_max
+    row_medians = np.median(spectrogram, axis=1)
+    column_medians = np.median(spectrogram, axis=0)
+    rows, columns = spectrogram.shape
 
     column_medians = column_medians[np.newaxis, :]
     row_medians = row_medians[:, np.newaxis]
     row_medians = np.repeat(row_medians, columns, axis=1)
     column_medians = np.repeat(column_medians, rows, axis=0)
     kernel = np.ones((4, 4), np.uint8)
-    signal = (spectogram > 2 * column_medians) & (spectogram > 3 * row_medians)
+    signal = (spectrogram > 2 * column_medians) & (spectrogram > 3 * row_medians)
 
     above_threshold = signal
     signal = signal.astype(np.uint8)
@@ -96,7 +96,7 @@ def signal_noise(
     detected = signal.astype(bool) & above_threshold
     # no top_db, clipping 80db below the max would change the medians db
     excess_db = librosa.amplitude_to_db(
-        spectogram, top_db=None
+        spectrogram, top_db=None
     ) - librosa.amplitude_to_db(row_medians, top_db=None)
 
     width = SIGNAL_WIDTH * sr / hop_length

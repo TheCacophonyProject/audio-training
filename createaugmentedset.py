@@ -142,10 +142,10 @@ def write(ds_one, ds_two, output_path):
                 str(output_path / f"{writer_i}.tfrecord"), options=options
             )
         written += 1
-        spectogram = np.abs(librosa.stft(x.numpy(), n_fft=4800, hop_length=HOP_LENGTH))
-        # print("Spect shape is ", spectogram.shape)
+        spectrogram = np.abs(librosa.stft(x.numpy(), n_fft=4800, hop_length=HOP_LENGTH))
+        # print("Spect shape is ", spectrogram.shape)
         # 1 / 0
-        tf_example, _ = create_tf_example(x, y, spectogram)
+        tf_example, _ = create_tf_example(x, y, spectrogram)
         writer.write(tf_example.SerializeToString())
 
     print("Written", written)
@@ -362,7 +362,7 @@ def read_all_tfrecord(
     return image
 
 
-def create_tf_example(x, y, spectogram):
+def create_tf_example(x, y, spectrogram):
     """Converts image and annotations to a tf.Example proto.
 
         Args:
@@ -424,8 +424,8 @@ def create_tf_example(x, y, spectogram):
         "audio/start_s": tfrecord_util.float_feature(start_s),
         "audio/first_percent": tfrecord_util.float_feature(first_percent),
         "audio/class/text": tfrecord_util.bytes_feature(text.encode("utf8")),
-        "audio/spectogram": tfrecord_util.float_list_feature(
-            np.float32(spectogram.ravel())
+        "audio/spectrogram": tfrecord_util.float_list_feature(
+            np.float32(spectrogram.ravel())
         ),
     }
 

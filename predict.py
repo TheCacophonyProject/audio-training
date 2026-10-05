@@ -90,9 +90,9 @@ def preprocess_file_signals(file, seg_length, stride, hop_length, mean_sub, use_
             #     data_2[: len(data)] = data
             #     data = data_2
 
-            spectogram = np.abs(librosa.stft(data, n_fft=n_fft, hop_length=hop_length))
+            spectrogram = np.abs(librosa.stft(data, n_fft=n_fft, hop_length=hop_length))
             mel = mel_spec(
-                spectogram,
+                spectrogram,
                 sr,
                 n_fft,
                 hop_length,
@@ -122,9 +122,9 @@ def preprocess_file_signals(file, seg_length, stride, hop_length, mean_sub, use_
     return mels, len(frames) / sr
 
 
-def denoise_spec(spectogram, sr):
+def denoise_spec(spectrogram, sr):
     # And compute the spectrogram magnitude and phase
-    S_full, phase = librosa.magphase(spectogram)
+    S_full, phase = librosa.magphase(spectrogram)
     S_filter = librosa.decompose.nn_filter(
         S_full,
         aggregate=np.median,
@@ -144,14 +144,14 @@ def denoise_spec(spectogram, sr):
     )
 
     mask_v = librosa.util.softmask(S_full - S_filter, margin_v * S_filter, power=power)
-    return mask_v * spectogram
+    return mask_v * spectrogram
     # Once we have the masks, simply multiply them with the input spectrum
     # to separate the components
 
     S_foreground = mask_v * S_full
     S_background = mask_i * S_full
-    print("mask", mask_v.shape, spectogram.shape, S_full.shape)
-    stft_fore = spectogram * mask_v
+    print("mask", mask_v.shape, spectrogram.shape, S_full.shape)
+    stft_fore = spectrogram * mask_v
     y_inv = librosa.griffinlim(np.abs(stft_fore))
 
     import soundfile as sf
@@ -191,10 +191,10 @@ def show_signals(file):
     print(s_data)
     n_fft = sr // 10
     hop_length = 281
-    spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
-    denoised_stft = denoise_spec(spectogram, sr)
+    spectrogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
+    denoised_stft = denoise_spec(spectrogram, sr)
     # return
-    signals, noise = signal_noise_data(spectogram, sr)
+    signals, noise = signal_noise_data(spectrogram, sr)
     signals2, noise = signal_noise_data(denoised_stft, sr)
     mel = mel_spec(denoised_stft, sr, n_fft, hop_length, 120, 50, 11000, power=1)
     # S = librosa.feature.melspectrogram(y=frames, sr=sr, power=1)
@@ -246,21 +246,21 @@ def preprocess_file(
             s_data = np.pad(s_data, (0, int(1.5 * sr)))
             # print("data is now", len(s_data) / sr)
 
-        spectogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
+        spectrogram = np.abs(librosa.stft(s_data, n_fft=n_fft, hop_length=hop_length))
 
-        # print(spectogram.shape)
-        # spectogram[:100, :] = 0
-        # spectogram = np.clip(spectogram, 0, np.mean(spectogram))
+        # print(spectrogram.shape)
+        # spectrogram[:100, :] = 0
+        # spectrogram = np.clip(spectrogram, 0, np.mean(spectrogram))
 
-        # print(spectogram.shape)
-        # a_max = np.amax(spectogram[100:, :])
-        # print("max above is", a_max, " below", np.amax(spectogram[:100, :]))
+        # print(spectrogram.shape)
+        # a_max = np.amax(spectrogram[100:, :])
+        # print("max above is", a_max, " below", np.amax(spectrogram[:100, :]))
         # print("clipping to ", a_max)
-        # spectogram[:100, :] *= 0.5
+        # spectrogram[:100, :] *= 0.5
 
-        # spectogram[:100, :]
+        # spectrogram[:100, :]
         mel = mel_spec(
-            spectogram,
+            spectrogram,
             sr,
             n_fft,
             hop_length,
@@ -677,7 +677,7 @@ def predict_on_test(split_file, load_model, base_dir, confusion_file="confusion.
                 test.config, sample.start, frames, sr, end=sample.end, use_padding=False
             )
             data = mel_spec(
-                spec.spectogram,
+                spec.spectrogram,
                 sr,
                 n_fft,
                 hop_length,

@@ -188,19 +188,19 @@ def get_spect(
         # if pass_freqs is not None:
         #     data = butter_bandpass_filter(data, pass_freqs[0], pass_freqs[1], sr)
 
-        spectogram = np.abs(librosa.stft(data, n_fft=n_fft, hop_length=hop_length))
+        spectrogram = np.abs(librosa.stft(data, n_fft=n_fft, hop_length=hop_length))
         # bins = 1 + n_fft / 2
         # max_f = sr / 2
         # gap = max_f / bins
         # if low_pass is not None:
         #     min_bin = low_pass // gap
-        #     spectogram[: int(min_bin)] = 0
+        #     spectrogram[: int(min_bin)] = 0
         #
         # if high_pass is not None:
         #     max_bin = high_pass // gap
-        #     spectogram[int(max_bin) :] = 0
+        #     spectrogram[int(max_bin) :] = 0
         mel = mel_spec(
-            spectogram,
+            spectrogram,
             sr,
             n_fft,
             hop_length,

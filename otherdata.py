@@ -1054,13 +1054,13 @@ def signal_noise(file, hop_length=281):
     # frames = frames[: sr * 120]
     # n_fft = sr // 10
     n_fft = 4096
-    # spectogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
-    # plot_spec(spectogram)
-    signals, spectogram = track_signals(
+    # spectrogram = librosa.stft(frames, n_fft=n_fft, hop_length=hop_length)
+    # plot_spec(spectrogram)
+    signals, spectrogram = track_signals(
         frames, sr, hop_length=hop_length, n_fft=n_fft, min_width=0, min_height=0
     )
     noise = []
-    return signals, noise, spectogram, frames, end
+    return signals, noise, spectrogram, frames, end
 
 
 def add_rms_meta(dir, analyse=False):
@@ -1657,7 +1657,7 @@ def generate_tier_metadata_file(audio_file):
         for t in meta.get("tracks", []):
             t["end"] = duration
         # signal data
-        signals, spectogram = track_signals(frames, sr, min_width=0, min_height=0)
+        signals, spectrogram = track_signals(frames, sr, min_width=0, min_height=0)
         signals = [s.to_array(decimals=2) for s in signals]
         meta["signal"] = signals
         meta["signal_version"] = SIGNAL_VERSION

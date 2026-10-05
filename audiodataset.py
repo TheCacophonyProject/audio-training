@@ -381,7 +381,7 @@ class AudioSample:
         self.start = start
         self.end = end
         self.track_ids = track_ids
-        self.spectogram_data = None
+        self.spectrogram_data = None
         self.sr = None
         self.logits = None
         self.embeddings = None
@@ -1112,8 +1112,8 @@ class Track:
     #     start_s = self.start
     #     samples = []
     #     while (start_s + SEGMENT_LENGTH / 2) < self.end or i == 0:
-    #         spectogram, mel, mfcc, s_data = load_data(start_s, frames, sr)
-    #         if spectogram is None:
+    #         spectrogram, mel, mfcc, s_data = load_data(start_s, frames, sr)
+    #         if spectrogram is None:
     #             continue
     #         sample = AudioSample(
     #             self.rec,
@@ -1123,8 +1123,8 @@ class Track:
     #             [self.id],
     #             SAMPLE_GROUP_ID,
     #         )
-    #         sample.spectogram_data = SpectrogramData(
-    #             spectogram,
+    #         sample.spectrogram_data = SpectrogramData(
+    #             spectrogram,
     #             mel,
     #             mfcc,
     #             s_data.copy(),
@@ -1196,7 +1196,7 @@ def plot_mel(mel):
 
 
 SpectrogramData = namedtuple(
-    "SpectrogramData", "raw spectogram raw_length buttered short_features,mid_features"
+    "SpectrogramData", "raw spectrogram raw_length buttered short_features,mid_features"
 )
 
 Tag = namedtuple("Tag", "what ebird_id confidence automatic original")
@@ -1326,14 +1326,14 @@ def load_data(
     assert len(s_data) == int(segment_l * sr)
     # buttered = butter_bandpass_filter(s_data, min_freq, max_freq, sr)
     normed = normalize_data(s_data)
-    spectogram = np.abs(librosa.stft(normed, n_fft=n_fft, hop_length=hop_length))
+    spectrogram = np.abs(librosa.stft(normed, n_fft=n_fft, hop_length=hop_length))
     # if buttered is not None:
-    #     spectogram_buttered = np.abs(
+    #     spectrogram_buttered = np.abs(
     #         librosa.stft(buttered, n_fft=n_fft, hop_length=hop_length)
     #     )
     # else:
-    #     spectogram_buttered = buttered
-    spec = SpectrogramData(s_data, spectogram, data_length, None, short_f, mid_f)
+    #     spectrogram_buttered = buttered
+    spec = SpectrogramData(s_data, spectrogram, data_length, None, short_f, mid_f)
     a_max = np.amax(s_data)
     a_min = np.amin(s_data)
     if a_max == a_min:
