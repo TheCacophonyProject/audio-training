@@ -29,6 +29,7 @@ from audiowriter import create_tf_records
 import warnings
 import math
 from pathlib import Path
+from collections import Counter
 import soundfile as sf
 
 # warnings.filterwarnings("ignore")
@@ -77,7 +78,8 @@ def split_label(
             samples_by_bin[s.bin_id].append(s)
         else:
             samples_by_bin[s.bin_id] = [s]
-    sample_bins = list(sample_bins)
+    # sorted as set order changes between runs, which would change the shuffle
+    sample_bins = sorted(sample_bins)
     total_tracks = len(tracks)
     # sample_bins = [sample.bin_id for sample in samples]
     if len(sample_bins) == 0:
@@ -335,93 +337,136 @@ def dataset_from_signal(args):
         json.dump(meta_data, f, indent=4)
 
 
-def filter_birds(dataset):
-    dataset.samples = []
-    freq_filter = 1000
-    logging.info("Filtering unclear birds")
-    total_count = 0
-    deleted_count = 0
-    from tfdataset import GENERIC_BIRD_LABELS
+def filter_birds(dataset, args):
+    """Removes tracks that birdnetcompare puts in "Tracks with no birdnet tags"
+    (no birdnet bird and no clear signal in the best rms window) and that the
+    perch embedding analysis also flags. Tracks failing only one check are kept
+    and logged so we can decide later how many of those to remove."""
+    import csv
+    from argparse import Namespace
+    from birdnetcompare import NO_TAGS_SECTION, load_taxonomy, row_section, track_rows
 
+    if args.perch_flags is None:
+        logging.warning(
+            "No --perch-flags so no tracks will be removed, birdnet needs perch to agree"
+        )
+    perch = {}
+    if args.perch_flags is not None:
+        with open(args.perch_flags, newline="") as f:
+            perch = {row["track_id"]: row for row in csv.DictReader(f)}
+        logging.info("Loaded %s perch results from %s", len(perch), args.perch_flags)
+
+    taxonomy = load_taxonomy(Path(__file__).parent / "eBird_taxonomy_v2024.csv")
+    compare_args = Namespace(
+        min_conf=args.birdnet_min_conf,
+        tolerance=0.0,
+        segment_length=3,
+        clear_signal_db=args.clear_signal_db,
+    )
+
+    def perch_details(row):
+        return "doubt %s probe own prob %s knn agreement %s (perch says %s / %s)" % (
+            row["doubt"],
+            row["probe_own_prob"],
+            row["knn_agreement"],
+            row["probe_label"],
+            row["knn_label"],
+        )
+
+    # per label counts of what happened to each track
+    outcomes = {}
+    dataset.samples = []
     for r in dataset.recs.values():
-        # r.space_signals()
+        no_birdnet = set()
+        if "birdnet" in r.metadata:
+            for row in track_rows(Path(r.filename), r.metadata, taxonomy, compare_args):
+                if row_section(row) == NO_TAGS_SECTION:
+                    no_birdnet.add(str(row["track_id"]))
+
         tracks_del = []
         for t in r.tracks:
-            total_count += 1
-            offset = 0
-            found = False
-            # if (
-            #     "kiwi" in t.human_tags
-            #     or "morepork" in t.human_tags
-            #     or "rifleman" in t.human_tags
-            # ):
-            #     continue
-            # for b in GENERIC_BIRD_LABELS:
-            #     if b in t.human_tags:
-            #         found = True
-            #         break
-            # if not found:
-            #     continue
-            signal_time = 0
-            signals = 0
-            prev_e = None
-            for s in r.signals:
-                if s[2] < freq_filter:
-                    continue
-                if ((t.end - t.start) + (s[1] - s[0])) > max(t.end, s[1]) - min(
-                    t.start, s[0]
-                ):
-                    start = max(s[0], t.start)
-                    if prev_e is not None:
-                        start = max(prev_e, start)
-                    end = min(s[1], t.end)
-                    if start > end:
-                        continue
-                    signal_time += end - start
-                    signals += 1
-                    # logging.info(
-                    #     "Adding singal %s for track %s-%s overlap signal time is %s",
-                    #     s,
-                    #     t.start,
-                    #     t.end,
-                    #     signal_time,
-                    # )
-                    prev_e = end
-                    if t.end < s[1]:
-                        break
-                if t.end < s[0]:
-                    break
-            # logging.info(
-            #     "Total signals %s total signal time is %s for a track starting at  %s - %s percent signal %s",
-            #     signals,
-            #     signal_time,
-            #     t.start,
-            #     t.end,
-            #     round(100 * signal_time / t.length),
-            # )
-            signal_percent = signal_time / t.length
-            t.signal_percent = signal_percent
-            if signal_percent < 0.1:
-                logging.warn(
-                    "Filtering rec %s track %s ( At %s) because has signal time %s from %s signals",
+            track_id = str(t.id)
+            perch_row = perch.get(track_id)
+            perch_flagged = perch_row is not None and perch_row["flagged"] == "True"
+            label = ";".join(sorted(t.human_tags))
+            if track_id in no_birdnet and perch_flagged:
+                outcome = "removed"
+                tracks_del.append(t)
+                logging.info(
+                    "Removing rec %s track %s %s, no birdnet bird or clear signal and %s",
                     r.id,
-                    t.id,
-                    t.start,
-                    signal_percent,
-                    signals,
+                    track_id,
+                    label,
+                    perch_details(perch_row),
                 )
-                # tracks_del.append(t)
-                del_count += 1
-            # if t_s is None:
-            #     logging.warn("Rec %s track %s has no signal data", r.id, t.id)
-            #     tracks_del.append(t)
+            elif track_id in no_birdnet and perch_row is None:
+                outcome = "birdnet, no perch result"
+                logging.info(
+                    "Keeping rec %s track %s %s, no birdnet bird or clear signal but no perch result",
+                    r.id,
+                    track_id,
+                    label,
+                )
+            elif track_id in no_birdnet:
+                outcome = "birdnet only"
+                logging.info(
+                    "Keeping rec %s track %s %s, no birdnet bird or clear signal but perch agrees with label, %s",
+                    r.id,
+                    track_id,
+                    label,
+                    perch_details(perch_row),
+                )
+            elif perch_flagged:
+                outcome = "perch only"
+                logging.info(
+                    "Keeping rec %s track %s %s, perch flagged %s",
+                    r.id,
+                    track_id,
+                    label,
+                    perch_details(perch_row),
+                )
+            else:
+                outcome = "kept"
+            outcomes.setdefault(label, Counter())[outcome] += 1
 
-        for t in tracks_del:
-            r.tracks.remove(t)
-        r.recalc_tags()
+        if not args.filter_dry_run:
+            for t in tracks_del:
+                r.tracks.remove(t)
+            # recalc_tags only adds so clear tags of removed tracks first
+            r.human_tags = set()
+            r.recalc_tags()
         r.samples = []
         r.load_samples(dataset.config.segment_length, dataset.config.segment_stride)
         dataset.samples.extend(r.samples)
+
+    columns = ["removed", "birdnet only", "birdnet, no perch result", "perch only"]
+    logging.info(
+        "%sPer label tracks: %s",
+        "DRY RUN, nothing removed. " if args.filter_dry_run else "",
+        " / ".join(columns),
+    )
+    totals = Counter()
+    for label, counts in sorted(outcomes.items(), key=lambda kv: -sum(kv[1].values())):
+        total = sum(counts.values())
+        totals.update(counts)
+        totals["total"] += total
+        logging.info(
+            "  %s (%s tracks): %s",
+            label,
+            total,
+            " / ".join(
+                f"{counts[c]} ({100 * counts[c] / total:.1f}%)" for c in columns
+            ),
+        )
+    if totals["total"]:
+        logging.info(
+            "  all (%s tracks): %s",
+            totals["total"],
+            " / ".join(
+                f"{totals[c]} ({100 * totals[c] / totals['total']:.1f}%)"
+                for c in columns
+            ),
+        )
 
 
 def trim_noise(dataset):
@@ -487,7 +532,8 @@ def undersample_ds(dataset):
     logging.info("COunts are %s", counts)
     extra_samples = {}
     high_samples = []
-    rng = np.random.default_rng()
+    # seeded from the global state so --seed reproduces it
+    rng = np.random.default_rng(np.random.randint(0, 2**31 - 1))
 
     for lbl, count in lbl_counts.items():
         extra_samples[lbl] = 0
@@ -679,6 +725,12 @@ def oversample_ds(original_ds, dataset, max_repeats=1):
 def main():
     init_logging()
     args = parse_args()
+    if args.seed is None:
+        # still pick and log a seed so any build can be reproduced
+        args.seed = random.SystemRandom().randint(0, 2**31 - 1)
+    logging.info("Using seed %s", args.seed)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
     # print(args, args.__dict__)
     config = Config(**vars(args))
     # SEGMENT_LENGTH = args.seg_length
@@ -702,8 +754,8 @@ def main():
 
         plot_signal(dataset, Path(args.dir))
         return
-    # filter_birds(dataset)
-    # return
+    if args.filter_birds:
+        filter_birds(dataset, args)
     # for r in dataset.recs:
     #     if "whistler" not in r.human_tags:
     #         print(r.id, " missing", r.human_tags)
@@ -805,13 +857,18 @@ def main():
         "labels": datasets[0].labels,
         "type": "audio",
         "counts": dataset_counts,
-        "recs": dataset_recs,
         "by_label": False,
         "relabbled": RELABEL,
     }
     meta_data.update(config.__dict__)
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4)
+
+    # recording ids in each dataset, kept under "recs" so this file can be
+    # passed straight to --split-file to rebuild the same split
+    split_filename = f"{base_dir}/training-data/training-split.json"
+    with open(split_filename, "w") as f:
+        json.dump({"seed": config.seed, "recs": dataset_recs}, f, indent=4)
 
 
 def validate_datasets(datasets):
@@ -968,6 +1025,40 @@ def parse_args():
         help="Plot signal percent",
     )
 
+    parser.add_argument(
+        "--filter-birds",
+        action="store_true",
+        help="Remove tracks with no birdnet bird or clear signal that perch also flags",
+    )
+    parser.add_argument(
+        "--filter-dry-run",
+        action="store_true",
+        help="With --filter-birds only log what would be removed",
+    )
+    parser.add_argument(
+        "--perch-flags",
+        default=None,
+        help="perch-flags.csv from perchembed.py --analyse",
+    )
+    parser.add_argument(
+        "--birdnet-min-conf",
+        type=float,
+        default=0.1,
+        help="Ignore birdnet detections below this confidence",
+    )
+    parser.add_argument(
+        "--clear-signal-db",
+        type=float,
+        default=12,
+        help="Minimum signal strength (db above background) for a clear signal",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Seed for random generation, saved in training-meta.json. A random "
+        "seed is picked and logged if not given",
+    )
     parser.add_argument(
         "--split-file",
         default=None,

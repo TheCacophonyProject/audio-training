@@ -88,8 +88,16 @@ def signal_noise(
     kernel = np.ones((4, 4), np.uint8)
     signal = (spectogram > 2 * column_medians) & (spectogram > 3 * row_medians)
 
+    above_threshold = signal
     signal = signal.astype(np.uint8)
     signal = cv2.morphologyEx(signal, cv2.MORPH_OPEN, kernel)
+    # db above each bins median, used to give each signal a strength
+    # the 4x4 open shifts edges by a pixel so isn't a subset of the threshold
+    detected = signal.astype(bool) & above_threshold
+    # no top_db, clipping 80db below the max would change the medians db
+    excess_db = librosa.amplitude_to_db(
+        spectogram, top_db=None
+    ) - librosa.amplitude_to_db(row_medians, top_db=None)
 
     width = SIGNAL_WIDTH * sr / hop_length
     width = int(width)
@@ -101,15 +109,17 @@ def signal_noise(
 
     # plt.imshow(signal)
     # plt.show()
-    components, small_mask, stats, _ = cv2.connectedComponentsWithStats(signal)
+    components, labels, stats, _ = cv2.connectedComponentsWithStats(signal)
+    small_mask = labels.copy()
     small_mask[small_mask > 0] = 255
     # plot_utils.plot_spec(small_mask)
 
     # plt.imshow(small_mask)
     # plt.show()
 
-    stats = stats[1:]
-    stats = sorted(stats, key=lambda stat: stat[0])
+    # keep each components label so its pixels can be found for strength
+    stats = [(label, stat) for label, stat in enumerate(stats) if label > 0]
+    stats = sorted(stats, key=lambda stat: stat[1][0])
     if min_height is None:
         min_height = height - height // 10
     if min_width is None:
@@ -125,7 +135,7 @@ def signal_noise(
         min_width * 281 / sr,
         freqs[int(min_height)],
     )
-    stats = [s for s in stats if s[2] > min_width and s[3] > min_height]
+    stats = [(l, s) for l, s in stats if s[2] > min_width and s[3] > min_height]
 
     i = 0
     # indicator_vector = np.uint8(indicator_vector)
@@ -133,12 +143,21 @@ def signal_noise(
     signals = []
 
     bins = len(freqs)
-    for s in stats:
+    for label, s in stats:
         max_freq = min(len(freqs) - 1, s[1] + s[3])
         freq_range = (freqs[s[1]], freqs[max_freq])
         start = s[0] * 281 / sr
         end = (s[0] + s[2]) * 281 / sr
-        signals.append(Signal(start, end, freq_range[0], freq_range[1], s[4]))
+        # mean db above background of the pixels that passed the threshold,
+        # the component itself is dilated so also covers background
+        box = (slice(s[1], s[1] + s[3]), slice(s[0], s[0] + s[2]))
+        pixels = detected[box] & (labels[box] == label)
+        if not pixels.any():
+            pixels = labels[box] == label
+        strength = float(np.mean(excess_db[box][pixels]))
+        signals.append(
+            Signal(start, end, freq_range[0], freq_range[1], s[4], strength=strength)
+        )
         print("Added signal", signals[-1])
     return signals, og_spec
 
@@ -374,7 +393,7 @@ SIGNAL_ID = 0
 
 
 class Signal:
-    def __init__(self, start, end, freq_start, freq_end, mass):
+    def __init__(self, start, end, freq_start, freq_end, mass, strength=None):
         global SIGNAL_ID
         self.id = SIGNAL_ID
         SIGNAL_ID += 1
@@ -383,6 +402,8 @@ class Signal:
         self.freq_start = freq_start
         self.freq_end = freq_end
         self.mass = mass
+        # mean db above the background
+        self.strength = strength
         self.mel_freq_start = mel_freq(freq_start)
         self.mel_freq_end = mel_freq(freq_end)
         self.predictions = []
@@ -407,6 +428,8 @@ class Signal:
 
     def to_array(self, decimals=1):
         a = [self.start, self.end, self.freq_start, self.freq_end]
+        if self.strength is not None:
+            a.append(self.strength)
         if decimals is not None:
             a = list(
                 np.round(
@@ -417,7 +440,14 @@ class Signal:
         return a
 
     def copy(self):
-        return Signal(self.start, self.end, self.freq_start, self.freq_end, self.mass)
+        return Signal(
+            self.start,
+            self.end,
+            self.freq_start,
+            self.freq_end,
+            self.mass,
+            strength=self.strength,
+        )
 
     def time_overlap(self, other):
         return segment_overlap(

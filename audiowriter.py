@@ -47,6 +47,7 @@ import librosa
 
 from audiodataset import load_data, SpectrogramData
 from multiprocessing import Pool
+import zlib
 
 import tensorflow_hub as hub
 from audiodataset import load_features
@@ -284,6 +285,10 @@ def process_job(queue, labels, config, base_dir, writer_i):
         i += 1
         rec = queue.get()
         try:
+            if rec != "DONE" and getattr(config, "seed", None) is not None:
+                # which process gets a recording varies, so seed per recording
+                # to make its samples the same whichever process writes it
+                np.random.seed(zlib.crc32(f"{config.seed}-{rec.id}".encode()))
             if rec == "DONE":
                 for writer in writers.values():
                     writer.close()

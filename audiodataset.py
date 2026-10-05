@@ -117,6 +117,8 @@ class Config:
         self.filter_frequency = args.get("filter_freq", False)
         self.tighten_tracks = not args.get("dont_tighten_tracks", False)
         self.filter_rms = not args.get("dont_filter_rms", False)
+        # seeds random generation so a dataset build can be reproduced exactly
+        self.seed = args.get("seed")
 
 
 class AudioDataset:
@@ -132,7 +134,9 @@ class AudioDataset:
         self.samples = []
 
     def load_meta(self, base_path):
-        meta_files = Path(base_path).glob("**/*.txt")
+        # sorted so recordings, and the random numbers their samples use, come
+        # in the same order on every run
+        meta_files = sorted(Path(base_path).glob("**/*.txt"))
 
         for f in meta_files:
             try:

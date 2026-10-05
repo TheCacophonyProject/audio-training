@@ -1194,6 +1194,9 @@ def process_rms(metadata_file, tier1=False):
     return
 
 
+# 1.1 adds strength, mean db above background, as a 5th value of each signal
+SIGNAL_VERSION = 1.1
+
 # 1.2 adds track_rms over each tracks own frequency range
 RMS_VERSION = 2.0
 # only calculate track_rms for tracks with a frequency range up to this many Hz
@@ -1410,7 +1413,7 @@ def process_signal(metadata_file):
         meta["signal"] = signals
         meta["noise"] = noise
         meta["rec_end"] = end
-        meta["signal_version"] = 1.0
+        meta["signal_version"] = SIGNAL_VERSION
         with metadata_file.open("w") as f:
             json.dump(
                 meta,
@@ -1657,7 +1660,7 @@ def generate_tier_metadata_file(audio_file):
         signals, spectogram = track_signals(frames, sr, min_width=0, min_height=0)
         signals = [s.to_array(decimals=2) for s in signals]
         meta["signal"] = signals
-        meta["signal_version"] = 1.0
+        meta["signal_version"] = SIGNAL_VERSION
 
         tracks = meta.get("tracks", [])
         add_rms_data_to_tracks(frames, sr, tracks)

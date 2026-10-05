@@ -1,6 +1,7 @@
 import os
+
 # Replace '1' with the actual index of the GPU you want to use
-os.environ["CUDA_VISIBLE_DEVICES"] = "0" 
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 import argparse
 import json
@@ -100,7 +101,10 @@ def main():
     groups = defaultdict(list)
     for audio, txt in find_files(args.dir):
         with open(txt) as f:
-            meta = json.load(f)
+            try:
+                meta = json.load(f)
+            except:
+                continue
         if not args.overwrite and meta.get("birdnet_model") == model_id:
             continue
         groups[location_key(meta, not args.no_geo)].append((audio, txt))
@@ -140,7 +144,9 @@ def main():
                     model, files[i : i + args.chunk], species_list, key, model_id, args
                 )
         except Exception:
-            logging.exception("Failed on group %s (%s files), skipping rest of group", key, len(files))
+            logging.exception(
+                "Failed on group %s (%s files), skipping rest of group", key, len(files)
+            )
 
 
 def analyse_chunk(model, files, species_list, key, model_id, args):

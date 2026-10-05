@@ -2089,7 +2089,10 @@ def main():
             rec_ids = None
             if args.dataset_dir is not None:
                 base_dir = Path(args.dataset_dir)
-                meta_f = base_dir.parent / "training-meta.json"
+                meta_f = base_dir.parent / "training-split.json"
+                if not meta_f.exists():
+                    # datasets built before the split had its own file
+                    meta_f = base_dir.parent / "training-meta.json"
                 with meta_f.open("r") as f:
                     data_json = json.load(f)
 
