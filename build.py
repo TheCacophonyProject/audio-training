@@ -339,12 +339,22 @@ def dataset_from_signal(args):
 
 def filter_birds(dataset, args):
     """Removes tracks that birdnetcompare puts in "Tracks with no birdnet tags"
-    (no birdnet bird and no clear signal in the best rms window) and that the
-    perch embedding analysis also flags. Tracks failing only one check are kept
-    and logged so we can decide later how many of those to remove."""
+    (no birdnet bird and no clear signal in the best rms window) unless perch
+    confidently agrees with the label, and tracks perch flags where birdnet
+    found neither the label nor a species of the same genus or family. Other
+    tracks failing only one check are kept and logged so we can decide later
+    how many of those to remove."""
     import csv
     from argparse import Namespace
-    from birdnetcompare import NO_TAGS_SECTION, load_taxonomy, row_section, track_rows
+    from birdnetcompare import (
+        MATCH,
+        NO_TAGS_SECTION,
+        NON_BIRD_TAG,
+        RELATED,
+        load_taxonomy,
+        row_result,
+        track_results,
+    )
 
     if args.perch_flags is None:
         logging.warning(
@@ -373,48 +383,102 @@ def filter_birds(dataset, args):
             row["knn_label"],
         )
 
+    def perch_agrees_with(row):
+        # perch predicts the label with enough confidence, probe or knn
+        def score(key):
+            return float(row[key]) if row[key] != "" else 0
+
+        threshold = args.perch_agree_prob
+        return (
+            row["probe_label"] == row["label"] and score("probe_own_prob") >= threshold
+        ) or (row["knn_label"] == row["label"] and score("knn_agreement") >= threshold)
+
     # per label counts of what happened to each track
     outcomes = {}
     dataset.samples = []
     for r in dataset.recs.values():
         no_birdnet = set()
+        birdnet_status = {}
         if "birdnet" in r.metadata:
-            for row in track_rows(Path(r.filename), r.metadata, taxonomy, compare_args):
-                if row_section(row) == NO_TAGS_SECTION:
+            for row in track_results(
+                Path(r.filename), r.metadata, taxonomy, compare_args
+            ):
+                birdnet_status[str(row["track_id"])] = row["status"]
+                if row_result(row) == NO_TAGS_SECTION:
                     no_birdnet.add(str(row["track_id"]))
 
         tracks_del = []
         for t in r.tracks:
+            label = ";".join(sorted(t.human_tags))
+            if t.noise_track and not t.bird_track:
+                # birdnet and perch only check bird labels
+                outcomes.setdefault(label, Counter())["noise skipped"] += 1
+                continue
             track_id = str(t.id)
             perch_row = perch.get(track_id)
             perch_flagged = perch_row is not None and perch_row["flagged"] == "True"
-            label = ";".join(sorted(t.human_tags))
-            if track_id in no_birdnet and perch_flagged:
-                outcome = "removed"
+            # not being flagged doesn't mean perch agrees, so check its predictions
+            perch_agrees = perch_row is not None and perch_agrees_with(perch_row)
+            # birdnet found the label or a species of the same genus or family,
+            # non bird tags can't be checked by birdnet so count as agreeing
+            status = birdnet_status.get(track_id)
+            birdnet_disagrees = status is not None and status not in (
+                MATCH,
+                RELATED,
+                NON_BIRD_TAG,
+            )
+            if track_id in no_birdnet:
+                if perch_flagged:
+                    outcome = "removed"
+                    tracks_del.append(t)
+                    logging.info(
+                        "Removing rec %s track %s %s, no birdnet bird or clear signal and %s",
+                        r.id,
+                        track_id,
+                        label,
+                        perch_details(perch_row),
+                    )
+                elif perch_row is None:
+                    outcome = "birdnet, no perch result"
+                    tracks_del.append(t)
+                    logging.info(
+                        "Removing rec %s track %s %s, no birdnet bird or clear signal and no perch result",
+                        r.id,
+                        track_id,
+                        label,
+                    )
+                elif not perch_agrees:
+                    outcome = "birdnet, perch unsure"
+                    logging.info(
+                        "Keeping rec %s track %s %s, no birdnet bird or clear signal, perch not flagged but doesnt predict label, %s",
+                        r.id,
+                        track_id,
+                        label,
+                        perch_details(perch_row),
+                    )
+                else:
+                    outcome = "birdnet only"
+                    logging.info(
+                        "Keeping rec %s track %s %s, no birdnet bird or clear signal but perch agrees with label, %s",
+                        r.id,
+                        track_id,
+                        label,
+                        perch_details(perch_row),
+                    )
+            elif (
+                perch_flagged
+                and birdnet_disagrees
+                and float(perch_row["doubt"]) >= args.perch_remove_doubt
+            ):
+                outcome = "perch, birdnet disagrees"
                 tracks_del.append(t)
                 logging.info(
-                    "Removing rec %s track %s %s, no birdnet bird or clear signal and %s",
+                    "Removing rec %s track %s %s, perch flagged %s and birdnet %s",
                     r.id,
                     track_id,
                     label,
                     perch_details(perch_row),
-                )
-            elif track_id in no_birdnet and perch_row is None:
-                outcome = "birdnet, no perch result"
-                logging.info(
-                    "Keeping rec %s track %s %s, no birdnet bird or clear signal but no perch result",
-                    r.id,
-                    track_id,
-                    label,
-                )
-            elif track_id in no_birdnet:
-                outcome = "birdnet only"
-                logging.info(
-                    "Keeping rec %s track %s %s, no birdnet bird or clear signal but perch agrees with label, %s",
-                    r.id,
-                    track_id,
-                    label,
-                    perch_details(perch_row),
+                    status,
                 )
             elif perch_flagged:
                 outcome = "perch only"
@@ -439,7 +503,14 @@ def filter_birds(dataset, args):
         r.load_samples(dataset.config.segment_length, dataset.config.segment_stride)
         dataset.samples.extend(r.samples)
 
-    columns = ["removed", "birdnet only", "birdnet, no perch result", "perch only"]
+    columns = [
+        "removed",
+        "birdnet, no perch result",
+        "birdnet only",
+        "birdnet, perch unsure",
+        "perch, birdnet disagrees",
+        "perch only",
+    ]
     logging.info(
         "%sPer label tracks: %s",
         "DRY RUN, nothing removed. " if args.filter_dry_run else "",
@@ -1048,6 +1119,18 @@ def parse_args():
         "--perch-flags",
         default=None,
         help="perch-flags.csv from perchembed.py --analyse",
+    )
+    parser.add_argument(
+        "--perch-remove-doubt",
+        type=float,
+        default=0.9,
+        help="Remove perch flagged tracks birdnet disagrees with if perch doubt is at least this",
+    )
+    parser.add_argument(
+        "--perch-agree-prob",
+        type=float,
+        default=0.5,
+        help="Perch agrees with a track label if its probe probability or knn agreement for the label is at least this",
     )
     parser.add_argument(
         "--birdnet-min-conf",

@@ -197,7 +197,7 @@ def track_signals(meta, start, end, min_freq):
     return sorted(found, key=lambda s: -strength(s))
 
 
-def row_section(row):
+def row_result(row):
     if row["status"] == MATCH:
         return MATCH_SECTION
     if row["status"] == NON_BIRD_TAG:
@@ -270,7 +270,7 @@ def format_detections(detections):
     )
 
 
-def track_rows(txt, meta, taxonomy, args):
+def track_results(filename, meta, taxonomy, args):
     detections = [d for d in meta["birdnet"] if d["confidence"] >= args.min_conf]
     tracks = [
         track
@@ -319,7 +319,7 @@ def track_rows(txt, meta, taxonomy, args):
         rms_signal = clear_signal(signals, window, args.clear_signal_db)
 
         yield {
-            "file": txt.name,
+            "file": filename.name,
             "recording_id": meta.get("id"),
             "track_id": track.get("id"),
             "start": start,
@@ -410,7 +410,7 @@ def main():
         if not isinstance(meta, dict) or "birdnet" not in meta:
             skipped += 1
             continue
-        rows.extend(track_rows(txt, meta, taxonomy, args))
+        rows.extend(track_results(txt, meta, taxonomy, args))
 
     if not rows:
         logging.info("No tracks with manual tags and birdnet results found")
@@ -420,7 +420,7 @@ def main():
     with open(args.out, "w", newline="") as f:
         writer = csv.writer(f)
         for title in SECTIONS:
-            section = [r for r in rows if row_section(r) == title]
+            section = [r for r in rows if row_result(r) == title]
             if not section and title == NON_BIRD_SECTION:
                 continue
             section.sort(key=lambda r: (r["manual_tags"], r["file"], r["start"]))
