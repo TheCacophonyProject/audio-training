@@ -486,58 +486,64 @@ def get_dataset(dir, labels, global_epoch=None, **args):
         logging.info("Applied break freq %s", BREAK_FREQ)
         MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
         MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
+    # always load raw audio so augmentations run on the waveform, raw_to_mel
+    # then builds the mel (magnitude for PCEN, power for MagTransform)
+    args["load_raw"] = True
+    pcen = args.get("pcen", False)
     dataset, noise_dataset, remapped, epoch_size, labels, extra_label_dic = (
         get_a_dataset(dir, labels, args)
     )
     args["epoch_size"] = epoch_size
     deterministic = args.get("deterministic", False)
-    if args.get("load_raw", True):
-        logging.info("Mapping raw to mel")
-        if args.get("augment", False):
-
+    logging.info("Mapping raw to mel pcen %s", pcen)
+    if args.get("augment", False):
+        if "noise" in labels:
+            noise_class_id = labels.index("noise")
+            # pair each batch with a batch of noise clips
+            dataset = tf.data.Dataset.zip((dataset, noise_dataset))
             dataset = dataset.map(
-                lambda audio, label: (
-                    tf_batch_mix_real_noise(audio, noise_dataset, label),
-                    label,
+                lambda batch, noise: (
+                    tf_batch_mix_real_noise(
+                        batch[0], noise, batch[1], noise_class_id=noise_class_id
+                    ),
+                    batch[1],
                 ),
                 num_parallel_calls=tf.data.AUTOTUNE,
             )
-            # Apply the roll on-the-fly during your training dataset pipeline
-            dataset = dataset.map(
-                lambda audio, label: (tf_batch_audio_roll(audio), label),
-                num_parallel_calls=tf.data.AUTOTUNE,
-            )
+        # Apply the roll on-the-fly during your training dataset pipeline
+        dataset = dataset.map(
+            lambda audio, label: (tf_batch_audio_roll(audio), label),
+            num_parallel_calls=tf.data.AUTOTUNE,
+        )
 
-            logging.info("Mixing up")
+        logging.info("Mixing up")
 
-            dataset = dataset.map(
-                lambda x, y: selective_batch_mixup(x, y, mixup_prob=0.7, alpha=0.4),
-                num_parallel_calls=tf.data.AUTOTUNE,
-                deterministic=deterministic,
-            )
+        dataset = dataset.map(
+            lambda x, y: selective_batch_mixup(x, y, mixup_prob=0.7, alpha=0.4),
+            num_parallel_calls=tf.data.AUTOTUNE,
+            deterministic=deterministic,
+        )
 
-        if args.get("debug"):
-            logging.info("Not mapping to mel")
-        elif args.get("model_name") == "dual-badwinner2":
-            dataset = dataset.map(
-                lambda x, y: raw_to_mel_dual(x, y),
-                num_parallel_calls=tf.data.AUTOTUNE,
-                deterministic=deterministic,
-            )
-        else:
-            dataset = dataset.map(
-                lambda x, y: raw_to_mel(x, y),
-                num_parallel_calls=tf.data.AUTOTUNE,
-                deterministic=deterministic,
-            )
-
-        if args.get("augment", False):
-            dataset = dataset.map(
-                tf_batch_spec_augment, num_parallel_calls=tf.data.AUTOTUNE
-            )
-
+    if args.get("debug"):
+        logging.info("Not mapping to mel")
+    elif args.get("model_name") == "dual-badwinner2":
+        dataset = dataset.map(
+            lambda x, y: raw_to_mel_dual(x, y),
+            num_parallel_calls=tf.data.AUTOTUNE,
+            deterministic=deterministic,
+        )
     else:
-        dataset = dataset
+        dataset = dataset.map(
+            lambda x, y: raw_to_mel(x, y, pcen=pcen),
+            num_parallel_calls=tf.data.AUTOTUNE,
+            deterministic=deterministic,
+        )
+
+    if args.get("augment", False):
+        dataset = dataset.map(
+            lambda x, y: (tf_batch_spec_augment(x), y),
+            num_parallel_calls=tf.data.AUTOTUNE,
+        )
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     return dataset, remapped, epoch_size, labels, extra_label_dic
 
@@ -862,6 +868,8 @@ def get_a_dataset(dir, labels, args):
 
 import tensorflow as tf
 
+SpecAugment
+
 
 @tf.function
 def tf_batch_mix_real_noise(
@@ -885,17 +893,22 @@ def tf_batch_mix_real_noise(
     shape_tensor = tf.shape(bird_batch)
     batch_size, time_samples = tf.split(shape_tensor, num_or_size_splits=2)
     batch_size = tf.squeeze(batch_size)
+    # the last batch can be smaller than the noise batch
+    noise_batch = noise_batch[:batch_size]
 
     # 1. Standard randomized probability mask for the batch items
     random_probs = tf.random.uniform(shape=[batch_size], minval=0.0, maxval=1.0)
     wants_noise_mask = tf.less(random_probs, execution_probability)
 
-    # 2. Extract the active class index from the one-hot matrix per batch item
-    # tf.argmax converts [[1, 0, 0], [0, 0, 1]] into integer class indices [0, 2]
-    active_class_indices = tf.cast(tf.argmax(label_batch, axis=-1), tf.int32)
-
-    # 3. Create a boolean mask: True if it is a bird, False if it matches the noise index
-    is_not_already_noise = tf.not_equal(active_class_indices, noise_class_id)
+    # 2/3. Skip clips whose only label is noise (argmax would misfire on multi-label
+    # rows, e.g. bird + noise)
+    label_batch = tf.cast(label_batch, tf.float32)
+    noise_col = label_batch[:, noise_class_id]
+    is_not_already_noise = tf.logical_not(
+        tf.logical_and(
+            noise_col > 0, tf.equal(tf.reduce_sum(label_batch, axis=-1), noise_col)
+        )
+    )
 
     # 4. Combine both conditions: Only mix if it rolls 'True' AND it isn't already a noise clip
     should_noise_mask = tf.logical_and(wants_noise_mask, is_not_already_noise)
@@ -911,10 +924,10 @@ def tf_batch_mix_real_noise(
     scaled_noise = tf.multiply(noise_batch, expanded_scales)
     mixed_batch = tf.add(bird_batch, scaled_noise)
 
-    # 7. Clip the signals safely to respect training boundaries [-1.0, 1.0]
-    output_batch = tf.clip_by_value(
-        mixed_batch, clip_value_min=-1.0, clip_value_max=1.0
-    )
+    # maybe can just be clipped
+    # 7. Rescale anything that went over 1.0 rather than hard clipping the peaks
+    peaks = tf.reduce_max(tf.abs(mixed_batch), axis=-1, keepdims=True)
+    output_batch = mixed_batch / tf.maximum(peaks, 1.0)
 
     return output_batch
 
@@ -2188,7 +2201,12 @@ def raw_to_mel_rgb(x, y):
 
 
 @tf.function
-def raw_to_mel(x, y):
+def raw_to_mel(x, y, pcen=False):
+    """Raw audio batch to [batch, mels, time, 3].
+
+    With pcen the mels are left as magnitude for the PCEN layer in the model,
+    otherwise they are power, for the MagTransform layer in the model.
+    """
     if isinstance(x, tuple):
         raw = x[0]
     else:
@@ -2224,9 +2242,11 @@ def raw_to_mel(x, y):
         stft.shape,
         N_MELS,
     )
-    stft = tf.math.pow(stft, 2)
     stft = tf.transpose(stft, [0, 2, 1])
     stft = tf.math.abs(stft)
+    if not pcen:
+        # convert to power
+        stft = tf.math.pow(stft, 2)
     batch_size = tf.keras.ops.shape(raw)[0]
 
     weights = tf.expand_dims(MEL_WEIGHTS, 0)

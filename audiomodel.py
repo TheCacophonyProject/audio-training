@@ -2853,14 +2853,18 @@ class MultiHotMixupBCE(tf.keras.losses.Loss):
         Computes Binary Cross Entropy for mixup-blended multi-hot labels.
 
         y_true: [batch_size, num_classes] -> Blended multi-hot targets (floats between 0 and 1)
-        y_pred: [batch_size, num_classes] -> Model logits (raw, unactivated outputs)
+        y_pred: [batch_size, num_classes] -> Model probabilities (the model already ends in a sigmoid)
         """
         # Ensure predictions are cast to float32
         y_pred = tf.cast(y_pred, tf.float32)
         y_true = tf.cast(y_true, tf.float32)
 
-        # We use from_logits=True for numerical stability rather than applying Sigmoid manually
-        bce = tf.nn.sigmoid_cross_entropy_with_logits(labels=y_true, logits=y_pred)
+        # # We use from_logits=True for numerical stability rather than applying Sigmoid manually
+        # bce = tf.nn.sigmoid_cross_entropy_with_logits(labels=y_true, logits=y_pred)
 
-        # Reduce across classes (average loss per sample), Keras handles the batch reduction
-        return tf.reduce_mean(bce, axis=-1)
+        # # Reduce across classes (average loss per sample), Keras handles the batch reduction
+        # return tf.reduce_mean(bce, axis=-1)
+
+        # binary_crossentropy reduces across classes (average loss per sample),
+        # Keras handles the batch reduction
+        return tf.keras.losses.binary_crossentropy(y_true, y_pred, from_logits=False)
