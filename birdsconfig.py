@@ -200,3 +200,9 @@ for l in HUMAN_LABELS:
 for l in OTHER_LABELS:
     if l != "other":
         RELABEL_MAP[l] = "other"
+
+
+
+for l in ANIMAL_LABELS:
+    if l != "animal":
+        RELABEL_MAP[l] = "animal"
