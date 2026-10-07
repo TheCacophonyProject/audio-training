@@ -436,8 +436,6 @@ class AudioModel:
             self.input_shape = EMBEDDING_SHAPE
         elif "efficientnet" in self.model_name:
             self.input_shape = (self.input_shape[0], self.input_shape[1], 3)
-        elif self.model_name == "dual-badwinner2":
-            self.input_shape = (96, 511, 1)
 
         if args.get("n_mels") != 160:
             # inputs are [mels, time, channels]
@@ -675,38 +673,6 @@ class AudioModel:
             )(output)
             self.model = tf.keras.models.Model(inputs, outputs=output)
             self.model.summary()
-        elif self.model_name == "dual-badwinner2":
-            model = badwinner2.build_model(
-                self.input_shape,
-                None,
-                num_labels,
-                multi_label=multi_label,
-                lme=self.lme,
-                n_mels=96,
-            )
-            model_2 = badwinner2.build_model(
-                self.input_shape,
-                None,
-                num_labels,
-                multi_label=multi_label,
-                lme=self.lme,
-                input_name="input2",
-                n_mels=96,
-            )
-            inputs = []
-            model_2.input.name = "input2"
-            inputs.append(model.input)
-            inputs.append(model_2.input)
-            output = tf.keras.layers.Concatenate()([model.output, model_2.output])
-
-            #  i think this should learn it the same but allow for more complex patterns
-            output = layers.Dense(num_labels)(output)
-            output = tf.keras.layers.Activation(
-                activation, dtype="float32", name="predictions"
-            )(output)
-            self.model = tf.keras.models.Model(inputs, outputs=output)
-            self.model.summary()
-            print("MODEL MADE")
         elif self.model_name == "badwinner2":
             logging.info("Building bad winner2")
             self.model = badwinner2.build_model(
@@ -799,7 +765,7 @@ class AudioModel:
         else:
             acc = tf.metrics.categorical_accuracy
 
-        logging.info("Using cross entropy from logits %s", self.from_logits)
+        logging.info("Using  %s cross entropy from logits %s", "binary" if multi_label else "", self.from_logits)
         loss_fn = loss(multi_label, from_logits=self.from_logits)
 
         self.loss_fn = loss_fn.name

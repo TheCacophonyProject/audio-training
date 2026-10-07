@@ -42,12 +42,6 @@ NFFT = 4096
 MEL_WEIGHTS = mel_f(48000, N_MELS, 500, 11000, NFFT, BREAK_FREQ)
 MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 
-MEL_WEIGHTS_2 = mel_f(48000, N_MELS, 100, 3000, 1024, BREAK_FREQ)
-MEL_WEIGHTS_2 = tf.constant(MEL_WEIGHTS_2)
-
-MEL_WEIGHTS_3 = mel_f(48000, N_MELS, 500, 11000, 1024, BREAK_FREQ)
-MEL_WEIGHTS_3 = tf.constant(MEL_WEIGHTS_3)
-
 FMIN = 100
 FMAX = 11000
 
@@ -514,12 +508,6 @@ def get_dataset(dir, labels, global_epoch=None, **args):
 
     if args.get("debug"):
         logging.info("Not mapping to mel")
-    elif args.get("model_name") == "dual-badwinner2":
-        dataset = dataset.map(
-            lambda x, y: raw_to_mel_dual(x, y),
-            num_parallel_calls=tf.data.AUTOTUNE,
-            deterministic=deterministic,
-        )
     else:
         dataset = dataset.map(
             lambda x, y: raw_to_mel(x, y, pcen=pcen),
@@ -1043,12 +1031,10 @@ def tf_batch_spec_augment(
     execution_probability=0.8,
 ):
     """
-    Applies SpecAugment (Frequency and Time Masking) to a batch of 2D/3D spectrograms.
+    Applies SpecAugment (Frequency and Time Masking) to a batch of
+    [batch, mels, time, channels] spectrograms.
     """
-    # Force 3D to 4D to make dimensions completely uniform
-    is_3d_input = tf.equal(tf.rank(spectrogram_batch), 3)
-    if is_3d_input:
-        spectrogram_batch = tf.expand_dims(spectrogram_batch, axis=-1)
+    tf.debugging.assert_rank(spectrogram_batch, 4)
 
     # Unpack dimensions dynamically without using any integer index brackets
     shape_tensor = tf.shape(spectrogram_batch)
@@ -1136,8 +1122,6 @@ def tf_batch_spec_augment(
             final_mask, tf.zeros_like(augmented_batch), augmented_batch
         )
 
-    if is_3d_input:
-        augmented_batch = tf.squeeze(augmented_batch, axis=-1)
 
     return augmented_batch
 
@@ -1980,57 +1964,6 @@ def butter_bandpass(lowcut, highcut, fs, order=2):
 
 
 @tf.function
-def raw_to_mel_dual(x, y):
-
-    raw = x
-    raw_2 = tf.compat.v1.identity(raw)
-    raw = butter_function(raw, 0, 3000)
-    stft = tf.signal.stft(
-        raw,
-        2048,
-        278,
-        fft_length=2048,
-        window_fn=tf.signal.hann_window,
-        # pad_end=True,
-        name=None,
-    )
-
-    stft = tf.transpose(stft, [0, 2, 1])
-    stft = tf.math.abs(stft)
-    print("STFT becomes ", stft.shape)
-    batch_size = tf.keras.ops.shape(x)[0]
-
-    weights = tf.expand_dims(MEL_WEIGHTS, 0)
-    weights = tf.repeat(weights, batch_size, 0)
-    image = tf.keras.backend.batch_dot(weights, stft)
-    image = tf.expand_dims(image, axis=3)
-
-    raw2 = butter_function(raw_2, 500, 15000)
-
-    stft = tf.signal.stft(
-        raw,
-        1024,
-        280,
-        fft_length=1024,
-        window_fn=tf.signal.hann_window,
-        # pad_end=True,
-        name=None,
-    )
-
-    stft = tf.transpose(stft, [0, 2, 1])
-    stft = tf.math.abs(stft)
-    batch_size = tf.keras.ops.shape(x)[0]
-
-    weights = tf.expand_dims(MEL_WEIGHTS_2, 0)
-    weights = tf.repeat(weights, batch_size, 0)
-    image_2 = tf.keras.backend.batch_dot(weights, stft)
-    image_2 = tf.expand_dims(image_2, axis=3)
-
-    # x =  tf.keras.layers.Concatenate()([image,image_2])
-    return (image, image_2), y
-
-
-@tf.function
 def butter_bitterns(mask, input, y):
     logging.info("Butter bitterns %s", mask)
     logging.info("Input is %s", input.shape)
@@ -2114,76 +2047,6 @@ def normalize(input, y):
         return (x, input[1], input[2]), y
     else:
         return x, y
-
-
-@tf.function
-def raw_to_mel_rgb(x, y):
-    if isinstance(x, tuple):
-        raw = x[0]
-    else:
-        raw = x
-    logging.info("DOING RGB")
-    stft = tf.signal.stft(
-        raw,
-        4096,
-        281,
-        fft_length=4096,
-        window_fn=tf.signal.hann_window,
-        pad_end=True,
-        name=None,
-    )
-    stft_2 = tf.signal.stft(
-        raw,
-        1024,
-        281,
-        fft_length=1024,
-        window_fn=tf.signal.hann_window,
-        pad_end=True,
-        name=None,
-    )
-    stft_3 = tf.signal.stft(
-        raw,
-        1024,
-        281,
-        fft_length=1024,
-        window_fn=tf.signal.hann_window,
-        pad_end=True,
-        name=None,
-    )
-
-    batch_size = tf.keras.ops.shape(raw)[0]
-    stft = tf.math.pow(stft, 2)
-    stft = tf.transpose(stft, [0, 2, 1])
-    stft = tf.math.abs(stft)
-    weights = tf.expand_dims(MEL_WEIGHTS, 0)
-    weights = tf.repeat(weights, batch_size, 0)
-    image = tf.keras.backend.batch_dot(weights, stft)
-
-    stft_2 = tf.math.pow(stft_2, 2)
-    stft_2 = tf.transpose(stft_2, [0, 2, 1])
-    stft_2 = tf.math.abs(stft_2)
-    weights_2 = tf.expand_dims(MEL_WEIGHTS_2, 0)
-    weights_2 = tf.repeat(weights_2, batch_size, 0)
-    image_2 = tf.keras.backend.batch_dot(weights_2, stft_2)
-
-    stft_3 = tf.math.pow(stft_3, 2)
-    stft_3 = tf.transpose(stft_3, [0, 2, 1])
-    stft_3 = tf.math.abs(stft_3)
-    weights_3 = tf.expand_dims(MEL_WEIGHTS_3, 0)
-    weights_3 = tf.repeat(weights_3, batch_size, 0)
-    image_3 = tf.keras.backend.batch_dot(weights_3, stft_3)
-
-    image = tf.expand_dims(image, axis=3)
-    image_2 = tf.expand_dims(image_2, axis=3)
-    image_3 = tf.expand_dims(image_3, axis=3)
-
-    image = tf.concat([image, image_2, image_3], axis=3)
-
-    if isinstance(x, tuple):
-        x = (image, x[1], x[2])
-    else:
-        x = image
-    return x, y
 
 
 @tf.function
