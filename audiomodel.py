@@ -2237,6 +2237,13 @@ def parse_args():
         "train dir e.g. training-data/noise from build.py --noise-dataset",
     )
     parser.add_argument(
+        "--noise-mix-fraction",
+        type=float,
+        default=0.5,
+        help="Fraction of the --noise-dirs records used for mixing, the rest "
+        "are added to the training data as noise samples",
+    )
+    parser.add_argument(
         "--human-dataset-dir",
         type=none_or_str,
         default=None,

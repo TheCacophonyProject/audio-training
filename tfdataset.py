@@ -531,22 +531,57 @@ def set_remapped_extra(remap, extra_l):
     remapped_y = remap
 
 
-def load_noise_dataset(dir, num_labels, labels, args, noise_dirs):
-    """Endless shuffled raw noise clips, for mixing into training audio.
+def split_noise_files(dir, noise_dirs, mix_fraction=0.5):
+    """Split the noise records in <noise dir>/<split name> for each noise dir,
+    as written by build.py --noise-dataset, into files used for mixing into
+    training audio and files added to the dataset as noise samples.
 
-    Loads the records in <noise dir>/<split name> for each noise dir, as written
-    by build.py --noise-dataset
+    Split by file, sorted so the split is the same every run
     """
     filenames = []
     for noise_dir in noise_dirs:
         noise_files = tf.io.gfile.glob(str(Path(noise_dir) / dir.name / "*.tfrecord"))
         logging.info(
-            "Loading noise files %s count: %s", noise_files[:1], len(noise_files)
+            "Found noise files %s count: %s", noise_files[:1], len(noise_files)
         )
         filenames.extend(noise_files)
-    if len(filenames) == 0:
-        raise ValueError(f"No noise records found in {noise_dirs} for {dir.name}")
-    noise_dataset = load_dataset(filenames, num_labels, labels, args)
+    filenames.sort()
+    num_mix = int(round(len(filenames) * mix_fraction))
+    if num_mix == 0:
+        if mix_fraction > 0:
+            raise ValueError(
+                f"No noise records to mix from {len(filenames)} files in {noise_dirs} for {dir.name}"
+            )
+        logging.info("Using all %s noise files in the dataset", len(filenames))
+        return [], filenames
+    # every n'th file so both halves cover all the noise dirs
+    step = len(filenames) / num_mix
+    mix_i = {int(i * step) for i in range(num_mix)}
+    mix_files = [f for i, f in enumerate(filenames) if i in mix_i]
+    dataset_files = [f for i, f in enumerate(filenames) if i not in mix_i]
+    logging.info(
+        "Using %s noise files for mixing and %s in the dataset",
+        len(mix_files),
+        len(dataset_files),
+    )
+    return mix_files, dataset_files
+
+
+def load_noise_dataset(filenames, num_labels, labels, args):
+    """Endless shuffled raw noise clips, for mixing into training audio."""
+    noise_dataset = load_dataset(list(filenames), num_labels, labels, args)
+    # only keep clips whose label is exactly noise, so mixing never adds
+    # another class's sound without its label
+    noise_one_hot = np.zeros(num_labels, dtype=np.float32)
+    noise_one_hot[labels.index("noise")] = 1
+    noise_one_hot = tf.constant(noise_one_hot)
+
+    def is_pure_noise(wave, label):
+        if isinstance(label, tuple):
+            label = label[0]
+        return tf.reduce_all(tf.equal(tf.cast(label, tf.float32), noise_one_hot))
+
+    noise_dataset = noise_dataset.filter(is_pure_noise)
     # Drop labels, we only need raw wave arrays
     noise_dataset = noise_dataset.map(
         lambda wave, label: wave, num_parallel_calls=tf.data.AUTOTUNE
@@ -669,6 +704,17 @@ def get_a_dataset(dir, labels, args):
                 len(extra_files),
             )
             filenames.extend(extra_files)
+
+    noise_mix_files = None
+    if args.get("noise_dirs"):
+        if args.get("augment", False):
+            noise_mix_files, noise_dataset_files = split_noise_files(
+                dir, args["noise_dirs"], args.get("noise_mix_fraction", 0.5)
+            )
+        else:
+            # no mixing so all the nonoise_mix_filesise goes in the dataset
+            _, noise_dataset_files = split_noise_files(dir, args["noise_dirs"], 0)
+        filenames.extend(noise_dataset_files)
 
     logging.info("Loading %s files from %s", len(filenames), dir)
 
@@ -809,10 +855,8 @@ def get_a_dataset(dir, labels, args):
             logging.info(f" for {l} have {d}")
 
     noise_dataset = None
-    if args.get("augment", False) and args.get("noise_dirs"):
-        noise_dataset = load_noise_dataset(
-            dir, num_labels, labels, args, args["noise_dirs"]
-        )
+    if noise_mix_files is not None:
+        noise_dataset = load_noise_dataset(noise_mix_files, num_labels, labels, args)
 
     batch_size = args.get("batch_size", None)
     if batch_size is not None:
