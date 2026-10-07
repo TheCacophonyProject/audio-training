@@ -28,34 +28,44 @@ def main():
     args = parse_args()
     first_none_index = -1
     second_none_index = -1
+    first_labels = None
+    second_labels = None
     if Path(args.first_confusion).suffix == ".npz":
         data = np.load(args.first_confusion)
-        first_cm_labels = list(data["labels"])
-        first_none_index = first_cm_labels.index("None")
+        first_labels = list(data["labels"])
+        if "None" in first_labels:
+            first_none_index = first_labels.index("None")
+        else:
+            first_none_index = first_labels.index("nothing")
         first_cm = data["cm"]
     else:
         first_cm = np.load(args.first_confusion)
 
     if Path(args.second_confusion).suffix == ".npz":
         data = np.load(args.second_confusion)
-        second_cm_labels = list(data["labels"])
-        second_none_index = second_cm_labels.index("None")
+        second_labels = list(data["labels"])
+        if "None" in second_labels:
+            second_none_index = second_labels.index("None")
+        else:
+            second_none_index = second_labels.index("nothing")
         second_cm = data["cm"]
     else:
         second_cm = np.load(args.second_confusion)
-    print(first_cm.shape, second_cm.shape)
-    first_cm_meta_file = args.first_confusion.parent / "metadata.txt"
-    print("Loading meta from ", first_cm_meta_file)
-    with first_cm_meta_file.open("r") as f:
-        first_meta = json.load(f)
-    second_cm_meta_file = args.second_confusion.parent / "metadata.txt"
-    print("Loading meta from ", second_cm_meta_file)
-    with second_cm_meta_file.open("r") as f:
-        second_meta = json.load(f)
 
-    first_labels = first_meta[args.labels_key]
+    if first_labels is None:
 
-    second_labels = second_meta[args.labels_key]
+        first_cm_meta_file = args.first_confusion.parent / "metadata.txt"
+        print("Loading meta from ", first_cm_meta_file)
+        with first_cm_meta_file.open("r") as f:
+            first_meta = json.load(f)
+        first_labels = first_meta[args.labels_key]
+
+    if second_labels is None:
+        second_cm_meta_file = args.second_confusion.parent / "metadata.txt"
+        print("Loading meta from ", second_cm_meta_file)
+        with second_cm_meta_file.open("r") as f:
+            second_meta = json.load(f)
+        second_labels = second_meta[args.labels_key]
     pre_labels = ["bird", "human", "noise"]
 
     print("Comparing confusions ", first_labels, " vs ", second_labels)
@@ -64,12 +74,7 @@ def main():
     first_inccorect = 0
     second_incorrect = 0
     total = 0
-    # first_labels.append("all")
 
-    # first_labels.append("mammal")
-    # second_labels.append("all")
-
-    # second_labels.append("mammal")
     for label in first_labels:
         if label not in second_labels:
             print("First label has ", label, " second does not")
@@ -89,10 +94,6 @@ def main():
     for i, label in enumerate(first_labels):
         if i >= len(first_cm):
             break
-        # if label in pre_labels:
-        # continue
-        # if label in ["human", "morepo2"]:
-        #     continue
         first_count = first_cm[i][i]
         first_none = first_cm[i][first_none_index]
         first_total = np.sum(first_cm[i])
@@ -102,21 +103,7 @@ def main():
         first_correct += first_count
 
         row_copy = first_cm[i].copy()
-        first_bird_c = 0
-        # if "bird" in first_labels:
-        #     first_bird_c = first_cm[i][first_labels.index("bird")]
-        # row_copy[first_labels.index("bird")] = 0
-
-        if label == "noise":
-            row_copy[first_labels.index("insect")] = 0
-        if label != "insect" and label not in pre_labels:
-            for pre_l in pre_labels:
-                if pre_l == "bird":
-                    continue
-                if pre_l in first_labels:
-                    pre_i = first_labels.index(pre_l)
-                    first_pre_lbl_error += first_cm[i][pre_i]
-            # print("Adding error for ",label,first_pre_lbl_error,first_cm[i],np.sum(first_cm[i]))
+        
         row_copy[i] = 0
         row_copy[first_none_index] = 0
         most_wrong = np.argmax(row_copy)
@@ -130,20 +117,9 @@ def main():
             second_total = np.sum(second_cm[second_i])
             second_none_total += second_none
 
-            # if label != "insect" and label not in pre_labels:
-            #     for pre_l in pre_labels:
-            #         if pre_l == "bird":
-            #             continue
-            #         if pre_l in second_labels:
-            #             pre_i = second_labels.index(pre_l)
-            #             second_pre_lbl_error += second_cm[i][pre_i]
-
             row_copy = second_cm[second_i].copy()
-            # if "bird" in second_labels:
-            #     row_copy[second_labels.index("bird")] = 0
-
-            if label == "noise":
-                row_copy[second_labels.index("insect")] = 0
+      
+          
             row_copy[second_i] = 0
             row_copy[second_none_index] = 0
             second_most_wrong = np.argmax(row_copy)
@@ -151,35 +127,12 @@ def main():
             if second_total != first_total:
                 print(f"{label} First total is {first_total} second is {second_total}")
             # assert (
-            # second_total == first_total
-            # ), f"{label} First total is {first_total} second is {second_total}"
-            # if first_total == 0:
-            #     continue
-            bird_c = 0
-            # if "bird" in second_labels:
-            #     bird_c = second_cm[second_i][second_labels.index("bird")]
+          
+            first_inccorect += first_total - first_count - first_none 
 
-            if label in pre_labels:
-                first_bird_c = 0
-                bird_c = 0
-            first_inccorect += first_total - first_count - first_none - first_bird_c
-            # print(label, first_total - first_count - first_none - first_bird_c,second_total - second_count - second_none - bird_c)
-            # bird_c = 0
             second_total_samples += second_total
-            second_incorrect += second_total - second_count - second_none - bird_c
-            # assert first_inccorect == second_incorrect, f"{first_cm[i] } vs {second_cm[second_i]}"
-            # print("for first",first_total - first_count - first_none," Second ",second_total - second_count - second_none-bird_c)
-            # print("tally is ",second_incorrect)
-            # print(
-            #     second_total,
-            #     "correct ",
-            #     second_count,
-            #     " none ",
-            #     second_none,
-            #     second_total - second_count - second_none,
-            # )
-            # print(first_cm[i],second_cm[i])
-            # print(second_count,second_total)
+            second_incorrect += second_total - second_count - second_none 
+           
             if first_total == 0:
                 first_acc = 0
                 first_none = 0
@@ -207,17 +160,7 @@ def main():
 
         else:
             print(f"Label {label} only in first")
-    # second_correct = 0
-    # second_total_samples = 0
-    # second_incorrect = 0
-    # for second_i, label in enumerate(second_labels):
-    #     second_count = second_cm[second_i][second_i]
-    #     second_correct += second_count
-    #     second_total = np.sum(second_cm[second_i])
-    #     second_none = second_cm[second_i][-1]
-
-    #     second_total_samples += second_total
-    #     second_incorrect += second_total - second_count - second_none
+  
 
     print(
         f"Total diff is {total} ( {round(100* total/ total_samples,1)}) first incorrect {first_inccorect} {round(100*first_inccorect / total_samples,1) }% second incorrect {second_incorrect} {round(100*second_incorrect/second_total_samples,1)}% score diff {round(100* (first_inccorect - second_incorrect) / total_samples,1)}"

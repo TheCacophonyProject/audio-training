@@ -1439,8 +1439,11 @@ def multi_confusion_single(
     assert (
         y_pred.shape == true_categories.shape
     ), f"Predictions {y_pred.shape} don't match labels {true_categories.shape}"
-    if "nothing" not in labels:
-        labels.append("nothing")
+    if "None" not in labels:
+        labels.append("None")
+    # true count of each class, "nothing" is the clips with no true labels
+    totals_row = np.int64(true_categories.sum(axis=0))
+    totals_row = np.append(totals_row, np.sum(true_categories.sum(axis=1) == 0))
     none_p = []
     none_y = []
     flat_p = []
@@ -1522,7 +1525,7 @@ def multi_confusion_single(
 
     np.savez(filename.with_suffix(".npz"), cm=cm, labels=np.array(labels))
     # Log the confusion matrix as an image summary.
-    figure = plot_confusion_matrix(cm, class_names=labels)
+    figure = plot_confusion_matrix(cm, class_names=labels, totals_row=totals_row)
     logging.info("Saving confusion to %s", filename.with_suffix(".png"))
     plt.savefig(filename.with_suffix(".png"), format="png")
 
@@ -1534,7 +1537,7 @@ def multi_confusion_single(
 
     np.savez(none_path.with_suffix(".npz"), cm=cm, labels=np.array(labels))
     # Log the confusion matrix as an image summary.
-    figure = plot_confusion_matrix(cm, class_names=labels)
+    figure = plot_confusion_matrix(cm, class_names=labels, totals_row=totals_row)
     plt.savefig(none_path.with_suffix(".png"), format="png")
 
 

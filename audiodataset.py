@@ -1262,6 +1262,11 @@ def load_data(
         start = 0
     data_length = segment_l
     spec = None
+    if len(frames) < round(segment_l * sr):
+        # recording is shorter than a segment, take all of it and pad below
+        use_padding = True
+        start = 0
+        end = len(frames)
     if use_padding:
         s_data = frames[start:end]
     else:

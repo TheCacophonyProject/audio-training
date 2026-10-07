@@ -379,7 +379,7 @@ def csv_dataset(base_dir):
     config = Config()
     dataset = AudioDataset("CSVData", config)
     id = 0
-    wav_files = list(base_dir.glob("*.wav"))
+    # wav_files = list(base_dir.glob("*.wav"))
     # with open(base_dir / "meta.csv", 'w', newline='') as csvfile:
     #     fixedwriter = csv.writer(csvfile, delimiter=',')
     #     fixedwriter.writerow(["id","file","label","duration"])
@@ -1881,9 +1881,9 @@ def main():
             graph_rms(args.dir)
         else:
             add_rms_meta(args.dir, args.analyse)
-    elif args.csv:
-        logging.info("Loading data divided by folder")
-        csv_dataset(args.dir)
+    elif args.csv is not None:
+        logging.info("Loading data from csv %s", args.csv)
+        csv_dataset(args.csv)
     elif args.tracks:
         logging.info("Adding best track estimates")
         generate_tracks_master(args.dir)
@@ -2011,7 +2011,7 @@ def parse_args():
         default=None,
         help="Split the dataset using clip ids specified in this file",
     )
-    parser.add_argument("--csv", action="store_true", help="Add data from csv file")
+    parser.add_argument("--csv", type=Path, help="Path to csv file to add data from")
 
     parser.add_argument("--flickr", action="store_true", help="Add flickr data")
     args = parser.parse_args()
