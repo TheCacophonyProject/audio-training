@@ -476,7 +476,7 @@ def csv_dataset(base_dir):
 def write_dataset(dataset, base_dir, split=True, sub_dir=None):
     dataset.print_counts()
     if split:
-        datasets = split_randomly(dataset, no_test=True)
+        datasets = split_randomly(dataset)
     else:
         dataset.name = "train"
         datasets = [dataset]

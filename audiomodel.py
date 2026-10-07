@@ -2235,6 +2235,15 @@ def parse_args():
         "train dir e.g. training-data/noise from build.py --noise-dataset",
     )
     parser.add_argument(
+        "--extra-dirs",
+        dest="extra_datasets",
+        nargs="+",
+        default=None,
+        help="Extra record dirs added to the main dataset, each containing a "
+        "training-meta.json and train/validation dirs e.g. training-data/animal "
+        "from otherdata.py --csv",
+    )
+    parser.add_argument(
         "--noise-mix-fraction",
         type=float,
         default=0.5,
@@ -2381,7 +2390,6 @@ def parse_args():
     parser.add_argument("--weak-dir", default=False, action="store_true")
 
     args = parser.parse_args()
-    args.extra_datasets = None
     # args.multi = args.multi > 0
     args.resample = args.resample > 0
     args.only_features = args.only_features > 0

@@ -703,7 +703,6 @@ def get_a_dataset(dir, labels, args):
                 extra_files[:1],
                 len(extra_files),
             )
-            filenames.extend(extra_files)
 
     noise_mix_files = None
     if args.get("noise_dirs"):
