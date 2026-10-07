@@ -1402,7 +1402,7 @@ def confusion(
     figure = plot_confusion_matrix(cm, class_names=labels)
 
     plt.savefig(filename.with_suffix(".png"), format="png")
-    np.save(str(filename.with_suffix(".npy")), cm)
+    np.savez(filename.with_suffix(".npz"), cm=cm, labels=np.array(labels))
 
     # plt.savefig(f"./confusions/{filename}", format="png")
 
@@ -1417,24 +1417,18 @@ def multi_confusion_single(
     model_name=None,
 ):
     filename = Path(filename)
-    from sklearn.preprocessing import MultiLabelBinarizer
-
-    mlb = MultiLabelBinarizer(classes=np.arange(len(labels)))
-    true_categories = [y[0] if isinstance(y, tuple) else y for x, y in dataset]
-    true_categories = tf.concat(true_categories, axis=0)
-    # y_true = []
-    # if one_hot:
-    #     for y in true_categories:
-    #         non_zero = tf.where(y).numpy()
-    #         y_true.append(list(non_zero.flatten()))
-    # only usefull if not multi
-    # true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    # else:
-    # y_true = np.array(true_categories)
-    if model_name == "rf-features":
-        dataset = tf_to_ydf(dataset)
-
-    y_pred = model.predict(dataset)
+    y_ds = dataset.map(
+        lambda x, y: y[0] if isinstance(y, tuple) else y,
+        num_parallel_calls=tf.data.AUTOTUNE,
+        deterministic=True,
+    )
+    true_categories = np.concatenate(list(y_ds.as_numpy_iterator()), axis=0)
+    x_ds = dataset.map(
+        lambda x, y: x,
+        num_parallel_calls=tf.data.AUTOTUNE,
+        deterministic=True,
+    )
+    y_pred = model.predict(x_ds)
     if "nothing" not in labels:
         labels.append("nothing")
     none_p = []
@@ -1453,7 +1447,7 @@ def multi_confusion_single(
         if (
             bird_index is not None
             and best_label == bird_index
-            and p[arg_sorted[-2]] != 0
+            and p[arg_sorted[-2]] >= prob_thresh
         ):
             best_label = arg_sorted[-2]
         best_prob = p[best_label]
@@ -1477,8 +1471,11 @@ def multi_confusion_single(
                 # if predicted but is not true
 
                 # add this index as wrong for all true labels. where it hasn't got it right
-
-                for true_label in true_labels:
+                # if there are no true labels, record it against "nothing"
+                fp_rows = (
+                    true_labels if len(true_labels) > 0 else [len(labels) - 1]
+                )
+                for true_label in fp_rows:
                     # if true_label not in best_labels:
                     flat_y.append(true_label)
                     flat_p.append(index)
@@ -1513,7 +1510,7 @@ def multi_confusion_single(
     cm = confusion_matrix(flat_y, flat_p, labels=np.arange(len(labels)))
     # confusion_path = Path(f"./confusions/{filename}")
 
-    np.save(str(filename.with_suffix(".npy")), cm)
+    np.savez(filename.with_suffix(".npz"), cm=cm, labels=np.array(labels))
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
     logging.info("Saving confusion to %s", filename.with_suffix(".png"))
@@ -1525,7 +1522,7 @@ def multi_confusion_single(
     none_path = filename.parent / f"{filename.stem}-none"
     logging.info("Saving confusion to %s", none_path.with_suffix(".png"))
 
-    np.save(str(none_path.with_suffix(".npy")), cm)
+    np.savez(none_path.with_suffix(".npz"), cm=cm, labels=np.array(labels))
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=labels)
     plt.savefig(none_path.with_suffix(".png"), format="png")
@@ -1923,21 +1920,21 @@ def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
     cm = confusion_matrix(y_true, predicted_mean, labels=np.arange(len(labels)))
     figure = plot_confusion_matrix(cm, class_names=labels)
     plt.savefig(cm_file.with_suffix(".png"), format="png")
-    np.save(str(cm_file.with_suffix(".npy")), cm)
+    np.savez(cm_file.with_suffix(".npz"), cm=cm, labels=np.array(labels))
 
     print("Saving to ", filename)
     cm_file = filename.parent / f"{filename.stem}-max"
     cm = confusion_matrix(y_true, predicted_max, labels=np.arange(len(labels)))
     figure = plot_confusion_matrix(cm, class_names=labels)
     plt.savefig(cm_file.with_suffix(".png"), format="png")
-    np.save(str(cm_file.with_suffix(".npy")), cm)
+    np.savez(cm_file.with_suffix(".npz"), cm=cm, labels=np.array(labels))
 
     print("Saving to ", filename)
     cm_file = filename.parent / f"{filename.stem}-counts"
     cm = confusion_matrix(y_true, predicted_counts, labels=np.arange(len(labels)))
     figure = plot_confusion_matrix(cm, class_names=labels)
     plt.savefig(cm_file.with_suffix(".png"), format="png")
-    np.save(str(cm_file.with_suffix(".npy")), cm)
+    np.savez(cm_file.with_suffix(".npz"), cm=cm, labels=np.array(labels))
 
 
 from identifytracks import get_tracks_from_signals, signal_noise, get_end, Signal
@@ -2092,21 +2089,9 @@ def main():
             model_name=model_name,
             cache=True,
             load_all_y=True,
+            noise_dirs = args.noise_dirs
         )
-        # acc = tf.metrics.binary_accuracy
-        if model_name != "rf-features":
-            acc = tf.keras.metrics.BinaryAccuracy(threshold=0.5)
-            model.compile(
-                optimizer=optimizer(lr=1.0),
-                loss=loss(True),
-                metrics=[
-                    acc,  #
-                    tf.keras.metrics.AUC(),
-                    tf.keras.metrics.Recall(),
-                    tf.keras.metrics.Precision(),
-                ],
-            )
-            # model.evaluate(dataset)
+
 
         if dataset is not None:
             if meta_data.get("only_features"):
@@ -2233,7 +2218,7 @@ def parse_args():
         "--noise-dirs",
         nargs="+",
         default=None,
-        help="Noise record dirs to mix into training audio, each containing a "
+        help="Noise record dirs to mix into training audio, each containing a"
         "train dir e.g. training-data/noise from build.py --noise-dataset",
     )
     parser.add_argument(
