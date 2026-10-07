@@ -1370,7 +1370,7 @@ def load_data(
     if a_max == a_min:
         print("Error max is min ", a_max, a_min, start_s, end)
         logging.error(
-            "Max is min %s start %s end %s data length %s ",
+            "Max  %s min %s start %s end %s data length %s ",
             a_max,
             a_min,
             start / sr,
