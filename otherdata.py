@@ -55,6 +55,8 @@ csv_files = [
 out_dir = Path("./other-data")
 from audiowriter import create_tf_records
 import json
+from collections import Counter
+from birdsconfig import RELABEL_MAP
 
 
 chime_labels = {
@@ -398,6 +400,7 @@ def csv_dataset(base_dir):
     #        redo_csv(Path(file_dir),base_dir/csv_f,fixedwriter)
     # return
     multiple_samples = "ambient" in str(base_dir)
+    filtered_labels = Counter()
     with base_dir.open("r") as f:
         dreader = csv.reader(f, delimiter=",", quotechar="|")
         dreader.__next__()
@@ -430,6 +433,13 @@ def csv_dataset(base_dir):
                 ) = row
                 audio_file = base_dir.parent / Path(name)
                 labels = [audio_file.parent.name.lower()]
+            # only keep labels we know about
+            for label in labels:
+                if label not in RELABEL_MAP:
+                    filtered_labels[label] += 1
+            labels = [label for label in labels if label in RELABEL_MAP]
+            if len(labels) == 0:
+                continue
             add_rec(
                 dataset,
                 audio_file,
@@ -439,6 +449,9 @@ def csv_dataset(base_dir):
                 id=id,
                 multiple_samples=multiple_samples,
             )
+    logging.info("Filtered labels not in RELABEL_MAP:")
+    for label, count in filtered_labels.most_common():
+        logging.info("%s: %s", label, count)
     write_dataset(dataset, base_dir.parent, split="ambient" not in str(base_dir))
 
 
@@ -2015,7 +2028,8 @@ def parse_args():
 
     parser.add_argument("--flickr", action="store_true", help="Add flickr data")
     args = parser.parse_args()
-    args.dir = Path(args.dir)
+    if args.dir:
+        args.dir = Path(args.dir)
     return args
 
 
