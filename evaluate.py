@@ -300,7 +300,7 @@ def preprocess_audio(metadata_f, labels=None):
 
 
 # from tensorflow examples
-def plot_confusion_matrix(cm, class_names):
+def plot_confusion_matrix(cm, class_names, title="Confusion Matrix", totals_row=None):
     """
     Returns a matplotlib figure containing the plotted confusion matrix.
 
@@ -308,20 +308,34 @@ def plot_confusion_matrix(cm, class_names):
       cm (array, shape = [n, n]): a confusion matrix of integer classes
       class_names (array, shape = [n]): String names of the integer classes
     """
-
-    figure = plt.figure(figsize=(24, 24))
-    plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
-    plt.title("Confusion matrix")
-    plt.colorbar()
+    plt.clf()
+    figure = plt.figure(figsize=(16, 16))
     tick_marks = np.arange(len(class_names))
-    plt.xticks(tick_marks, class_names, rotation=45)
-    plt.yticks(tick_marks, class_names)
+
+    if totals_row is not None:
+        plt.imshow(
+            np.vstack((cm, totals_row)), interpolation="nearest", cmap=plt.cm.Blues
+        )
+    else:
+        plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+
+    plt.title(title)
+    plt.colorbar()
+
+    plt.xticks(tick_marks, class_names, rotation=90)
+    ylabels = []
+    for i, label in enumerate(class_names):
+        ylabel = f"{label} ({np.sum(cm[i])})"
+        ylabels.append(ylabel)
+    if totals_row is not None:
+        tick_marks = np.arange(len(class_names) + 1)
+        ylabels.append("totals")
+    plt.yticks(tick_marks, ylabels)
 
     # Use white text if squares are dark; otherwise black.
     counts = cm.copy()
     threshold = counts.max() / 2.0
 
-    print("Threshold is", threshold, " for ", cm.max())
     # Normalize the confusion matrix.
 
     cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
@@ -331,7 +345,11 @@ def plot_confusion_matrix(cm, class_names):
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
         color = "white" if counts[i, j] > threshold else "black"
         plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
-
+    if totals_row is not None:
+        i = len(cm)
+        for j, count in enumerate(totals_row):
+            color = "white" if count > threshold else "black"
+            plt.text(j, i, count, horizontalalignment="center", color=color)
     plt.tight_layout()
     plt.ylabel("True label")
     plt.xlabel("Predicted label")

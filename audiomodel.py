@@ -755,7 +755,7 @@ class AudioModel:
                 activation, dtype="float32", name="predictions"
             )(x)
 
-            outputs = [birds]
+            outputs = birds
             self.model = tf.keras.models.Model(input, outputs=outputs)
 
         if self.from_logits:
@@ -795,7 +795,7 @@ class AudioModel:
                     activation, dtype="float32", name="predictions"
                 )(x)
 
-                outputs = [birds]
+                outputs = birds
                 self.model = tf.keras.models.Model(input, outputs=outputs)
 
         self.model.compile(
@@ -824,9 +824,11 @@ class AudioModel:
         # model outputting probabilities, for saving and predicting
         if not self.from_logits:
             return self.model
+        # model.output is a list as the model is built with outputs=[birds],
+        # passing the list would add a leading dim to the output
         probabilities = tf.keras.layers.Activation(
             "sigmoid", dtype="float32", name="probabilities"
-        )(self.model.output)
+        )(self.model.outputs[0])
         return tf.keras.models.Model(self.model.input, outputs=probabilities)
 
     def checkpoints(self, run_name, multi_label=True):
@@ -1429,6 +1431,14 @@ def multi_confusion_single(
         deterministic=True,
     )
     y_pred = model.predict(x_ds)
+    if isinstance(y_pred, tf.RaggedTensor):
+        # predict returns (batches, None, labels) when each batch output has an
+        # extra leading dim, flatten back to one row per sample
+        y_pred = y_pred.merge_dims(0, 1)
+    y_pred = np.asarray(y_pred)
+    assert (
+        y_pred.shape == true_categories.shape
+    ), f"Predictions {y_pred.shape} don't match labels {true_categories.shape}"
     if "nothing" not in labels:
         labels.append("nothing")
     none_p = []
