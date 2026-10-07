@@ -39,12 +39,11 @@ N_MELS = 160
 SR = 48000
 BREAK_FREQ = 1000
 NFFT = 4096
-MEL_WEIGHTS = mel_f(48000, N_MELS, 500, 11000, NFFT, BREAK_FREQ)
-MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 
 FMIN = 100
 FMAX = 11000
-
+MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
+MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 MOREPORK_MAX = 1200
 
 
@@ -180,7 +179,7 @@ BIRD_WEIGHTING = []
 SPECIFIC_BIRD_MASK = []
 
 
-def load_dataset(filenames, num_labels, labels, args, has_ebird=True):
+def load_dataset(filenames, num_labels, labels, args):
     deterministic = args.get("deterministic", False)
     if not deterministic:
         logging.info("Shuffling filenames")
@@ -254,7 +253,6 @@ def load_dataset(filenames, num_labels, labels, args, has_ebird=True):
             multi=args.get("multi_label", True),
             load_raw=args.get("load_raw", True),
             model_name=args.get("model_name", "badwinner2"),
-            has_ebird=has_ebird,
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -514,7 +512,8 @@ def get_dataset(dir, labels, global_epoch=None, **args):
             deterministic=deterministic,
         )
 
-    if args.get("augment", False):
+    # spec augment needs the mel, debug leaves the raw audio
+    if args.get("augment", False) and not args.get("debug"):
         dataset = dataset.map(
             lambda x, y: (tf_batch_spec_augment(x), y),
             num_parallel_calls=tf.data.AUTOTUNE,
@@ -925,6 +924,9 @@ def tf_batch_mix_real_noise(
 
     # 2/3. Skip clips whose only label is noise (argmax would misfire on multi-label
     # rows, e.g. bird + noise)
+    if isinstance(label_batch, (tuple, list)):
+        # when loading all y (rec ids etc) the first element is the label
+        label_batch = label_batch[0]
     label_batch = tf.cast(label_batch, tf.float32)
     noise_col = label_batch[:, noise_class_id]
     is_not_already_noise = tf.logical_not(
@@ -962,6 +964,12 @@ def selective_batch_mixup(audio_batch, label_batch, mixup_prob=0.7, alpha=0.4):
     # 1. Roll a random number between 0.0 and 1.0 for the whole batch
     random_roll = tf.random.uniform(shape=[], minval=0.0, maxval=1.0)
 
+    # when loading all y (rec ids etc) only the first element is the label to mix
+    extra_y = None
+    if isinstance(label_batch, (tuple, list)):
+        extra_y = tuple(label_batch[1:])
+        label_batch = label_batch[0]
+
     # 2. Define what happens if we DO mix up
     def apply_mixup():
         batch_size = tf.shape(audio_batch)[0]
@@ -990,7 +998,10 @@ def selective_batch_mixup(audio_batch, label_batch, mixup_prob=0.7, alpha=0.4):
     def skip_mixup():
         return audio_batch, label_batch
 
-    return tf.cond(random_roll < mixup_prob, apply_mixup, skip_mixup)
+    audio, label = tf.cond(random_roll < mixup_prob, apply_mixup, skip_mixup)
+    if extra_y is not None:
+        label = (label,) + extra_y
+    return audio, label
 
 
 # @tf.function
@@ -1227,11 +1238,9 @@ def read_tfrecord(
     load_raw=True,
     model_name="badwinner2",
     global_epoch=None,
-    has_ebird=True,
 ):
     tfrecord_format = {"audio/class/text": tf.io.FixedLenFeature((), tf.string)}
-    if has_ebird:
-        tfrecord_format["audio/class/ebird"] = tf.io.FixedLenFeature((), tf.string)
+    tfrecord_format["audio/class/ebird"] = tf.io.FixedLenFeature((), tf.string)
 
     tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
     tfrecord_format["audio/track_id"] = tf.io.FixedLenFeature((), tf.string)
@@ -1329,10 +1338,7 @@ def read_tfrecord(
     if augment:
         logging.info("Augmenting")
     # label = tf.cast(example["audio/class/label"], tf.int32)
-    if has_ebird:
-        label = tf.cast(example["audio/class/ebird"], tf.string)
-    else:
-        label = tf.cast(example["audio/class/text"], tf.string)
+    label = tf.cast(example["audio/class/ebird"], tf.string)
 
     split_labels = tf.strings.split(label, sep="\n")
     global remapped_y, extra_label_map
@@ -1502,6 +1508,19 @@ def parse_args():
         action="count",
         help="Use tracks of generic bird tags ( without specific birds) in training",
     )
+    parser.add_argument(
+        "--noise-dirs",
+        nargs="+",
+        default=None,
+        help="Noise record dirs to mix into the audio, each containing a dir "
+        "matching the dataset split e.g. training-data/noise from build.py --noise-dataset",
+    )
+    parser.add_argument(
+        "--pcen",
+        default=False,
+        action="store_true",
+        help="Build mels as magnitude for PCEN rather than power",
+    )
     args = parser.parse_args()
     return args
 
@@ -1612,62 +1631,16 @@ def main():
         use_bird_tags=args.use_bird_tags,
         load_all_y=True,
         shuffle=False,
-        load_raw=False,
         n_fft=4096,
-        fmin=fmin,
-        fmax=fmax,
-        # MOREPORK_MAX,
+       
         only_features=args.only_features,
-        debug=True,
-        model_name="mymodel",
-        use_generic_bird=False,
         cache=True,
-        global_epoch=global_epoch,
-        augment=False,
+        augment=True,
+        noise_dirs=args.noise_dirs,
+        pcen=args.pcen,
         # signal_less_than = 0.1
     )
-    # return
-    # for epoch in range(5):
-    #     global_epoch.assign(epoch)
-    #     print("Global epoch assigned",global_epoch.value())
-    #     for x, y in dataset:
-    #         epoch_batch = y[-1]
-    #         print("Epoch is ", epoch, epoch_batch[0].numpy())
-    # debug_labels(dataset, labels)
-    # return
-    for batch_x, batch_y in dataset:
-        recs = batch_y[3]
-        tracks = batch_y[4]
-        for x, rec, track in zip(batch_x, recs, tracks):
-            data_ok = np.all(x >= -1.00002) and np.all(x <= 1.000002)
-            has_nan = np.any(np.isnan(x))
-            has_inf = np.any(np.isinf(x))
-            a_max = np.amax(x)
-            a_min = np.amin(x)
-            if not data_ok or has_nan or has_inf:
-                # print(x)
-                x = x.numpy()
-                logging.info(
-                    "Bad data for rec %s track %s less than 1 %s over 1 %s max %s min %s",
-                    rec,
-                    track,
-                    x[np.where(x < -1.000002)],
-                    x[np.where(x > 1.000002)],
-                    a_max,
-                    a_min,
-                )
-                logging.info("Has nan %s has infinity", has_nan, has_inf)
-
-            if a_max == a_min:
-                logging.info(
-                    "Max = Min for rec %s track %s max %s min %s",
-                    rec,
-                    track,
-                    a_max,
-                    a_min,
-                )
-
-    return
+    
     preds = None
     if args.model is not None:
         model_path = Path(args.model)
@@ -1746,6 +1719,7 @@ def main():
                 preds=(
                     preds[(batch - 1) * 32 : 32 * batch] if preds is not None else None
                 ),
+                pcen=args.pcen,
             )
         break
 
@@ -1781,7 +1755,7 @@ def getsize(obj):
     return size * 0.000001
 
 
-def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
+def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None, pcen=False):
     recs = None
     tracks = None
     starts = None
@@ -1833,7 +1807,11 @@ def show_batch(image_batch, label_batch, labels, batch_i=0, preds=None):
             plot_title = f"{plot_title} - {rec}:{track} at {start_s:.1f} sig {signal_percent:.1f}"
         plt.title(f"{plot_title}\n{predicted}")
         img = image_batch[n]
-        ax.imshow(img)
+        if len(img.shape) == 1:
+            # debug data is raw audio rather than a mel
+            ax.specgram(img.numpy(), Fs=48000, NFFT=1024, noverlap=512)
+        else:
+            plot_mel(img[:, :, 0], ax, pcen=pcen)
 
         # plot_mel(image_batch[n][:, :, 0], ax)
         # np.save(f"dataset-images/batch-{batch_i}-{rec}-{start_s:.1f}.npy",image_batch[n])
@@ -1845,16 +1823,19 @@ def plot_mfcc(mfccs, ax):
     img = librosa.display.specshow(mfccs.numpy(), x_axis="time", ax=ax)
 
 
-def plot_mel(mel, ax):
-    # power = librosa.db_to_power(mel.numpy())
+def plot_mel(mel, ax, pcen=False):
+    # mels are magnitude when using pcen otherwise power
+    if pcen:
+        mel_db = librosa.amplitude_to_db(mel.numpy(), ref=np.max)
+    else:
+        mel_db = librosa.power_to_db(mel.numpy(), ref=np.max)
     img = librosa.display.specshow(
-        mel.numpy(),
-        # librosa.power_to_db(mel.numpy(),ref=np.max),
+        mel_db,
         x_axis="time",
         y_axis="mel",
         sr=48000,
-        fmax=11000,
-        fmin=100,
+        fmax=FMAX,
+        fmin=FMIN,
         ax=ax,
         hop_length=HOP_LENGTH,
     )
