@@ -444,7 +444,7 @@ class AudioModel:
         args["remapped_labels"] = remapped
         args["extra_label_map"] = extra_label_map
         self.num_classes = len(self.labels)
-    
+
         # can use for 2 gpus, but seems to be much slower on our setup
         # strategy = tf.distribute.MirroredStrategy()
         # with strategy.scope():
@@ -765,7 +765,11 @@ class AudioModel:
         else:
             acc = tf.metrics.categorical_accuracy
 
-        logging.info("Using  %s cross entropy from logits %s", "binary" if multi_label else "", self.from_logits)
+        logging.info(
+            "Using  %s cross entropy from logits %s",
+            "binary" if multi_label else "",
+            self.from_logits,
+        )
         loss_fn = loss(multi_label, from_logits=self.from_logits)
 
         self.loss_fn = loss_fn.name
@@ -2226,6 +2230,13 @@ def parse_args():
         help="Secondary dataset directory to use",
     )
     parser.add_argument(
+        "--noise-dirs",
+        nargs="+",
+        default=None,
+        help="Noise record dirs to mix into training audio, each containing a "
+        "train dir e.g. training-data/noise from build.py --noise-dataset",
+    )
+    parser.add_argument(
         "--human-dataset-dir",
         type=none_or_str,
         default=None,
@@ -2775,8 +2786,6 @@ class EpochUpdater(tf.keras.callbacks.Callback):
         global global_epoch
         # global_epoch = tf.Variable(1, name='global_epoch', trainable=False, dtype=tf.int32)
         global_epoch.assign(epoch + 1)
-
-
 
 
 class MultiHotMixupBCE(tf.keras.losses.Loss):

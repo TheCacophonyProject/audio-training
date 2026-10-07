@@ -400,7 +400,6 @@ def get_remappings(
     if not keep_excluded_in_extra:
         labels = new_labels
 
-
     for l in labels:
         if l in excluded_labels:
             continue
@@ -479,7 +478,7 @@ def get_dataset(dir, labels, global_epoch=None, **args):
     deterministic = args.get("deterministic", False)
     logging.info("Mapping raw to mel pcen %s", pcen)
     if args.get("augment", False):
-        if "noise" in labels:
+        if noise_dataset is not None:
             noise_class_id = labels.index("noise")
             # pair each batch with a batch of noise clips
             dataset = tf.data.Dataset.zip((dataset, noise_dataset))
@@ -530,6 +529,29 @@ def set_remapped_extra(remap, extra_l):
     global remapped_y
     extra_label_map = extra_l
     remapped_y = remap
+
+
+def load_noise_dataset(dir, num_labels, labels, args, noise_dirs):
+    """Endless shuffled raw noise clips, for mixing into training audio.
+
+    Loads the records in <noise dir>/<split name> for each noise dir, as written
+    by build.py --noise-dataset
+    """
+    filenames = []
+    for noise_dir in noise_dirs:
+        noise_files = tf.io.gfile.glob(str(Path(noise_dir) / dir.name / "*.tfrecord"))
+        logging.info(
+            "Loading noise files %s count: %s", noise_files[:1], len(noise_files)
+        )
+        filenames.extend(noise_files)
+    if len(filenames) == 0:
+        raise ValueError(f"No noise records found in {noise_dirs} for {dir.name}")
+    noise_dataset = load_dataset(filenames, num_labels, labels, args)
+    # Drop labels, we only need raw wave arrays
+    noise_dataset = noise_dataset.map(
+        lambda wave, label: wave, num_parallel_calls=tf.data.AUTOTUNE
+    )
+    return noise_dataset.shuffle(buffer_size=1000).repeat()
 
 
 def get_a_dataset(dir, labels, args):
@@ -724,7 +746,7 @@ def get_a_dataset(dir, labels, args):
             dataset = dataset.map(lambda x, y: normalize(x, y))
         logging.info("Returning debug data")
 
-        return dataset, remapped, None, labels, extra_label_dic
+        return dataset, None, remapped, None, labels, extra_label_dic
 
     if not args.get("load_all_y", False):
         if args.get("loss_fn") == "WeightedCrossEntropy":
@@ -786,39 +808,21 @@ def get_a_dataset(dir, labels, args):
         for l, d in zip(labels, dist):
             logging.info(f" for {l} have {d}")
 
-    # Define your noise class column index (e.g., column 0)
-    noise_one_hot = np.zeros(num_labels, dtype=np.float32)
-    noise_one_hot[labels.index("noise")] = 1
-    noise_one_hot = tf.constant(noise_one_hot)
-
-    # 2. Extract ONLY your noise clips to build your background loop
-    # The filter function returns True to KEEP an item, False to DROP it
-    # multi label so only keep clips whose label is exactly noise
-    # could add generic birds into here
-    def is_pure_noise(waveform, one_hot_label):
-        if isinstance(one_hot_label, tuple):
-            one_hot_label = one_hot_label[0]
-        return tf.reduce_all(
-            tf.equal(tf.cast(one_hot_label, tf.float32), noise_one_hot)
+    noise_dataset = None
+    if args.get("augment", False) and args.get("noise_dirs"):
+        noise_dataset = load_noise_dataset(
+            dir, num_labels, labels, args, args["noise_dirs"]
         )
-
-    # Create the noise dataset: filter it, shuffle it, and repeat it infinitely
-    noise_dataset = dataset.filter(is_pure_noise)
-    noise_dataset = noise_dataset.map(
-        lambda wave, label: wave
-    )  # Drop labels, we only need raw wave arrays
-    # cache so repeat replays the noise clips from memory, rather than re-reading
-    # and re-shuffling the whole training set every time the noise runs out
-    noise_dataset = noise_dataset.cache().shuffle(buffer_size=1000).repeat()
 
     batch_size = args.get("batch_size", None)
     if batch_size is not None:
         dataset = dataset.batch(
             batch_size, drop_remainder=args.get("drop_remainder", False)
         )
-        noise_dataset = noise_dataset.batch(
-            batch_size, drop_remainder=args.get("drop_remainder", False)
-        )
+        if noise_dataset is not None:
+            noise_dataset = noise_dataset.batch(
+                batch_size, drop_remainder=args.get("drop_remainder", False)
+            )
 
     # dont think using this anymore GP
     if args.get("weight_specific", False):
@@ -1123,7 +1127,6 @@ def tf_batch_spec_augment(
         augmented_batch = tf.where(
             final_mask, tf.zeros_like(augmented_batch), augmented_batch
         )
-
 
     return augmented_batch
 

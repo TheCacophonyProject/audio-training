@@ -968,30 +968,28 @@ def main():
 
 
 def build_noise_only(datasets, base_dir):
-    # noise records to go with an already built dataset, using its labels so
-    # the one hot labels line up
-    record_dir = os.path.join(base_dir, "training-data/")
-    meta_filename = os.path.join(record_dir, "training-meta.json")
-    with open(meta_filename, "r") as f:
-        labels = json.load(f)["labels"]
-    logging.info("Using labels from %s %s", meta_filename, labels)
-    for dataset in datasets:
-        noise_ds = noise_only_dataset(dataset)
-        logging.info("%s noise dataset", dataset.name)
+    # records store their tags as text and are mapped to the training labels
+    # when read, so the noise labels don't need to match an existing dataset
+    noise_dir = os.path.join(base_dir, "training-data", "noise")
+    noise_datasets = [noise_only_dataset(dataset) for dataset in datasets]
+    labels = set()
+    for noise_ds in noise_datasets:
+        labels.update(noise_ds.labels)
+    labels = sorted(labels)
+    logging.info("Noise labels %s", labels)
+    counts = {}
+    for noise_ds in noise_datasets:
+        logging.info("%s noise dataset", noise_ds.name)
         noise_ds.print_sample_counts()
-        missing = [l for l in noise_ds.labels if l not in labels]
-        if len(missing) > 0:
-            logging.warning(
-                "%s noise labels are not in the existing dataset labels %s",
-                dataset.name,
-                missing,
-            )
+        counts[noise_ds.name] = noise_ds.get_counts()
         create_tf_records(
             noise_ds,
-            os.path.join(record_dir, "noise", dataset.name),
+            os.path.join(noise_dir, noise_ds.name),
             labels,
             num_shards=100,
         )
+    with open(os.path.join(noise_dir, "training-meta.json"), "w") as f:
+        json.dump({"labels": labels, "type": "audio", "counts": counts}, f, indent=4)
 
 
 def noise_only_dataset(dataset):
