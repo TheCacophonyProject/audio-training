@@ -1760,10 +1760,11 @@ def init_labels(data_dir, **args):
 
         set_merge_labels(merge_labels)
     else:
-        if "human" not in excluded_labels:
-            excluded_labels.append("human")
-        if "noise" not in excluded_labels:
-            excluded_labels.append("noise")
+        pass
+        # if "human" not in excluded_labels:
+        #     excluded_labels.append("human")
+        # if "noise" not in excluded_labels:
+        #     excluded_labels.append("noise")
 
     logging.info("labels are %s Excluding %s", labels, excluded_labels)
     return labels, excluded_labels, meta
