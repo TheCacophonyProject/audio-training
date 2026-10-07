@@ -819,7 +819,16 @@ def main():
         return
     # config = load_config(args.config_file)
     dataset = AudioDataset("all", config)
-    dataset.load_meta(args.dir)
+    if args.noise_only:
+        from birdsconfig import NOISE_LABELS
+
+        # only recordings with a noise tag can have noise only samples
+        dataset.load_meta(
+            args.dir,
+            rec_filter=lambda r: any(tag in NOISE_LABELS for tag in r.human_tags),
+        )
+    else:
+        dataset.load_meta(args.dir)
     if args.plot_signal:
         logging.info("Plotting signals")
         from otherdata import plot_signal
@@ -829,7 +838,7 @@ def main():
 
     dataset.print_sample_counts()
 
-    if args.filter_birds:
+    if args.filter_birds and not args.noise_only:
         filter_birds(dataset, args)
     # for r in dataset.recs:
     #     if "whistler" not in r.human_tags:
@@ -868,6 +877,9 @@ def main():
 
     #     for unused in rec.unused_samples:
     #         logging.info("Not Used samples are %s", unused)
+    if args.noise_only:
+        build_noise_only(datasets, args.out_dir)
+        return
     if args.balance:
         logging.info("Balancing datasets")
         undersample_ds(datasets[0])
@@ -915,6 +927,16 @@ def main():
             "sample_counts": dataset.get_counts(),
         }
         create_tf_records(dataset, dir, datasets[0].labels, num_shards=100)
+        if args.noise_dataset:
+            noise_ds = noise_only_dataset(dataset)
+            logging.info("%s noise dataset", dataset.name)
+            noise_ds.print_sample_counts()
+            create_tf_records(
+                noise_ds,
+                os.path.join(record_dir, "noise", dataset.name),
+                datasets[0].labels,
+                num_shards=100,
+            )
 
         # dataset.saveto_numpy(os.path.join(base_dir))
     # dont need dataset anymore just need some meta
@@ -943,6 +965,46 @@ def main():
     split_filename = f"{base_dir}/training-data/training-split.json"
     with open(split_filename, "w") as f:
         json.dump({"seed": config.seed, "recs": dataset_recs}, f, indent=4)
+
+
+def build_noise_only(datasets, base_dir):
+    # noise records to go with an already built dataset, using its labels so
+    # the one hot labels line up
+    record_dir = os.path.join(base_dir, "training-data/")
+    meta_filename = os.path.join(record_dir, "training-meta.json")
+    with open(meta_filename, "r") as f:
+        labels = json.load(f)["labels"]
+    logging.info("Using labels from %s %s", meta_filename, labels)
+    for dataset in datasets:
+        noise_ds = noise_only_dataset(dataset)
+        logging.info("%s noise dataset", dataset.name)
+        noise_ds.print_sample_counts()
+        missing = [l for l in noise_ds.labels if l not in labels]
+        if len(missing) > 0:
+            logging.warning(
+                "%s noise labels are not in the existing dataset labels %s",
+                dataset.name,
+                missing,
+            )
+        create_tf_records(
+            noise_ds,
+            os.path.join(record_dir, "noise", dataset.name),
+            labels,
+            num_shards=100,
+        )
+
+
+def noise_only_dataset(dataset):
+    # samples whose labels are all noise labels, kept per split so noise mixed
+    # into training never comes from validation or test recordings
+    from birdsconfig import NOISE_LABELS
+
+    noise_ds = AudioDataset(dataset.name, dataset.config)
+    for rec in dataset.recs.values():
+        for sample in rec.samples:
+            if all(tag in NOISE_LABELS for tag in sample.tags):
+                noise_ds.add_sample(rec, sample)
+    return noise_ds
 
 
 def validate_datasets(datasets):
@@ -1152,11 +1214,27 @@ def parse_args():
         "seed is picked and logged if not given",
     )
     parser.add_argument(
+        "--noise-dataset",
+        action="store_true",
+        help="Also write samples whose labels are all in NOISE_LABELS to "
+        "training-data/noise/<split> for mixing in as background noise",
+    )
+    parser.add_argument(
+        "--noise-only",
+        action="store_true",
+        help="Only write the noise dataset, for a dataset already built in "
+        "out_dir. Recordings without a noise tag are not loaded, needs --split-file",
+    )
+    parser.add_argument(
         "--split-file",
         default=None,
         help="Split the dataset using clip ids specified in this file",
     )
     args = parser.parse_args()
+    if args.noise_only and args.split_file is None:
+        # without the original split noise recordings could land in a different
+        # split to the one they are in for the existing dataset
+        parser.error("--noise-only needs --split-file")
     if args.best_segment and args.dont_tighten_tracks:
         # best_start and best_end are only set when tightening tracks
         parser.error("--best-segment needs tracks to be tightened")

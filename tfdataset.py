@@ -807,7 +807,9 @@ def get_a_dataset(dir, labels, args):
     noise_dataset = noise_dataset.map(
         lambda wave, label: wave
     )  # Drop labels, we only need raw wave arrays
-    noise_dataset = noise_dataset.shuffle(buffer_size=1000).repeat()
+    # cache so repeat replays the noise clips from memory, rather than re-reading
+    # and re-shuffling the whole training set every time the noise runs out
+    noise_dataset = noise_dataset.cache().shuffle(buffer_size=1000).repeat()
 
     batch_size = args.get("batch_size", None)
     if batch_size is not None:
