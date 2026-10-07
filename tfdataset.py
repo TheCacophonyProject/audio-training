@@ -13,10 +13,6 @@ import librosa
 import librosa.display
 from custommel import mel_f
 from pathlib import Path
-import tensorflow_io as tfio
-from audiomentations import AddBackgroundNoise, PolarityInversion, Compose
-import soundfile as sf
-from badwinner2 import MagTransform
 from birdsconfig import (
     ANIMAL_LABELS,
     ALL_BIRDS,
@@ -28,7 +24,6 @@ from birdsconfig import (
     NOISE_LABELS,
 )
 
-from utils import get_label_to_ebird_map, get_ebird_ids_to_labels
 
 BIRD_PATH = []
 NOISE_PATH = []
@@ -411,18 +406,11 @@ def get_remappings(
     if not keep_excluded_in_extra:
         labels = new_labels
 
-    ebird_map = get_ebird_ids_to_labels()
 
     for l in labels:
         if l in excluded_labels:
             continue
         remap_label = None
-        # until we rewrite records if ebird ids need to remape all labels to ebird ids
-        # text_labels = ebird_map.get(l.lower().replace(" ", "-"))
-        # if text_labels is not None and l in new_labels:
-        #     for text_l in text_labels:
-        #         re_dic[text_l] = new_labels.index(l)
-        # logging.info("Adding remap %s to %s", text_l, l)
 
         if l in NOISE_LABELS:
             if "noise" in new_labels:
@@ -867,8 +855,6 @@ def get_a_dataset(dir, labels, args):
 
 
 import tensorflow as tf
-
-SpecAugment
 
 
 @tf.function

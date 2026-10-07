@@ -137,19 +137,13 @@ class AudioModel:
         self.train = None
         # self.remapped = None
         self.input_shape = DIMENSIONS
-        if model_name == "embeddings":
-            self.input_shape = EMBEDDING_SHAPE
-        elif model_name == "efficientnetb0":
-            self.input_shape = (self.input_shape[0], self.input_shape[1], 3)
-        elif model_name == "dual-badwinner2":
-            self.input_shape = (96, 511, 1)
-        elif model_name == "cnn-features":
-            self.input_shape = [(68, 60), (136, 3)]
         self.preprocess_fn = None
         self.learning_rate = 0.01
         self.mean_sub = False
         self.training_data_meta = None
         self.loss_fn = None
+        # multi label models output logits, the sigmoid is only added when saving
+        self.from_logits = False
         self.load_meta()
 
     def load_meta(self):
@@ -302,7 +296,7 @@ class AudioModel:
                 y_true.append(list(non_zero.flatten()))
             y_true = y_true
 
-            predictions = self.model.predict(self.test)
+            predictions = self.probability_model().predict(self.test)
             # predicted_categories = np.int64(tf.argmax(predictions, axis=1))
             threshold = 0.5
             predicted_categories = []
@@ -452,72 +446,31 @@ class AudioModel:
         args["remapped_labels"] = remapped
         args["extra_label_map"] = extra_label_map
         self.num_classes = len(self.labels)
-        if args.get("rf_model") and args.get("cnn_model"):
-            models = []
-            inputs = []
-
-            outputs = []
-
-            rf = tf.keras.models.load_model(args.get("rf_model"))
-            cnn = tf.keras.models.load_model(args.get("cnn_model"), compile=False)
-            cnn.load_weights(Path(args.get("cnn_model")) / "val_binary_accuracy")
-            cnn.trainable = False
-            rf.trainable = False
-
-            inputs = [
-                tf.keras.Input(shape=(68 * 60 + 136 * 3), name="features"),
-                cnn.input,
-            ]
-            output = tf.keras.layers.Concatenate()([rf(inputs[0]), cnn.outputs[0]])
-            output = layers.Dense(len(self.labels))(output)
-            output = tf.keras.activations.sigmoid(output)
-
-            self.model = tf.keras.models.Model(inputs=inputs, outputs=output)
-            self.model.summary()
-            if args.get("multi_label"):
-                acc = tf.metrics.binary_accuracy
-            else:
-                acc = tf.metrics.categorical_accuracy
-            # loss_fn = loss(args.get("multi_label", True))
-            loss_fn = WeightedCrossEntropy(self.labels)
-            self.loss_fn = loss_fn.name
-            self.model.compile(
-                optimizer=optimizer(lr=self.learning_rate),
-                loss=loss_fn,
-                metrics=[
-                    acc,  #
-                    tf.keras.metrics.AUC(),
-                    tf.keras.metrics.Recall(),
-                    tf.keras.metrics.Precision(),
-                    tf.keras.losses.Huber(),
-                ],
+    
+        # can use for 2 gpus, but seems to be much slower on our setup
+        # strategy = tf.distribute.MirroredStrategy()
+        # with strategy.scope():
+        weights_labels = None
+        if weights is not None:
+            weights_metadata = Path(weights).parent / "metadata.txt"
+            if weights_metadata.exists():
+                with weights_metadata.open("r") as f:
+                    weights_meta = json.load(f)
+                weights_labels = weights_meta.get("ebird_labels")
+                print("Weight labels are ", weights_labels)
+        self.build_model(
+            multi_label=args.get("multi_label", True),
+            loss_fn=args.get("loss_fn", "keras"),
+            weight_labels=weights_labels,
+            weights=weights,
+            pcen=args.get("pcen", False),
+        )
+        (self.checkpoint_folder / run_name).mkdir(parents=True, exist_ok=True)
+        if self.model_name != "rf-features":
+            self.probability_model().save(
+                self.checkpoint_folder / run_name / f"{run_name}.keras"
             )
-
-            if weights is not None:
-                self.load_weights(weights)
-        else:
-            # can use for 2 gpus, but seems to be much slower on our setup
-            # strategy = tf.distribute.MirroredStrategy()
-            # with strategy.scope():
-            weights_labels = None
-            if weights is not None:
-                weights_metadata = Path(weights).parent / "metadata.txt"
-                if weights_metadata.exists():
-                    with weights_metadata.open("r") as f:
-                        weights_meta = json.load(f)
-                    weights_labels = weights_meta.get("ebird_labels")
-                    print("Weight labels are ", weights_labels)
-            self.build_model(
-                multi_label=args.get("multi_label", True),
-                loss_fn=args.get("loss_fn", "keras"),
-                weight_labels=weights_labels,
-                weights=weights,
-                pcen=args.get("pcen", False),
-            )
-            (self.checkpoint_folder / run_name).mkdir(parents=True, exist_ok=True)
-            if self.model_name != "rf-features":
-                self.model.save(self.checkpoint_folder / run_name / f"{run_name}.keras")
-            self.save_metadata(run_name, None, None, **args)
+        self.save_metadata(run_name, None, None, **args)
 
         checkpoints = self.checkpoints(
             run_name, multi_label=args.get("multi_label", True)
@@ -572,7 +525,9 @@ class AudioModel:
         # create a save point
         if run_name is None:
             run_name = self.model_name
-        self.model.save(self.checkpoint_folder / run_name / f"{run_name}.keras")
+        self.probability_model().save(
+            self.checkpoint_folder / run_name / f"{run_name}.keras"
+        )
         self.save_metadata(run_name, history, test_results, **args)
         if self.test is not None:
             acc = (
@@ -587,7 +542,7 @@ class AudioModel:
             confusion_file = self.checkpoint_folder / run_name / "confusion-val_loss"
             if args.get("multi_label"):
                 multi_confusion_single(
-                    self.model,
+                    self.probability_model(),
                     self.labels,
                     self.test,
                     confusion_file,
@@ -675,9 +630,16 @@ class AudioModel:
 
         num_labels = len(labels)
 
+        # these models end in their own sigmoid
+        self.from_logits = multi_label and self.model_name not in (
+            "badwinner2-res",
+            "embeddings",
+            "wr-resnet",
+        )
         activation = "softmax"
         if multi_label:
-            activation = "sigmoid"
+            # train on logits, probability_model adds the sigmoid for inference
+            activation = "linear"
         if self.model_name == "merge":
             inputs = []
 
@@ -753,6 +715,7 @@ class AudioModel:
                 num_labels,
                 multi_label=multi_label,
                 lme=self.lme,
+                logits=self.from_logits,
             )
         elif self.model_name == "cnn-features":
             inputs = []
@@ -819,9 +782,6 @@ class AudioModel:
             # v2bm is 0.2
             x = tf.keras.layers.Dropout(0.5)(x)
 
-            activation = "softmax"
-            if multi_label:
-                activation = "sigmoid"
             logging.info("Using %s activation", activation)
             x = tf.keras.layers.Dense(num_labels, name="prediction")(x)
 
@@ -832,16 +792,15 @@ class AudioModel:
             outputs = [birds]
             self.model = tf.keras.models.Model(input, outputs=outputs)
 
-        if multi_label:
+        if self.from_logits:
+            acc = tf.keras.metrics.BinaryAccuracy(threshold=0.0, name="binary_accuracy")
+        elif multi_label:
             acc = tf.metrics.binary_accuracy
         else:
             acc = tf.metrics.categorical_accuracy
-        if loss_fn == "WeightedCrossEntropy":
-            logging.info("Using weighted cross entropy")
-            loss_fn = WeightedCrossEntropy(labels)
-        else:
-            logging.info("Using cross entropy")
-            loss_fn = loss(multi_label)
+
+        logging.info("Using cross entropy from logits %s", self.from_logits)
+        loss_fn = loss(multi_label, from_logits=self.from_logits)
 
         self.loss_fn = loss_fn.name
 
@@ -879,14 +838,26 @@ class AudioModel:
                 #     num_labels=len(self.labels),
                 #     # , bird_i=self.labels.index("bird")
                 # ),
-                tf.keras.losses.BinaryFocalCrossentropy(),
-                tf.keras.metrics.AUC(),
-                tf.keras.metrics.Recall(),
-                tf.keras.metrics.Precision(),
-                tf.keras.losses.Huber(),
+                tf.keras.losses.BinaryFocalCrossentropy(from_logits=self.from_logits),
+                tf.keras.metrics.AUC(from_logits=self.from_logits),
+                # logits threshold of 0 is a probability of 0.5
+                tf.keras.metrics.Recall(thresholds=0.0 if self.from_logits else None),
+                tf.keras.metrics.Precision(
+                    thresholds=0.0 if self.from_logits else None
+                ),
+                huber_loss if self.from_logits else tf.keras.losses.Huber(),
             ],
         )
         self.model.summary()
+
+    def probability_model(self):
+        # model outputting probabilities, for saving and predicting
+        if not self.from_logits:
+            return self.model
+        probabilities = tf.keras.layers.Activation(
+            "sigmoid", dtype="float32", name="probabilities"
+        )(self.model.output)
+        return tf.keras.models.Model(self.model.input, outputs=probabilities)
 
     def checkpoints(self, run_name, multi_label=True):
         metrics = [
@@ -1216,7 +1187,12 @@ def sigmoid_binary_cross(y_true, y_pred):
     return loss_m
 
 
-def loss(multi_label=False, smoothing=0):
+def huber_loss(y_true, y_pred):
+    # huber loss on probabilities for models outputting logits
+    return tf.keras.losses.huber(y_true, tf.math.sigmoid(y_pred))
+
+
+def loss(multi_label=False, smoothing=0, from_logits=False):
     if multi_label:
         # logging.info("Using focal binary cross")
         # return tf.keras.losses.BinaryFocalCrossentropy(
@@ -1228,7 +1204,7 @@ def loss(multi_label=False, smoothing=0):
         # )
         logging.info("Using MultiHotMixupBCE loss")
 
-        loss_fn = MultiHotMixupBCE()
+        loss_fn = MultiHotMixupBCE(from_logits=from_logits)
         # loss_fn = sigmoid_binary_cross
     else:
         logging.info("Using cross loss")
@@ -2289,8 +2265,6 @@ def parse_args():
         help="Secondary dataset directory to use",
     )
     parser.add_argument("--confusion", help="Save confusion matrix for model")
-    parser.add_argument("--rf_model", help="RF Model to use")
-    parser.add_argument("--cnn_model", help="CNN Model to use with val_acc weights")
 
     parser.add_argument("-w", "--weights", help="Weights to use")
     parser.add_argument("--cross", action="count", help="Cross fold val")
@@ -2836,8 +2810,6 @@ class EpochUpdater(tf.keras.callbacks.Callback):
         global_epoch.assign(epoch + 1)
 
 
-if __name__ == "__main__":
-    main()
 
 
 class MultiHotMixupBCE(tf.keras.losses.Loss):
@@ -2845,26 +2817,28 @@ class MultiHotMixupBCE(tf.keras.losses.Loss):
         self,
         reduction=tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE,
         name="multi_hot_mixup_bce",
+        from_logits=False,
     ):
         super().__init__(reduction=reduction, name=name)
+        self.from_logits = from_logits
 
     def call(self, y_true, y_pred):
         """
         Computes Binary Cross Entropy for mixup-blended multi-hot labels.
 
         y_true: [batch_size, num_classes] -> Blended multi-hot targets (floats between 0 and 1)
-        y_pred: [batch_size, num_classes] -> Model probabilities (the model already ends in a sigmoid)
+        y_pred: [batch_size, num_classes] -> Model logits if from_logits, otherwise probabilities
         """
         # Ensure predictions are cast to float32
         y_pred = tf.cast(y_pred, tf.float32)
         y_true = tf.cast(y_true, tf.float32)
 
-        # # We use from_logits=True for numerical stability rather than applying Sigmoid manually
-        # bce = tf.nn.sigmoid_cross_entropy_with_logits(labels=y_true, logits=y_pred)
-
-        # # Reduce across classes (average loss per sample), Keras handles the batch reduction
-        # return tf.reduce_mean(bce, axis=-1)
-
         # binary_crossentropy reduces across classes (average loss per sample),
         # Keras handles the batch reduction
-        return tf.keras.losses.binary_crossentropy(y_true, y_pred, from_logits=False)
+        return tf.keras.losses.binary_crossentropy(
+            y_true, y_pred, from_logits=self.from_logits
+        )
+
+
+if __name__ == "__main__":
+    main()
