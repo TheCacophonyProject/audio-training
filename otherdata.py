@@ -379,7 +379,12 @@ def redo_csv(file_dir, base_dir, writer):
 
 def csv_dataset(base_dir):
     config = Config()
-    dataset = AudioDataset("CSVData", config)
+    # one dataset per RELABEL_MAP group, labels in other groups are dropped
+    categories = ["noise", "animal"]
+    datasets = {
+        category: AudioDataset(f"CSVData-{category}", config)
+        for category in categories
+    }
     id = 0
     # wav_files = list(base_dir.glob("*.wav"))
     # with open(base_dir / "meta.csv", 'w', newline='') as csvfile:
@@ -433,29 +438,42 @@ def csv_dataset(base_dir):
                 ) = row
                 audio_file = base_dir.parent / Path(name)
                 labels = [audio_file.parent.name.lower()]
-            # only keep labels we know about
+            # only keep labels that map to one of the categories
+            category_labels = {category: [] for category in categories}
             for label in labels:
-                if label not in RELABEL_MAP:
+                category = RELABEL_MAP.get(label)
+                if category in category_labels:
+                    category_labels[category].append(label)
+                else:
                     filtered_labels[label] += 1
-            labels = [label for label in labels if label in RELABEL_MAP]
-            if len(labels) == 0:
-                continue
-            add_rec(
-                dataset,
-                audio_file,
-                labels,
-                config,
-                float(duration),
-                id=id,
-                multiple_samples=multiple_samples,
-            )
-    logging.info("Filtered labels not in RELABEL_MAP:")
+            for category, cat_labels in category_labels.items():
+                if len(cat_labels) == 0:
+                    continue
+                add_rec(
+                    datasets[category],
+                    audio_file,
+                    cat_labels,
+                    config,
+                    float(duration),
+                    id=id,
+                    multiple_samples=multiple_samples,
+                )
+    logging.info("Filtered labels not mapped to %s:", categories)
     for label, count in filtered_labels.most_common():
         logging.info("%s: %s", label, count)
-    write_dataset(dataset, base_dir.parent, split="ambient" not in str(base_dir))
+    for category, dataset in datasets.items():
+        if len(dataset.recs) == 0:
+            logging.info("No %s recordings, not writing dataset", category)
+            continue
+        write_dataset(
+            dataset,
+            base_dir.parent,
+            split="ambient" not in str(base_dir),
+            sub_dir=category,
+        )
 
 
-def write_dataset(dataset, base_dir, split=True):
+def write_dataset(dataset, base_dir, split=True, sub_dir=None):
     dataset.print_counts()
     if split:
         datasets = split_randomly(dataset, no_test=True)
@@ -474,6 +492,8 @@ def write_dataset(dataset, base_dir, split=True):
     for d in datasets:
         d.labels = all_labels
     record_dir = base_dir / "training-data/"
+    if sub_dir is not None:
+        record_dir = record_dir / sub_dir
     print("saving to", record_dir)
     logging.info("Saving pre samples mem %s", psutil.virtual_memory()[2])
 
