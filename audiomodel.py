@@ -138,7 +138,7 @@ class AudioModel:
         # self.remapped = None
         self.input_shape = DIMENSIONS
         self.preprocess_fn = None
-        self.learning_rate = 0.01
+        # self.learning_rate = 0.01
         self.mean_sub = False
         self.training_data_meta = None
         self.loss_fn = None
@@ -421,6 +421,7 @@ class AudioModel:
             self.labels,
             remapped,
             extra_label_map,
+            epoch_size
         ) = load_datasets(
             labels,
             excluded_labels,
@@ -462,6 +463,8 @@ class AudioModel:
             weight_labels=weights_labels,
             weights=weights,
             pcen=args.get("pcen", False),
+            epoch_size = epoch_size,
+            epochs=epochs,
         )
         (self.checkpoint_folder / run_name).mkdir(parents=True, exist_ok=True)
         if self.model_name != "rf-features":
@@ -478,43 +481,22 @@ class AudioModel:
             class_weights = get_weighting(self.train, self.labels)
             logging.info("Weights are %s", class_weights)
         history = None
-        if self.model_name == "rf-features":
-            ydf_ds = tf_to_ydf(self.train)
+    
+        history = self.model.fit(
+            self.train,
+            validation_data=self.validation,
+            epochs=epochs,
+            shuffle=False,
+            callbacks=[
+                tf.keras.callbacks.TensorBoard(
+                    self.log_dir, write_graph=True, write_images=True
+                ),
+                *checkpoints,
+            ],  # log metricslast_stats
+            class_weight=class_weights,
+        )
 
-            self.model = self.model.train(ydf_ds)
-            self.model.save(str(self.checkpoint_folder / run_name / "rf"))
-            self.load_test_set(**args)
-            self.train = None
-            ydf_ds = tf_to_ydf(self.test)
-
-            evaluation = self.model.evaluate(ydf_ds)
-            print(evaluation)
-            self.save_metadata(
-                run_name + "/rf",
-                history,
-                test_results=(evaluation.accuracy, evaluation.loss),
-                **args,
-            )
-            return
-            # history = self.model.fit(self.train, validation_data=self.validation)
-        else:
-            policy = tf.keras.mixed_precision.global_policy()
-            logging.info("Policy is %s", policy)
-            history = self.model.fit(
-                self.train,
-                validation_data=self.validation,
-                epochs=epochs,
-                shuffle=False,
-                callbacks=[
-                    tf.keras.callbacks.TensorBoard(
-                        self.log_dir, write_graph=True, write_images=True
-                    ),
-                    *checkpoints,
-                ],  # log metricslast_stats
-                class_weight=class_weights,
-            )
-
-            history = history.history
+        history = history.history
         test_accuracy = None
         self.load_test_set(**args)
         self.save(run_name, history=history, test_results=test_accuracy, **args)
@@ -619,6 +601,8 @@ class AudioModel:
         weight_labels=None,
         weights=None,
         pcen=False,
+        epoch_size = None,
+        epochs=35,
     ):
         if weights is not None and weight_labels is not None:
             # build model wight these labels then pop the dense layer and add a new one for our labels
@@ -799,7 +783,11 @@ class AudioModel:
                 self.model = tf.keras.models.Model(input, outputs=outputs)
 
         self.model.compile(
-            optimizer=optimizer(lr=self.learning_rate),
+            optimizer=optimizer(
+                epoch_size=epoch_size,
+                batch_size=self.batch_size,
+                total_epochs=epochs,
+            ),
             loss=loss_fn,
             metrics=[
                 acc,
@@ -867,10 +855,11 @@ class AudioModel:
             mode="min",
         )
         checks.append(earlyStopping)
-        reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor="val_loss", verbose=1, mode="max"
-        )
-        checks.append(reduce_lr_callback)
+        # dont use with cosine
+        # reduce_lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
+        #     monitor="val_loss", verbose=1, mode="min", patience=4
+        # )
+        # checks.append(reduce_lr_callback)
         # file_writer_cm = tf.summary.create_file_writer(str(self.log_dir / "cm"))
         # cm_callback = tf.keras.callbacks.LambdaCallback(
         #     on_epoch_end=lambda epoch, logs: log_confusion_matrix(
@@ -1187,20 +1176,23 @@ def loss(multi_label=False, smoothing=0, from_logits=False):
     return loss_fn
 
 
-def optimizer(lr=None, decay=None):
-    if decay is not None:
-        learning_rate = tf.keras.optimizers.schedules.ExponentialDecay(
-            lr,
-            decay_steps=100000,
-            decay_rate=decay,
-            staircase=True,
-        )
-    else:
-        learning_rate = lr  # setup optimizer
-    if learning_rate:
-        optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
-    else:
-        optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
+def optimizer(epoch_size,batch_size = 32,total_epochs = 35):
+    STEPS_PER_EPOCH = epoch_size // batch_size
+    
+
+    # Calculate exact step targets
+    warmup_steps = STEPS_PER_EPOCH * 1  # 1 full epoch of warmup
+    total_steps = STEPS_PER_EPOCH * total_epochs
+
+        # 2. Define the Learning Rate Schedule with Native Warmup
+    lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
+        initial_learning_rate=0.0,     # This is your PEAK learning rate
+        decay_steps=total_steps - warmup_steps,  # decay starts after warmup
+        alpha=1e-2,                     # Drops down to 5e-6 by the final epoch
+        warmup_target=5e-4,             # Explicitly state your warmup peak target
+        warmup_steps=warmup_steps        # Linearly ramp from 0.0 to 5e-4 over this many steps
+    )
+    optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
     return optimizer
 
 
@@ -1612,7 +1604,7 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
         **args,
     )
 
-    return train, validation, new_labels, remapped, extra_label_map
+    return train, validation, new_labels, remapped, extra_label_map,epoch_size
 
 
 def init_labels(data_dir, **args):
@@ -2200,7 +2192,7 @@ def str2bool(v):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=100, help="Epochs to use")
+    parser.add_argument("--epochs", type=int, default=35, help="Epochs to use")
     parser.add_argument(
         "--extra-datasets",
         default=[

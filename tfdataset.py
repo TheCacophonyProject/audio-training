@@ -707,7 +707,7 @@ def get_a_dataset(dir, labels, args):
     if args.get("noise_dirs"):
         if args.get("augment", False):
             noise_mix_files, noise_dataset_files = split_noise_files(
-                dir, args["noise_dirs"], args.get("noise_mix_fraction", 1)
+                dir, args["noise_dirs"], 1
             )
         else:
             # no mixing so all the nonoise_mix_filesise goes in the dataset
