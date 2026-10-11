@@ -674,7 +674,13 @@ def predict_on_test(split_file, load_model, base_dir, confusion_file="confusion.
                 continue
             file_y.append(label_i)
             spec = load_data(
-                test.config, sample.start, frames, sr, end=sample.end, use_padding=False
+                test.config,
+                sample.start,
+                frames,
+                sr,
+                end=sample.end,
+                use_padding=False,
+                calc_spec=True,
             )
             data = mel_spec(
                 spec.spectrogram,

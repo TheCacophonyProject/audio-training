@@ -129,11 +129,12 @@ def create_tf_example(sample):
             sample.text_tags_s.encode("utf8")
         ),
         "audio/class/ebird": tfrecord_util.bytes_feature(tags.encode("utf8")),
-        "audio/spectrogram": tfrecord_util.float_list_feature(
-            np.float32(data.spectrogram.ravel())
-        ),
         "audio/raw": tfrecord_util.float_list_feature(np.float32(data.raw.ravel())),
     }
+    if data.spectrogram is not None:
+        feature_dict["audio/spectrogram"] = tfrecord_util.float_list_feature(
+            np.float32(data.spectrogram.ravel())
+        )
     if data.short_features is not None:
         feature_dict["audio/short_f"] = tfrecord_util.float_list_feature(
             np.float32(data.short_features.ravel())

@@ -2,17 +2,27 @@ import librosa
 import numpy as np
 
 
-# replicating code from librosa but changing break freq from 700 -> 1750
+def get_mel_multiplier(break_freq):
+    """Calculates the exact Librosa/HTK scale constant for any break frequency."""
+    # For break_freq = 700, this returns exactly 2595.0244
+    # For break_freq = 1000, this returns exactly 3321.928
+    return break_freq / np.log10(2.0)
+
+
 def hz_to_mel(frequencies, break_freq):
     frequencies = np.array(frequencies)
-    return 2595.0 * np.log10(1.0 + frequencies / break_freq)
+    multiplier = get_mel_multiplier(break_freq)
+    return multiplier * np.log10(1.0 + frequencies / break_freq)
 
 
 def mel_frequencies(n_mels, fmin, fmax, break_freq):
     min_mel = hz_to_mel(fmin, break_freq)
     max_mel = hz_to_mel(fmax, break_freq)
     mels = np.linspace(min_mel, max_mel, n_mels)
-    return break_freq * (10.0 ** (mels / 2595.0) - 1.0)
+
+    multiplier = get_mel_multiplier(break_freq)
+    # The perfect mathematical inverse step
+    return break_freq * (10.0 ** (mels / multiplier) - 1.0)
 
 
 def mel_f(sr, n_mels, fmin, fmax, n_fft, break_freq):

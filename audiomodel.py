@@ -1485,9 +1485,7 @@ def multi_confusion_single(
 
                 # add this index as wrong for all true labels. where it hasn't got it right
                 # if there are no true labels, record it against "nothing"
-                fp_rows = (
-                    true_labels if len(true_labels) > 0 else [len(labels) - 1]
-                )
+                fp_rows = true_labels if len(true_labels) > 0 else [len(labels) - 1]
                 for true_label in fp_rows:
                     # if true_label not in best_labels:
                     flat_y.append(true_label)
@@ -2102,9 +2100,8 @@ def main():
             model_name=model_name,
             cache=True,
             load_all_y=True,
-            noise_dirs = args.noise_dirs
+            noise_dirs=args.noise_dirs,
         )
-
 
         if dataset is not None:
             if meta_data.get("only_features"):
@@ -2812,21 +2809,29 @@ class MultiHotMixupBCE(tf.keras.losses.Loss):
         self.from_logits = from_logits
 
     def call(self, y_true, y_pred):
-        """
-        Computes Binary Cross Entropy for mixup-blended multi-hot labels.
-
-        y_true: [batch_size, num_classes] -> Blended multi-hot targets (floats between 0 and 1)
-        y_pred: [batch_size, num_classes] -> Model logits if from_logits, otherwise probabilities
-        """
-        # Ensure predictions are cast to float32
         y_pred = tf.cast(y_pred, tf.float32)
         y_true = tf.cast(y_true, tf.float32)
 
-        # binary_crossentropy reduces across classes (average loss per sample),
-        # Keras handles the batch reduction
-        return tf.keras.losses.binary_crossentropy(
+        # 1. Use native TF to get standard cross entropy per class slot
+        # Ensure from_logits matches your model setup (True is highly recommended)
+        bce = tf.keras.losses.binary_crossentropy(
             y_true, y_pred, from_logits=self.from_logits
         )
+
+        # return bce
+        # extra focal loss otherwise just return bce
+
+        # 2. Calculate probabilities to build the focal weighting factor
+        probs = tf.math.sigmoid(y_pred) if self.from_logits else y_pred
+
+        # 3. Compute BirdNET-style focal weight: (1 - p_t)^gamma
+        # if y_true is near 1, weight is (1 - prob). If y_true is near 0, weight is prob.
+        focal_weight = y_true * tf.math.pow(1.0 - probs, 2.0) + (
+            1.0 - y_true
+        ) * tf.math.pow(probs, 2.0)
+
+        # 4. Scale the standard BCE loss by the focal weights
+        return tf.reduce_mean(bce * focal_weight, axis=-1)
 
 
 if __name__ == "__main__":

@@ -382,8 +382,7 @@ def csv_dataset(base_dir):
     # one dataset per RELABEL_MAP group, labels in other groups are dropped
     categories = ["noise", "animal"]
     datasets = {
-        category: AudioDataset(f"CSVData-{category}", config)
-        for category in categories
+        category: AudioDataset(f"CSVData-{category}", config) for category in categories
     }
     id = 0
     # wav_files = list(base_dir.glob("*.wav"))

@@ -30,6 +30,7 @@ if DO_AUDIO_FEATURES:
 # SEGMENT_LENGTH = 2.5  # seconds
 # SEGMENT_STRIDE = 1  # of a second
 # HOP_LENGTH = 281
+HOP_LENGTH = 273
 # BREAK_FREQ = 1750
 # HTK = True
 # FMIN = 50
@@ -108,7 +109,7 @@ class Config:
     def __init__(self, **args):
         self.segment_length = args.get("seg_length", 3)
         self.segment_stride = args.get("stride", 1)
-        self.hop_length = args.get("hop_length", 281)
+        self.hop_length = args.get("hop_length", 273)
         self.break_freq = args.get("break_freq", 1000)
         self.htk = not args.get("slaney", False)
         self.fmin = args.get("fmin", 50)
@@ -1236,10 +1237,11 @@ def load_data(
     n_fft=None,
     end=None,
     use_padding=False,
+    calc_spec=False,
 ):
     segment_l = config.segment_length
     segment_stride = config.segment_stride
-    hop_length = config.hop_length
+    hop_length = HOP_LENGTH
 
     if n_fft is None:
         n_fft = 4096  # power of 2 is best, otherwise need to know
@@ -1356,8 +1358,21 @@ def load_data(
         s_data = np.pad(s_data, (offset, extra_frames - offset))
     assert len(s_data) == int(segment_l * sr)
     # buttered = butter_bandpass_filter(s_data, min_freq, max_freq, sr)
-    normed = normalize_data(s_data)
-    spectrogram = np.abs(librosa.stft(normed, n_fft=n_fft, hop_length=hop_length))
+    spectrogram = None
+    if calc_spec:
+        normed = normalize_data(s_data)
+        # mimic tfdataset.raw_to_mel tf.signal.stft, no centering / padding,
+        # periodic hann window, frame length = n_fft
+        spectrogram = np.abs(
+            librosa.stft(
+                normed,
+                n_fft=n_fft,
+                hop_length=hop_length,
+                win_length=n_fft,
+                window="hann",
+                center=False,
+            )
+        )
     # if buttered is not None:
     #     spectrogram_buttered = np.abs(
     #         librosa.stft(buttered, n_fft=n_fft, hop_length=hop_length)

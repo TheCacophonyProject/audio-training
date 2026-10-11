@@ -34,7 +34,7 @@ AUTOTUNE = tf.data.AUTOTUNE
 
 insect = None
 fp = None
-HOP_LENGTH = 281
+HOP_LENGTH = 273
 N_MELS = 160
 SR = 48000
 BREAK_FREQ = 1000
@@ -290,11 +290,11 @@ def load_dataset(filenames, num_labels, labels, args):
 
     # mel conversion is done after filtering so it only runs on kept samples
     if (
-        read_record is read_tfrecord
-        and not args.get("load_raw", True)
+        not args.get("load_raw", True)
         and not args.get("embeddings", False)
         and not args.get("only_features", False)
     ):
+        logging.info("Mapping mel")
         dataset = dataset.map(
             partial(
                 mel_map,
@@ -434,39 +434,39 @@ bird_mask = None
 
 
 def get_dataset(dir, labels, global_epoch=None, **args):
-    global FMAX, MEL_WEIGHTS, FMIN, NFFT, BREAK_FREQ, N_MELS
-    if args.get("n_mels"):
-        N_MELS = args.get("n_mels")
+    # global FMAX, MEL_WEIGHTS, FMIN, NFFT, BREAK_FREQ, N_MELS
+    # if args.get("n_mels"):
+    #     N_MELS = args.get("n_mels")
 
-        MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
-        MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
-        logging.info("Set mels to %s", N_MELS)
-    if args.get("fmin") is not None:
-        FMIN = args.get("fmin", FMIN)
-        FMAX = args.get("fmax", FMAX)
-        logging.info("Using fmin and fmax %s %s", FMIN, FMAX)
+    #     MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
+    #     MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
+    #     logging.info("Set mels to %s", N_MELS)
+    # if args.get("fmin") is not None:
+    #     FMIN = args.get("fmin", FMIN)
+    #     FMAX = args.get("fmax", FMAX)
+    #     logging.info("Using fmin and fmax %s %s", FMIN, FMAX)
 
-        MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
-        MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
-    if args.get("n_fft") is not None:
-        print(NFFT, "IS")
-        NFFT = args.get("n_fft")
-        logging.info("NFFT %s", NFFT)
-        if NFFT < 2048:
-            N_MELS = 96
-            global DIMENSIONS
-            mel_s = (N_MELS, 513)
-            DIMENSIONS = (mel_s[0], mel_s[1], 1)
-            logging.info("Lower mels as nfft is to low %s", N_MELS)
-        MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
-        MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
-    if args.get("break_freq") is not None:
-        BREAK_FREQ = args.get("break_freq")
-        logging.info("Applied break freq %s", BREAK_FREQ)
-        MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
-        MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
-    # always load raw audio so augmentations run on the waveform, raw_to_mel
-    # then builds the mel (magnitude for PCEN, power for MagTransform)
+    #     MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
+    #     MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
+    # if args.get("n_fft") is not None:
+    #     print(NFFT, "IS")
+    #     NFFT = args.get("n_fft")
+    #     logging.info("NFFT %s", NFFT)
+    #     if NFFT < 2048:
+    #         N_MELS = 96
+    #         global DIMENSIONS
+    #         mel_s = (N_MELS, 513)
+    #         DIMENSIONS = (mel_s[0], mel_s[1], 1)
+    #         logging.info("Lower mels as nfft is to low %s", N_MELS)
+    #     MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
+    #     MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
+    # if args.get("break_freq") is not None:
+    #     BREAK_FREQ = args.get("break_freq")
+    #     logging.info("Applied break freq %s", BREAK_FREQ)
+    #     MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
+    #     MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
+    # # always load raw audio so augmentations run on the waveform, raw_to_mel
+    # # then builds the mel (magnitude for PCEN, power for MagTransform)
     args["load_raw"] = True
     pcen = args.get("pcen", False)
     dataset, noise_dataset, remapped, epoch_size, labels, extra_label_dic = (
@@ -476,19 +476,19 @@ def get_dataset(dir, labels, global_epoch=None, **args):
     deterministic = args.get("deterministic", False)
     logging.info("Mapping raw to mel pcen %s", pcen)
     if args.get("augment", False):
-        if noise_dataset is not None:
-            noise_class_id = labels.index("noise")
-            # pair each batch with a batch of noise clips
-            dataset = tf.data.Dataset.zip((dataset, noise_dataset))
-            dataset = dataset.map(
-                lambda batch, noise: (
-                    tf_batch_mix_real_noise(
-                        batch[0], noise, batch[1], noise_class_id=noise_class_id
-                    ),
-                    batch[1],
-                ),
-                num_parallel_calls=tf.data.AUTOTUNE,
-            )
+        # if noise_dataset is not None:
+        #     noise_class_id = labels.index("noise")
+        #     # pair each batch with a batch of noise clips
+        #     dataset = tf.data.Dataset.zip((dataset, noise_dataset))
+        #     dataset = dataset.map(
+        #         lambda batch, noise: (
+        #             tf_batch_mix_real_noise(
+        #                 batch[0], noise, batch[1], noise_class_id=noise_class_id
+        #             ),
+        #             batch[1],
+        #         ),
+        #         num_parallel_calls=tf.data.AUTOTUNE,
+        #     )
         # Apply the roll on-the-fly during your training dataset pipeline
         dataset = dataset.map(
             lambda audio, label: (tf_batch_audio_roll(audio), label),
@@ -707,7 +707,7 @@ def get_a_dataset(dir, labels, args):
     if args.get("noise_dirs"):
         if args.get("augment", False):
             noise_mix_files, noise_dataset_files = split_noise_files(
-                dir, args["noise_dirs"], args.get("noise_mix_fraction", 0.5)
+                dir, args["noise_dirs"], args.get("noise_mix_fraction", 1)
             )
         else:
             # no mixing so all the nonoise_mix_filesise goes in the dataset
@@ -727,27 +727,6 @@ def get_a_dataset(dir, labels, args):
         xeno_files = tf.io.gfile.glob(str(xeno_files / "*.tfrecord"))
         logging.info("Loading xeno files %s", xeno_files)
         filenames.extend(xeno_files)
-
-    # if args.get("multi_label", True):
-    #     # not sure if this is needed at all
-    #     if not args.get("one_hot", True):
-    #         bird_mask = tf.constant(bird_i, dtype=tf.float32)
-    #         bird_filter = lambda x, y: tf.math.equal(y[0], bird_mask)
-    #         others_filter = lambda x, y: not tf.math.equal(y[0], bird_mask)
-    #     else:
-    #         bird_mask = np.zeros(num_labels, dtype=bool)
-    #         bird_mask[bird_i] = 1
-    #         bird_mask = tf.constant(bird_mask)
-    #         bird_filter = lambda x, y: tf.math.reduce_all(
-    #             tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
-    #         )
-    #         others_filter = lambda x, y: not tf.math.reduce_all(
-    #             tf.math.equal(tf.cast(y[0], tf.bool), bird_mask)
-    #         )
-    #     if not args.get("use_bird_tags", False):
-    #         logging.info("Filtering out bird tags without specific bird")
-    #         for i, ds in enumerate(datasets):
-    #             datasets[i] = ds.filter(others_filter)
 
     deterministic = args.get("deterministic", False)
 
@@ -807,17 +786,6 @@ def get_a_dataset(dir, labels, args):
                     num_parallel_calls=tf.data.AUTOTUNE,
                     deterministic=deterministic,
                 )
-            # dataset = dataset.map(
-            #     lambda x, y: (x, y[0]),
-            #     num_parallel_calls=tf.data.AUTOTUNE,
-            #     deterministic=deterministic,
-            # )
-            # if dataset_2 is not None:
-            #     dataset_2 = dataset_2.map(
-            #         lambda x, y: (x, y[0]),
-            #         num_parallel_calls=tf.data.AUTOTUNE,
-            #         deterministic=deterministic,
-            #     )
 
     # try caching just our dataset
     if args.get("cache", False) or dir.name != "train":
@@ -866,323 +834,7 @@ def get_a_dataset(dir, labels, args):
                 batch_size, drop_remainder=args.get("drop_remainder", False)
             )
 
-    # dont think using this anymore GP
-    if args.get("weight_specific", False):
-        weighting = np.ones((num_labels), dtype=np.float32)
-        weighting[bird_i] = 0.8
-        weighting = tf.constant(weighting)
-        specific_mask = np.zeros((num_labels), dtype=np.float32)
-        for i, l in enumerate(labels):
-            if l in SPECIFIC_BIRD_LABELS and l != "bird":
-                specific_mask[i] = 1
-        print(
-            "for labels", labels, " have ", specific_mask, " weighting bird", weighting
-        )
-        specific_mask = tf.constant(specific_mask)
-
-        rest_weighting = tf.constant(tf.ones(num_labels))
-        dataset = dataset.map(
-            lambda x, y: weight_specific(
-                x, y, num_labels, weighting, specific_mask, rest_weighting
-            )
-        )
-
     return dataset, noise_dataset, remapped, epoch_size, labels, extra_label_dic
-
-
-import tensorflow as tf
-
-
-@tf.function
-def tf_batch_mix_real_noise(
-    bird_batch,
-    noise_batch,
-    label_batch,
-    noise_class_id=0,
-    max_noise_ratio=0.3,
-    execution_probability=0.7,
-):
-    """
-    Blends real environmental noise clips into your primary batch,
-    automatically bypassing files whose one-hot labels mark them as background noise.
-
-    Parameters:
-    - bird_batch (tf.Tensor): Target audio waveforms, shape [batch, time_samples].
-    - noise_batch (tf.Tensor): Background noise clips to inject, shape [batch, time_samples].
-    - label_batch (tf.Tensor): One-hot label matrix, shape [batch, num_classes].
-    - noise_class_id (int): The column index representing the "Noise/Background" class.
-    """
-    shape_tensor = tf.shape(bird_batch)
-    batch_size, time_samples = tf.split(shape_tensor, num_or_size_splits=2)
-    batch_size = tf.squeeze(batch_size)
-    # the last batch can be smaller than the noise batch
-    noise_batch = noise_batch[:batch_size]
-
-    # 1. Standard randomized probability mask for the batch items
-    random_probs = tf.random.uniform(shape=[batch_size], minval=0.0, maxval=1.0)
-    wants_noise_mask = tf.less(random_probs, execution_probability)
-
-    # 2/3. Skip clips whose only label is noise (argmax would misfire on multi-label
-    # rows, e.g. bird + noise)
-    if isinstance(label_batch, (tuple, list)):
-        # when loading all y (rec ids etc) the first element is the label
-        label_batch = label_batch[0]
-    label_batch = tf.cast(label_batch, tf.float32)
-    noise_col = label_batch[:, noise_class_id]
-    is_not_already_noise = tf.logical_not(
-        tf.logical_and(
-            noise_col > 0, tf.equal(tf.reduce_sum(label_batch, axis=-1), noise_col)
-        )
-    )
-
-    # 4. Combine both conditions: Only mix if it rolls 'True' AND it isn't already a noise clip
-    should_noise_mask = tf.logical_and(wants_noise_mask, is_not_already_noise)
-
-    # 5. Determine unique scaling intensities per item
-    noise_scales = tf.random.uniform(
-        shape=[batch_size], minval=0.01, maxval=max_noise_ratio
-    )
-    final_scales = tf.where(should_noise_mask, noise_scales, tf.zeros([batch_size]))
-
-    # 6. Broadcast scales across the time dimension and mix the signals
-    expanded_scales = tf.expand_dims(final_scales, axis=-1)
-    scaled_noise = tf.multiply(noise_batch, expanded_scales)
-    mixed_batch = tf.add(bird_batch, scaled_noise)
-
-    # maybe can just be clipped
-    # 7. Rescale anything that went over 1.0 rather than hard clipping the peaks
-    peaks = tf.reduce_max(tf.abs(mixed_batch), axis=-1, keepdims=True)
-    output_batch = mixed_batch / tf.maximum(peaks, 1.0)
-
-    return output_batch
-
-
-def selective_batch_mixup(audio_batch, label_batch, mixup_prob=0.7, alpha=0.4):
-    """
-    Applies mixup to a batch only a certain percentage of the time.
-    """
-    # 1. Roll a random number between 0.0 and 1.0 for the whole batch
-    random_roll = tf.random.uniform(shape=[], minval=0.0, maxval=1.0)
-
-    # when loading all y (rec ids etc) only the first element is the label to mix
-    extra_y = None
-    if isinstance(label_batch, (tuple, list)):
-        extra_y = tuple(label_batch[1:])
-        label_batch = label_batch[0]
-
-    # 2. Define what happens if we DO mix up
-    def apply_mixup():
-        batch_size = tf.shape(audio_batch)[0]
-
-        # Sample independent lambdas
-        gamma_1 = tf.random.gamma(shape=[batch_size, 1], alpha=alpha)
-        gamma_2 = tf.random.gamma(shape=[batch_size, 1], alpha=alpha)
-        lam = gamma_1 / (gamma_1 + gamma_2)
-
-        # Reshape for broadcasting
-        lam_audio = tf.reshape(lam, [batch_size, -1])
-
-        # Create pairs by rolling the batch
-        audio_shuffled = tf.roll(audio_batch, shift=1, axis=0)
-        label_shuffled = tf.roll(label_batch, shift=1, axis=0)
-
-        # Mix and peak normalize audio
-        mixed_audio = lam_audio * audio_batch + (1.0 - lam_audio) * audio_shuffled
-        peaks = tf.reduce_max(tf.abs(mixed_audio), axis=-1, keepdims=True)
-        mixed_audio = mixed_audio / tf.maximum(peaks, 1e-6)
-
-        # Mix labels
-        mixed_labels = lam * label_batch + (1.0 - lam) * label_shuffled
-        return mixed_audio, mixed_labels
-
-    def skip_mixup():
-        return audio_batch, label_batch
-
-    audio, label = tf.cond(random_roll < mixup_prob, apply_mixup, skip_mixup)
-    if extra_y is not None:
-        label = (label,) + extra_y
-    return audio, label
-
-
-# @tf.function
-# def mix_up(ds_one, ds_two, global_epoch, alpha=0.4, chance=0.25, single_label=True):
-#     # Unpack two datasets
-#     images_one, labels_one = ds_one
-#     images_two, labels_two = ds_two
-
-#     # go down 0.05 every 5 epochs
-#     step = global_epoch.value() // 5
-#     logging.info("NOt decreasing aug change")
-#     # chance = chance - 0.05 * tf.cast(step, tf.float32)
-#     batch_size = tf.keras.ops.shape(images_one)[0]
-#     l = sample_beta_distribution(batch_size, alpha, alpha)
-#     aug_chance = tf.random.uniform((batch_size,))
-#     # non augmented samples keep ds_one unchanged (l=1)
-#     l = tf.where(aug_chance < chance, l, tf.ones_like(l))
-#     x_l = tf.keras.ops.reshape(l, (batch_size, 1))
-#     y_l = tf.keras.ops.reshape(l, (batch_size, 1))
-
-#     images = images_one * x_l + images_two * (1 - x_l)
-#     if single_label:
-#         logging.info("Mixing up on single label, so taking maximum label")
-#         y_l = tf.cast(y_l > 0.5, dtype=tf.float32)
-
-#     labels = labels_one * y_l + labels_two * (1 - y_l)
-#     # possible_labels = tf.clip_by_value(labels_one[1] + labels_two[1], 0, 1)
-#     return (images, labels)
-
-
-import tensorflow as tf
-
-
-@tf.function
-def tf_batch_audio_roll(audio_batch, max_shift_pct=0.5, execution_probability=0.7):
-    """
-    Performs independent randomized circular audio rolls across a batch,
-    but only applies it to a specific percentage of the items.
-
-    Parameters:
-    - audio_batch (tf.Tensor): Shape [batch_size, time_samples]
-    - max_shift_pct (float): Max shift allowance as a fraction of audio length.
-    - execution_probability (float): Probability (0.0 to 1.0) of applying the roll.
-    """
-    batch_size = tf.shape(audio_batch)[0]
-    time_samples = tf.shape(audio_batch)[1]
-
-    # 1. Determine which individual items in the batch get the augmentation
-    # Generates uniform random numbers [0, 1) for each batch item
-    random_probs = tf.random.uniform(shape=[batch_size], minval=0.0, maxval=1.0)
-    # Boolean mask: True if we should roll, False if we keep original
-    should_roll_mask = random_probs < execution_probability
-
-    # 2. Calculate unique random shift amounts for EVERY item
-    max_shift_samples = tf.cast(
-        tf.cast(time_samples, tf.float32) * max_shift_pct, tf.int32
-    )
-    shift_amounts = tf.random.uniform(
-        shape=[batch_size],
-        minval=-max_shift_samples,
-        maxval=max_shift_samples,
-        dtype=tf.int32,
-    )
-
-    # 3. Compute rolled indices via broadcasting
-    time_indices = tf.range(time_samples, dtype=tf.int32)
-    new_indices = (
-        time_indices[tf.newaxis, :] - shift_amounts[:, tf.newaxis]
-    ) % time_samples
-
-    # 4. Gather the rolled version of the entire batch
-    rolled_batch = tf.gather(audio_batch, new_indices, batch_dims=1)
-
-    # 5. Conditionally select: If True -> take rolled, If False -> take original
-    # We expand the mask dimension to [batch_size, 1] so it broadcasts across time_samples
-    output_batch = tf.where(should_roll_mask[:, tf.newaxis], rolled_batch, audio_batch)
-
-    return output_batch
-
-
-@tf.function
-def tf_batch_spec_augment(
-    spectrogram_batch,
-    max_freq_mask_pixels=8,
-    max_time_mask_pixels=20,
-    num_masks=2,
-    execution_probability=0.8,
-):
-    """
-    Applies SpecAugment (Frequency and Time Masking) to a batch of
-    [batch, mels, time, channels] spectrograms.
-    """
-    tf.debugging.assert_rank(spectrogram_batch, 4)
-
-    # Unpack dimensions dynamically without using any integer index brackets
-    shape_tensor = tf.shape(spectrogram_batch)
-    batch_size, freq_bins, time_steps, channels = tf.split(
-        shape_tensor, num_or_size_splits=4
-    )
-
-    # Cast to scalar integers to drive random ranges and loop sizes safely
-    batch_size = tf.squeeze(batch_size)
-    freq_bins = tf.squeeze(freq_bins)
-    time_steps = tf.squeeze(time_steps)
-
-    # Decide which items in the batch get masked
-    random_probs = tf.random.uniform(shape=[batch_size], minval=0.0, maxval=1.0)
-    should_mask_mask = tf.less(random_probs, execution_probability)
-
-    augmented_batch = tf.identity(spectrogram_batch)
-
-    for _ in range(num_masks):
-        # --- FREQUENCY BOUNDS ---
-        freq_mask_heights = tf.random.uniform(
-            shape=[batch_size], minval=0, maxval=max_freq_mask_pixels, dtype=tf.int32
-        )
-        freq_start_positions = tf.random.uniform(
-            shape=[batch_size],
-            minval=0,
-            maxval=freq_bins - max_freq_mask_pixels,
-            dtype=tf.int32,
-        )
-
-        # --- TIME BOUNDS ---
-        time_mask_widths = tf.random.uniform(
-            shape=[batch_size], minval=0, maxval=max_time_mask_pixels, dtype=tf.int32
-        )
-        time_start_positions = tf.random.uniform(
-            shape=[batch_size],
-            minval=0,
-            maxval=time_steps - max_time_mask_pixels,
-            dtype=tf.int32,
-        )
-
-        # --- COORDINATE GRIDS ---
-        freq_indices = tf.expand_dims(
-            tf.expand_dims(tf.expand_dims(tf.range(freq_bins), axis=0), axis=-1),
-            axis=-1,
-        )
-        time_indices = tf.expand_dims(
-            tf.expand_dims(tf.expand_dims(tf.range(time_steps), axis=0), axis=1),
-            axis=-1,
-        )
-
-        f_start = tf.expand_dims(
-            tf.expand_dims(tf.expand_dims(freq_start_positions, axis=-1), axis=-1),
-            axis=-1,
-        )
-        f_end = f_start + tf.expand_dims(
-            tf.expand_dims(tf.expand_dims(freq_mask_heights, axis=-1), axis=-1), axis=-1
-        )
-
-        t_start = tf.expand_dims(
-            tf.expand_dims(tf.expand_dims(time_start_positions, axis=-1), axis=-1),
-            axis=-1,
-        )
-        t_end = t_start + tf.expand_dims(
-            tf.expand_dims(tf.expand_dims(time_mask_widths, axis=-1), axis=-1), axis=-1
-        )
-
-        # --- MASK LOGIC (Bracket-free boolean comparisons) ---
-        is_freq_masked = tf.logical_and(
-            tf.greater_equal(freq_indices, f_start), tf.less(freq_indices, f_end)
-        )
-        is_time_masked = tf.logical_and(
-            tf.greater_equal(time_indices, t_start), tf.less(time_indices, t_end)
-        )
-
-        # --- COMBINE AND APPLY ---
-        apply_mask_item = tf.expand_dims(
-            tf.expand_dims(tf.expand_dims(should_mask_mask, axis=-1), axis=-1), axis=-1
-        )
-        final_mask = tf.logical_and(
-            tf.logical_or(is_freq_masked, is_time_masked), apply_mask_item
-        )
-
-        augmented_batch = tf.where(
-            final_mask, tf.zeros_like(augmented_batch), augmented_batch
-        )
-
-    return augmented_batch
 
 
 def spectrogram_to_mel(spectrogram, pcen=False):
@@ -1198,7 +850,6 @@ def spectrogram_to_mel(spectrogram, pcen=False):
 
     # [mels, time]
     spectrogram = tf.tensordot(MEL_WEIGHTS, spectrogram, 1)
-    print("Spect shape is ", spectrogram.shape)
     # power db
     spectrogram = tf.expand_dims(spectrogram, axis=-1)
 
@@ -1212,7 +863,6 @@ def spectrogram_to_mel(spectrogram, pcen=False):
         # spectrogram = power_to_root_compressed(spectrogram)
 
         logging.info("Leaving spect as power for MagTransform")
-    logging.info("Shape is %s ", spectrogram.shape)
     # if not pcen and "efficientnet" in model_name:
     #     logging.info("Repeating last dim for efficient net")
     spectrogram = tf.repeat(spectrogram, 3, 2)
@@ -1632,7 +1282,6 @@ def main():
         load_all_y=True,
         shuffle=False,
         n_fft=4096,
-       
         only_features=args.only_features,
         cache=True,
         augment=True,
@@ -1640,7 +1289,7 @@ def main():
         pcen=args.pcen,
         # signal_less_than = 0.1
     )
-    
+
     preds = None
     if args.model is not None:
         model_path = Path(args.model)
@@ -1964,34 +1613,6 @@ def butter_bandpass(lowcut, highcut, fs, order=2):
     return sos
 
 
-# @tf.function
-# def raw_to_mel( x, features=False):
-#     if features:
-#         raw = x[2]
-#     else:
-#         raw = x
-
-#     stft = tf.signal.stft(
-#         raw,
-#         4800,
-#         HOP_LENGTH,
-#         fft_length=4800,
-#         window_fn=tf.signal.hann_window,
-#         pad_end=True,
-#         name=None,
-#     )
-#     stft = tf.transpose(stft, [1, 0])
-#     stft = tf.math.abs(stft)
-#     # stft = tf.reshape(stft, [2049, mel_s[1]])
-#     image = tf.tensordot(MEL_WEIGHTS, stft, 1)
-#     image = tf.expand_dims(image, axis=2)
-#     if features:
-#         x = (x[0], x[1], image)
-#     else:
-#         x = image
-#     return x, y
-
-
 @tf.function
 def butter_bitterns(mask, input, y):
     logging.info("Butter bitterns %s", mask)
@@ -2090,35 +1711,14 @@ def raw_to_mel(x, y, pcen=False):
     else:
         raw = x
 
-    global FMIN, FMAX
-    # if FMIN >50:
-    fmin = 0
-    fmax = 0
-    if FMIN != 50:
-        fmin = FMIN
-    if FMAX != 11000:
-        fmax = FMAX
-    # logging.info("Applying butter %s %s", fmin, fmax)
-    # not needed if using mel freq bin fmin and fmax
-    # raw =  buttr_efunction(raw,fmin,fmax)
-
     stft = tf.signal.stft(
         raw,
         NFFT,
         HOP_LENGTH,
         fft_length=NFFT,
         window_fn=tf.signal.hann_window,
-        pad_end=True,
+        pad_end=False,
         name=None,
-    )
-    print(
-        "Using hop length ",
-        HOP_LENGTH,
-        " and nfft ",
-        NFFT,
-        " STFT shape is ",
-        stft.shape,
-        N_MELS,
     )
     stft = tf.transpose(stft, [0, 2, 1])
     stft = tf.math.abs(stft)
@@ -2139,6 +1739,339 @@ def raw_to_mel(x, y, pcen=False):
     else:
         x = image
     return x, y
+
+
+# AUGMENTATIONS
+
+
+@tf.function
+def tf_batch_mix_real_noise(
+    bird_batch,
+    noise_batch,
+    label_batch,
+    noise_class_id=0,
+    max_noise_ratio=0.3,
+    execution_probability=0.7,
+):
+    logging.error("IF USING tf_batch_mix_real_noise SHOULD ADD NOISE TO LABELS")
+    raise Exception("IF USING tf_batch_mix_real_noise SHOULD ADD NOISE TO LABELS")
+    """
+    Blends real environmental noise clips into your primary batch,
+    automatically bypassing files whose one-hot labels mark them as background noise.
+
+    Parameters:
+    - bird_batch (tf.Tensor): Target audio waveforms, shape [batch, time_samples].
+    - noise_batch (tf.Tensor): Background noise clips to inject, shape [batch, time_samples].
+    - label_batch (tf.Tensor): One-hot label matrix, shape [batch, num_classes].
+    - noise_class_id (int): The column index representing the "Noise/Background" class.
+    """
+    shape_tensor = tf.shape(bird_batch)
+    batch_size, time_samples = tf.split(shape_tensor, num_or_size_splits=2)
+    batch_size = tf.squeeze(batch_size)
+    # the last batch can be smaller than the noise batch
+    noise_batch = noise_batch[:batch_size]
+
+    # 1. Standard randomized probability mask for the batch items
+    random_probs = tf.random.uniform(shape=[batch_size], minval=0.0, maxval=1.0)
+    wants_noise_mask = tf.less(random_probs, execution_probability)
+
+    # 2/3. Skip clips whose only label is noise (argmax would misfire on multi-label
+    # rows, e.g. bird + noise)
+    if isinstance(label_batch, (tuple, list)):
+        # when loading all y (rec ids etc) the first element is the label
+        label_batch = label_batch[0]
+    label_batch = tf.cast(label_batch, tf.float32)
+    noise_col = label_batch[:, noise_class_id]
+    is_not_already_noise = tf.logical_not(
+        tf.logical_and(
+            noise_col > 0, tf.equal(tf.reduce_sum(label_batch, axis=-1), noise_col)
+        )
+    )
+
+    # 4. Combine both conditions: Only mix if it rolls 'True' AND it isn't already a noise clip
+    should_noise_mask = tf.logical_and(wants_noise_mask, is_not_already_noise)
+
+    # 5. Determine unique scaling intensities per item
+    noise_scales = tf.random.uniform(
+        shape=[batch_size], minval=0.01, maxval=max_noise_ratio
+    )
+    final_scales = tf.where(should_noise_mask, noise_scales, tf.zeros([batch_size]))
+
+    # 6. Broadcast scales across the time dimension and mix the signals
+    expanded_scales = tf.expand_dims(final_scales, axis=-1)
+    scaled_noise = tf.multiply(noise_batch, expanded_scales)
+    mixed_batch = tf.add(bird_batch, scaled_noise)
+
+    # maybe can just be clipped
+    # 7. Rescale anything that went over 1.0 rather than hard clipping the peaks
+    peaks = tf.reduce_max(tf.abs(mixed_batch), axis=-1, keepdims=True)
+    output_batch = mixed_batch / tf.maximum(peaks, 1.0)
+
+    return output_batch
+
+
+def apply_raw_mixup(
+    batch_A, batch_B, batch_noise, alpha=0.2, bird_mix_prob=0.5, noise_mix_prob=0.7
+):
+    """
+    Complete bioacoustic mixup function with independent activation chances
+    for both Bird-to-Bird mixing and Environmental Noise overlays.
+    """
+    bird_audio_A, bird_label_A = batch_A
+    bird_audio_B, bird_label_B = batch_B
+    noise_audio, noise_label = batch_noise
+
+    batch_size = tf.shape(bird_audio_A)
+
+    # -------------------------------------------------------------
+    # STEP 1: CONDITIONAL BIRD-TO-BIRD MIXUP (50% Chance)
+    # -------------------------------------------------------------
+    # Decide which samples in the batch get a second bird mixed in
+    random_bird_probs = tf.random.uniform(shape=[batch_size, 1], minval=0.0, maxval=1.0)
+    mix_bird_mask = random_bird_probs < bird_mix_prob
+    mix_bird_mask_audio = tf.reshape(mix_bird_mask, [batch_size, -1])
+
+    # Calculate standard soft mixup values
+    gamma_1 = tf.random.gamma(shape=[batch_size, 1], alpha=alpha)
+    gamma_2 = tf.random.gamma(shape=[batch_size, 1], alpha=alpha)
+    lam = gamma_1 / (gamma_1 + gamma_2)
+    lam_audio = tf.reshape(lam, [batch_size, -1])
+
+    soft_mixed_audio = lam_audio * bird_audio_A + (1.0 - lam_audio) * bird_audio_B
+    soft_mixed_labels = lam * bird_label_A + (1.0 - lam) * bird_label_B
+
+    # Route: If mask is True, use the soft mix. If False, keep pure Bird A (1.0 label)
+    mixed_bird_audio = tf.where(mix_bird_mask_audio, soft_mixed_audio, bird_audio_A)
+    mixed_bird_labels = tf.where(mix_bird_mask, soft_mixed_labels, bird_label_A)
+
+    # -------------------------------------------------------------
+    # STEP 2: NOISE OVERLAY (Guaranteed 70% Chance)
+    # -------------------------------------------------------------
+    random_noise_probs = tf.random.uniform(
+        shape=[batch_size, 1], minval=0.0, maxval=1.0
+    )
+    mix_noise_mask = random_noise_probs < noise_mix_prob
+    mix_noise_mask_audio = tf.reshape(mix_noise_mask, [batch_size, -1])
+
+    # Scaled background noise overlay
+    random_noise_gain = tf.random.uniform(
+        shape=[batch_size, 1], minval=0.05, maxval=0.35
+    )
+    scaled_noise = noise_audio * tf.reshape(random_noise_gain, [batch_size, -1])
+
+    audio_with_noise = mixed_bird_audio + scaled_noise
+    # Use maximum to strictly protect the 1.0 or soft bird labels from drop
+    labels_with_noise = tf.maximum(mixed_bird_labels, noise_label)
+
+    # Combine everything
+    final_audio = tf.where(mix_noise_mask_audio, audio_with_noise, mixed_bird_audio)
+    final_labels = tf.where(mix_noise_mask, labels_with_noise, mixed_bird_labels)
+
+    # --- Step 3: Peak Normalisation ---
+    peaks = tf.reduce_max(tf.abs(final_audio), axis=-1, keepdims=True)
+    final_audio = final_audio / tf.maximum(peaks, 1e-6)
+
+    return final_audio, final_labels
+
+
+def selective_batch_mixup(audio_batch, label_batch, mixup_prob=0.7, alpha=0.4):
+    """
+    Applies mixup to a batch only a certain percentage of the time.
+    """
+    # 1. Roll a random number between 0.0 and 1.0 for the whole batch
+    random_roll = tf.random.uniform(shape=[], minval=0.0, maxval=1.0)
+
+    # when loading all y (rec ids etc) only the first element is the label to mix
+    extra_y = None
+    if isinstance(label_batch, (tuple, list)):
+        extra_y = tuple(label_batch[1:])
+        label_batch = label_batch[0]
+
+    # 2. Define what happens if we DO mix up
+    def apply_mixup():
+        batch_size = tf.shape(audio_batch)[0]
+
+        # Sample independent lambdas
+        gamma_1 = tf.random.gamma(shape=[batch_size, 1], alpha=alpha)
+        gamma_2 = tf.random.gamma(shape=[batch_size, 1], alpha=alpha)
+        lam = gamma_1 / (gamma_1 + gamma_2)
+
+        # Reshape for broadcasting
+        lam_audio = tf.reshape(lam, [batch_size, -1])
+
+        # Create pairs by rolling the batch
+        audio_shuffled = tf.roll(audio_batch, shift=1, axis=0)
+        label_shuffled = tf.roll(label_batch, shift=1, axis=0)
+
+        # Mix and peak normalize audio
+        mixed_audio = lam_audio * audio_batch + (1.0 - lam_audio) * audio_shuffled
+        peaks = tf.reduce_max(tf.abs(mixed_audio), axis=-1, keepdims=True)
+        mixed_audio = mixed_audio / tf.maximum(peaks, 1e-6)
+
+        # Mix labels
+        mixed_labels = lam * label_batch + (1.0 - lam) * label_shuffled
+        return mixed_audio, mixed_labels
+
+    def skip_mixup():
+        return audio_batch, label_batch
+
+    audio, label = tf.cond(random_roll < mixup_prob, apply_mixup, skip_mixup)
+    if extra_y is not None:
+        label = (label,) + extra_y
+    return audio, label
+
+
+@tf.function
+def tf_batch_audio_roll(audio_batch, max_shift_pct=0.5, execution_probability=0.7):
+    """
+    Performs independent randomized circular audio rolls across a batch,
+    but only applies it to a specific percentage of the items.
+
+    Parameters:
+    - audio_batch (tf.Tensor): Shape [batch_size, time_samples]
+    - max_shift_pct (float): Max shift allowance as a fraction of audio length.
+    - execution_probability (float): Probability (0.0 to 1.0) of applying the roll.
+    """
+    batch_size = tf.shape(audio_batch)[0]
+    time_samples = tf.shape(audio_batch)[1]
+
+    # 1. Determine which individual items in the batch get the augmentation
+    # Generates uniform random numbers [0, 1) for each batch item
+    random_probs = tf.random.uniform(shape=[batch_size], minval=0.0, maxval=1.0)
+    # Boolean mask: True if we should roll, False if we keep original
+    should_roll_mask = random_probs < execution_probability
+
+    # 2. Calculate unique random shift amounts for EVERY item
+    max_shift_samples = tf.cast(
+        tf.cast(time_samples, tf.float32) * max_shift_pct, tf.int32
+    )
+    shift_amounts = tf.random.uniform(
+        shape=[batch_size],
+        minval=-max_shift_samples,
+        maxval=max_shift_samples,
+        dtype=tf.int32,
+    )
+
+    # 3. Compute rolled indices via broadcasting
+    time_indices = tf.range(time_samples, dtype=tf.int32)
+    new_indices = (
+        time_indices[tf.newaxis, :] - shift_amounts[:, tf.newaxis]
+    ) % time_samples
+
+    # 4. Gather the rolled version of the entire batch
+    rolled_batch = tf.gather(audio_batch, new_indices, batch_dims=1)
+
+    # 5. Conditionally select: If True -> take rolled, If False -> take original
+    # We expand the mask dimension to [batch_size, 1] so it broadcasts across time_samples
+    output_batch = tf.where(should_roll_mask[:, tf.newaxis], rolled_batch, audio_batch)
+
+    return output_batch
+
+
+@tf.function
+def tf_batch_spec_augment(
+    spectrogram_batch,
+    max_freq_mask_pixels=8,
+    max_time_mask_pixels=40,
+    num_masks=2,
+    execution_probability=0.8,
+):
+    """
+    Applies SpecAugment (Frequency and Time Masking) to a batch of
+    [batch, mels, time, channels] spectrograms.
+    """
+    tf.debugging.assert_rank(spectrogram_batch, 4)
+
+    # Unpack dimensions dynamically without using any integer index brackets
+    shape_tensor = tf.shape(spectrogram_batch)
+    batch_size, freq_bins, time_steps, channels = tf.split(
+        shape_tensor, num_or_size_splits=4
+    )
+
+    # Cast to scalar integers to drive random ranges and loop sizes safely
+    batch_size = tf.squeeze(batch_size)
+    freq_bins = tf.squeeze(freq_bins)
+    time_steps = tf.squeeze(time_steps)
+
+    # Decide which items in the batch get masked
+    random_probs = tf.random.uniform(shape=[batch_size], minval=0.0, maxval=1.0)
+    should_mask_mask = tf.less(random_probs, execution_probability)
+
+    augmented_batch = tf.identity(spectrogram_batch)
+
+    for _ in range(num_masks):
+        # --- FREQUENCY BOUNDS ---
+        freq_mask_heights = tf.random.uniform(
+            shape=[batch_size], minval=0, maxval=max_freq_mask_pixels, dtype=tf.int32
+        )
+        freq_start_positions = tf.random.uniform(
+            shape=[batch_size],
+            minval=0,
+            maxval=freq_bins - max_freq_mask_pixels,
+            dtype=tf.int32,
+        )
+
+        # --- TIME BOUNDS ---
+        time_mask_widths = tf.random.uniform(
+            shape=[batch_size], minval=0, maxval=max_time_mask_pixels, dtype=tf.int32
+        )
+        time_start_positions = tf.random.uniform(
+            shape=[batch_size],
+            minval=0,
+            maxval=time_steps - max_time_mask_pixels,
+            dtype=tf.int32,
+        )
+
+        # --- COORDINATE GRIDS ---
+        freq_indices = tf.expand_dims(
+            tf.expand_dims(tf.expand_dims(tf.range(freq_bins), axis=0), axis=-1),
+            axis=-1,
+        )
+        time_indices = tf.expand_dims(
+            tf.expand_dims(tf.expand_dims(tf.range(time_steps), axis=0), axis=1),
+            axis=-1,
+        )
+
+        f_start = tf.expand_dims(
+            tf.expand_dims(tf.expand_dims(freq_start_positions, axis=-1), axis=-1),
+            axis=-1,
+        )
+        f_end = f_start + tf.expand_dims(
+            tf.expand_dims(tf.expand_dims(freq_mask_heights, axis=-1), axis=-1), axis=-1
+        )
+
+        t_start = tf.expand_dims(
+            tf.expand_dims(tf.expand_dims(time_start_positions, axis=-1), axis=-1),
+            axis=-1,
+        )
+        t_end = t_start + tf.expand_dims(
+            tf.expand_dims(tf.expand_dims(time_mask_widths, axis=-1), axis=-1), axis=-1
+        )
+
+        # --- MASK LOGIC (Bracket-free boolean comparisons) ---
+        is_freq_masked = tf.logical_and(
+            tf.greater_equal(freq_indices, f_start), tf.less(freq_indices, f_end)
+        )
+        is_time_masked = tf.logical_and(
+            tf.greater_equal(time_indices, t_start), tf.less(time_indices, t_end)
+        )
+
+        # --- COMBINE AND APPLY ---
+        apply_mask_item = tf.expand_dims(
+            tf.expand_dims(tf.expand_dims(should_mask_mask, axis=-1), axis=-1), axis=-1
+        )
+        final_mask = tf.logical_and(
+            tf.logical_or(is_freq_masked, is_time_masked), apply_mask_item
+        )
+
+        augmented_batch = tf.where(
+            final_mask, tf.zeros_like(augmented_batch), augmented_batch
+        )
+
+    return augmented_batch
+
+
+# UNSUED
 
 
 @tf.function
@@ -2170,31 +2103,6 @@ def pcen_function(x, y):
 
     x = tf.expand_dims(x, axis=2)
     return x, y
-
-
-# def resample(dataset, new_labels, dist):
-#     logging.info("RESAMPLING")
-#     # seems the only way to get even distribution
-#     label_ds = []
-#     for i, l in enumerate(new_labels):
-#         if dist[i] == 0:
-#             continue
-#         l_mask = np.zeros((len(new_labels)))
-#         l_mask[i] = 1
-#         # mask = tf.constant(mask, dtype=tf.float32)
-
-#         l_filter = lambda x, y: tf.math.reduce_all(tf.math.equal(y, l_mask))
-#         l_dataset = dataset.filter(l_filter)
-#         l_dataset = l_dataset.shuffle(40096, reshuffle_each_iteration=True)
-
-#         label_ds.append(l_dataset)
-#     dataset = tf.data.Dataset.sample_from_datasets(
-#         label_ds,
-#         # weights=[1 / len(new_labels)] * len(new_labels),
-#         stop_on_empty_dataset=True,
-#         rerandomize_each_iteration=True,
-#     )
-#     return dataset
 
 
 def filter_signal(x, y):

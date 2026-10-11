@@ -103,7 +103,7 @@ def main():
         first_correct += first_count
 
         row_copy = first_cm[i].copy()
-        
+
         row_copy[i] = 0
         row_copy[first_none_index] = 0
         most_wrong = np.argmax(row_copy)
@@ -118,8 +118,7 @@ def main():
             second_none_total += second_none
 
             row_copy = second_cm[second_i].copy()
-      
-          
+
             row_copy[second_i] = 0
             row_copy[second_none_index] = 0
             second_most_wrong = np.argmax(row_copy)
@@ -127,12 +126,12 @@ def main():
             if second_total != first_total:
                 print(f"{label} First total is {first_total} second is {second_total}")
             # assert (
-          
-            first_inccorect += first_total - first_count - first_none 
+
+            first_inccorect += first_total - first_count - first_none
 
             second_total_samples += second_total
-            second_incorrect += second_total - second_count - second_none 
-           
+            second_incorrect += second_total - second_count - second_none
+
             if first_total == 0:
                 first_acc = 0
                 first_none = 0
@@ -160,7 +159,6 @@ def main():
 
         else:
             print(f"Label {label} only in first")
-  
 
     print(
         f"Total diff is {total} ( {round(100* total/ total_samples,1)}) first incorrect {first_inccorect} {round(100*first_inccorect / total_samples,1) }% second incorrect {second_incorrect} {round(100*second_incorrect/second_total_samples,1)}% score diff {round(100* (first_inccorect - second_incorrect) / total_samples,1)}"

@@ -201,7 +201,6 @@ for l in OTHER_LABELS:
         RELABEL_MAP[l] = "other"
 
 
-
 for l in ANIMAL_LABELS:
     if l != "animal":
         RELABEL_MAP[l] = "animal"
