@@ -136,11 +136,9 @@ class AudioDataset:
         # self.samples_by_label
         self.samples = []
 
-    def load_meta(self, base_path, rec_filter=None):
+    def load_meta(self, base_path):
         # sorted so recordings, and the random numbers their samples use, come
         # in the same order on every run
-        # rec_filter is called before samples are loaded, recordings it returns
-        # False for are skipped
         meta_files = sorted(Path(base_path).glob("**/*.txt"))
 
         for f in meta_files:
@@ -158,16 +156,7 @@ class AudioDataset:
                     continue
                     # hack to find files, probably should look
                     # at all files in dir or store file in metadata
-                if rec_filter is None:
-                    r = Recording(meta, audio_f, self.config)
-                else:
-                    r = Recording(meta, audio_f, self.config, load_samples=False)
-                    if not rec_filter(r):
-                        continue
-                    r.signal_percent()
-                    r.load_samples(
-                        self.config.segment_length, self.config.segment_stride
-                    )
+                r = Recording(meta, audio_f, self.config)
 
                 self.add_recording(r)
             except:

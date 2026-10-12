@@ -819,16 +819,7 @@ def main():
         return
     # config = load_config(args.config_file)
     dataset = AudioDataset("all", config)
-    if args.noise_only:
-        from birdsconfig import NOISE_LABELS
-
-        # only recordings with a noise tag can have noise only samples
-        dataset.load_meta(
-            args.dir,
-            rec_filter=lambda r: any(tag in NOISE_LABELS for tag in r.human_tags),
-        )
-    else:
-        dataset.load_meta(args.dir)
+    dataset.load_meta(args.dir)
     if args.plot_signal:
         logging.info("Plotting signals")
         from otherdata import plot_signal
@@ -838,7 +829,7 @@ def main():
 
     dataset.print_sample_counts()
 
-    if args.filter_birds and not args.noise_only:
+    if args.filter_birds:
         filter_birds(dataset, args)
     # for r in dataset.recs:
     #     if "whistler" not in r.human_tags:
@@ -877,9 +868,6 @@ def main():
 
     #     for unused in rec.unused_samples:
     #         logging.info("Not Used samples are %s", unused)
-    if args.noise_only:
-        build_noise_only(datasets, args.out_dir)
-        return
     if args.balance:
         logging.info("Balancing datasets")
         undersample_ds(datasets[0])
@@ -918,6 +906,10 @@ def main():
     dataset_recs = {}
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
+        noise_ds = None
+        if args.noise_dataset:
+            # noise only samples go to the noise dataset, not the main one
+            dataset, noise_ds = split_noise(dataset)
         r_counts = dataset.get_rec_counts()
         for k, v in r_counts.items():
             r_counts[k] = len(v)
@@ -927,8 +919,7 @@ def main():
             "sample_counts": dataset.get_counts(),
         }
         create_tf_records(dataset, dir, datasets[0].labels, num_shards=100)
-        if args.noise_dataset:
-            noise_ds = noise_only_dataset(dataset)
+        if noise_ds is not None:
             logging.info("%s noise dataset", dataset.name)
             noise_ds.print_sample_counts()
             create_tf_records(
@@ -967,42 +958,29 @@ def main():
         json.dump({"seed": config.seed, "recs": dataset_recs}, f, indent=4)
 
 
-def build_noise_only(datasets, base_dir):
-    # records store their tags as text and are mapped to the training labels
-    # when read, so the noise labels don't need to match an existing dataset
-    noise_dir = os.path.join(base_dir, "training-data", "noise")
-    noise_datasets = [noise_only_dataset(dataset) for dataset in datasets]
-    labels = set()
-    for noise_ds in noise_datasets:
-        labels.update(noise_ds.labels)
-    labels = sorted(labels)
-    logging.info("Noise labels %s", labels)
-    counts = {}
-    for noise_ds in noise_datasets:
-        logging.info("%s noise dataset", noise_ds.name)
-        noise_ds.print_sample_counts()
-        counts[noise_ds.name] = noise_ds.get_counts()
-        create_tf_records(
-            noise_ds,
-            os.path.join(noise_dir, noise_ds.name),
-            labels,
-            num_shards=100,
-        )
-    with open(os.path.join(noise_dir, "training-meta.json"), "w") as f:
-        json.dump({"labels": labels, "type": "audio", "counts": counts}, f, indent=4)
-
-
-def noise_only_dataset(dataset):
-    # samples whose labels are all noise labels, kept per split so noise mixed
-    # into training never comes from validation or test recordings
+def split_noise(dataset):
+    # move samples whose labels are all noise labels into their own dataset,
+    # kept per split so noise mixed into training never comes from validation
+    # or test recordings. Recordings left with no samples are removed
     from birdsconfig import NOISE_LABELS
 
     noise_ds = AudioDataset(dataset.name, dataset.config)
-    for rec in dataset.recs.values():
-        for sample in rec.samples:
-            if all(tag in NOISE_LABELS for tag in sample.tags):
-                noise_ds.add_sample(rec, sample)
-    return noise_ds
+    for rec in list(dataset.recs.values()):
+        noise_samples = [
+            s for s in rec.samples if all(tag in NOISE_LABELS for tag in s.tags)
+        ]
+        for sample in noise_samples:
+            noise_ds.add_sample(rec, sample)
+            rec.samples.remove(sample)
+            dataset.remove(sample)
+        if len(rec.samples) == 0:
+            del dataset.recs[rec.id]
+    logging.info(
+        "%s moved %s noise only samples to noise dataset",
+        dataset.name,
+        len(noise_ds.samples),
+    )
+    return dataset, noise_ds
 
 
 def validate_datasets(datasets):
@@ -1218,21 +1196,11 @@ def parse_args():
         "training-data/noise/<split> for mixing in as background noise",
     )
     parser.add_argument(
-        "--noise-only",
-        action="store_true",
-        help="Only write the noise dataset, for a dataset already built in "
-        "out_dir. Recordings without a noise tag are not loaded, needs --split-file",
-    )
-    parser.add_argument(
         "--split-file",
         default=None,
         help="Split the dataset using clip ids specified in this file",
     )
     args = parser.parse_args()
-    if args.noise_only and args.split_file is None:
-        # without the original split noise recordings could land in a different
-        # split to the one they are in for the existing dataset
-        parser.error("--noise-only needs --split-file")
     if args.best_segment and args.dont_tighten_tracks:
         # best_start and best_end are only set when tightening tracks
         parser.error("--best-segment needs tracks to be tightened")
