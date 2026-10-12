@@ -421,7 +421,7 @@ class AudioModel:
             self.labels,
             remapped,
             extra_label_map,
-            epoch_size
+            epoch_size,
         ) = load_datasets(
             labels,
             excluded_labels,
@@ -463,7 +463,7 @@ class AudioModel:
             weight_labels=weights_labels,
             weights=weights,
             pcen=args.get("pcen", False),
-            epoch_size = epoch_size,
+            epoch_size=epoch_size,
             epochs=epochs,
         )
         (self.checkpoint_folder / run_name).mkdir(parents=True, exist_ok=True)
@@ -481,7 +481,7 @@ class AudioModel:
             class_weights = get_weighting(self.train, self.labels)
             logging.info("Weights are %s", class_weights)
         history = None
-    
+
         history = self.model.fit(
             self.train,
             validation_data=self.validation,
@@ -601,7 +601,7 @@ class AudioModel:
         weight_labels=None,
         weights=None,
         pcen=False,
-        epoch_size = None,
+        epoch_size=None,
         epochs=35,
     ):
         if weights is not None and weight_labels is not None:
@@ -1176,21 +1176,20 @@ def loss(multi_label=False, smoothing=0, from_logits=False):
     return loss_fn
 
 
-def optimizer(epoch_size,batch_size = 32,total_epochs = 35):
+def optimizer(epoch_size, batch_size=32, total_epochs=35):
     STEPS_PER_EPOCH = epoch_size // batch_size
-    
 
     # Calculate exact step targets
     warmup_steps = STEPS_PER_EPOCH * 1  # 1 full epoch of warmup
     total_steps = STEPS_PER_EPOCH * total_epochs
 
-        # 2. Define the Learning Rate Schedule with Native Warmup
+    # 2. Define the Learning Rate Schedule with Native Warmup
     lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
-        initial_learning_rate=0.0,     # This is your PEAK learning rate
+        initial_learning_rate=0.0,  # This is your PEAK learning rate
         decay_steps=total_steps - warmup_steps,  # decay starts after warmup
-        alpha=1e-2,                     # Drops down to 5e-6 by the final epoch
-        warmup_target=5e-4,             # Explicitly state your warmup peak target
-        warmup_steps=warmup_steps        # Linearly ramp from 0.0 to 5e-4 over this many steps
+        alpha=1e-2,  # Drops down to 5e-6 by the final epoch
+        warmup_target=5e-4,  # Explicitly state your warmup peak target
+        warmup_steps=warmup_steps,  # Linearly ramp from 0.0 to 5e-4 over this many steps
     )
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
     return optimizer
@@ -1604,7 +1603,7 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
         **args,
     )
 
-    return train, validation, new_labels, remapped, extra_label_map,epoch_size
+    return train, validation, new_labels, remapped, extra_label_map, epoch_size
 
 
 def init_labels(data_dir, **args):

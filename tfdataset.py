@@ -497,8 +497,13 @@ def get_dataset(dir, labels, global_epoch=None, **args):
 
         logging.info("Mixing up")
 
-        dataset = dataset.map(
-            lambda x, y: selective_batch_mixup(x, y, mixup_prob=0.7, alpha=0.4),
+        # 3. Zip them together into a triple-stream
+        zipped_dataset = tf.data.Dataset.zip((dataset, noise_dataset))
+
+        dataset = zipped_dataset.map(
+            lambda b1, bn: apply_raw_mixup(
+                b1, bn, noise_dataset, mixup_prob=0.7, alpha=0.4
+            ),
             num_parallel_calls=tf.data.AUTOTUNE,
             deterministic=deterministic,
         )
@@ -1811,41 +1816,47 @@ def tf_batch_mix_real_noise(
 
 
 def apply_raw_mixup(
-    batch_A, batch_B, batch_noise, alpha=0.2, bird_mix_prob=0.5, noise_mix_prob=0.7
+    bird_batch, noise_batch, alpha=0.2, bird_mix_prob=0.5, noise_mix_prob=0.7
 ):
     """
-    Complete bioacoustic mixup function with independent activation chances
-    for both Bird-to-Bird mixing and Environmental Noise overlays.
+    Highly optimised single-pass mixup using tf.roll.
+    Requires only a 2-stream data loader (Bird and Noise).
     """
-    bird_audio_A, bird_label_A = batch_A
-    bird_audio_B, bird_label_B = batch_B
-    noise_audio, noise_label = batch_noise
+    bird_audio_A, bird_label_A = bird_batch
+    noise_audio, noise_label = noise_batch
 
     batch_size = tf.shape(bird_audio_A)
 
     # -------------------------------------------------------------
-    # STEP 1: CONDITIONAL BIRD-TO-BIRD MIXUP (50% Chance)
+    # STEP 1: FAST GPU BIRD SHUFFLING VIA TF.ROLL
     # -------------------------------------------------------------
-    # Decide which samples in the batch get a second bird mixed in
+    # Instantly creates Bird B without loading a separate dataset stream
+    bird_audio_B = tf.roll(bird_audio_A, shift=1, axis=0)
+    bird_label_B = tf.roll(bird_label_A, shift=1, axis=0)
+
+    # -------------------------------------------------------------
+    # STEP 2: CONDITIONAL BIRD-TO-BIRD MIXUP (50% Chance)
+    # -------------------------------------------------------------
     random_bird_probs = tf.random.uniform(shape=[batch_size, 1], minval=0.0, maxval=1.0)
     mix_bird_mask = random_bird_probs < bird_mix_prob
     mix_bird_mask_audio = tf.reshape(mix_bird_mask, [batch_size, -1])
 
-    # Calculate standard soft mixup values
+    # Sample standard MixUp lambdas
     gamma_1 = tf.random.gamma(shape=[batch_size, 1], alpha=alpha)
     gamma_2 = tf.random.gamma(shape=[batch_size, 1], alpha=alpha)
     lam = gamma_1 / (gamma_1 + gamma_2)
     lam_audio = tf.reshape(lam, [batch_size, -1])
 
+    # Standard soft linear mix for bird components
     soft_mixed_audio = lam_audio * bird_audio_A + (1.0 - lam_audio) * bird_audio_B
     soft_mixed_labels = lam * bird_label_A + (1.0 - lam) * bird_label_B
 
-    # Route: If mask is True, use the soft mix. If False, keep pure Bird A (1.0 label)
+    # Route: Soft mix if true, keep pure Bird A if false
     mixed_bird_audio = tf.where(mix_bird_mask_audio, soft_mixed_audio, bird_audio_A)
     mixed_bird_labels = tf.where(mix_bird_mask, soft_mixed_labels, bird_label_A)
 
     # -------------------------------------------------------------
-    # STEP 2: NOISE OVERLAY (Guaranteed 70% Chance)
+    # STEP 3: NOISE OVERLAY (Guaranteed 70% Chance)
     # -------------------------------------------------------------
     random_noise_probs = tf.random.uniform(
         shape=[batch_size, 1], minval=0.0, maxval=1.0
@@ -1853,21 +1864,23 @@ def apply_raw_mixup(
     mix_noise_mask = random_noise_probs < noise_mix_prob
     mix_noise_mask_audio = tf.reshape(mix_noise_mask, [batch_size, -1])
 
-    # Scaled background noise overlay
+    # Scale the background noise array via a random gain modifier
     random_noise_gain = tf.random.uniform(
         shape=[batch_size, 1], minval=0.05, maxval=0.35
     )
     scaled_noise = noise_audio * tf.reshape(random_noise_gain, [batch_size, -1])
 
     audio_with_noise = mixed_bird_audio + scaled_noise
-    # Use maximum to strictly protect the 1.0 or soft bird labels from drop
+    # Use logical maximum to explicitly protect bird labels from dropping
     labels_with_noise = tf.maximum(mixed_bird_labels, noise_label)
 
-    # Combine everything
+    # Combine the streams
     final_audio = tf.where(mix_noise_mask_audio, audio_with_noise, mixed_bird_audio)
     final_labels = tf.where(mix_noise_mask, labels_with_noise, mixed_bird_labels)
 
-    # --- Step 3: Peak Normalisation ---
+    # -------------------------------------------------------------
+    # STEP 4: PEAK NORMALISATION
+    # -------------------------------------------------------------
     peaks = tf.reduce_max(tf.abs(final_audio), axis=-1, keepdims=True)
     final_audio = final_audio / tf.maximum(peaks, 1e-6)
 
