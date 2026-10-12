@@ -2806,7 +2806,9 @@ class MultiHotMixupBCE(tf.keras.losses.Loss):
 
         # 1. Use native TF to get standard cross entropy per class slot
         # Ensure from_logits matches your model setup (True is highly recommended)
-        bce = tf.keras.losses.binary_crossentropy(
+        # ops version is element wise [batch, classes], losses version averages
+        # over classes giving [batch]
+        bce = tf.keras.ops.binary_crossentropy(
             y_true, y_pred, from_logits=self.from_logits
         )
 
