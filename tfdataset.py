@@ -322,7 +322,9 @@ def filter_nan_samples(features):
     return tf.math.logical_not(has_nan)
 
 
-def get_distribution(dataset, num_labels, batched=True, one_hot=True):
+def get_distribution(dataset, num_labels, batched=True, one_hot=True, combos=None):
+    """combos, if a dict is given, is filled with counts of each unique label
+    combination keyed by a tuple of label indexes (one hot labels only)"""
     dist = np.zeros((num_labels), dtype=np.float32)
     counts = None
     total = 0
@@ -339,6 +341,11 @@ def get_distribution(dataset, num_labels, batched=True, one_hot=True):
             y = y.reshape(-1, y.shape[-1])
             batch_counts = np.count_nonzero(y, axis=0)
             total += len(y)
+            if combos is not None:
+                unique_rows, row_counts = np.unique(y > 0, axis=0, return_counts=True)
+                for row, count in zip(unique_rows, row_counts):
+                    key = tuple(np.flatnonzero(row))
+                    combos[key] = combos.get(key, 0) + int(count)
         else:
             y = np.asarray(y).reshape(-1).astype(np.int64)
             total += len(y)
@@ -816,14 +823,24 @@ def get_a_dataset(dir, labels, args):
 
     epoch_size = args.get("epoch_size")
     dist = None
+    combos = {}
     if epoch_size is None:
         dist, epoch_size = get_distribution(
-            dataset, num_labels, batched=False, one_hot=args.get("one_hot", True)
+            dataset,
+            num_labels,
+            batched=False,
+            one_hot=args.get("one_hot", True),
+            combos=combos,
         )
 
     if dist is not None:
         for l, d in zip(labels, dist):
             logging.info(f" for {l} have {d}")
+    if len(combos) > 0:
+        logging.info("Label combinations:")
+        for key, count in sorted(combos.items(), key=lambda kv: -kv[1]):
+            combo = "+".join(labels[i] for i in key) if len(key) > 0 else "none"
+            logging.info(f" for {combo} have {count}")
 
     noise_dataset = None
     if noise_mix_files is not None:
