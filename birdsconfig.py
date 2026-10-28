@@ -182,7 +182,7 @@ HUMAN_LABELS = [
 ]
 
 
-EXTRA_LABELS = ["rooster", "frog", "insect", "human", "noise"]
+EXTRA_LABELS = ["rooster", "frog", "insect", "human", "noise", "animal"]
 OTHER_LABELS = []
 
 

@@ -153,8 +153,25 @@ def get_excluded_labels(labels):
             continue
         elif l not in BIRD_TRAIN_LABELS and l not in EXTRA_LABELS:
             excluded_labels.append(l)
+    # keep labels that merge into a used label, v may not be in labels so
+    # would never be excluded e.g. kelgul -> gull
+    # set_specific_by_count gives the merged count to the last label merged in
+    # so a merged label is used if any label merging into it is used
+    kept_merged = {
+        v
+        for k, v in RELABEL_MAP.items()
+        if k in labels and k not in excluded_labels
+    }
     for k, v in RELABEL_MAP.items():
-        if v not in excluded_labels and k in excluded_labels:
+        if k not in excluded_labels:
+            continue
+        kept = (
+            v in kept_merged
+            or v in BIRD_TRAIN_LABELS
+            or v in EXTRA_LABELS
+            or (v in labels and v not in excluded_labels)
+        )
+        if kept:
             excluded_labels.remove(k)
     return excluded_labels
 
