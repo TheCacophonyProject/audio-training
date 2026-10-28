@@ -741,10 +741,15 @@ def get_a_dataset(dir, labels, args):
             noise_mix_files, noise_dataset_files = split_noise_files(
                 dir, args["noise_dirs"], 1
             )
+            filenames.extend(noise_dataset_files)
+        elif dir.name == "train":
+            # no noise label so unmixed noise records have nothing to teach
+            logging.info("Not augmenting so not using noise files for training")
         else:
-            # no mixing so all the nonoise_mix_filesise goes in the dataset
-            _, noise_dataset_files = split_noise_files(dir, args["noise_dirs"], 0)
-        filenames.extend(noise_dataset_files)
+            pass
+            # validation and test keep noise records to check for false positives
+            # _, noise_dataset_files = split_noise_files(dir, args["noise_dirs"], 0)
+            # filenames.extend(noise_dataset_files)
 
     logging.info("Loading %s files from %s", len(filenames), dir)
 
