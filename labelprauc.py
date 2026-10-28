@@ -53,6 +53,8 @@ def load_split(meta, labels, dataset_dir, split):
         remapped_labels=meta.get("remapped_labels"),
         extra_label_map=meta.get("extra_label_map"),
         extra_datasets=meta.get("extra_datasets"),
+        noise_dirs=meta.get("noise_dirs"),
+        noise_eval_fraction=meta.get("noise_eval_fraction", 0.1),
         use_generic_bird=meta.get("use_generic_bird", False),
         multi_label=meta.get("multi_label", True),
         pcen=meta.get("pcen", False),
@@ -126,6 +128,20 @@ def main():
                 f"{label:<10} {count:>9} {pr_auc:>7.3f} {precision:>9.3f} {recall:>7.3f}"
             )
         print(f"{'mean':<10} {'':>9} {np.mean([s[2] for s in stats]):>7.3f}")
+
+        # samples with nothing labelled e.g. noise, any prediction is a false positive
+        empty = np.sum(y_true, axis=1) == 0
+        if np.any(empty):
+            fp = np.any(y_pred[empty] >= args.threshold, axis=1)
+            print(
+                f"\nEmpty samples {np.sum(empty)} with a prediction >= "
+                f"{args.threshold}: {np.sum(fp)} ({np.mean(fp):.3f})"
+            )
+            fp_counts = np.sum(y_pred[empty] >= args.threshold, axis=0)
+            for i in np.argsort(-fp_counts):
+                if fp_counts[i] == 0:
+                    break
+                print(f"  {labels[i]:<10} {fp_counts[i]}")
 
 
 if __name__ == "__main__":

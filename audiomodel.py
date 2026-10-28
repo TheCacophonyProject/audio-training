@@ -2253,9 +2253,16 @@ def parse_args():
     parser.add_argument(
         "--noise-mix-fraction",
         type=float,
-        default=0.5,
+        default=0.8,
         help="Fraction of the --noise-dirs records used for mixing, the rest "
         "are added to the training data as noise samples",
+    )
+    parser.add_argument(
+        "--noise-eval-fraction",
+        type=float,
+        default=0.1,
+        help="Noise only samples to add to validation and test from --noise-dirs, "
+        "as a fraction of the number of samples",
     )
     parser.add_argument(
         "--human-dataset-dir",
@@ -2350,7 +2357,7 @@ def parse_args():
     parser.add_argument(
         "--loss_fn",
         default="keras",
-        help="loss function to use either keras (Binary or Categorical) depending on multi label or custom loss WeightedCrossEntropy",
+        help="loss function to use, keras (Binary or Categorical) depending on multi label",
     )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
@@ -2599,53 +2606,6 @@ def get_linear_model(embedding_dim, num_classes):
         ]
     )
     return model
-
-
-class WeightedCrossEntropy(tf.keras.losses.Loss):
-    def __init__(self, labels, name="bird_cross_entropy", **kwargs):
-        super().__init__(name=name, **kwargs)
-        bird_mask = np.zeros((len(labels)))
-        if "bird" in labels:
-            bird_mask[labels.index("bird")] = 1
-        self.bird_mask = tf.constant(bird_mask, dtype=tf.float32)
-
-        self.bird_loss = self.bird_mask
-        self.normal_loss = tf.constant(tf.ones(len(labels), dtype=tf.float32))
-        # print(
-        #     "Bird weight cross entropy  labels",
-        #     labels,
-        #     " bird mask",
-        #     self.bird_mask,
-        #     " bird loss",
-        #     self.bird_loss,
-        #     " normal ",
-        #     self.normal_loss,
-        # )
-
-    def call(self, y_true, y_pred):
-        y_pred = tf.clip_by_value(
-            y_pred, tf.keras.backend.epsilon(), 1.0 - tf.keras.backend.epsilon()
-        )
-        possible_labels = y_true[1]
-        y_true = y_true[0]
-        # birds = tf.math.reduce_all(tf.math.equal(y_true, self.bird_mask), axis=1)
-        # birds = tf.expand_dims(birds, 1)
-
-        # loss_matrix = tf.where(birds, possible_labels, self.normal_loss)
-
-        term_0 = (1 - y_true) * tf.math.log(1 - y_pred + tf.keras.backend.epsilon())
-        term_0 = term_0 * possible_labels
-        # since a lot of our bird tags may have specific birds lets not penalize the model for
-        # choosing a specific bird in this scenario, only calculate loss from not being bird
-
-        term_1 = y_true * tf.math.log(y_pred + tf.keras.backend.epsilon())
-        loss = tf.keras.backend.mean(term_0 + term_1, axis=1)
-        return [-loss, -loss]
-
-    def get_config(self):
-        config = {}
-        base_config = super().get_config()
-        return {**base_config, **config}
 
 
 class precAtK(tf.keras.metrics.Metric):

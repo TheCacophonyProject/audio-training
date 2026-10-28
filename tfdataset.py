@@ -44,6 +44,9 @@ FMAX = 11000
 MEL_WEIGHTS = mel_f(48000, N_MELS, FMIN, FMAX, NFFT, BREAK_FREQ)
 MEL_WEIGHTS = tf.constant(MEL_WEIGHTS)
 MOREPORK_MAX = 1200
+# remap value for noise tags when noise isn't a label, gives an empty label
+# like an excluded tag (-1) but the sample is kept as a negative
+NOISE_TAG = -2
 
 
 def set_merge_labels(new_merge):
@@ -293,7 +296,8 @@ def load_dataset(filenames, num_labels, labels, args):
             # filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
     dataset = dataset.filter(filter_nan)
     if args.get("one_hot", True):
-        filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y[0]), 0)
+        # excluded samples have a negative label, noise only samples are all zeros
+        filter_excluded = lambda x, y: tf.math.reduce_sum(y[0]) >= 0
     else:
         filter_excluded = lambda x, y: tf.math.greater(y[0], -1)
 
@@ -590,6 +594,35 @@ def split_noise_files(dir, noise_dirs, mix_fraction=0.5):
     return mix_files, dataset_files
 
 
+def add_noise_samples(dataset, noise_files, count, num_labels, labels, args, combos):
+    """Add noise records to dataset, noise_eval_fraction of count (the number of
+    samples in dataset), so the noise share is the same whatever the size of the
+    noise dataset. Returns the dataset and the distribution and count of the
+    added noise, combos is updated with the noise label combinations"""
+    fraction = args.get("noise_eval_fraction", 0.1)
+    num_noise = int(round(count * fraction))
+    # sorted then shuffled with a fixed seed so every run gets the same noise
+    # from all the noise dirs
+    noise_files = sorted(noise_files)
+    random.Random(0).shuffle(noise_files)
+    noise_args = dict(args)
+    noise_args["deterministic"] = True
+    noise_dataset = load_dataset(noise_files, num_labels, labels, noise_args)
+    noise_dataset = noise_dataset.take(num_noise)
+    # only counts the noise, may be less than num_noise if there isn't enough
+    noise_dist, num_noise = get_distribution(
+        noise_dataset, num_labels, batched=False, combos=combos
+    )
+    logging.info(
+        "Adding %s noise samples (%s of %s samples) from %s noise files",
+        num_noise,
+        fraction,
+        count,
+        len(noise_files),
+    )
+    return dataset.concatenate(noise_dataset), noise_dist, num_noise
+
+
 def load_noise_dataset(filenames, num_labels, labels, args, excluded_tags=None):
     """Endless shuffled raw noise clips, for mixing into training audio.
 
@@ -603,7 +636,9 @@ def load_noise_dataset(filenames, num_labels, labels, args, excluded_tags=None):
     # e.g. rain when rain is its own label
     main_i = args["remap_table"].lookup(tf.constant(allowed)).numpy()
     allowed = [
-        t for t, i in zip(allowed, main_i) if i == -1 or i == args.get("noise_index")
+        t
+        for t, i in zip(allowed, main_i)
+        if i in (-1, NOISE_TAG) or i == args.get("noise_index")
     ]
     logging.info("Mixing noise from tags %s", allowed)
 
@@ -673,11 +708,18 @@ def get_a_dataset(dir, labels, args):
             remapped,
             excluded_labels,
         )
+    # noise tags get NOISE_TAG rather than -1 so noise only samples aren't
+    # filtered out as excluded
+    table_remap = dict(remapped)
+    if "noise" not in labels:
+        for tag in NOISE_LABELS:
+            if table_remap.get(tag, -1) == -1:
+                table_remap[tag] = NOISE_TAG
     # lookups from tag to label index, passed to read_tfrecord through args
     args["remap_table"] = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
-            keys=tf.constant(list(remapped.keys())),
-            values=tf.constant(list(remapped.values())),
+            keys=tf.constant(list(table_remap.keys())),
+            values=tf.constant(list(table_remap.values())),
         ),
         default_value=tf.constant(-1),
         name="remapped_y",
@@ -700,7 +742,6 @@ def get_a_dataset(dir, labels, args):
     )
 
     num_labels = len(labels)
-    datasets = []
     logging.info("Loading tf records from %s", dir)
     filenames = tf.io.gfile.glob(str(dir / "*.tfrecord"))
 
@@ -753,25 +794,42 @@ def get_a_dataset(dir, labels, args):
             filenames.extend(extra_files)
 
     noise_mix_files = None
+    eval_noise_files = None
     if args.get("noise_dirs"):
         if args.get("augment", False):
+            # most noise is mixed into training audio, the rest are noise only
+            # samples with an empty label
             noise_mix_files, noise_dataset_files = split_noise_files(
-                dir, args["noise_dirs"], 1
+                dir, args["noise_dirs"], args.get("noise_mix_fraction", 0.8)
             )
             filenames.extend(noise_dataset_files)
         elif dir.name == "train":
-            # no noise label so unmixed noise records have nothing to teach
             logging.info("Not augmenting so not using noise files for training")
         else:
-            pass
-            # validation and test keep noise records to check for false positives
-            # _, noise_dataset_files = split_noise_files(dir, args["noise_dirs"], 0)
-            # filenames.extend(noise_dataset_files)
+            # validation and test get noise only samples to check for false positives
+            _, eval_noise_files = split_noise_files(dir, args["noise_dirs"], 0)
 
     logging.info("Loading %s files from %s", len(filenames), dir)
 
     dataset = load_dataset(filenames, num_labels, labels, args)
-    datasets.append(dataset)
+    epoch_size = args.get("epoch_size")
+    dist = None
+    combos = {}
+    if eval_noise_files:
+        # the noise added depends on the number of samples, so get the
+        # distribution now and add the noise to it rather than counting again
+        dist, epoch_size = get_distribution(
+            dataset,
+            num_labels,
+            batched=False,
+            one_hot=args.get("one_hot", True),
+            combos=combos,
+        )
+        dataset, noise_dist, num_noise = add_noise_samples(
+            dataset, eval_noise_files, epoch_size, num_labels, labels, args, combos
+        )
+        dist += noise_dist
+        epoch_size += num_noise
     # to be adjusted
     # xeno_files = Path("/data/audio-data/xenocanto/xeno-training-data/")
     # xeno_files = xeno_files / dir.name
@@ -785,16 +843,6 @@ def get_a_dataset(dir, labels, args):
     deterministic = args.get("deterministic", False)
 
     if args.get("debug"):
-        if len(datasets) > 0:
-            # logging.info("Adding second dataset with weights [0.6,0.4]")
-            dataset = tf.data.Dataset.sample_from_datasets(
-                datasets,
-                # weights=[0.6, 0.4],
-                stop_on_empty_dataset=False,
-                rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
-            )
-        else:
-            dataset = datasets[0]
         if args.get("debug_bird"):
             logging.info("Debugging on %s", args.get("debug_bird"))
             debug_i = labels.index(args.get("debug_bird"))
@@ -826,46 +874,21 @@ def get_a_dataset(dir, labels, args):
         return dataset, None, remapped, None, labels, extra_label_dic
 
     if not args.get("load_all_y", False):
-        if args.get("loss_fn") == "WeightedCrossEntropy":
-            logging.info("Mapping possiblebirds")
-            dataset = dataset.map(
-                lambda x, y: (x, (y[0], y[5])),
-                num_parallel_calls=tf.data.AUTOTUNE,
-                deterministic=deterministic,
-            )
-        else:
-            for i, ds in enumerate(datasets):
-                datasets[i] = ds.map(
-                    lambda x, y: (x, y[0]),
-                    num_parallel_calls=tf.data.AUTOTUNE,
-                    deterministic=deterministic,
-                )
+        dataset = dataset.map(
+            lambda x, y: (x, y[0]),
+            num_parallel_calls=tf.data.AUTOTUNE,
+            deterministic=deterministic,
+        )
 
-    # try caching just our dataset
     if args.get("cache", False) or dir.name != "train":
         logging.info("Caching to mem")
-        datasets[0] = datasets[0].cache()
+        dataset = dataset.cache()
     if args.get("shuffle", True):
-        for i, ds in enumerate(datasets):
-            datasets[i] = ds.shuffle(
-                4096, reshuffle_each_iteration=args.get("reshuffle", True)
-            )
-
-    if len(datasets) > 0:
-        # logging.info("Adding second dataset with weights [0.6,0.4]")
-        dataset = tf.data.Dataset.sample_from_datasets(
-            datasets,
-            # weights=[0.6, 0.4],
-            stop_on_empty_dataset=False,
-            rerandomize_each_iteration=args.get("rerandomize_each_iteration", True),
+        dataset = dataset.shuffle(
+            4096, reshuffle_each_iteration=args.get("reshuffle", True)
         )
-    else:
-        dataset = datasets[0]
     logging.info("Loss fn is %s", args.get("loss_fn"))
 
-    epoch_size = args.get("epoch_size")
-    dist = None
-    combos = {}
     if epoch_size is None:
         dist, epoch_size = get_distribution(
             dataset,
@@ -1087,6 +1110,10 @@ def read_tfrecord(
             else:
                 max_l = tf.argmax(label)
                 label = tf.one_hot(max_l, num_labels, dtype=tf.int32)
+        # empty because a tag was excluded rather than only having noise tags,
+        # make the label negative so it is filtered out
+        excluded = tf.logical_and(lost_tag, tf.math.count_nonzero(label) == 0)
+        label = tf.where(excluded, -tf.ones_like(label), label)
         if embed_preds is not None:
             embed_preds = tf.reduce_max(
                 tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
