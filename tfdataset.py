@@ -716,6 +716,7 @@ def get_a_dataset(dir, labels, args):
                 extra_files[:1],
                 len(extra_files),
             )
+            filenames.extend(extra_files)
 
     noise_mix_files = None
     if args.get("noise_dirs"):
@@ -1201,6 +1202,15 @@ def parse_args():
         "matching the dataset split e.g. training-data/noise from build.py --noise-dataset",
     )
     parser.add_argument(
+        "--extra-dirs",
+        dest="extra_datasets",
+        nargs="+",
+        default=None,
+        help="Extra record dirs added to the main dataset, each containing a "
+        "training-meta.json and train/validation dirs e.g. training-data/animal "
+        "from otherdata.py --csv",
+    )
+    parser.add_argument(
         "--pcen",
         default=False,
         action="store_true",
@@ -1260,6 +1270,13 @@ def main():
     else:
         labels.update(meta.get("labels", []))
 
+    if args.extra_datasets:
+        for extra_ds in args.extra_datasets:
+            logging.info("Loading extra metadata %s", extra_ds)
+            file = Path(extra_ds) / "training-meta.json"
+            with file.open("r") as f:
+                extra_meta = json.load(f)
+            labels.update(extra_meta.get("labels", []))
         # labels.add("bird")
     labels.add("noise")
     # labels = list(labels)
@@ -1272,7 +1289,7 @@ def main():
     fmin = FMIN
     fmax = FMAX
 
-    show_all = True
+    show_all = False
     if show_all:
         remapped_labels = {}
         for i,l in enumerate(labels):
@@ -1328,6 +1345,7 @@ def main():
         cache=True,
         augment=False,
         noise_dirs=args.noise_dirs,
+        extra_datasets=args.extra_datasets,
         pcen=args.pcen,
         # signal_less_than = 0.1
     )
