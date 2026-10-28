@@ -505,7 +505,7 @@ class Recording:
             self.load_samples(config.segment_length, config.segment_stride)
 
     def load_samples(self, segment_length, segment_stride):
-        (self.samples, self.small_strides, self.unused_samples) = self.get_samples(
+        self.samples, self.small_strides, self.unused_samples = self.get_samples(
             segment_length, segment_stride
         )
 

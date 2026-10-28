@@ -58,7 +58,6 @@ import json
 from collections import Counter
 from birdsconfig import RELABEL_MAP
 
-
 chime_labels = {
     "c": "human",
     "m": "human",

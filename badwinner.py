@@ -23,7 +23,6 @@ import argparse
 import logging
 import tensorflow as tf
 
-
 # Worth looking into lme pooling as proposed in  https://github.com/f0k/birdclef2018/blob/master/experiments/model.py
 # Research/2018-birdclef.pdf
 

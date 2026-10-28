@@ -24,7 +24,6 @@ from birdsconfig import (
     NOISE_LABELS,
 )
 
-
 BIRD_PATH = []
 NOISE_PATH = []
 NZ_BOX = [166.509144322, -34.4506617165, 178.517093541, -46.641235447]
@@ -495,18 +494,19 @@ def get_dataset(dir, labels, global_epoch=None, **args):
             num_parallel_calls=tf.data.AUTOTUNE,
         )
 
-        logging.info("Mixing up")
+        if noise_dataset is None:
+            logging.info("No noise dataset, not mixing up")
+        else:
+            logging.info("Mixing up")
 
-        # 3. Zip them together into a triple-stream
-        zipped_dataset = tf.data.Dataset.zip((dataset, noise_dataset))
+            # 3. Zip them together into a triple-stream
+            zipped_dataset = tf.data.Dataset.zip((dataset, noise_dataset))
 
-        dataset = zipped_dataset.map(
-            lambda b1, bn: apply_raw_mixup(
-                b1, bn, noise_dataset, mixup_prob=0.7, alpha=0.4
-            ),
-            num_parallel_calls=tf.data.AUTOTUNE,
-            deterministic=deterministic,
-        )
+            dataset = zipped_dataset.map(
+                lambda b1, bn: apply_raw_mixup(b1, bn, alpha=0.4, noise_mix_prob=0.7),
+                num_parallel_calls=tf.data.AUTOTUNE,
+                deterministic=deterministic,
+            )
 
     if args.get("debug"):
         logging.info("Not mapping to mel")
@@ -723,15 +723,15 @@ def get_a_dataset(dir, labels, args):
 
     dataset = load_dataset(filenames, num_labels, labels, args)
     datasets.append(dataset)
-
-    xeno_files = Path("/data/audio-data/xenocanto/xeno-training-data/")
-    xeno_files = xeno_files / dir.name
-    do_xeno = False
-    if do_xeno and xeno_files.exists() and dir.name != "test":
-        logging.info("Xeno files %s", xeno_files)
-        xeno_files = tf.io.gfile.glob(str(xeno_files / "*.tfrecord"))
-        logging.info("Loading xeno files %s", xeno_files)
-        filenames.extend(xeno_files)
+    # to be adjusted
+    # xeno_files = Path("/data/audio-data/xenocanto/xeno-training-data/")
+    # xeno_files = xeno_files / dir.name
+    # do_xeno = False
+    # if do_xeno and xeno_files.exists() and dir.name != "test":
+    #     logging.info("Xeno files %s", xeno_files)
+    #     xeno_files = tf.io.gfile.glob(str(xeno_files / "*.tfrecord"))
+    #     logging.info("Loading xeno files %s", xeno_files)
+    #     filenames.extend(xeno_files)
 
     deterministic = args.get("deterministic", False)
 
@@ -1823,9 +1823,17 @@ def apply_raw_mixup(
     Requires only a 2-stream data loader (Bird and Noise).
     """
     bird_audio_A, bird_label_A = bird_batch
-    noise_audio, noise_label = noise_batch
+    # when loading all y (rec ids etc) only the first element is the label to mix
+    extra_y = None
+    if isinstance(bird_label_A, (tuple, list)):
+        extra_y = tuple(bird_label_A[1:])
+        bird_label_A = bird_label_A[0]
+    bird_label_A = tf.cast(bird_label_A, tf.float32)
 
-    batch_size = tf.shape(bird_audio_A)
+    batch_size = tf.shape(bird_audio_A)[0]
+    # noise dataset is wave only and always full batches, the last bird batch
+    # may be smaller
+    noise_audio = noise_batch[:batch_size]
 
     # -------------------------------------------------------------
     # STEP 1: FAST GPU BIRD SHUFFLING VIA TF.ROLL
@@ -1871,12 +1879,10 @@ def apply_raw_mixup(
     scaled_noise = noise_audio * tf.reshape(random_noise_gain, [batch_size, -1])
 
     audio_with_noise = mixed_bird_audio + scaled_noise
-    # Use logical maximum to explicitly protect bird labels from dropping
-    labels_with_noise = tf.maximum(mixed_bird_labels, noise_label)
 
-    # Combine the streams
+    # background noise overlay leaves the labels unchanged
     final_audio = tf.where(mix_noise_mask_audio, audio_with_noise, mixed_bird_audio)
-    final_labels = tf.where(mix_noise_mask, labels_with_noise, mixed_bird_labels)
+    final_labels = mixed_bird_labels
 
     # -------------------------------------------------------------
     # STEP 4: PEAK NORMALISATION
@@ -1884,6 +1890,8 @@ def apply_raw_mixup(
     peaks = tf.reduce_max(tf.abs(final_audio), axis=-1, keepdims=True)
     final_audio = final_audio / tf.maximum(peaks, 1e-6)
 
+    if extra_y is not None:
+        final_labels = (final_labels,) + extra_y
     return final_audio, final_labels
 
 

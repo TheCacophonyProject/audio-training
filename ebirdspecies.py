@@ -2,7 +2,6 @@ import requests
 import time
 import json
 
-
 # save ebird species list per region of nz
 with open("ebirdkey.txt", "r") as f:
     key = f.readline()

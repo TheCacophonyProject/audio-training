@@ -24,6 +24,28 @@ def parse_args():
     return args
 
 
+F1_IGNORE = ["all", "mammal", "other", "None", "false-positive"]
+
+
+def print_f1(cm, labels, name, f1=None):
+    # some cms have an extra totals row, so only use the labels x labels part
+    n = len(labels)
+    cm = cm[:n, :n]
+    tp = np.diag(cm).astype(np.float64)
+    fp = cm.sum(axis=0) - tp
+    fn = cm.sum(axis=1) - tp
+    if f1 is None:
+        f1 = 2 * tp / np.maximum(2 * tp + fp + fn, 1e-16)
+    print("F1 scores for ", name)
+    scores = []
+    for label, score in zip(labels, f1):
+        if label in F1_IGNORE:
+            continue
+        print(f"{label:<20} {score:.3f}")
+        scores.append(score)
+    print(f"Macro F1 is {np.mean(scores):.3f}")
+
+
 def main():
     args = parse_args()
     first_none_index = -1
@@ -38,6 +60,12 @@ def main():
         else:
             first_none_index = first_labels.index("nothing")
         first_cm = data["cm"]
+        print_f1(
+            first_cm,
+            first_labels,
+            args.first_confusion,
+            data["f1"] if "f1" in data else None,
+        )
     else:
         first_cm = np.load(args.first_confusion)
 
@@ -49,6 +77,12 @@ def main():
         else:
             second_none_index = second_labels.index("nothing")
         second_cm = data["cm"]
+        print_f1(
+            second_cm,
+            second_labels,
+            args.second_confusion,
+            data["f1"] if "f1" in data else None,
+        )
     else:
         second_cm = np.load(args.second_confusion)
 
@@ -92,6 +126,8 @@ def main():
     first_none_total = 0
     second_none_total = 0
     for i, label in enumerate(first_labels):
+        if label == "false-positive":
+            continue
         if i >= len(first_cm):
             break
         first_count = first_cm[i][i]
@@ -125,7 +161,6 @@ def main():
 
             if second_total != first_total:
                 print(f"{label} First total is {first_total} second is {second_total}")
-            # assert (
 
             first_inccorect += first_total - first_count - first_none
 

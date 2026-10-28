@@ -748,7 +748,7 @@ def oversample_ds(original_ds, dataset, max_repeats=1):
             for rec in dataset.recs.values():
                 if lbl not in rec.human_tags:
                     continue
-                (samples, small_strides, unused_samples) = rec.get_samples(
+                samples, small_strides, unused_samples = rec.get_samples(
                     dataset.config.segment_length,
                     dataset.config.segment_stride,
                     for_label=lbl,
