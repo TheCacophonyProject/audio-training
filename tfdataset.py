@@ -507,7 +507,12 @@ def get_dataset(dir, labels, global_epoch=None, **args):
                 logging.info("Applying animal based logic using index %s", animal_index)
             dataset = zipped_dataset.map(
                 lambda b1, bn: apply_raw_mixup(
-                    b1, bn, alpha=0.4, noise_mix_prob=0.7, animal_class_idx=animal_index
+                    b1,
+                    bn,
+                    alpha=0.2,
+                    bird_mix_prob=0.25,
+                    noise_mix_prob=0.7,
+                    animal_class_idx=animal_index,
                 ),
                 num_parallel_calls=tf.data.AUTOTUNE,
                 deterministic=deterministic,

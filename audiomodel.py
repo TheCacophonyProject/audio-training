@@ -477,9 +477,13 @@ class AudioModel:
             run_name, multi_label=args.get("multi_label", True)
         )
         class_weights = None
-        if args.get("use_weighting", True):
+        # off by default, keras turns class_weight into one weight per sample
+        # from the argmax label which doesnt suit multi label targets
+        if args.get("use_weighting", False):
             class_weights = get_weighting(self.train, self.labels)
             logging.info("Weights are %s", class_weights)
+        else:
+            logging.info("Not using class weighting")
         history = None
 
         history = self.model.fit(
@@ -798,6 +802,15 @@ class AudioModel:
                 # ),
                 tf.keras.losses.BinaryFocalCrossentropy(from_logits=self.from_logits),
                 tf.keras.metrics.AUC(from_logits=self.from_logits),
+                # per label pr auc averaged over labels so rare labels count
+                # as much as common ones
+                tf.keras.metrics.AUC(
+                    curve="PR",
+                    multi_label=True,
+                    num_labels=num_labels,
+                    from_logits=self.from_logits,
+                    name="pr_auc",
+                ),
                 # logits threshold of 0 is a probability of 0.5
                 tf.keras.metrics.Recall(thresholds=0.0 if self.from_logits else None),
                 tf.keras.metrics.Precision(
@@ -824,6 +837,7 @@ class AudioModel:
             "val_loss",
             "val_precision",
             "val_auc",
+            "val_pr_auc",
             "val_recall",
             "val_huber_loss",
             # "val_precK",
@@ -851,8 +865,8 @@ class AudioModel:
             checks.append(m_check)
         earlyStopping = tf.keras.callbacks.EarlyStopping(
             patience=10,
-            monitor="val_loss",
-            mode="min",
+            monitor="val_pr_auc",
+            mode="max",
         )
         checks.append(earlyStopping)
         # dont use with cosine
@@ -1570,7 +1584,7 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
         labels,
         global_epoch=global_epoch,
         batch_size=batch_size,
-        augment=True,  # seems to perform worse
+        augment=not args.get("no_augment", False),
         drop_remainder=True,  # keep batch shape fixed so XLA only compiles once
         excluded_labels=excluded_labels,
         second_dir=second_dir,
@@ -2230,6 +2244,11 @@ def parse_args():
         help="Extra record dirs added to the main dataset, each containing a "
         "training-meta.json and train/validation dirs e.g. training-data/animal "
         "from otherdata.py --csv",
+    )
+    parser.add_argument(
+        "--no-augment",
+        action="store_true",
+        help="Train without augmentations (roll, mixup, noise mixing, spec augment)",
     )
     parser.add_argument(
         "--noise-mix-fraction",

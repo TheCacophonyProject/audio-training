@@ -64,7 +64,7 @@ from utils import get_all_birds
 
 ALL_BIRDS = get_all_birds()
 ALL_BIRDS.append("bird")
-ALL_BIRDS.append("gull")
+# ALL_BIRDS.append("gull")
 ALL_BIRDS.append("dove")
 ALL_BIRDS.append("kiwi")
 ALL_BIRDS.append("norfolk silkeye")
