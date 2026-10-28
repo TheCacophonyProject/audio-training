@@ -511,6 +511,7 @@ def get_dataset(dir, labels, global_epoch=None, **args):
             animal_index = -1
             if "animal" in labels:
                 animal_index = labels.index("animal")
+                logging.info("Applying animal based logic using index %s",animal_index)
             dataset = zipped_dataset.map(
                 lambda b1, bn: apply_raw_mixup(b1, bn, alpha=0.4, noise_mix_prob=0.7,animal_class_idx=animal_index),
                 num_parallel_calls=tf.data.AUTOTUNE,
@@ -1216,6 +1217,12 @@ def parse_args():
         action="store_true",
         help="Build mels as magnitude for PCEN rather than power",
     )
+    parser.add_argument(
+        "--augment",
+        default=False,
+        action="store_true",
+        help="Apply training augmentations (roll, noise mixing, spec augment)",
+    )
     args = parser.parse_args()
     return args
 
@@ -1343,7 +1350,7 @@ def main():
         n_fft=4096,
         only_features=args.only_features,
         cache=True,
-        augment=False,
+        augment=args.augment,
         noise_dirs=args.noise_dirs,
         extra_datasets=args.extra_datasets,
         pcen=args.pcen,
@@ -1878,8 +1885,9 @@ def apply_raw_mixup(
     Bypasses Bird-to-Bird mixup for animal files to preserve pure animal training instances.
     """
     bird_audio_A, bird_label_A = bird_batch
-    noise_audio, noise_label_raw = noise_batch
-    
+    # noise dataset is wave only, labels are dropped in load_noise_dataset
+    noise_audio = noise_batch
+
     extra_y = None
     if isinstance(bird_label_A, (tuple, list)):
         extra_y = tuple(bird_label_A[1:])
@@ -1900,7 +1908,11 @@ def apply_raw_mixup(
     # STEP 2: CONDITIONAL MIXUP (Bypassed if Stream A is an Animal)
     # -------------------------------------------------------------
     # Check if the current file in Stream A is an animal call
-    is_animal_A = tf.equal(bird_label_A[:, animal_class_idx], 1.0)
+    if animal_class_idx >= 0:
+        is_animal_A = tf.equal(bird_label_A[:, animal_class_idx], 1.0)
+    else:
+        # -1 would index the last label, so no animal label means nothing is an animal
+        is_animal_A = tf.zeros([batch_size], dtype=tf.bool)
     
     random_bird_probs = tf.random.uniform(shape=[batch_size, 1], minval=0.0, maxval=1.0)
     
