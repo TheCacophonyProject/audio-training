@@ -207,8 +207,6 @@ def load_dataset(filenames, num_labels, labels, args):
         ignore_order
     )  # uses data as soon as it streams in, rather than in its original order
 
-    augment = args.get("augment", False)
-    preprocess_fn = args.get("preprocess_fn")
     one_hot = args.get("one_hot", True)
     dataset = dataset.apply(tf.data.experimental.ignore_errors())
     # dataset = dataset.filter(filter_short)
@@ -238,12 +236,7 @@ def load_dataset(filenames, num_labels, labels, args):
         partial(
             read_record,
             num_labels=num_labels,
-            augment=augment,
-            preprocess_fn=preprocess_fn,
             one_hot=one_hot,
-            mean_sub=args.get("mean_sub", False),
-            add_noise=args.get("add_noise", False),
-            no_bird=args.get("no_bird", False),
             embeddings=args.get("embeddings", False),
             filter_freq=args.get("filter_freq", False),
             random_butter=args.get("random_butter", 0),
@@ -251,7 +244,9 @@ def load_dataset(filenames, num_labels, labels, args):
             features=args.get("features", False),
             multi=args.get("multi_label", True),
             load_raw=args.get("load_raw", True),
-            model_name=args.get("model_name", "badwinner2"),
+            remap_table=args.get("remap_table"),
+            extra_table=args.get("extra_table"),
+            noise_index=args.get("noise_index"),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -434,8 +429,6 @@ def get_remappings(
     return (extra_label_map, re_dic, new_labels)
 
 
-bird_i = None
-noise_i = None
 bird_mask = None
 
 
@@ -511,9 +504,11 @@ def get_dataset(dir, labels, global_epoch=None, **args):
             animal_index = -1
             if "animal" in labels:
                 animal_index = labels.index("animal")
-                logging.info("Applying animal based logic using index %s",animal_index)
+                logging.info("Applying animal based logic using index %s", animal_index)
             dataset = zipped_dataset.map(
-                lambda b1, bn: apply_raw_mixup(b1, bn, alpha=0.4, noise_mix_prob=0.7,animal_class_idx=animal_index),
+                lambda b1, bn: apply_raw_mixup(
+                    b1, bn, alpha=0.4, noise_mix_prob=0.7, animal_class_idx=animal_index
+                ),
                 num_parallel_calls=tf.data.AUTOTUNE,
                 deterministic=deterministic,
             )
@@ -535,14 +530,6 @@ def get_dataset(dir, labels, global_epoch=None, **args):
         )
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     return dataset, remapped, epoch_size, labels, extra_label_dic
-
-
-def set_remapped_extra(remap, extra_l):
-
-    global extra_label_map
-    global remapped_y
-    extra_label_map = extra_l
-    remapped_y = remap
 
 
 def split_noise_files(dir, noise_dirs, mix_fraction=0.5):
@@ -581,19 +568,53 @@ def split_noise_files(dir, noise_dirs, mix_fraction=0.5):
     return mix_files, dataset_files
 
 
-def load_noise_dataset(filenames, num_labels, labels, args):
-    """Endless shuffled raw noise clips, for mixing into training audio."""
-    noise_dataset = load_dataset(list(filenames), num_labels, labels, args)
-    # only keep clips whose label is exactly noise, so mixing never adds
-    # another class's sound without its label
-    noise_one_hot = np.zeros(num_labels, dtype=np.float32)
-    noise_one_hot[labels.index("noise")] = 1
-    noise_one_hot = tf.constant(noise_one_hot)
+def load_noise_dataset(filenames, num_labels, labels, args, excluded_tags=None):
+    """Endless shuffled raw noise clips, for mixing into training audio.
+
+    Clips are chosen by their tags, so this works whether or not noise is a
+    label. A clip is kept only if every tag is a noise label not in
+    excluded_tags, and no tag remaps to a label other than noise, so mixing
+    never adds another class's sound without its label
+    """
+    excluded_tags = excluded_tags or []
+    allowed = [t for t in NOISE_LABELS if t not in excluded_tags]
+    # e.g. rain when rain is its own label
+    main_i = args["remap_table"].lookup(tf.constant(allowed)).numpy()
+    allowed = [
+        t for t, i in zip(allowed, main_i) if i == -1 or i == args.get("noise_index")
+    ]
+    logging.info("Mixing noise from tags %s", allowed)
+
+    # allowed tags map to 0 and every other tag to 1, so a clip with any tag
+    # that isn't allowed has 1 set and can be filtered out
+    allowed_i, other_i = 0, 1
+    noise_args = dict(args)
+    noise_args["remap_table"] = tf.lookup.StaticHashTable(
+        initializer=tf.lookup.KeyValueTensorInitializer(
+            keys=tf.constant(allowed),
+            values=tf.fill([len(allowed)], allowed_i),
+        ),
+        default_value=other_i,
+        name="noise_remap",
+    )
+    noise_args["extra_table"] = tf.lookup.StaticHashTable(
+        initializer=tf.lookup.KeyValueTensorInitializer(
+            keys=tf.constant(["nonsense"]), values=tf.constant([-1])
+        ),
+        default_value=-1,
+        name="noise_extra",
+    )
+    noise_args["noise_index"] = None
+    # single label would argmax away the other tags
+    noise_args["multi_label"] = True
+    noise_dataset = load_dataset(list(filenames), num_labels, labels, noise_args)
+
+    allowed_one_hot = tf.one_hot(allowed_i, num_labels, dtype=tf.int32)
 
     def is_pure_noise(wave, label):
         if isinstance(label, tuple):
             label = label[0]
-        return tf.reduce_all(tf.equal(tf.cast(label, tf.float32), noise_one_hot))
+        return tf.reduce_all(tf.equal(tf.cast(label, tf.int32), allowed_one_hot))
 
     noise_dataset = noise_dataset.filter(is_pure_noise)
     # Drop labels, we only need raw wave arrays
@@ -609,8 +630,6 @@ def get_a_dataset(dir, labels, args):
     remapped = args.get("remapped_labels", [])
     excluded_labels = args.get("excluded_labels", [])
     use_generic_bird = args.get("use_generic_bird", False)
-    global extra_label_map
-    global remapped_y
     if extra_label_dic is None:
         extra_label_dic, remapped, labels = get_remappings(
             labels, excluded_labels, use_generic_bird=use_generic_bird
@@ -632,7 +651,8 @@ def get_a_dataset(dir, labels, args):
             remapped,
             excluded_labels,
         )
-    remapped_y = tf.lookup.StaticHashTable(
+    # lookups from tag to label index, passed to read_tfrecord through args
+    args["remap_table"] = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(list(remapped.keys())),
             values=tf.constant(list(remapped.values())),
@@ -640,16 +660,7 @@ def get_a_dataset(dir, labels, args):
         default_value=tf.constant(-1),
         name="remapped_y",
     )
-
-    global bird_i
-    global noise_i
-    global human_i
-    if "bird" in labels:
-        bird_i = labels.index("bird")
-    if "noise" in labels:
-        noise_i = labels.index("noise")
-    if "human" in labels:
-        human_i = labels.index("human")
+    args["noise_index"] = labels.index("noise") if "noise" in labels else None
 
     # extra tags, since we have multi label problem, morepork is a bird and morepork
     # cat is a cat but also "noise"
@@ -657,7 +668,7 @@ def get_a_dataset(dir, labels, args):
     if len(extra_label_dic) == 0:
         # seems to need something
         extra_label_dic["nonsense"] = 1
-    extra_label_map = tf.lookup.StaticHashTable(
+    args["extra_table"] = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(list(extra_label_dic.keys())),
             values=tf.constant(list(extra_label_dic.values())),
@@ -848,7 +859,13 @@ def get_a_dataset(dir, labels, args):
 
     noise_dataset = None
     if noise_mix_files is not None:
-        noise_dataset = load_noise_dataset(noise_mix_files, num_labels, labels, args)
+        noise_dataset = load_noise_dataset(
+            noise_mix_files,
+            num_labels,
+            labels,
+            args,
+            excluded_tags=args.get("noise_excluded_tags"),
+        )
 
     batch_size = args.get("batch_size", None)
     if batch_size is not None:
@@ -899,12 +916,7 @@ def spectrogram_to_mel(spectrogram, pcen=False):
 def read_tfrecord(
     example,
     num_labels,
-    augment=False,
-    preprocess_fn=None,
     one_hot=True,
-    mean_sub=False,
-    add_noise=False,
-    no_bird=False,
     embeddings=False,
     filter_freq=False,
     random_butter=0,
@@ -912,9 +924,12 @@ def read_tfrecord(
     features=False,
     multi=True,
     load_raw=True,
-    model_name="badwinner2",
-    global_epoch=None,
+    remap_table=None,
+    extra_table=None,
+    noise_index=None,
 ):
+    """remap_table and extra_table map each tag to a label index (-1 for none),
+    as built in get_a_dataset"""
     tfrecord_format = {"audio/class/text": tf.io.FixedLenFeature((), tf.string)}
     tfrecord_format["audio/class/ebird"] = tf.io.FixedLenFeature((), tf.string)
 
@@ -1011,15 +1026,12 @@ def read_tfrecord(
         else:
             spectrogram = (spectrogram, short_f, mid_f)
         # raw = tf.expand_dims(raw, axis=0)
-    if augment:
-        logging.info("Augmenting")
     # label = tf.cast(example["audio/class/label"], tf.int32)
     label = tf.cast(example["audio/class/ebird"], tf.string)
 
     split_labels = tf.strings.split(label, sep="\n")
-    global remapped_y, extra_label_map
-    labels = remapped_y.lookup(split_labels)
-    extra = extra_label_map.lookup(split_labels)
+    labels = remap_table.lookup(split_labels)
+    extra = extra_table.lookup(split_labels)
     # tags that are excluded (or unknown) map to -1 and are dropped
     lost_tag = tf.reduce_any(tf.logical_and(labels == -1, extra == -1))
     if multi:
@@ -1027,11 +1039,11 @@ def read_tfrecord(
         labels = tf.concat([labels, extra], axis=0)
     if one_hot:
         label = tf.reduce_max(tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0)
-        if noise_i is not None:
+        if noise_index is not None:
             # e.g. wind + excluded bird would otherwise train as pure noise,
             # zero the label so it is filtered out
             noise_only = tf.logical_and(
-                label[noise_i] > 0, tf.math.count_nonzero(label) == 1
+                label[noise_index] > 0, tf.math.count_nonzero(label) == 1
             )
             label = tf.where(
                 tf.logical_and(lost_tag, noise_only), tf.zeros_like(label), label
@@ -1056,23 +1068,6 @@ def read_tfrecord(
         # pretty sure this is wrong but never used
         logging.error("Don't think non one hot works please check")
         label = labels
-    signal_percent = 0.0
-    if no_bird:
-        logging.info("no bird")
-        # dont use bird or noise label from mixed ones
-        if one_hot:
-            no_bird_mask = np.ones(num_labels, dtype=bool)
-            no_bird_mask[bird_i] = 0
-            no_bird_mask = tf.constant(no_bird_mask)
-            label = tf.cast(label, tf.bool)
-            label = tf.math.logical_and(label, no_bird_mask)
-            no_noise_mask = np.ones(num_labels, dtype=bool)
-            no_noise_mask[noise_i] = 0
-            no_noise_mask = tf.constant(no_noise_mask)
-            label = tf.math.logical_and(label, no_noise_mask)
-        else:
-            print("Not doing no bird as not implemeneted")
-        label = tf.cast(label, tf.int32)
     signal_percent = example["audio/signal_percent"]
 
     label = tf.cast(label, tf.float32)
@@ -1285,7 +1280,7 @@ def main():
                 extra_meta = json.load(f)
             labels.update(extra_meta.get("labels", []))
         # labels.add("bird")
-    labels.add("noise")
+    # labels.add("noise")
     # labels = list(labels)
     set_specific_by_count(meta)
     excluded_labels = get_excluded_labels(labels)
@@ -1299,7 +1294,7 @@ def main():
     show_all = False
     if show_all:
         remapped_labels = {}
-        for i,l in enumerate(labels):
+        for i, l in enumerate(labels):
             remapped_labels[l] = i
         extra_label_map = {}
     if args.model:
@@ -1334,7 +1329,7 @@ def main():
         args.use_bird_tags = True
 
     global_epoch = tf.Variable(0, name="global_epoch", trainable=True, dtype=tf.int32)
-    
+
     dataset, remapped, _, labels, _ = get_dataset(
         tf_dir,
         labels,
@@ -1876,9 +1871,15 @@ def tf_batch_mix_real_noise(
 
     return output_batch
 
+
 @tf.function
 def apply_raw_mixup(
-    bird_batch, noise_batch, alpha=0.2, bird_mix_prob=0.5, noise_mix_prob=0.7, animal_class_idx=-1
+    bird_batch,
+    noise_batch,
+    alpha=0.2,
+    bird_mix_prob=0.5,
+    noise_mix_prob=0.7,
+    animal_class_idx=-1,
 ):
     """
     Path 1 Optimized Mixup: 'bird_batch' now contains both Bird and Animal tracks.
@@ -1892,7 +1893,7 @@ def apply_raw_mixup(
     if isinstance(bird_label_A, (tuple, list)):
         extra_y = tuple(bird_label_A[1:])
         bird_label_A = bird_label_A[0]
-        
+
     bird_label_A = tf.cast(bird_label_A, tf.float32)
 
     batch_size = tf.shape(bird_audio_A)[0]
@@ -1913,11 +1914,13 @@ def apply_raw_mixup(
     else:
         # -1 would index the last label, so no animal label means nothing is an animal
         is_animal_A = tf.zeros([batch_size], dtype=tf.bool)
-    
+
     random_bird_probs = tf.random.uniform(shape=[batch_size, 1], minval=0.0, maxval=1.0)
-    
+
     # Condition: Only apply mixup if the random roll succeeds AND the file is NOT an animal
-    mix_bird_mask = (random_bird_probs < bird_mix_prob) & tf.logical_not(tf.expand_dims(is_animal_A, -1))
+    mix_bird_mask = (random_bird_probs < bird_mix_prob) & tf.logical_not(
+        tf.expand_dims(is_animal_A, -1)
+    )
     mix_bird_mask_audio = tf.reshape(mix_bird_mask, [batch_size, -1])
 
     # Sample standard MixUp lambdas
@@ -1936,12 +1939,16 @@ def apply_raw_mixup(
     # -------------------------------------------------------------
     # STEP 3: BACKGROUND NOISE OVERLAY (Weather Injection only)
     # -------------------------------------------------------------
-    random_noise_probs = tf.random.uniform(shape=[batch_size, 1], minval=0.0, maxval=1.0)
+    random_noise_probs = tf.random.uniform(
+        shape=[batch_size, 1], minval=0.0, maxval=1.0
+    )
     mix_noise_mask = random_noise_probs < noise_mix_prob
     mix_noise_mask_audio = tf.reshape(mix_noise_mask, [batch_size, -1])
 
     # Keep noise strictly in the background (additive overlay)
-    random_noise_gain = tf.random.uniform(shape=[batch_size, 1], minval=0.05, maxval=0.25)
+    random_noise_gain = tf.random.uniform(
+        shape=[batch_size, 1], minval=0.05, maxval=0.25
+    )
     scaled_noise = noise_audio * tf.reshape(random_noise_gain, [batch_size, -1])
 
     audio_with_noise = mixed_bird_audio + scaled_noise
@@ -1959,7 +1966,6 @@ def apply_raw_mixup(
     if extra_y is not None:
         final_labels = (final_labels,) + extra_y
     return final_audio, final_labels
-
 
 
 def selective_batch_mixup(audio_batch, label_batch, mixup_prob=0.7, alpha=0.4):
@@ -2007,7 +2013,6 @@ def selective_batch_mixup(audio_batch, label_batch, mixup_prob=0.7, alpha=0.4):
     if extra_y is not None:
         label = (label,) + extra_y
     return audio, label
-
 
 
 @tf.function

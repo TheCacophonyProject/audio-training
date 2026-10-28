@@ -6,7 +6,6 @@ from tfdataset import (
     set_specific_by_count,
     get_remappings,
     load_dataset,
-    set_remapped_extra,
 )
 import json
 import numpy as np
@@ -198,7 +197,6 @@ def get_a_dataset(dir, labels, **args):
         default_value=tf.constant(-1),
         name="extra_label_map",
     )
-    set_remapped_extra(remapped_y, extra_label_map)
 
     num_labels = len(labels)
 
