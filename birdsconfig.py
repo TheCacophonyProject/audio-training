@@ -35,6 +35,7 @@ RELABEL_MAP = {
     "nibkiw1": "kiwi",
     "liskiw1": "kiwi",
     "sobkiw3": "kiwi",
+    "sbweye1": "silver3",
 }
 
 
