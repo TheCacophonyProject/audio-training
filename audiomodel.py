@@ -1732,8 +1732,8 @@ def init_labels(data_dir, **args):
         pass
         # if "human" not in excluded_labels:
         #     excluded_labels.append("human")
-        # if "noise" not in excluded_labels:
-        #     excluded_labels.append("noise")
+        if "noise" not in excluded_labels:
+            excluded_labels.append("noise")
 
     logging.info("labels are %s Excluding %s", labels, excluded_labels)
     return labels, excluded_labels, meta

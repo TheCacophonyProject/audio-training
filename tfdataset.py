@@ -508,9 +508,11 @@ def get_dataset(dir, labels, global_epoch=None, **args):
 
             # 3. Zip them together into a triple-stream
             zipped_dataset = tf.data.Dataset.zip((dataset, noise_dataset))
-
+            animal_index = -1
+            if "animal" in labels:
+                animal_index = labels.index("animal")
             dataset = zipped_dataset.map(
-                lambda b1, bn: apply_raw_mixup(b1, bn, alpha=0.4, noise_mix_prob=0.7),
+                lambda b1, bn: apply_raw_mixup(b1, bn, alpha=0.4, noise_mix_prob=0.7,animal_class_idx=animal_index),
                 num_parallel_calls=tf.data.AUTOTUNE,
                 deterministic=deterministic,
             )
@@ -1849,39 +1851,43 @@ def tf_batch_mix_real_noise(
 
     return output_batch
 
-
+@tf.function
 def apply_raw_mixup(
-    bird_batch, noise_batch, alpha=0.2, bird_mix_prob=0.5, noise_mix_prob=0.7
+    bird_batch, noise_batch, alpha=0.2, bird_mix_prob=0.5, noise_mix_prob=0.7, animal_class_idx=-1
 ):
     """
-    Highly optimised single-pass mixup using tf.roll.
-    Requires only a 2-stream data loader (Bird and Noise).
+    Path 1 Optimized Mixup: 'bird_batch' now contains both Bird and Animal tracks.
+    Bypasses Bird-to-Bird mixup for animal files to preserve pure animal training instances.
     """
     bird_audio_A, bird_label_A = bird_batch
-    # when loading all y (rec ids etc) only the first element is the label to mix
+    noise_audio, noise_label_raw = noise_batch
+    
     extra_y = None
     if isinstance(bird_label_A, (tuple, list)):
         extra_y = tuple(bird_label_A[1:])
         bird_label_A = bird_label_A[0]
+        
     bird_label_A = tf.cast(bird_label_A, tf.float32)
 
     batch_size = tf.shape(bird_audio_A)[0]
-    # noise dataset is wave only and always full batches, the last bird batch
-    # may be smaller
-    noise_audio = noise_batch[:batch_size]
+    noise_audio = noise_audio[:batch_size]
 
     # -------------------------------------------------------------
-    # STEP 1: FAST GPU BIRD SHUFFLING VIA TF.ROLL
+    # STEP 1: FAST GPU SHUFFLING VIA TF.ROLL
     # -------------------------------------------------------------
-    # Instantly creates Bird B without loading a separate dataset stream
     bird_audio_B = tf.roll(bird_audio_A, shift=1, axis=0)
     bird_label_B = tf.roll(bird_label_A, shift=1, axis=0)
 
     # -------------------------------------------------------------
-    # STEP 2: CONDITIONAL BIRD-TO-BIRD MIXUP (50% Chance)
+    # STEP 2: CONDITIONAL MIXUP (Bypassed if Stream A is an Animal)
     # -------------------------------------------------------------
+    # Check if the current file in Stream A is an animal call
+    is_animal_A = tf.equal(bird_label_A[:, animal_class_idx], 1.0)
+    
     random_bird_probs = tf.random.uniform(shape=[batch_size, 1], minval=0.0, maxval=1.0)
-    mix_bird_mask = random_bird_probs < bird_mix_prob
+    
+    # Condition: Only apply mixup if the random roll succeeds AND the file is NOT an animal
+    mix_bird_mask = (random_bird_probs < bird_mix_prob) & tf.logical_not(tf.expand_dims(is_animal_A, -1))
     mix_bird_mask_audio = tf.reshape(mix_bird_mask, [batch_size, -1])
 
     # Sample standard MixUp lambdas
@@ -1890,32 +1896,27 @@ def apply_raw_mixup(
     lam = gamma_1 / (gamma_1 + gamma_2)
     lam_audio = tf.reshape(lam, [batch_size, -1])
 
-    # Standard soft linear mix for bird components
     soft_mixed_audio = lam_audio * bird_audio_A + (1.0 - lam_audio) * bird_audio_B
     soft_mixed_labels = lam * bird_label_A + (1.0 - lam) * bird_label_B
 
-    # Route: Soft mix if true, keep pure Bird A if false
+    # Route: Applies mixup to birds, keeps original pure tracks for animals
     mixed_bird_audio = tf.where(mix_bird_mask_audio, soft_mixed_audio, bird_audio_A)
     mixed_bird_labels = tf.where(mix_bird_mask, soft_mixed_labels, bird_label_A)
 
     # -------------------------------------------------------------
-    # STEP 3: NOISE OVERLAY (Guaranteed 70% Chance)
+    # STEP 3: BACKGROUND NOISE OVERLAY (Weather Injection only)
     # -------------------------------------------------------------
-    random_noise_probs = tf.random.uniform(
-        shape=[batch_size, 1], minval=0.0, maxval=1.0
-    )
+    random_noise_probs = tf.random.uniform(shape=[batch_size, 1], minval=0.0, maxval=1.0)
     mix_noise_mask = random_noise_probs < noise_mix_prob
     mix_noise_mask_audio = tf.reshape(mix_noise_mask, [batch_size, -1])
 
-    # Scale the background noise array via a random gain modifier
-    random_noise_gain = tf.random.uniform(
-        shape=[batch_size, 1], minval=0.05, maxval=0.35
-    )
+    # Keep noise strictly in the background (additive overlay)
+    random_noise_gain = tf.random.uniform(shape=[batch_size, 1], minval=0.05, maxval=0.25)
     scaled_noise = noise_audio * tf.reshape(random_noise_gain, [batch_size, -1])
 
     audio_with_noise = mixed_bird_audio + scaled_noise
 
-    # background noise overlay leaves the labels unchanged
+    # Background weather injection leaves labels unchanged
     final_audio = tf.where(mix_noise_mask_audio, audio_with_noise, mixed_bird_audio)
     final_labels = mixed_bird_labels
 
@@ -1928,6 +1929,7 @@ def apply_raw_mixup(
     if extra_y is not None:
         final_labels = (final_labels,) + extra_y
     return final_audio, final_labels
+
 
 
 def selective_batch_mixup(audio_batch, label_batch, mixup_prob=0.7, alpha=0.4):
@@ -1975,6 +1977,7 @@ def selective_batch_mixup(audio_batch, label_batch, mixup_prob=0.7, alpha=0.4):
     if extra_y is not None:
         label = (label,) + extra_y
     return audio, label
+
 
 
 @tf.function
