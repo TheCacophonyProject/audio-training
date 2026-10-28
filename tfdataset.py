@@ -594,12 +594,13 @@ def split_noise_files(dir, noise_dirs, mix_fraction=0.5):
     return mix_files, dataset_files
 
 
-def add_noise_samples(dataset, noise_files, count, num_labels, labels, args, combos):
-    """Add noise records to dataset, noise_eval_fraction of count (the number of
-    samples in dataset), so the noise share is the same whatever the size of the
-    noise dataset. Returns the dataset and the distribution and count of the
-    added noise, combos is updated with the noise label combinations"""
-    fraction = args.get("noise_eval_fraction", 0.1)
+def add_noise_samples(
+    dataset, noise_files, count, fraction, num_labels, labels, args, combos
+):
+    """Add noise records to dataset, fraction of count (the number of samples in
+    dataset), so the noise share is the same whatever the size of the noise
+    dataset. Returns the dataset and the distribution and count of the added
+    noise, combos is updated with the noise label combinations"""
     num_noise = int(round(count * fraction))
     # sorted then shuffled with a fixed seed so every run gets the same noise
     # from all the noise dirs
@@ -794,20 +795,21 @@ def get_a_dataset(dir, labels, args):
             filenames.extend(extra_files)
 
     noise_mix_files = None
-    eval_noise_files = None
+    noise_sample_files = None
     if args.get("noise_dirs"):
         if args.get("augment", False):
             # most noise is mixed into training audio, the rest are noise only
             # samples with an empty label
-            noise_mix_files, noise_dataset_files = split_noise_files(
+            noise_mix_files, noise_sample_files = split_noise_files(
                 dir, args["noise_dirs"], args.get("noise_mix_fraction", 0.8)
             )
-            filenames.extend(noise_dataset_files)
+            noise_fraction = args.get("noise_train_fraction", 0.05)
         elif dir.name == "train":
             logging.info("Not augmenting so not using noise files for training")
         else:
             # validation and test get noise only samples to check for false positives
-            _, eval_noise_files = split_noise_files(dir, args["noise_dirs"], 0)
+            _, noise_sample_files = split_noise_files(dir, args["noise_dirs"], 0)
+            noise_fraction = args.get("noise_eval_fraction", 0.1)
 
     logging.info("Loading %s files from %s", len(filenames), dir)
 
@@ -815,7 +817,7 @@ def get_a_dataset(dir, labels, args):
     epoch_size = args.get("epoch_size")
     dist = None
     combos = {}
-    if eval_noise_files:
+    if noise_sample_files:
         # the noise added depends on the number of samples, so get the
         # distribution now and add the noise to it rather than counting again
         dist, epoch_size = get_distribution(
@@ -826,7 +828,14 @@ def get_a_dataset(dir, labels, args):
             combos=combos,
         )
         dataset, noise_dist, num_noise = add_noise_samples(
-            dataset, eval_noise_files, epoch_size, num_labels, labels, args, combos
+            dataset,
+            noise_sample_files,
+            epoch_size,
+            noise_fraction,
+            num_labels,
+            labels,
+            args,
+            combos,
         )
         dist += noise_dist
         epoch_size += num_noise

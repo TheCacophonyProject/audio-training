@@ -2258,6 +2258,13 @@ def parse_args():
         "are added to the training data as noise samples",
     )
     parser.add_argument(
+        "--noise-train-fraction",
+        type=float,
+        default=0.05,
+        help="Noise only samples to add to training from the --noise-dirs records "
+        "not used for mixing, as a fraction of the number of samples",
+    )
+    parser.add_argument(
         "--noise-eval-fraction",
         type=float,
         default=0.1,
