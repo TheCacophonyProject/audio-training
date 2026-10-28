@@ -1016,11 +1016,22 @@ def read_tfrecord(
     global remapped_y, extra_label_map
     labels = remapped_y.lookup(split_labels)
     extra = extra_label_map.lookup(split_labels)
+    # tags that are excluded (or unknown) map to -1 and are dropped
+    lost_tag = tf.reduce_any(tf.logical_and(labels == -1, extra == -1))
     if multi:
 
         labels = tf.concat([labels, extra], axis=0)
     if one_hot:
         label = tf.reduce_max(tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0)
+        if noise_i is not None:
+            # e.g. wind + excluded bird would otherwise train as pure noise,
+            # zero the label so it is filtered out
+            noise_only = tf.logical_and(
+                label[noise_i] > 0, tf.math.count_nonzero(label) == 1
+            )
+            label = tf.where(
+                tf.logical_and(lost_tag, noise_only), tf.zeros_like(label), label
+            )
         if not multi:
             logging.info("Choosing only one label as not multi")
             if tf.math.count_nonzero(label) == 0:
@@ -1172,7 +1183,7 @@ def parse_args():
         "--only-features", default=False, action="count", help="Train on features"
     )
     parser.add_argument(
-        "--multi-label", type=str2bool, default=False, help="Multi label"
+        "--multi-label", type=str2bool, default=True, help="Multi label"
     )
     parser.add_argument(
         "--use_bird_tags",
@@ -1258,6 +1269,13 @@ def main():
     labels.sort()
     fmin = FMIN
     fmax = FMAX
+
+    show_all = True
+    if show_all:
+        remapped_labels = {}
+        for i,l in enumerate(labels):
+            remapped_labels[l] = i
+        extra_label_map = {}
     if args.model:
         file = Path(args.model).parent / "metadata.txt"
         with file.open("r") as f:
@@ -1290,7 +1308,7 @@ def main():
         args.use_bird_tags = True
 
     global_epoch = tf.Variable(0, name="global_epoch", trainable=True, dtype=tf.int32)
-
+    
     dataset, remapped, _, labels, _ = get_dataset(
         tf_dir,
         labels,
@@ -1306,7 +1324,7 @@ def main():
         n_fft=4096,
         only_features=args.only_features,
         cache=True,
-        augment=True,
+        augment=False,
         noise_dirs=args.noise_dirs,
         pcen=args.pcen,
         # signal_less_than = 0.1
