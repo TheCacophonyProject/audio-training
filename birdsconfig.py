@@ -44,10 +44,7 @@ RELABEL_MAP = {
 BIRD_TRAIN_LABELS = [
     "ausbit1",
     "ausmag2",
-    "baicra4",
-    "blkswa",
     "eurbla",
-    "fernbi1",
     "gryger1",
     "houspa",
     "kiwi",

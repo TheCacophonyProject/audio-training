@@ -675,6 +675,25 @@ def load_noise_dataset(filenames, num_labels, labels, args, excluded_tags=None):
         return tf.reduce_all(tf.equal(tf.cast(label, tf.int32), allowed_one_hot))
 
     noise_dataset = noise_dataset.filter(is_pure_noise)
+
+    # only pull the tag text out, so the audio is never copied into python
+    tag_counts = {}
+    for tags in (
+        noise_dataset.map(lambda wave, label: label[-1])
+        .batch(1024)
+        .as_numpy_iterator()
+    ):
+        for tag in tags:
+            tag = tag.decode().replace("\n", "+")
+            tag_counts[tag] = tag_counts.get(tag, 0) + 1
+    total = sum(tag_counts.values())
+    logging.info("Noise dataset has %s clips for mixing", total)
+    for tag, count in sorted(tag_counts.items(), key=lambda kv: -kv[1]):
+        logging.info(" for %s have %s", tag, count)
+    if total == 0:
+        # repeat on an empty dataset never returns
+        raise ValueError(f"No noise clips to mix from {len(filenames)} files")
+
     # Drop labels, we only need raw wave arrays
     noise_dataset = noise_dataset.map(
         lambda wave, label: wave, num_parallel_calls=tf.data.AUTOTUNE
