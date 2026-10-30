@@ -161,9 +161,7 @@ def get_excluded_labels(labels):
     # set_specific_by_count gives the merged count to the last label merged in
     # so a merged label is used if any label merging into it is used
     kept_merged = {
-        v
-        for k, v in RELABEL_MAP.items()
-        if k in labels and k not in excluded_labels
+        v for k, v in RELABEL_MAP.items() if k in labels and k not in excluded_labels
     }
     for k, v in RELABEL_MAP.items():
         if k not in excluded_labels:
@@ -679,9 +677,7 @@ def load_noise_dataset(filenames, num_labels, labels, args, excluded_tags=None):
     # only pull the tag text out, so the audio is never copied into python
     tag_counts = {}
     for tags in (
-        noise_dataset.map(lambda wave, label: label[-1])
-        .batch(1024)
-        .as_numpy_iterator()
+        noise_dataset.map(lambda wave, label: label[-1]).batch(1024).as_numpy_iterator()
     ):
         for tag in tags:
             tag = tag.decode().replace("\n", "+")

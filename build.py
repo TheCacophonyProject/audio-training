@@ -337,34 +337,133 @@ def dataset_from_signal(args):
         json.dump(meta_data, f, indent=4)
 
 
-def filter_birds(dataset, args):
-    """Removes tracks that birdnetcompare puts in "Tracks with no birdnet tags"
-    (no birdnet bird and no clear signal in the best rms window) unless perch
-    confidently agrees with the label, and tracks perch flags where birdnet
-    found neither the label nor a species of the same genus or family. Other
-    tracks failing only one check are kept and logged so we can decide later
-    how many of those to remove."""
-    import csv
-    from argparse import Namespace
-    from birdnetcompare import (
-        MATCH,
-        NO_TAGS_SECTION,
-        NON_BIRD_TAG,
-        RELATED,
-        load_taxonomy,
-        row_result,
-        track_results,
+FILTER_COLUMNS = [
+    "removed",
+    "birdnet, no perch result",
+    "birdnet only",
+    "birdnet, perch unsure",
+    "perch, birdnet disagrees",
+    "perch only",
+]
+
+
+def perch_details(row):
+    return "doubt %s probe own prob %s knn agreement %s (perch says %s / %s)" % (
+        row["doubt"],
+        row["probe_own_prob"],
+        row["knn_agreement"],
+        row["probe_label"],
+        row["knn_label"],
     )
 
-    if args.perch_flags is None:
-        logging.warning(
-            "No --perch-flags so no tracks will be removed, birdnet needs perch to agree"
+
+def perch_agrees(row, threshold):
+    # perch predicts the label with enough confidence, probe or knn
+    def score(key):
+        return float(row[key]) if row[key] != "" else 0
+
+    return (
+        row["probe_label"] == row["label"] and score("probe_own_prob") >= threshold
+    ) or (row["knn_label"] == row["label"] and score("knn_agreement") >= threshold)
+
+
+def log_filter_outcomes(outcomes, unit, dry_run):
+    logging.info(
+        "%sPer label %s: %s",
+        "DRY RUN, nothing removed. " if dry_run else "",
+        unit,
+        " / ".join(FILTER_COLUMNS),
+    )
+    totals = Counter()
+    for label, counts in sorted(outcomes.items(), key=lambda kv: -sum(kv[1].values())):
+        total = sum(counts.values())
+        totals.update(counts)
+        totals["total"] += total
+        logging.info(
+            "  %s (%s %s): %s",
+            label,
+            total,
+            unit,
+            " / ".join(
+                f"{counts[c]} ({100 * counts[c] / total:.1f}%)" for c in FILTER_COLUMNS
+            ),
         )
+    if totals["total"]:
+        logging.info(
+            "  all (%s %s): %s",
+            totals["total"],
+            unit,
+            " / ".join(
+                f"{totals[c]} ({100 * totals[c] / totals['total']:.1f}%)"
+                for c in FILTER_COLUMNS
+            ),
+        )
+
+
+def window_outcome(window, perch_rows, args):
+    """What filter_bird_windows does with one birdnet window of a track.
+    Returns the outcome and whether to remove the window"""
+    from birdnetcompare import MATCH, NO_BIRD, NON_BIRD_TAG, RELATED
+
+    status = window["status"]
+    no_birdnet = status == NO_BIRD and not window["clear_signal"]
+    flagged = any(p["flagged"] == "True" for p in perch_rows)
+    agrees = any(perch_agrees(p, args.perch_agree_prob) for p in perch_rows)
+    birdnet_disagrees = status not in (MATCH, RELATED, NON_BIRD_TAG)
+    doubts = [float(p["doubt"]) for p in perch_rows if p["doubt"] != ""]
+    if no_birdnet:
+        if flagged:
+            return "removed", True
+        if not perch_rows:
+            return "birdnet, no perch result", True
+        if not agrees:
+            return "birdnet, perch unsure", False
+        return "birdnet only", False
+    if (
+        flagged
+        and birdnet_disagrees
+        and max(doubts, default=0) >= args.perch_remove_doubt
+    ):
+        return "perch, birdnet disagrees", True
+    if flagged:
+        return "perch only", False
+    return "kept", False
+
+
+def mostly_removed(sample, removed):
+    # more than half of the sample is in removed windows of its own track, the
+    # sample's own track is last in track_ids
+    windows = removed.get(str(sample.track_ids[-1]))
+    if not windows:
+        return False
+    overlap = sum(
+        max(0, min(sample.end, end) - max(sample.start, start))
+        for start, end in windows
+    )
+    return overlap > (sample.end - sample.start) / 2
+
+
+def filter_bird_windows(dataset, args):
+    """Removes samples in birdnet windows (3s) of a track that birdnetcompare
+    finds no bird and no clear signal in unless perch confidently agrees with
+    the label, or that perch flags and birdnet finds neither the label nor a
+    species of the same genus or family in. Windows failing only one check are
+    kept and logged. With --best-segment a track's best segment is its only
+    window. Samples mostly in removed windows of their track are removed.
+    Perch rows from perchembed --full-track are matched to the windows they
+    overlap, a track with one perch row uses it for all its windows"""
+    import csv
+    from argparse import Namespace
+    from birdnetcompare import load_taxonomy, track_results
+
     perch = {}
     if args.perch_flags is not None:
         with open(args.perch_flags, newline="") as f:
-            perch = {row["track_id"]: row for row in csv.DictReader(f)}
-        logging.info("Loaded %s perch results from %s", len(perch), args.perch_flags)
+            for row in csv.DictReader(f):
+                perch.setdefault(row["track_id"], []).append(row)
+        logging.info(
+            "Loaded perch results for %s tracks from %s", len(perch), args.perch_flags
+        )
 
     taxonomy = load_taxonomy(Path(__file__).parent / "eBird_taxonomy_v2024.csv")
     compare_args = Namespace(
@@ -374,170 +473,73 @@ def filter_birds(dataset, args):
         clear_signal_db=args.clear_signal_db,
     )
 
-    def perch_details(row):
-        return "doubt %s probe own prob %s knn agreement %s (perch says %s / %s)" % (
-            row["doubt"],
-            row["probe_own_prob"],
-            row["knn_agreement"],
-            row["probe_label"],
-            row["knn_label"],
-        )
+    def window_perch(rows, start, end):
+        if not rows or len(rows) == 1:
+            return rows or []
 
-    def perch_agrees_with(row):
-        # perch predicts the label with enough confidence, probe or knn
-        def score(key):
-            return float(row[key]) if row[key] != "" else 0
+        # the perch window covering most of the birdnet window decides it
+        def overlap(p):
+            return min(end, float(p["perch_end"])) - max(start, float(p["perch_start"]))
 
-        threshold = args.perch_agree_prob
-        return (
-            row["probe_label"] == row["label"] and score("probe_own_prob") >= threshold
-        ) or (row["knn_label"] == row["label"] and score("knn_agreement") >= threshold)
+        best = max(rows, key=overlap)
+        return [best] if overlap(best) > 0 else []
 
-    # per label counts of what happened to each track
     outcomes = {}
-    dataset.samples = []
+    removed_samples = 0
     for r in dataset.recs.values():
-        no_birdnet = set()
-        birdnet_status = {}
-        if "birdnet" in r.metadata:
-            for row in track_results(
-                Path(r.filename), r.metadata, taxonomy, compare_args
-            ):
-                birdnet_status[str(row["track_id"])] = row["status"]
-                if row_result(row) == NO_TAGS_SECTION:
-                    no_birdnet.add(str(row["track_id"]))
-
-        tracks_del = []
-        for t in r.tracks:
+        if "birdnet" not in r.metadata:
+            continue
+        tracks = {str(t.id): t for t in r.tracks}
+        # a best segment track's only sample is its best segment, so that is
+        # its only window
+        compare_args.segments = {}
+        if args.best_segment:
+            compare_args.segments = {
+                track_id: (t.best_start, t.best_end)
+                for track_id, t in tracks.items()
+                if t.best_start is not None
+            }
+        windows = []
+        # only the window rows are needed
+        for _ in track_results(
+            Path(r.filename), r.metadata, taxonomy, compare_args, windows
+        ):
+            pass
+        removed = {}
+        for w in windows:
+            track_id = str(w["track_id"])
+            t = tracks.get(track_id)
+            if t is None:
+                continue
             label = ";".join(sorted(t.human_tags))
             if t.noise_track and not t.bird_track:
                 # birdnet and perch only check bird labels
                 outcomes.setdefault(label, Counter())["noise skipped"] += 1
                 continue
-            track_id = str(t.id)
-            perch_row = perch.get(track_id)
-            perch_flagged = perch_row is not None and perch_row["flagged"] == "True"
-            # not being flagged doesn't mean perch agrees, so check its predictions
-            perch_agrees = perch_row is not None and perch_agrees_with(perch_row)
-            # birdnet found the label or a species of the same genus or family,
-            # non bird tags can't be checked by birdnet so count as agreeing
-            status = birdnet_status.get(track_id)
-            birdnet_disagrees = status is not None and status not in (
-                MATCH,
-                RELATED,
-                NON_BIRD_TAG,
-            )
-            if track_id in no_birdnet:
-                if perch_flagged:
-                    outcome = "removed"
-                    tracks_del.append(t)
-                    logging.info(
-                        "Removing rec %s track %s %s, no birdnet bird or clear signal and %s",
-                        r.id,
-                        track_id,
-                        label,
-                        perch_details(perch_row),
-                    )
-                elif perch_row is None:
-                    outcome = "birdnet, no perch result"
-                    tracks_del.append(t)
-                    logging.info(
-                        "Removing rec %s track %s %s, no birdnet bird or clear signal and no perch result",
-                        r.id,
-                        track_id,
-                        label,
-                    )
-                elif not perch_agrees:
-                    outcome = "birdnet, perch unsure"
-                    logging.info(
-                        "Keeping rec %s track %s %s, no birdnet bird or clear signal, perch not flagged but doesnt predict label, %s",
-                        r.id,
-                        track_id,
-                        label,
-                        perch_details(perch_row),
-                    )
-                else:
-                    outcome = "birdnet only"
-                    logging.info(
-                        "Keeping rec %s track %s %s, no birdnet bird or clear signal but perch agrees with label, %s",
-                        r.id,
-                        track_id,
-                        label,
-                        perch_details(perch_row),
-                    )
-            elif (
-                perch_flagged
-                and birdnet_disagrees
-                and float(perch_row["doubt"]) >= args.perch_remove_doubt
-            ):
-                outcome = "perch, birdnet disagrees"
-                tracks_del.append(t)
-                logging.info(
-                    "Removing rec %s track %s %s, perch flagged %s and birdnet %s",
-                    r.id,
-                    track_id,
-                    label,
-                    perch_details(perch_row),
-                    status,
-                )
-            elif perch_flagged:
-                outcome = "perch only"
-                logging.info(
-                    "Keeping rec %s track %s %s, perch flagged %s",
-                    r.id,
-                    track_id,
-                    label,
-                    perch_details(perch_row),
-                )
-            else:
-                outcome = "kept"
+            rows = window_perch(perch.get(track_id), w["window_start"], w["window_end"])
+            outcome, remove = window_outcome(w, rows, args)
             outcomes.setdefault(label, Counter())[outcome] += 1
+            if remove:
+                removed.setdefault(track_id, []).append(
+                    (w["window_start"], w["window_end"])
+                )
+                logging.debug(
+                    "Removing rec %s track %s %s window %s-%s, %s",
+                    r.id,
+                    track_id,
+                    label,
+                    w["window_start"],
+                    w["window_end"],
+                    outcome,
+                )
+        if removed and not args.filter_dry_run:
+            keep = [s for s in r.samples if not mostly_removed(s, removed)]
+            removed_samples += len(r.samples) - len(keep)
+            r.samples = keep
 
-        if not args.filter_dry_run:
-            for t in tracks_del:
-                r.tracks.remove(t)
-            # recalc_tags only adds so clear tags of removed tracks first
-            r.human_tags = set()
-            r.recalc_tags()
-        r.samples = []
-        r.load_samples(dataset.config.segment_length, dataset.config.segment_stride)
-        dataset.samples.extend(r.samples)
-
-    columns = [
-        "removed",
-        "birdnet, no perch result",
-        "birdnet only",
-        "birdnet, perch unsure",
-        "perch, birdnet disagrees",
-        "perch only",
-    ]
-    logging.info(
-        "%sPer label tracks: %s",
-        "DRY RUN, nothing removed. " if args.filter_dry_run else "",
-        " / ".join(columns),
-    )
-    totals = Counter()
-    for label, counts in sorted(outcomes.items(), key=lambda kv: -sum(kv[1].values())):
-        total = sum(counts.values())
-        totals.update(counts)
-        totals["total"] += total
-        logging.info(
-            "  %s (%s tracks): %s",
-            label,
-            total,
-            " / ".join(
-                f"{counts[c]} ({100 * counts[c] / total:.1f}%)" for c in columns
-            ),
-        )
-    if totals["total"]:
-        logging.info(
-            "  all (%s tracks): %s",
-            totals["total"],
-            " / ".join(
-                f"{totals[c]} ({100 * totals[c] / totals['total']:.1f}%)"
-                for c in columns
-            ),
-        )
+    dataset.samples = [s for r in dataset.recs.values() for s in r.samples]
+    log_filter_outcomes(outcomes, "windows", args.filter_dry_run)
+    logging.info("Removed %s samples in removed windows", removed_samples)
     logging.info("Post filtering counts")
     dataset.print_sample_counts()
 
@@ -830,7 +832,7 @@ def main():
     dataset.print_sample_counts()
 
     if args.filter_birds:
-        filter_birds(dataset, args)
+        filter_bird_windows(dataset, args)
     # for r in dataset.recs:
     #     if "whistler" not in r.human_tags:
     #         print(r.id, " missing", r.human_tags)
@@ -909,7 +911,7 @@ def main():
         noise_ds = None
         if args.noise_dataset:
             # noise only samples go to the noise dataset, not the main one
-            dataset, noise_ds = split_noise(dataset)
+            dataset, noise_ds = split_noise(dataset, args)
         r_counts = dataset.get_rec_counts()
         for k, v in r_counts.items():
             r_counts[k] = len(v)
@@ -958,27 +960,50 @@ def main():
         json.dump({"seed": config.seed, "recs": dataset_recs}, f, indent=4)
 
 
-def split_noise(dataset):
+def birdnet_bird(rec, sample, min_conf, taxonomy):
+    # a birdnet bird detection overlapping the sample
+    from birdnetcompare import detection_taxon
+
+    return any(
+        d["confidence"] >= min_conf
+        and d["start"] < sample.end
+        and d["end"] > sample.start
+        and detection_taxon(d, taxonomy) is not None
+        for d in rec.metadata.get("birdnet", [])
+    )
+
+
+def split_noise(dataset, args):
     # move samples whose labels are all noise labels into their own dataset,
     # kept per split so noise mixed into training never comes from validation
-    # or test recordings. Recordings left with no samples are removed
+    # or test recordings. Noise samples birdnet hears a bird in aren't only
+    # noise so are dropped. Recordings left with no samples are removed
     from birdsconfig import NOISE_LABELS
+    from birdnetcompare import load_taxonomy
 
+    taxonomy = load_taxonomy(Path(__file__).parent / "eBird_taxonomy_v2024.csv")
     noise_ds = AudioDataset(dataset.name, dataset.config)
+    with_bird = 0
     for rec in list(dataset.recs.values()):
         noise_samples = [
             s for s in rec.samples if all(tag in NOISE_LABELS for tag in s.tags)
         ]
         for sample in noise_samples:
-            noise_ds.add_sample(rec, sample)
+            if birdnet_bird(rec, sample, args.noise_birdnet_conf, taxonomy):
+                with_bird += 1
+            else:
+                noise_ds.add_sample(rec, sample)
             rec.samples.remove(sample)
             dataset.remove(sample)
         if len(rec.samples) == 0:
             del dataset.recs[rec.id]
     logging.info(
-        "%s moved %s noise only samples to noise dataset",
+        "%s moved %s noise only samples to noise dataset, dropped %s birdnet "
+        "heard a bird in (conf >= %s)",
         dataset.name,
         len(noise_ds.samples),
+        with_bird,
+        args.noise_birdnet_conf,
     )
     return dataset, noise_ds
 
@@ -1194,6 +1219,13 @@ def parse_args():
         action="store_true",
         help="Also write samples whose labels are all in NOISE_LABELS to "
         "training-data/noise/<split> for mixing in as background noise",
+    )
+    parser.add_argument(
+        "--noise-birdnet-conf",
+        type=float,
+        default=0.5,
+        help="With --noise-dataset noise only samples overlapping a birdnet bird "
+        "detection with at least this confidence are dropped",
     )
     parser.add_argument(
         "--split-file",

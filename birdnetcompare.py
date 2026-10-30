@@ -2,6 +2,7 @@ import argparse
 import csv
 import json
 import logging
+import math
 from collections import Counter
 from functools import lru_cache
 from pathlib import Path
@@ -40,6 +41,9 @@ SPECIES_SIGNAL_MIN_FREQ = {
     "ausbit1": 100,  # bittern
     "morepo2": 300,  # morepork
 }
+
+# seconds of audio birdnet gives each prediction
+BIRDNET_WINDOW = 3
 
 # manual tags that just mean "some bird"
 GENERIC_BIRD_TAGS = {"bird", "unidentified", "other"}
@@ -280,7 +284,7 @@ def row_result(row):
     if row["status"] == NON_BIRD_TAG:
         return NON_BIRD_SECTION
     if row["status"] == NO_BIRD:
-        if row["rms_clear_signal"]:
+        if row["clear_signal"]:
             return MISSED_SECTION
         return NO_TAGS_SECTION
     return DIFFERING_SECTION
@@ -340,28 +344,53 @@ def evaluate(found, tag_taxa, generic_bird, non_bird, taxonomy):
     return status, None if best is None else best[0], bird_detections
 
 
-def untagged_species(bird_detections, tag_taxa, manual, args):
+def model_code(code, relabel):
+    code = training_code(code)
+    return relabel.get(code, code)
+
+
+def tag_codes(tag_taxa, manual, relabel):
+    codes = {model_code(t["code"], relabel) for t in tag_taxa}
+    for t in manual:
+        codes.update(
+            model_code(ebird_id, relabel) for ebird_id in training_ebird_ids(t["what"])
+        )
+    return codes
+
+
+def tagged_as(taxon, code, tag_taxa, codes):
+    return code in codes or any(
+        same_species_renamed(taxon, t) or in_group(taxon, t) for t in tag_taxa
+    )
+
+
+def overlaps_track(start, end, other):
+    # tracks next to each other e.g. 0-1 and 1-5 don't overlap
+    return min(end, other["end"]) - max(start, other["start"]) > 0
+
+
+def untagged_species(bird_detections, tag_taxa, manual, args, others=()):
     """Birdnet species in the track that aren't manually tagged, as {code:
     confidence}. Codes are relabelled as in training, and with relabel (from
-    --labels-meta) merged into the model labels e.g. sbweye1 -> silver3"""
+    --labels-meta) merged into the model labels e.g. sbweye1 -> silver3.
+    others are the tracks overlapping this one, a species tagged on one of them
+    counts as tagged where the detection overlaps it"""
     min_conf = getattr(args, "untagged_min_conf", 0.5)
     relabel = getattr(args, "relabel", {})
-
-    def model_code(code):
-        code = training_code(code)
-        return relabel.get(code, code)
-
-    tagged = {model_code(t["code"]) for t in tag_taxa}
-    for t in manual:
-        tagged.update(model_code(ebird_id) for ebird_id in training_ebird_ids(t["what"]))
+    codes = tag_codes(tag_taxa, manual, relabel)
+    other_codes = [(o, tag_codes(o["taxa"], o["manual"], relabel)) for o in others]
     untagged = {}
     for detection, taxon in bird_detections:
         if detection["confidence"] < min_conf:
             continue
-        if any(same_species_renamed(taxon, t) or in_group(taxon, t) for t in tag_taxa):
+        code = model_code(taxon["code"], relabel)
+        if tagged_as(taxon, code, tag_taxa, codes):
             continue
-        code = model_code(taxon["code"])
-        if code in tagged:
+        if any(
+            overlaps_track(detection["start"], detection["end"], o)
+            and tagged_as(taxon, code, o["taxa"], o_codes)
+            for o, o_codes in other_codes
+        ):
             continue
         untagged[code] = max(untagged.get(code, 0), detection["confidence"])
     return untagged
@@ -383,20 +412,106 @@ def format_detections(detections):
     )
 
 
-def track_results(filename, meta, taxonomy, args):
+def birdnet_windows(start, end):
+    """The birdnet windows a track covers, birdnet scores back to back
+    BIRDNET_WINDOW second windows from the recording start so a 0-5s track has
+    0-3 and 3-6"""
+    # small epsilon so float error doesn't drop the window a track starts on
+    first = math.floor(start / BIRDNET_WINDOW + 1e-9) * BIRDNET_WINDOW
+    windows = []
+    window_start = first
+    while window_start < end:
+        windows.append((window_start, window_start + BIRDNET_WINDOW))
+        window_start += BIRDNET_WINDOW
+    return windows
+
+
+def window_result(
+    filename,
+    meta,
+    track,
+    manual,
+    window,
+    detections,
+    tags,
+    cutoff,
+    others,
+    taxonomy,
+    args,
+):
+    """Comparison of one birdnet window of a track, to see which parts of a
+    track birdnet finds the tag in e.g. to tighten tracks"""
+    tag_taxa, generic_bird, non_bird = tags
+    found = overlapping(detections, *window, 0)
+    status, best, bird_detections = evaluate(
+        found, tag_taxa, generic_bird, non_bird, taxonomy
+    )
+    signals = track_signals(meta, *window, cutoff)
+    window_signal = clear_signal(signals, window, args.clear_signal_db)
+    return {
+        "file": filename.name,
+        "recording_id": meta.get("id"),
+        "track_id": track.get("id"),
+        "track_start": track.get("start", 0),
+        "track_end": track.get("end", track.get("start", 0)),
+        "manual_tags": ";".join(t["what"] for t in manual),
+        "window_start": window[0],
+        "window_end": window[1],
+        "status": status,
+        "birdnet_tag": "" if best is None else best["common_name"],
+        "birdnet_confidence": "" if best is None else best["confidence"],
+        "signal_count": "" if signals is None else len(signals),
+        "clear_signal": (
+            "" if window_signal is None else format_signals([window_signal])
+        ),
+        "birdnet_birds": format_detections([d for d, _ in bird_detections]),
+        "birdnet_untagged": format_untagged(
+            untagged_species(bird_detections, tag_taxa, manual, args, others)
+        ),
+    }
+
+
+def track_results(filename, meta, taxonomy, args, window_rows=None):
+    """One comparison row per manually tagged track, and with window_rows (a
+    list) a row per birdnet window of each track appended to it"""
     detections = [d for d in meta["birdnet"] if d["confidence"] >= args.min_conf]
     tracks = [
         track
-        for track in meta.get("Tracks",[])
+        for track in meta.get("Tracks", [])
         if any(t.get("automatic") is False for t in track.get("tags", []))
     ]
     if not tracks:
         return
 
+    # every track's tags, birdnet species tagged on an overlapping track aren't
+    # missing tags
+    track_tags = []
+    for track in tracks:
+        manual = [t for t in track.get("tags", []) if t.get("automatic") is False]
+        start = track.get("start", 0)
+        track_tags.append(
+            {
+                "track": track,
+                "start": start,
+                "end": track.get("end", start),
+                "manual": manual,
+                "taxa": [
+                    taxon
+                    for taxon in (tag_taxon(t, taxonomy) for t in manual)
+                    if taxon is not None
+                ],
+            }
+        )
+
     for track in tracks:
         manual = [t for t in track.get("tags", []) if t.get("automatic") is False]
         start = track.get("start", 0)
         end = track.get("end", start)
+        others = [
+            o
+            for o in track_tags
+            if o["track"] is not track and overlaps_track(start, end, o)
+        ]
 
         tag_taxa = []
         generic_bird = False
@@ -410,15 +525,29 @@ def track_results(filename, meta, taxonomy, args):
             else:
                 non_bird.append(tag["what"])
 
-        found = overlapping(detections, start, end, args.tolerance)
+        # --window rms compares birdnet and looks for a clear signal in the best
+        # rms window only, track uses start to end. Without it (build.py) birdnet
+        # is compared over the track and the clear signal is from the rms window
+        compare = getattr(args, "window", None)
+        window = rms_window(
+            track, meta, bool(tag_taxa or generic_bird), args.segment_length
+        )
+        # args.segments, {track id: (start, end)}, compares just that part of
+        # the track e.g. build.py --best-segment's best segment
+        segment = (getattr(args, "segments", None) or {}).get(str(track.get("id")))
+        if segment is not None:
+            compare_window = segment
+        elif compare == "rms" and window is not None:
+            compare_window = window
+        else:
+            # tracks without rms data have no best window
+            compare_window = (start, end)
+        found = overlapping(detections, *compare_window, args.tolerance)
         status, best, bird_detections = evaluate(
             found, tag_taxa, generic_bird, non_bird, taxonomy
         )
 
         # same comparison using only the loudest window of the track
-        window = rms_window(
-            track, meta, bool(tag_taxa or generic_bird), args.segment_length
-        )
         rms_status, rms_best = "", None
         if window is not None:
             rms_found = overlapping(detections, *window, args.tolerance)
@@ -430,6 +559,35 @@ def track_results(filename, meta, taxonomy, args):
         signals = track_signals(meta, start, end, cutoff)
         strongest = signals[0] if signals else None
         rms_signal = clear_signal(signals, window, args.clear_signal_db)
+        track_signal = clear_signal(signals, (start, end), args.clear_signal_db)
+        # which clear signal decides if a track birdnet heard nothing in was
+        # missed by birdnet or is empty
+        if segment is not None:
+            used_signal = clear_signal(signals, segment, args.clear_signal_db)
+        elif compare == "track":
+            used_signal = track_signal
+        else:
+            used_signal = rms_signal
+
+        if window_rows is not None:
+            # a given segment is the only window checked
+            windows = [segment] if segment is not None else birdnet_windows(start, end)
+            for window_start, window_end in windows:
+                window_rows.append(
+                    window_result(
+                        filename,
+                        meta,
+                        track,
+                        manual,
+                        (window_start, window_end),
+                        detections,
+                        (tag_taxa, generic_bird, non_bird),
+                        cutoff,
+                        others,
+                        taxonomy,
+                        args,
+                    )
+                )
 
         yield {
             "file": filename.name,
@@ -466,15 +624,57 @@ def track_results(filename, meta, taxonomy, args):
             "rms_clear_signal": (
                 "" if rms_signal is None else format_signals([rms_signal])
             ),
+            "track_clear_signal": (
+                "" if track_signal is None else format_signals([track_signal])
+            ),
+            "clear_signal": (
+                "" if used_signal is None else format_signals([used_signal])
+            ),
             "birdnet_birds": format_detections([d for d, _ in bird_detections]),
             "birdnet_other": format_detections(
                 [d for d in found if detection_taxon(d, taxonomy) is None]
             ),
             "birdnet_untagged": format_untagged(
-                untagged_species(bird_detections, tag_taxa, manual, args)
+                untagged_species(bird_detections, tag_taxa, manual, args, others)
             ),
             "birdnet_model": meta.get("birdnet_model"),
         }
+
+
+def write_windows(path, window_rows):
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(window_rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(window_rows)
+    logging.info("Wrote %s birdnet windows to %s", len(window_rows), path)
+
+    # bird tracks birdnet finds the tag in, with windows at the start or end it
+    # doesn't, those could be tightened to the windows with the tag
+    by_track = {}
+    for r in window_rows:
+        by_track.setdefault((r["file"], r["track_id"]), []).append(r)
+    found = (MATCH, RELATED)
+    tightened = 0
+    trimmed = 0.0
+    for windows in by_track.values():
+        hits = [i for i, w in enumerate(windows) if w["status"] in found]
+        if not hits:
+            continue
+        first, last = hits[0], hits[-1]
+        if first == 0 and last == len(windows) - 1:
+            continue
+        track_start, track_end = windows[0]["track_start"], windows[0]["track_end"]
+        new_start = max(track_start, windows[first]["window_start"])
+        new_end = min(track_end, windows[last]["window_end"])
+        tightened += 1
+        trimmed += (track_end - track_start) - (new_end - new_start)
+    logging.info(
+        "%s of %s tracks could be tightened to the birdnet windows with the tag, "
+        "%.0fs trimmed in total",
+        tightened,
+        len(by_track),
+        trimmed,
+    )
 
 
 def main():
@@ -524,6 +724,18 @@ def main():
         help="Model metadata.txt, the untagged summary is limited to its labels "
         "and species are merged into them as in training",
     )
+    parser.add_argument(
+        "--window",
+        choices=["rms", "track"],
+        default="rms",
+        help="Part of each track to compare with birdnet and look for a clear "
+        "signal in, the best rms window or start to end",
+    )
+    parser.add_argument(
+        "--windows-out",
+        help="Also write a row per birdnet window (3s) of each track here e.g. a "
+        "0-5s track has 0-3 and 3-6, to see where in a track birdnet finds the tag",
+    )
     args = parser.parse_args()
 
     args.relabel = {}
@@ -538,6 +750,7 @@ def main():
 
     taxonomy = load_taxonomy(args.taxonomy)
     rows = []
+    window_rows = [] if args.windows_out else None
     skipped = 0
     for txt in sorted(Path(args.dir).rglob("*.txt")):
         try:
@@ -548,11 +761,14 @@ def main():
         if not isinstance(meta, dict) or "birdnet" not in meta:
             skipped += 1
             continue
-        rows.extend(track_results(txt, meta, taxonomy, args))
+        rows.extend(track_results(txt, meta, taxonomy, args, window_rows))
 
     if not rows:
         logging.info("No tracks with manual tags and birdnet results found")
         return
+
+    if window_rows:
+        write_windows(args.windows_out, window_rows)
 
     fieldnames = list(rows[0].keys())
     with open(args.out, "w", newline="") as f:

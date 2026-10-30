@@ -25,7 +25,9 @@ def init_logging():
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("model_dir", help="Checkpoint run dir e.g. train/checkpoints/spectv4")
+    parser.add_argument(
+        "model_dir", help="Checkpoint run dir e.g. train/checkpoints/spectv4"
+    )
     parser.add_argument("-d", "--dataset-dir", required=True, help="Dataset directory")
     parser.add_argument(
         "-w",
@@ -35,7 +37,9 @@ def parse_args():
         help="Weights files in the model dir",
     )
     parser.add_argument(
-        "--split", default="validation", help="Dataset split to use e.g. validation, test"
+        "--split",
+        default="validation",
+        help="Dataset split to use e.g. validation, test",
     )
     parser.add_argument(
         "--threshold", type=float, default=0.5, help="Threshold for precision recall"

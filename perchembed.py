@@ -2,6 +2,7 @@ import argparse
 import csv
 import json
 import logging
+import math
 import warnings
 from collections import Counter
 from pathlib import Path
@@ -96,6 +97,20 @@ def perch_window(window, track, duration):
     start = centre - PERCH_LENGTH / 2
     start = max(0, min(start, duration - PERCH_LENGTH))
     return start, start + PERCH_LENGTH
+
+
+def track_windows(track, duration):
+    """Perch length windows covering the whole track, the last one ends at the
+    track end so it overlaps the one before rather than running past the track"""
+    start = track.get("start", 0)
+    end = min(track.get("end", start), duration)
+    if end - start <= PERCH_LENGTH:
+        return [perch_window(None, track, duration)]
+    # rounded so float error doesn't add a window e.g. 10.0000001s
+    count = math.ceil(round((end - start) / PERCH_LENGTH, 3))
+    starts = [start + i * PERCH_LENGTH for i in range(count - 1)]
+    starts.append(end - PERCH_LENGTH)
+    return [(s, s + PERCH_LENGTH) for s in starts]
 
 
 def embed(model, y, start):
@@ -275,6 +290,12 @@ def main():
         help="Length of the best rms window, the perch window is centred on it",
     )
     parser.add_argument(
+        "--full-track",
+        action="store_true",
+        help="Embed the whole track in back to back perch length windows instead "
+        "of one window on the best rms window, use a separate --out",
+    )
+    parser.add_argument(
         "--analyse",
         action="store_true",
         help="Flag doubtful labels from the saved embeddings instead of embedding",
@@ -360,30 +381,38 @@ def main():
                 manual = [
                     t for t in track.get("tags", []) if t.get("automatic") is False
                 ]
-                # bird tracks use bird_rms, others noise_rms, same as audiodataset
-                bird_track = any(
-                    tag_taxon(t, taxonomy) is not None or t["what"] in GENERIC_BIRD_TAGS
-                    for t in manual
-                )
-                window = rms_window(track, meta, bird_track, args.segment_length)
-                start, end = perch_window(window, track, duration)
-                embeddings.append(embed(model, y, start))
-                rows.append(
-                    {
-                        "index": total,
-                        "file": str(txt),
-                        "recording_id": meta.get("id"),
-                        "track_id": track.get("id"),
-                        "manual_tags": ";".join(t["what"] for t in manual),
-                        "track_start": track.get("start"),
-                        "track_end": track.get("end"),
-                        "rms_start": "" if window is None else round(window[0], 2),
-                        "rms_end": "" if window is None else round(window[1], 2),
-                        "perch_start": round(start, 2),
-                        "perch_end": round(end, 2),
-                    }
-                )
-                total += 1
+                if args.full_track:
+                    window = None
+                    perch_windows = track_windows(track, duration)
+                else:
+                    # bird tracks use bird_rms, others noise_rms, same as audiodataset
+                    bird_track = any(
+                        tag_taxon(t, taxonomy) is not None
+                        or t["what"] in GENERIC_BIRD_TAGS
+                        for t in manual
+                    )
+                    window = rms_window(track, meta, bird_track, args.segment_length)
+                    perch_windows = [perch_window(window, track, duration)]
+                for start, end in perch_windows:
+                    embeddings.append(embed(model, y, start))
+                    rows.append(
+                        {
+                            "index": total,
+                            "file": str(txt),
+                            "recording_id": meta.get("id"),
+                            "track_id": track.get("id"),
+                            "manual_tags": ";".join(t["what"] for t in manual),
+                            "track_start": track.get("start"),
+                            "track_end": track.get("end"),
+                            "rms_start": "" if window is None else round(window[0], 2),
+                            "rms_end": "" if window is None else round(window[1], 2),
+                            "perch_start": round(start, 2),
+                            "perch_end": round(end, 2),
+                        }
+                    )
+                    total += 1
+                # checked per track so a track's windows are never split across
+                # shards, resuming skips whole tracks
                 if len(rows) >= args.shard_size:
                     save_shard(out_dir, next_shard, embeddings, rows)
                     next_shard += 1
