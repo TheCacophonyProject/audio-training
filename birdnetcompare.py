@@ -3,6 +3,7 @@ import csv
 import json
 import logging
 from collections import Counter
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -42,6 +43,13 @@ SPECIES_SIGNAL_MIN_FREQ = {
 
 # manual tags that just mean "some bird"
 GENERIC_BIRD_TAGS = {"bird", "unidentified", "other"}
+# tags training uses that aren't ebird species, matched by an ebird code or by
+# any birdnet species in the genus or family
+GROUP_TAGS = {
+    "rooster": {"code": "redjun"},
+    "kiwi": {"genus": "Apteryx"},
+    "dove": {"family": "Columbidae (Pigeons and Doves)"},
+}
 HUMAN_SCIENTIFIC = "Homo Sapiens"
 
 
@@ -79,9 +87,74 @@ def species_taxon(taxon, by_code):
     return taxon
 
 
+@lru_cache(maxsize=None)
+def training_maps():
+    # imported when needed as audiodataset loads tensorflow, utils reads
+    # classes.csv and the taxonomy from the working dir
+    from audiodataset import RELABEL, labels_to_ebird_map
+
+    return labels_to_ebird_map, RELABEL
+
+
+def training_ebird_ids(what):
+    """Ebird ids training gives a tag, as in audiodataset Track.add_tag, before
+    and after its RELABEL e.g. "norfolk golden whistler" -> y01193"""
+    from utils import get_ebird_id
+
+    ebird_map, relabel = training_maps()
+    original = get_ebird_id(what, ebird_map)
+    return relabel.get(original, original), original
+
+
+def training_code(code):
+    _, relabel = training_maps()
+    return relabel.get(code, code)
+
+
+def group_taxon(what, taxonomy):
+    by_code, _, _, by_genus = taxonomy
+    group = GROUP_TAGS.get(what)
+    if group is None:
+        return None
+    if "code" in group:
+        return by_code[group["code"]]
+    family = group.get("family")
+    if "genus" in group:
+        family = by_genus[group["genus"].lower()]["family"]
+    return {
+        "code": what,
+        "category": "group",
+        "scientific": group.get("genus", ""),
+        "common": what,
+        "family": family,
+        "report_as": "",
+        "group_genus": group.get("genus"),
+    }
+
+
+def in_group(taxon, tag):
+    # birdnet species is one of a group tag's species e.g. nibkiw1 for kiwi
+    if tag.get("category") != "group":
+        return False
+    if tag["group_genus"] is not None:
+        return genus(taxon) == tag["group_genus"]
+    return taxon["family"] == tag["family"]
+
+
 def tag_taxon(tag, taxonomy):
     by_code, _, by_common, _ = taxonomy
-    taxon = by_code.get(tag.get("ebird_id")) or by_common.get(label_key(tag["what"]))
+    taxon = by_code.get(tag.get("ebird_id"))
+    if taxon is None:
+        # relabelled ids aren't always ebird codes e.g. nibkiw1 -> kiwi
+        for ebird_id in training_ebird_ids(tag["what"]):
+            taxon = by_code.get(ebird_id)
+            if taxon is not None:
+                break
+            taxon = group_taxon(ebird_id, taxonomy)
+            if taxon is not None:
+                return taxon
+    if taxon is None:
+        taxon = by_common.get(label_key(tag["what"]))
     return None if taxon is None else species_taxon(taxon, by_code)
 
 
@@ -129,7 +202,11 @@ def compare(tag_taxa, generic_bird, bird_detections):
     best = (DIFFERENT, None)
     for detection, taxon in bird_detections:
         for tag in tag_taxa:
-            if taxon["code"] == tag["code"] or same_species_renamed(taxon, tag):
+            if (
+                taxon["code"] == tag["code"]
+                or same_species_renamed(taxon, tag)
+                or in_group(taxon, tag)
+            ):
                 return MATCH, (detection, taxon)
             if genus(taxon) == genus(tag) or taxon["family"] == tag["family"]:
                 if best[0] != RELATED:
@@ -265,19 +342,25 @@ def evaluate(found, tag_taxa, generic_bird, non_bird, taxonomy):
 
 def untagged_species(bird_detections, tag_taxa, manual, args):
     """Birdnet species in the track that aren't manually tagged, as {code:
-    confidence}. With relabel (from --labels-meta) codes are merged into the
-    model labels e.g. nibkiw1 -> kiwi"""
+    confidence}. Codes are relabelled as in training, and with relabel (from
+    --labels-meta) merged into the model labels e.g. sbweye1 -> silver3"""
     min_conf = getattr(args, "untagged_min_conf", 0.5)
     relabel = getattr(args, "relabel", {})
-    tagged = {relabel.get(t["code"], t["code"]) for t in tag_taxa}
-    tagged.update(relabel.get(t["what"], t["what"]) for t in manual)
+
+    def model_code(code):
+        code = training_code(code)
+        return relabel.get(code, code)
+
+    tagged = {model_code(t["code"]) for t in tag_taxa}
+    for t in manual:
+        tagged.update(model_code(ebird_id) for ebird_id in training_ebird_ids(t["what"]))
     untagged = {}
     for detection, taxon in bird_detections:
         if detection["confidence"] < min_conf:
             continue
-        if any(same_species_renamed(taxon, t) for t in tag_taxa):
+        if any(same_species_renamed(taxon, t) or in_group(taxon, t) for t in tag_taxa):
             continue
-        code = relabel.get(taxon["code"], taxon["code"])
+        code = model_code(taxon["code"])
         if code in tagged:
             continue
         untagged[code] = max(untagged.get(code, 0), detection["confidence"])
@@ -304,7 +387,7 @@ def track_results(filename, meta, taxonomy, args):
     detections = [d for d in meta["birdnet"] if d["confidence"] >= args.min_conf]
     tracks = [
         track
-        for track in meta.get("tracks", [])
+        for track in meta.get("Tracks",[])
         if any(t.get("automatic") is False for t in track.get("tags", []))
     ]
     if not tracks:
@@ -538,6 +621,7 @@ def main():
             if model_labels is None or code in model_labels
         ]
         for tag in r["manual_tags"].split(";"):
+            tag = training_ebird_ids(tag)[0]
             tag = args.relabel.get(tag, tag)
             counts = untagged_per_tag.setdefault(tag, [0, Counter()])
             counts[0] += 1
