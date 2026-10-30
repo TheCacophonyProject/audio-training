@@ -263,6 +263,36 @@ def evaluate(found, tag_taxa, generic_bird, non_bird, taxonomy):
     return status, None if best is None else best[0], bird_detections
 
 
+def untagged_species(bird_detections, tag_taxa, manual, args):
+    """Birdnet species in the track that aren't manually tagged, as {code:
+    confidence}. With relabel (from --labels-meta) codes are merged into the
+    model labels e.g. nibkiw1 -> kiwi"""
+    min_conf = getattr(args, "untagged_min_conf", 0.5)
+    relabel = getattr(args, "relabel", {})
+    tagged = {relabel.get(t["code"], t["code"]) for t in tag_taxa}
+    tagged.update(relabel.get(t["what"], t["what"]) for t in manual)
+    untagged = {}
+    for detection, taxon in bird_detections:
+        if detection["confidence"] < min_conf:
+            continue
+        if any(same_species_renamed(taxon, t) for t in tag_taxa):
+            continue
+        code = relabel.get(taxon["code"], taxon["code"])
+        if code in tagged:
+            continue
+        untagged[code] = max(untagged.get(code, 0), detection["confidence"])
+    return untagged
+
+
+def format_untagged(untagged):
+    ordered = sorted(untagged.items(), key=lambda kv: -kv[1])
+    return "; ".join(f"{code}:{conf:.2f}" for code, conf in ordered)
+
+
+def parse_untagged(text):
+    return [item.rsplit(":", 1)[0] for item in text.split("; ") if item]
+
+
 def format_detections(detections):
     return "; ".join(
         f"{d['common_name']}:{d['confidence']:.2f} ({d['start']}-{d['end']}s)"
@@ -357,6 +387,9 @@ def track_results(filename, meta, taxonomy, args):
             "birdnet_other": format_detections(
                 [d for d in found if detection_taxon(d, taxonomy) is None]
             ),
+            "birdnet_untagged": format_untagged(
+                untagged_species(bird_detections, tag_taxa, manual, args)
+            ),
             "birdnet_model": meta.get("birdnet_model"),
         }
 
@@ -396,7 +429,29 @@ def main():
         help="Minimum signal strength (db above background) to count as a clear "
         "signal, signals have to be at least ~9.5db to be found at all",
     )
+    parser.add_argument(
+        "--untagged-min-conf",
+        type=float,
+        default=0.5,
+        help="Minimum birdnet confidence for a species to be listed in "
+        "birdnet_untagged, only detections above --min-conf are looked at",
+    )
+    parser.add_argument(
+        "--labels-meta",
+        help="Model metadata.txt, the untagged summary is limited to its labels "
+        "and species are merged into them as in training",
+    )
     args = parser.parse_args()
+
+    args.relabel = {}
+    model_labels = None
+    if args.labels_meta is not None:
+        # birdsconfig needs the repo dir, only import it when it's wanted
+        from birdsconfig import RELABEL_MAP
+
+        args.relabel = RELABEL_MAP
+        with open(args.labels_meta) as f:
+            model_labels = set(json.load(f)["ebird_labels"])
 
     taxonomy = load_taxonomy(args.taxonomy)
     rows = []
@@ -471,6 +526,36 @@ def main():
             c[DIFFERENT],
             c[NO_BIRD],
             sum(c.values()),
+        )
+
+    # species birdnet hears in tracks that aren't tagged with them, likely
+    # missing labels e.g. a blackbird calling behind a fantail
+    untagged_per_tag = {}
+    for r in rows:
+        untagged = [
+            code
+            for code in parse_untagged(r["birdnet_untagged"])
+            if model_labels is None or code in model_labels
+        ]
+        for tag in r["manual_tags"].split(";"):
+            tag = args.relabel.get(tag, tag)
+            counts = untagged_per_tag.setdefault(tag, [0, Counter()])
+            counts[0] += 1
+            counts[1].update(untagged)
+    logging.info(
+        "Untagged birdnet species per tag (conf >= %s), tag (tracks): species tracks",
+        args.untagged_min_conf,
+    )
+    for tag, (total, c) in sorted(
+        untagged_per_tag.items(), key=lambda kv: -sum(kv[1][1].values())
+    ):
+        if not c:
+            continue
+        logging.info(
+            "  %s (%s tracks): %s",
+            tag,
+            total,
+            ", ".join(f"{code} {count}" for code, count in c.most_common(8)),
         )
 
 
