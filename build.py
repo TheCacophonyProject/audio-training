@@ -419,11 +419,7 @@ def window_outcome(window, perch_rows, args):
         if not agrees:
             return "birdnet, perch unsure", False
         return "birdnet only", False
-    if (
-        flagged
-        and birdnet_disagrees
-        and max(doubts, default=0) >= args.perch_remove_doubt
-    ):
+    if flagged and birdnet_disagrees and max(doubts, default=0) >= args.perch_remove_doubt:
         return "perch, birdnet disagrees", True
     if flagged:
         return "perch only", False

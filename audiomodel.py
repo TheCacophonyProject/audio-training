@@ -457,6 +457,9 @@ class AudioModel:
                     weights_meta = json.load(f)
                 weights_labels = weights_meta.get("ebird_labels")
                 print("Weight labels are ", weights_labels)
+                # same labels so keep the trained final layer
+                if weights_labels == self.labels:
+                    weights_labels = None
         self.build_model(
             multi_label=args.get("multi_label", True),
             loss_fn=args.get("loss_fn", "keras"),
@@ -465,6 +468,7 @@ class AudioModel:
             pcen=args.get("pcen", False),
             epoch_size=epoch_size,
             epochs=epochs,
+            lr=args.get("lr", 5e-4),
         )
         (self.checkpoint_folder / run_name).mkdir(parents=True, exist_ok=True)
         if self.model_name != "rf-features":
@@ -607,6 +611,7 @@ class AudioModel:
         pcen=False,
         epoch_size=None,
         epochs=35,
+        lr=5e-4,
     ):
         if weights is not None and weight_labels is not None:
             # build model wight these labels then pop the dense layer and add a new one for our labels
@@ -791,6 +796,7 @@ class AudioModel:
                 epoch_size=epoch_size,
                 batch_size=self.batch_size,
                 total_epochs=epochs,
+                lr=lr,
             ),
             loss=loss_fn,
             metrics=[
@@ -1190,7 +1196,7 @@ def loss(multi_label=False, smoothing=0, from_logits=False):
     return loss_fn
 
 
-def optimizer(epoch_size, batch_size=32, total_epochs=35):
+def optimizer(epoch_size, batch_size=32, total_epochs=35, lr=5e-4):
     STEPS_PER_EPOCH = epoch_size // batch_size
 
     # Calculate exact step targets
@@ -1199,11 +1205,11 @@ def optimizer(epoch_size, batch_size=32, total_epochs=35):
 
     # 2. Define the Learning Rate Schedule with Native Warmup
     lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
-        initial_learning_rate=0.0,  # This is your PEAK learning rate
+        initial_learning_rate=0.0,  # warmup starts from 0
         decay_steps=total_steps - warmup_steps,  # decay starts after warmup
-        alpha=1e-2,  # Drops down to 5e-6 by the final epoch
-        warmup_target=5e-4,  # Explicitly state your warmup peak target
-        warmup_steps=warmup_steps,  # Linearly ramp from 0.0 to 5e-4 over this many steps
+        alpha=1e-2,  # Drops down to lr * 1e-2 by the final epoch
+        warmup_target=lr,  # peak learning rate
+        warmup_steps=warmup_steps,  # Linearly ramp from 0.0 to lr over this many steps
     )
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
     return optimizer
@@ -2206,6 +2212,9 @@ def str2bool(v):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=35, help="Epochs to use")
+    parser.add_argument(
+        "--lr", type=float, default=5e-4, help="Peak learning rate after warmup"
+    )
     parser.add_argument(
         "--extra-datasets",
         default=[
