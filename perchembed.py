@@ -360,7 +360,7 @@ def main():
                 continue
             tracks = [
                 track
-                for track in meta.get("tracks", [])
+                for track in meta.get("Tracks", [])
                 if any(t.get("automatic") is False for t in track.get("tags", []))
                 and (str(txt), str(track.get("id"))) not in done
             ]
