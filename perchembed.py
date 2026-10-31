@@ -31,15 +31,17 @@ FIELDNAMES = [
 ]
 
 
-def shard_paths(out_dir):
+def shard_paths(out_dir, recursive=False):
     """Completed shards in order. Names are zero padded but sort on the number
-    anyway, a shard only counts once its csv exists as that is written last."""
+    anyway, a shard only counts once its csv exists as that is written last.
+    Recursive also finds shards in sub directories, ordered by directory."""
+    csvs = Path(out_dir).rglob("*.csv") if recursive else Path(out_dir).glob("*.csv")
     shards = [
         p.with_suffix(".npy")
-        for p in Path(out_dir).glob("*.csv")
+        for p in csvs
         if p.stem.isdigit() and p.with_suffix(".npy").exists()
     ]
-    return sorted(shards, key=lambda p: int(p.stem))
+    return sorted(shards, key=lambda p: (str(p.parent), int(p.stem)))
 
 
 def load_shard_rows(npy):
@@ -47,18 +49,46 @@ def load_shard_rows(npy):
         return list(csv.DictReader(f))
 
 
-def load_embeddings(out_dir):
+def load_embeddings(out_dir, recursive=False):
     """All embeddings as one (N, 1536) array with a csv row per embedding, in
     shard order so row i of the csv is embedding i. To go through more than fits
-    in memory, loop over shard_paths and np.load each shard instead."""
+    in memory, loop over shard_paths and np.load each shard instead. Each row
+    gets the directory its shard came from."""
     embeddings = []
     rows = []
-    for npy in shard_paths(out_dir):
+    for npy in shard_paths(out_dir, recursive):
         embeddings.append(np.load(npy))
-        rows.extend(load_shard_rows(npy))
+        for row in load_shard_rows(npy):
+            row["shard_dir"] = str(npy.parent)
+            rows.append(row)
     if not embeddings:
         return np.zeros((0, 0), dtype=np.float32), []
     return np.concatenate(embeddings), rows
+
+
+def prefer_dir(embeddings, rows, prefer):
+    """Drops rows of tracks that are also in the shards of the prefer directory,
+    given as a path or just the directory name, so each track comes from one
+    directory only"""
+    prefer = Path(prefer)
+
+    def preferred(row):
+        shard_dir = Path(row["shard_dir"])
+        return shard_dir.name == str(prefer) or shard_dir.resolve() == prefer.resolve()
+
+    in_preferred = {(r["file"], r["track_id"]) for r in rows if preferred(r)}
+    keep = [
+        i
+        for i, r in enumerate(rows)
+        if preferred(r) or (r["file"], r["track_id"]) not in in_preferred
+    ]
+    logging.info(
+        "%s tracks in %s, dropped %s embeddings of them from other directories",
+        len(in_preferred),
+        prefer,
+        len(rows) - len(keep),
+    )
+    return embeddings[keep], [rows[i] for i in keep]
 
 
 def save_shard(out_dir, number, embeddings, rows):
@@ -128,15 +158,18 @@ def analyse(args):
     regression probe with out of fold probabilities, folds grouped by recording
     so tracks from the same recording never help predict each other, and the
     labels of each track's nearest neighbours from other recordings."""
+    import joblib
     from sklearn.linear_model import LogisticRegression
     from sklearn.model_selection import StratifiedGroupKFold
     from sklearn.neighbors import NearestNeighbors
 
     print("Loading from ", args.out)
-    embeddings, rows = load_embeddings(args.out)
+    embeddings, rows = load_embeddings(args.out, args.recursive)
     if not rows:
         logging.info("No embeddings in %s", args.out)
         return
+    if args.prefer:
+        embeddings, rows = prefer_dir(embeddings, rows, args.prefer)
     x = embeddings / (np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-10)
     tags = [set(r["manual_tags"].split(";")) for r in rows]
     groups = np.array([r["recording_id"] or r["file"] for r in rows])
@@ -150,16 +183,31 @@ def analyse(args):
     train = np.array(
         [i for i, t in enumerate(tags) if len(t) == 1 and next(iter(t)) in class_index]
     )
-    logging.info(
-        "%s tracks, probe trained on %s tracks of %s labels with at least %s tracks",
-        len(rows),
-        len(train),
-        len(classes),
-        args.min_label_count,
-    )
-
     probs = None
-    if len(classes) >= 2:
+    if args.load_probe:
+        logging.info("%s tracks", len(rows))
+        # score with a probe trained on other embeddings e.g. the rms windows,
+        # so no out of fold training here
+        saved = joblib.load(args.load_probe)
+        model = saved["model"]
+        classes = saved["classes"]
+        class_index = {l: i for i, l in enumerate(classes)}
+        probs = np.zeros((len(rows), len(classes)), dtype=np.float32)
+        probs[:, model.classes_] = model.predict_proba(x)
+        logging.info("Scoring with probe %s of %s labels", args.load_probe, len(classes))
+        scored = [i for i, t in enumerate(tags) if len(t) == 1 and t <= set(classes)]
+        if scored:
+            y = np.array([class_index[next(iter(tags[i]))] for i in scored])
+            accuracy = np.mean(probs[scored].argmax(axis=1) == y)
+            logging.info("Probe accuracy on single tag tracks %.3f", accuracy)
+    elif len(classes) >= 2:
+        logging.info(
+            "%s tracks, probe trained on %s tracks of %s labels with at least %s tracks",
+            len(rows),
+            len(train),
+            len(classes),
+            args.min_label_count,
+        )
         y = np.array([class_index[next(iter(tags[i]))] for i in train])
         probs = np.zeros((len(rows), len(classes)), dtype=np.float32)
 
@@ -175,9 +223,13 @@ def analyse(args):
                 x[train][fold_test]
             )
         others = np.setdiff1d(np.arange(len(rows)), train)
-        if len(others):
+        if len(others) or args.save_probe:
             model = probe().fit(x[train], y)
+        if len(others):
             probs[others[:, None], model.classes_] = model.predict_proba(x[others])
+        if args.save_probe:
+            joblib.dump({"model": model, "classes": classes}, args.save_probe)
+            logging.info("Saved probe trained on all %s tracks to %s", len(train), args.save_probe)
         accuracy = np.mean(probs[train].argmax(axis=1) == y)
         logging.info("Out of fold probe accuracy %.3f", accuracy)
     else:
@@ -299,6 +351,24 @@ def main():
         "--analyse",
         action="store_true",
         help="Flag doubtful labels from the saved embeddings instead of embedding",
+    )
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help="With --analyse also load shards from sub directories of --out",
+    )
+    parser.add_argument(
+        "--prefer",
+        help="With --recursive, a directory (path or name) whose embeddings are "
+        "used for tracks that are in more than one directory",
+    )
+    parser.add_argument(
+        "--save-probe",
+        help="With --analyse save the probe, trained on all the training tracks, here",
+    )
+    parser.add_argument(
+        "--load-probe",
+        help="With --analyse score with this saved probe instead of training one",
     )
     parser.add_argument("--flags-out", default="perch-flags.csv")
     parser.add_argument(
