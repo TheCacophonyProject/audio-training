@@ -1514,7 +1514,10 @@ def multi_confusion_single(
     filename = Path(filename)
     predictions = group_by_track(dataset, predict_dataset(model, dataset))
     label_thresholds = np.array(
-        [thresholds_per_label.get(l, threshold) for l in labels if l != "None"]
+        [
+            thresholds_per_label.get(l, threshold)
+            for l in labels[: predictions[1].shape[1]]
+        ]
     )
     # no dots in the names as with_suffix would cut them off
     confusion_thresholds = {
@@ -1542,34 +1545,65 @@ def save_multi_confusion(true_categories, y_pred, labels, filename, prob_thresh)
     predicted. Otherwise it counts against the highest wrong prediction, or
     None if there are no wrong predictions.
 
+    If noise isn't a label, tracks with no true labels are noise and get a
+    noise row (and column) before None. They are correct if nothing is
+    predicted, otherwise combined counts every prediction against noise and
+    matches the highest one. A true label that is missed with nothing
+    predicted counts as noise rather than None. If noise is a label tracks
+    with no true labels are counted in the None row
+
     prob_thresh is a single threshold or one per label
     """
+    num_labels = y_pred.shape[1]
     # one threshold per label
     prob_thresh = np.broadcast_to(
-        np.asarray(prob_thresh, dtype=np.float32), (y_pred.shape[1],)
+        np.asarray(prob_thresh, dtype=np.float32), (num_labels,)
     )
-    if "None" not in labels:
-        labels.append("None")
-    # true count of each class, "nothing" is the clips with no true labels
+    cm_labels = list(labels[:num_labels])
+    no_true_count = np.sum(true_categories.sum(axis=1) == 0)
+    # true count of each class
     totals_row = np.int64(true_categories.sum(axis=0))
-    totals_row = np.append(totals_row, np.sum(true_categories.sum(axis=1) == 0))
+    noise_index = None
+    if "noise" not in cm_labels:
+        noise_index = len(cm_labels)
+        cm_labels.append("noise")
+        totals_row = np.append(totals_row, no_true_count)
+    cm_labels.append("None")
+    none_index = len(cm_labels) - 1
+    # predicting nothing is predicting noise when noise isn't a label
+    nothing_index = none_index if noise_index is None else noise_index
+    # with a noise row, nothing true goes there rather than None
+    totals_row = np.append(totals_row, 0 if noise_index is not None else no_true_count)
+
     none_p = []
     none_y = []
     flat_p = []
     flat_y = []
     match_p = []
     match_y = []
-    none_index = len(labels) - 1
     for y, p in zip(true_categories, y_pred):
         predicted = np.flatnonzero(p >= prob_thresh)
         true_labels = np.flatnonzero(y == 1)
         if len(true_labels) == 0:
-            # nothing is true, record any predictions against "nothing"
-            for pred in predicted:
-                flat_y.append(none_index)
-                flat_p.append(pred)
-                match_y.append(none_index)
-                match_p.append(pred)
+            if noise_index is not None:
+                if len(predicted) == 0:
+                    flat_y.append(noise_index)
+                    flat_p.append(noise_index)
+                    match_y.append(noise_index)
+                    match_p.append(noise_index)
+                else:
+                    for pred in predicted:
+                        flat_y.append(noise_index)
+                        flat_p.append(pred)
+                    match_y.append(noise_index)
+                    match_p.append(max(predicted, key=lambda pred: p[pred]))
+            else:
+                # nothing is true, record any predictions against "nothing"
+                for pred in predicted:
+                    flat_y.append(none_index)
+                    flat_p.append(pred)
+                    match_y.append(none_index)
+                    match_p.append(pred)
             continue
 
         wrong_preds = [pred for pred in predicted if pred not in true_labels]
@@ -1584,14 +1618,14 @@ def save_multi_confusion(true_categories, y_pred, labels, filename, prob_thresh)
                 if len(wrong_preds) > 0:
                     match_p.append(max(wrong_preds, key=lambda pred: p[pred]))
                 else:
-                    match_p.append(none_index)
+                    match_p.append(nothing_index)
             # every wrong prediction counts against every true label
             for pred in wrong_preds:
                 flat_y.append(true_label)
                 flat_p.append(pred)
             if true_label not in predicted and len(wrong_preds) == 0:
                 flat_y.append(true_label)
-                flat_p.append(none_index)
+                flat_p.append(nothing_index)
 
                 # if we have no prediction over a threshold put the best one over a reasonable threshold (0.3) into the None matrix
                 best_label = np.argmax(p)
@@ -1609,16 +1643,16 @@ def save_multi_confusion(true_categories, y_pred, labels, filename, prob_thresh)
         ("none", none_y, none_p),
     ):
         cm = confusion_matrix(
-            np.int64(cm_y), np.int64(cm_p), labels=np.arange(len(labels))
+            np.int64(cm_y), np.int64(cm_p), labels=np.arange(len(cm_labels))
         )
         cm_path = filename.parent / f"{filename.name}-{name}"
         np.savez(
             cm_path.with_suffix(".npz"),
             cm=cm,
-            labels=np.array(labels),
+            labels=np.array(cm_labels),
             thresholds=prob_thresh,
         )
-        figure = plot_confusion_matrix(cm, class_names=labels, totals_row=totals_row)
+        figure = plot_confusion_matrix(cm, class_names=cm_labels, totals_row=totals_row)
         logging.info("Saving confusion to %s", cm_path.with_suffix(".png"))
         plt.savefig(cm_path.with_suffix(".png"), format="png")
         plt.close(figure)
@@ -2214,7 +2248,6 @@ def main():
                 weight_files = [None]
             else:
                 weight_files = [
-                    "final",
                     "val_loss.weights.h5",
                     "val_pr_auc.weights.h5",
                     (
@@ -2232,8 +2265,9 @@ def main():
             args.confusion = Path(args.confusion)
 
             for w in weight_files:
-                file_prefix = "final"
-                if w != "final":
+                # only_features models have no weight files
+                file_prefix = "model"
+                if w is not None:
                     logging.info("Using %s weights", weight_base_path / w)
                     model.load_weights(weight_base_path / w)
                     index = w.index(".weights")
