@@ -54,7 +54,7 @@ def get_label_to_ebird_map():
     ebird_map["sacred-kingfisher"] = "sackin3"
     ebird_map["rock-wren"] = "soiwre1"
     ebird_map["redpoll"] = "comred"
-
+    ebird_map["norfolk-golden-whistler"] = "y01193"
     return ebird_map
 
 

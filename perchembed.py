@@ -11,6 +11,8 @@ import librosa
 import numpy as np
 
 from birdnetcompare import GENERIC_BIRD_TAGS, load_taxonomy, rms_window, tag_taxon
+from birdsconfig import RELABEL_MAP
+from utils import get_ebird_id, get_label_to_ebird_map
 
 AUDIO_EXTS = [".flac", ".wav", ".m4a", ".mp3", ".ogg"]
 # perch v2 takes 5s of 32kHz audio
@@ -171,7 +173,16 @@ def analyse(args):
     if args.prefer:
         embeddings, rows = prefer_dir(embeddings, rows, args.prefer)
     x = embeddings / (np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-10)
-    tags = [set(r["manual_tags"].split(";")) for r in rows]
+    # compare as ebird ids so tags and probe classes from datasets with
+    # different names match, tags without one like "bird" are kept as is.
+    # Then merged as in training e.g. wind is noise, parakeets are parake
+    ebird_map = get_label_to_ebird_map()
+
+    def to_label(tag):
+        ebird_id = get_ebird_id(tag, ebird_map)
+        return RELABEL_MAP.get(ebird_id, ebird_id)
+
+    tags = [{to_label(t) for t in r["manual_tags"].split(";")} for r in rows]
     groups = np.array([r["recording_id"] or r["file"] for r in rows])
 
     # train the probe on single tag tracks of labels with enough examples,
@@ -190,10 +201,16 @@ def analyse(args):
         # so no out of fold training here
         saved = joblib.load(args.load_probe)
         model = saved["model"]
-        classes = saved["classes"]
+        probe_probs = np.zeros((len(rows), len(saved["classes"])), dtype=np.float32)
+        probe_probs[:, model.classes_] = model.predict_proba(x)
+        # probe classes that relabel to the same label e.g. kelp gull and
+        # gull sp. are summed, as the probe's classes are exclusive
+        probe_labels = [to_label(c) for c in saved["classes"]]
+        classes = list(dict.fromkeys(probe_labels))
         class_index = {l: i for i, l in enumerate(classes)}
         probs = np.zeros((len(rows), len(classes)), dtype=np.float32)
-        probs[:, model.classes_] = model.predict_proba(x)
+        for i, label in enumerate(probe_labels):
+            probs[:, class_index[label]] += probe_probs[:, i]
         logging.info(
             "Scoring with probe %s of %s labels", args.load_probe, len(classes)
         )

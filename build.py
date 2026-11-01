@@ -358,13 +358,29 @@ def perch_details(row):
 
 
 def perch_agrees(row, threshold):
-    # perch predicts the label with enough confidence, probe or knn
+    # perch predicts the label with enough confidence, probe or knn. label is
+    # all the track's tags joined with ;
+    tags = set(row["label"].split(";"))
+
     def score(key):
         return float(row[key]) if row[key] != "" else 0
 
+    return (row["probe_label"] in tags and score("probe_own_prob") >= threshold) or (
+        row["knn_label"] in tags and score("knn_agreement") >= threshold
+    )
+
+
+def perch_confident_other(row, threshold):
+    # the probe confidently predicts a label the track isn't tagged with. Only
+    # for tracks with a label the probe was trained on (probe_own_prob is set),
+    # as for rare labels it can only ever predict something else
+    tags = set(row["label"].split(";"))
     return (
-        row["probe_label"] == row["label"] and score("probe_own_prob") >= threshold
-    ) or (row["knn_label"] == row["label"] and score("knn_agreement") >= threshold)
+        row["probe_own_prob"] != ""
+        and row["probe_prob"] != ""
+        and row["probe_label"] not in tags
+        and float(row["probe_prob"]) >= threshold
+    )
 
 
 def log_filter_outcomes(outcomes, unit, dry_run):
@@ -410,7 +426,13 @@ def window_outcome(window, perch_rows, args):
     flagged = any(p["flagged"] == "True" for p in perch_rows)
     agrees = any(perch_agrees(p, args.perch_agree_prob) for p in perch_rows)
     birdnet_disagrees = status not in (MATCH, RELATED, NON_BIRD_TAG)
-    doubts = [float(p["doubt"]) for p in perch_rows if p["doubt"] != ""]
+    # doubt alone may just be perch being unsure, also need it to be
+    # confident the track is something else
+    doubts = [
+        float(p["doubt"])
+        for p in perch_rows
+        if p["doubt"] != "" and perch_confident_other(p, args.perch_remove_other_prob)
+    ]
     if no_birdnet:
         if flagged:
             return "removed", True
@@ -1188,6 +1210,12 @@ def parse_args():
         type=float,
         default=0.9,
         help="Remove perch flagged tracks birdnet disagrees with if perch doubt is at least this",
+    )
+    parser.add_argument(
+        "--perch-remove-other-prob",
+        type=float,
+        default=0.7,
+        help="With --perch-remove-doubt, the perch probe must also predict a label the track isn't tagged with with at least this probability",
     )
     parser.add_argument(
         "--perch-agree-prob",
