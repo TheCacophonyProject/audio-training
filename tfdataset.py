@@ -255,7 +255,6 @@ def load_dataset(filenames, num_labels, labels, args):
             read_record,
             num_labels=num_labels,
             one_hot=one_hot,
-            embeddings=args.get("embeddings", False),
             filter_freq=args.get("filter_freq", False),
             random_butter=args.get("random_butter", 0),
             only_features=args.get("only_features", False),
@@ -302,11 +301,7 @@ def load_dataset(filenames, num_labels, labels, args):
     dataset = dataset.filter(filter_excluded)
 
     # mel conversion is done after filtering so it only runs on kept samples
-    if (
-        not args.get("load_raw", True)
-        and not args.get("embeddings", False)
-        and not args.get("only_features", False)
-    ):
+    if not args.get("load_raw", True) and not args.get("only_features", False):
         logging.info("Mapping mel")
         dataset = dataset.map(
             partial(
@@ -991,7 +986,6 @@ def read_tfrecord(
     example,
     num_labels,
     one_hot=True,
-    embeddings=False,
     filter_freq=False,
     random_butter=0,
     only_features=False,
@@ -1015,14 +1009,7 @@ def read_tfrecord(
     tfrecord_format["audio/lat"] = tf.io.FixedLenFeature((), tf.float32)
     tfrecord_format["audio/lng"] = tf.io.FixedLenFeature((), tf.float32)
 
-    if embeddings:
-        logging.info("Loading embeddings")
-
-        tfrecord_format["embedding"] = tf.io.FixedLenFeature(
-            EMBEDDING_SHAPE, tf.float32
-        )
-
-    elif not only_features:
+    if not only_features:
         logging.info("Loading sft audio")
 
         if load_raw:
@@ -1059,9 +1046,6 @@ def read_tfrecord(
     embed_preds = None
     if load_raw:
         spectrogram = example["audio/raw"]
-
-    elif embeddings:
-        spectrogram = example["embedding"]
 
     elif not only_features:
         buttered = example["audio/buttered"] if filter_freq else None

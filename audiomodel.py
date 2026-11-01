@@ -139,7 +139,6 @@ class AudioModel:
         self.input_shape = DIMENSIONS
         self.preprocess_fn = None
         # self.learning_rate = 0.01
-        self.mean_sub = False
         self.training_data_meta = None
         self.loss_fn = None
         # multi label models output logits, the sigmoid is only added when saving
@@ -214,7 +213,6 @@ class AudioModel:
             shuffle=False,
             deterministic=True,
             excluded_labels=excluded_labels,
-            mean_sub=self.mean_sub,
             use_generic_bird=use_generic_bird,
             # preprocess_fn=self.preprocess_fn,
         )
@@ -236,7 +234,6 @@ class AudioModel:
                 augment=True,
                 resample=False,
                 excluded_labels=excluded_labels,
-                mean_sub=self.mean_sub,
                 use_generic_bird=use_generic_bird,
                 # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
             )
@@ -249,7 +246,6 @@ class AudioModel:
                 augment=False,
                 resample=False,
                 excluded_labels=excluded_labels,
-                mean_sub=self.mean_sub,
                 use_generic_bird=use_generic_bird,
                 # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
             )
@@ -516,14 +512,28 @@ class AudioModel:
         self.probability_model().save(
             self.checkpoint_folder / run_name / f"{run_name}.keras"
         )
-        self.save_metadata(run_name, history, test_results, **args)
-        if self.test is not None:
-            acc = (
-                "val_binary_accuracy.weights.h5"
-                if args.get("multi_label")
-                else "val_categorical_accuracy.weights.h5"
+        thresholds = None
+        pr_weights = self.checkpoint_folder / run_name / "val_pr_auc.weights.h5"
+        if (
+            args.get("multi_label")
+            and self.validation is not None
+            and pr_weights.exists()
+        ):
+            # best per label thresholds on the validation set, with the pr auc
+            # weights as these are best over all labels. self.validation is
+            # used by fit so can't have the track ids
+            logging.info("Finding best thresholds on validation set")
+            self.model.load_weights(pr_weights)
+            thresholds = best_threshold(
+                self.probability_model(),
+                self.labels,
+                self.load_eval_set("validation", **args),
             )
-            weights = "val_loss.weights.h5"
+        self.save_metadata(
+            run_name, history, test_results, thresholds=thresholds, **args
+        )
+        if self.test is not None:
+            weights = "val_pr_auc.weights.h5"
             self.model.load_weights(
                 os.path.join(self.checkpoint_folder, run_name, weights)
             )
@@ -534,12 +544,13 @@ class AudioModel:
                     self.labels,
                     self.test,
                     confusion_file,
+                    thresholds or {},
                     model_name=self.model_name,
                 )
             else:
                 confusion(self.model, self.labels, self.test, confusion_file)
 
-    def save_metadata(self, run_name, history, test_results, **args):
+    def save_metadata(self, run_name, history, test_results, thresholds=None, **args):
         #  save metadata
         if run_name is None:
             run_name = self.params.model_name
@@ -553,7 +564,6 @@ class AudioModel:
         # model_stats["filter_freq"] = args.get("filter_freq", False)
         model_stats["ebird_labels"] = self.labels
         # model_stats["multi_label"] = args.get("multi_label", False)
-        model_stats["mean_sub"] = self.mean_sub
         model_stats["loss_fn"] = self.loss_fn
         model_stats["bird_labels"] = BIRD_TRAIN_LABELS
         model_stats["noise_labels"] = NOISE_LABELS
@@ -589,6 +599,8 @@ class AudioModel:
         if test_results:
             model_stats["test_loss"] = test_results[0]
             model_stats["test_acc"] = test_results[1]
+        if thresholds is not None:
+            model_stats["original_thresholds"] = thresholds
         run_dir = os.path.join(self.checkpoint_folder, run_name)
         if not os.path.exists(run_dir):
             os.mkdir(run_dir)
@@ -915,24 +927,29 @@ class AudioModel:
         return checks
 
     def load_test_set(self, **args):
-        logging.info("Loading test")
+        self.test = self.load_eval_set("test", **args)
+
+    def load_eval_set(self, split, **args):
+        """Unshuffled split with all y loaded, as track ids are needed for the
+        per track thresholds and confusion"""
+        logging.info("Loading %s", split)
         second_dir = None
         if self.second_data_dir is not None:
-            second_dir = self.second_data_dir / "test"
+            second_dir = self.second_data_dir / split
 
-        test_args = dict(args)
-        test_args["shuffle"] = False
-        self.test, _, _, _, _ = get_dataset(
-            self.data_dir / "test",
+        eval_args = dict(args)
+        eval_args["shuffle"] = False
+        eval_args["load_all_y"] = True
+        dataset, _, _, _, _ = get_dataset(
+            self.data_dir / split,
             self.labels,
             batch_size=self.batch_size,
             image_size=self.input_shape,
-            mean_sub=self.mean_sub,
             second_dir=second_dir,
-            embeddings=self.model_name == "embeddings",
             deterministic=True,
-            **test_args,
+            **eval_args,
         )
+        return dataset
 
     def get_base_model(self, input_shape, weights="imagenet"):
         pretrained_model = self.model_name
@@ -1420,16 +1437,8 @@ def confusion(
     # plt.savefig(f"./confusions/{filename}", format="png")
 
 
-def multi_confusion_single(
-    model,
-    labels,
-    dataset,
-    filename="confusion.png",
-    one_hot=True,
-    prob_thresh=0.7,
-    model_name=None,
-):
-    filename = Path(filename)
+def predict_dataset(model, dataset):
+    """Returns (true labels, predictions) for every sample in dataset"""
     y_ds = dataset.map(
         lambda x, y: y[0] if isinstance(y, tuple) else y,
         num_parallel_calls=tf.data.AUTOTUNE,
@@ -1450,6 +1459,95 @@ def multi_confusion_single(
     assert (
         y_pred.shape == true_categories.shape
     ), f"Predictions {y_pred.shape} don't match labels {true_categories.shape}"
+    return true_categories, y_pred
+
+
+def group_by_track(dataset, predictions):
+    """Mean prediction per track, from a dataset loaded with load_all_y where
+    y[4] is the track id. A sample covering several tracks has them all in its
+    track id e.g. "123 124" and is grouped with samples of the same tracks
+
+    Returns (true labels, mean predictions) with one row per track
+    """
+    true_categories, y_pred = predictions
+    track_ds = dataset.map(
+        lambda x, y: y[4],
+        num_parallel_calls=tf.data.AUTOTUNE,
+        deterministic=True,
+    )
+    track_ids = np.concatenate(list(track_ds.as_numpy_iterator()), axis=0)
+    assert len(track_ids) == len(
+        y_pred
+    ), f"Track ids {len(track_ids)} don't match predictions {len(y_pred)}"
+    unique_tracks, track_index = np.unique(track_ids, return_inverse=True)
+    num_tracks = len(unique_tracks)
+    track_counts = np.bincount(track_index, minlength=num_tracks)[:, np.newaxis]
+
+    track_pred = np.zeros((num_tracks, y_pred.shape[1]), dtype=np.float64)
+    np.add.at(track_pred, track_index, y_pred)
+    track_pred /= track_counts
+    # labels should be the same for every sample of a track, take any true
+    track_true = np.zeros((num_tracks, true_categories.shape[1]), dtype=np.float32)
+    np.maximum.at(track_true, track_index, true_categories)
+    logging.info("Grouped %s samples into %s tracks", len(y_pred), num_tracks)
+    return track_true, track_pred
+
+
+def multi_confusion_single(
+    model,
+    labels,
+    dataset,
+    filename,
+    thresholds_per_label,
+    one_hot=True,
+    model_name=None,
+    threshold=0.5,
+):
+    """Save multi label confusion matrices at threshold, at
+    thresholds_per_label ({label: threshold}, missing labels use threshold)
+    and at thresholds_per_label capped between 0.5 and 0.8, predicting
+    dataset once.
+
+    Uses the mean prediction per track, so dataset must be loaded with
+    load_all_y (y[4] is the track id)
+    """
+    filename = Path(filename)
+    predictions = group_by_track(dataset, predict_dataset(model, dataset))
+    label_thresholds = np.array(
+        [thresholds_per_label.get(l, threshold) for l in labels if l != "None"]
+    )
+    # no dots in the names as with_suffix would cut them off
+    confusion_thresholds = {
+        str(threshold).replace(".", "_"): threshold,
+        "thresholds": label_thresholds,
+        "thresholds-capped": np.clip(label_thresholds, 0.5, 0.8),
+    }
+    for name, prob_thresh in confusion_thresholds.items():
+        save_multi_confusion(
+            *predictions,
+            labels,
+            filename.parent / f"{filename.name}-{name}",
+            prob_thresh,
+        )
+
+
+def save_multi_confusion(true_categories, y_pred, labels, filename, prob_thresh):
+    """Saves filename-combined, filename-matches and filename-none confusions.
+
+    combined: each true label is correct if predicted, and every prediction
+    that isn't a true label counts against every true label. A true label
+    that isn't predicted, with no wrong predictions, counts as None.
+
+    matches: each true label is correct if predicted, whatever else was
+    predicted. Otherwise it counts against the highest wrong prediction, or
+    None if there are no wrong predictions.
+
+    prob_thresh is a single threshold or one per label
+    """
+    # one threshold per label
+    prob_thresh = np.broadcast_to(
+        np.asarray(prob_thresh, dtype=np.float32), (y_pred.shape[1],)
+    )
     if "None" not in labels:
         labels.append("None")
     # true count of each class, "nothing" is the clips with no true labels
@@ -1459,95 +1557,71 @@ def multi_confusion_single(
     none_y = []
     flat_p = []
     flat_y = []
-    bird_index = None
-    if "bird" in labels:
-        bird_index = labels.index("bird")
+    match_p = []
+    match_y = []
+    none_index = len(labels) - 1
     for y, p in zip(true_categories, y_pred):
-        # get predicted label that isn't bird and use this as overall tag
-        # may not work when we have 2 tags for a recording but i dont think this is the case at the moment
-        index = 0
-        arg_sorted = np.argsort(p)
-        best_label = arg_sorted[-1]
-        if (
-            bird_index is not None
-            and best_label == bird_index
-            and p[arg_sorted[-2]] >= prob_thresh
-        ):
-            best_label = arg_sorted[-2]
-        best_prob = p[best_label]
+        predicted = np.flatnonzero(p >= prob_thresh)
+        true_labels = np.flatnonzero(y == 1)
+        if len(true_labels) == 0:
+            # nothing is true, record any predictions against "nothing"
+            for pred in predicted:
+                flat_y.append(none_index)
+                flat_p.append(pred)
+                match_y.append(none_index)
+                match_p.append(pred)
+            continue
 
-        best_labels = np.argwhere(p > prob_thresh).ravel()
-
-        # get true label that isn't bird if available and use this as overall tag
-        # arg_sorted = np.argsort(y)
-
-        true_labels = np.argwhere(y == 1).ravel()
-        # true_label = arg_sorted[-1]
-        # if true_label == bird_index and y[arg_sorted[-2]] != 0:
-        #     true_label = arg_sorted[-2]
-        # print("Y true is", y)
-        # print("Actual y is ", true_labels)
-        # print("P is ", np.round(p * 100))
-        # print("Actual p is ", best_labels)
-        for y_l, p_l in zip(y, p):
-            predicted = p_l >= prob_thresh
-            if y_l == 0 and predicted:
-                # if predicted but is not true
-
-                # add this index as wrong for all true labels. where it hasn't got it right
-                # if there are no true labels, record it against "nothing"
-                fp_rows = true_labels if len(true_labels) > 0 else [len(labels) - 1]
-                for true_label in fp_rows:
-                    # if true_label not in best_labels:
-                    flat_y.append(true_label)
-                    flat_p.append(index)
-            elif y_l == 1 and predicted:
-                flat_y.append(index)
-                flat_p.append(index)
-            elif y_l == 1 and not predicted:
-                flat_y.append(index)
-                flat_p.append(len(labels) - 1)  # None
+        wrong_preds = [pred for pred in predicted if pred not in true_labels]
+        for true_label in true_labels:
+            if true_label in predicted:
+                flat_y.append(true_label)
+                flat_p.append(true_label)
+                match_y.append(true_label)
+                match_p.append(true_label)
+            else:
+                match_y.append(true_label)
+                if len(wrong_preds) > 0:
+                    match_p.append(max(wrong_preds, key=lambda pred: p[pred]))
+                else:
+                    match_p.append(none_index)
+            # every wrong prediction counts against every true label
+            for pred in wrong_preds:
+                flat_y.append(true_label)
+                flat_p.append(pred)
+            if true_label not in predicted and len(wrong_preds) == 0:
+                flat_y.append(true_label)
+                flat_p.append(none_index)
 
                 # if we have no prediction over a threshold put the best one over a reasonable threshold (0.3) into the None matrix
-                if best_prob >= 0.3 and len(best_labels) == 0:
-                    if best_label not in true_labels:
-                        none_y.append(index)
-                        none_p.append(best_label)
+                best_label = np.argmax(p)
+                if (
+                    len(predicted) == 0
+                    and p[best_label] >= 0.3
+                    and best_label not in true_labels
+                ):
+                    none_y.append(true_label)
+                    none_p.append(best_label)
 
-                # # is this index but we predicted something else add to missing conf
-                # # if index != bird_index and best_prob > 0.5:
-                # for best_label in best_labels:
-                #     if best_label not in true_labels:
-                #         none_y.append(index)
-                #         none_p.append(best_label)
-
-            index += 1
-
-    flat_p = np.int64(flat_p)
-    flat_y = np.int64(flat_y)
-
-    none_p = np.int64(none_p)
-    none_y = np.int64(none_y)
-
-    cm = confusion_matrix(flat_y, flat_p, labels=np.arange(len(labels)))
-    # confusion_path = Path(f"./confusions/{filename}")
-
-    np.savez(filename.with_suffix(".npz"), cm=cm, labels=np.array(labels))
-    # Log the confusion matrix as an image summary.
-    figure = plot_confusion_matrix(cm, class_names=labels, totals_row=totals_row)
-    logging.info("Saving confusion to %s", filename.with_suffix(".png"))
-    plt.savefig(filename.with_suffix(".png"), format="png")
-
-    none_p = np.int64(none_p)
-    none_y = np.int64(none_y)
-    cm = confusion_matrix(none_y, none_p, labels=np.arange(len(labels)))
-    none_path = filename.parent / f"{filename.stem}-none"
-    logging.info("Saving confusion to %s", none_path.with_suffix(".png"))
-
-    np.savez(none_path.with_suffix(".npz"), cm=cm, labels=np.array(labels))
-    # Log the confusion matrix as an image summary.
-    figure = plot_confusion_matrix(cm, class_names=labels, totals_row=totals_row)
-    plt.savefig(none_path.with_suffix(".png"), format="png")
+    for name, cm_y, cm_p in (
+        ("combined", flat_y, flat_p),
+        ("matches", match_y, match_p),
+        ("none", none_y, none_p),
+    ):
+        cm = confusion_matrix(
+            np.int64(cm_y), np.int64(cm_p), labels=np.arange(len(labels))
+        )
+        cm_path = filename.parent / f"{filename.name}-{name}"
+        np.savez(
+            cm_path.with_suffix(".npz"),
+            cm=cm,
+            labels=np.array(labels),
+            thresholds=prob_thresh,
+        )
+        figure = plot_confusion_matrix(cm, class_names=labels, totals_row=totals_row)
+        logging.info("Saving confusion to %s", cm_path.with_suffix(".png"))
+        plt.savefig(cm_path.with_suffix(".png"), format="png")
+        plt.close(figure)
 
 
 def ktest():
@@ -1594,7 +1668,6 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
         drop_remainder=True,  # keep batch shape fixed so XLA only compiles once
         excluded_labels=excluded_labels,
         second_dir=second_dir,
-        embeddings=model_name == "embeddings",
         load_seperate_ds=True,
         cache=False,
         human_dir=human_dir,
@@ -1616,7 +1689,6 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
         batch_size=batch_size,
         excluded_labels=excluded_labels,
         second_dir=second_dir,
-        embeddings=model_name == "embeddings",
         human_dir=human_dir,
         load_seperate_ds=True,
         cache=False,
@@ -2081,9 +2153,7 @@ def main():
         if args.second_dataset_dir is not None:
             second_dir = args.second_dataset_dir / "test"
 
-        dataset, _, _, _, _ = get_dataset(
-            base_dir / "test",
-            labels,
+        dataset_args = dict(
             excluded_labels=excluded_labels,
             remapped_labels=remapped_labels,
             second_dir=second_dir,
@@ -2091,7 +2161,6 @@ def main():
             shuffle=False,
             deterministic=True,
             batch_size=64,
-            mean_sub=meta_data.get("mean_sub", False),
             extra_label_map=meta_data.get("extra_label_map"),
             stop_on_empty=False,
             one_hot=args.one_hot,
@@ -2113,6 +2182,32 @@ def main():
             load_all_y=True,
             noise_dirs=args.noise_dirs,
         )
+        dataset, _, _, _, _ = get_dataset(base_dir / "test", labels, **dataset_args)
+
+        thresholds = meta_data.get("original_thresholds")
+        if multi and thresholds is None and not meta_data.get("only_features"):
+            # best per label thresholds on the validation set, saved so they
+            # are only worked out once
+            logging.info("Finding best thresholds on validation set")
+            val_dataset, _, _, _, _ = get_dataset(
+                base_dir / "validation",
+                labels,
+                **dict(
+                    dataset_args,
+                    second_dir=(
+                        args.second_dataset_dir / "validation"
+                        if args.second_dataset_dir is not None
+                        else None
+                    ),
+                ),
+            )
+            model.load_weights(model_path.parent / "val_pr_auc.weights.h5")
+            thresholds = best_threshold(model, labels, val_dataset)
+            del val_dataset
+            meta_data["original_thresholds"] = thresholds
+            with open(str(meta_file), "w") as f:
+                json.dump(meta_data, f, indent=4, cls=MetaJSONEncoder)
+            logging.info("Saved thresholds to %s", meta_file)
 
         if dataset is not None:
             if meta_data.get("only_features"):
@@ -2121,7 +2216,7 @@ def main():
                 weight_files = [
                     "final",
                     "val_loss.weights.h5",
-                    # "val_precK.weights.h5",
+                    "val_pr_auc.weights.h5",
                     (
                         "val_binary_accuracy.weights.h5"
                         if multi
@@ -2163,6 +2258,7 @@ def main():
                         labels,
                         dataset,
                         confusion_file,
+                        thresholds or {},
                         one_hot=not meta_data.get("only_features"),
                         model_name=model_name,
                     )
@@ -2480,70 +2576,58 @@ def macro_soft_f1(y, y_hat):
     return macro_cost
 
 
-def best_threshold(model, labels, dataset, filename):
-    from sklearn.metrics import roc_curve, auc, precision_recall_curve
+def best_threshold(model, labels, dataset, filename=None):
+    """Per label threshold that maximises F1 on the mean prediction per track,
+    as {label: threshold}, to match the per track confusion. dataset must be
+    loaded with load_all_y (y[4] is the track id)
 
-    # sklearn.metrics.auc(
-    y_pred = model.predict(dataset)
-    print(y_pred.shape)
-    from sklearn.preprocessing import LabelBinarizer
-    from sklearn.metrics import RocCurveDisplay
+    Labels with no true tracks in dataset get 0.5. If filename is given a
+    precision recall plot is saved for each label
+    """
+    from sklearn.metrics import precision_recall_curve
 
-    true_categories = [y for x, y in dataset]
-    true_categories = tf.concat(true_categories, axis=0)
-
-    true_categories = np.array(true_categories)
-    label_binarizer = LabelBinarizer().fit(true_categories)
-    y_onehot_test = label_binarizer.transform(true_categories)
-    # y_onehot_test.shape  # (n_samples, n_classes)
-    print(label_binarizer.classes_)
-    thresholds_best = []
-    for i, class_of_interest in enumerate(labels):
-        # class_of_interest = "virginica"
-        class_id = np.flatnonzero(label_binarizer.classes_ == i)[0]
-        print("plt show for", class_of_interest)
-
-        precision, recall, thresholds = precision_recall_curve(
-            y_onehot_test[:, class_id], y_pred[:, class_id]
-        )
-        fscore = (2 * precision * recall) / (precision + recall)
+    true_categories, y_pred = group_by_track(dataset, predict_dataset(model, dataset))
+    thresholds_best = {}
+    for i, label in enumerate(labels[: y_pred.shape[1]]):
+        y_true = true_categories[:, i] > 0
+        if not np.any(y_true):
+            logging.info("No samples of %s, using threshold 0.5", label)
+            thresholds_best[label] = 0.5
+            continue
+        precision, recall, thresholds = precision_recall_curve(y_true, y_pred[:, i])
+        # last precision / recall point has no threshold
+        precision = precision[:-1]
+        recall = recall[:-1]
+        fscore = np.nan_to_num((2 * precision * recall) / (precision + recall))
         ix = np.argmax(fscore)
-
-        # fpr, tpr, thresholds = roc_curve(
-        #     y_onehot_test[:, class_id], y_pred[:, class_id]
-        # )
-        # RocCurveDisplay.from_predictions(
-        #     y_onehot_test[:, class_id],
-        #     y_pred[:, class_id],
-        #     name=f"{class_of_interest} vs the rest",
-        #     color="darkorange",
-        # )
-        testy = y_onehot_test[:, class_id]
-        no_skill = len(testy[testy == 1]) / len(testy)
-
-        plt.plot(recall, precision, marker=".", label="Logistic")
-        plt.plot([0, 1], [no_skill, no_skill], linestyle="--", label="No Skill")
-        plt.axis("square")
-        plt.xlabel("Recall")
-        plt.ylabel("Precision")
-        plt.title(f"Recall vs Precivsion - {labels[i]}")
-        plt.legend()
-        plt.scatter(recall[ix], precision[ix], marker="o", color="black", label="Best")
-
-        plt.savefig(f"{labels[i]}-{filename}.png", format="png")
-        plt.clf()
-        print("Best Threshold=%f, F-Score=%.3f" % (thresholds[ix], fscore[ix]))
-        thresholds_best.append(thresholds[ix])
-        # for area, thresh in zip(areas, thresholds):
-        #     # print("f", f, t)
-        #     print("Thresholds are", thresh, area)
-    thresholds = np.array(thresholds_best)
+        thresholds_best[label] = float(thresholds[ix])
+        logging.info(
+            "%s best threshold %.3f F-score %.3f precision %.3f recall %.3f",
+            label,
+            thresholds[ix],
+            fscore[ix],
+            precision[ix],
+            recall[ix],
+        )
+        if filename is not None:
+            no_skill = np.mean(y_true)
+            plt.plot(recall, precision, marker=".", label="Model")
+            plt.plot([0, 1], [no_skill, no_skill], linestyle="--", label="No Skill")
+            plt.scatter(
+                recall[ix], precision[ix], marker="o", color="black", label="Best"
+            )
+            plt.axis("square")
+            plt.xlabel("Recall")
+            plt.ylabel("Precision")
+            plt.title(f"Recall vs Precision - {label}")
+            plt.legend()
+            plt.savefig(f"{filename}-{label}.png", format="png")
+            plt.clf()
+    thresholds = np.array(list(thresholds_best.values()))
     logging.info(
-        "ALl thresholds are %s mean %s median %s",
-        thresholds,
-        np.mean(thresholds),
-        np.median(thresholds),
+        "All thresholds mean %s median %s", np.mean(thresholds), np.median(thresholds)
     )
+    return thresholds_best
 
 
 def macro_f1(y, y_hat, thresh=0.5):

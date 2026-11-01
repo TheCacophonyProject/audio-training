@@ -194,7 +194,9 @@ def analyse(args):
         class_index = {l: i for i, l in enumerate(classes)}
         probs = np.zeros((len(rows), len(classes)), dtype=np.float32)
         probs[:, model.classes_] = model.predict_proba(x)
-        logging.info("Scoring with probe %s of %s labels", args.load_probe, len(classes))
+        logging.info(
+            "Scoring with probe %s of %s labels", args.load_probe, len(classes)
+        )
         scored = [i for i, t in enumerate(tags) if len(t) == 1 and t <= set(classes)]
         if scored:
             y = np.array([class_index[next(iter(tags[i]))] for i in scored])
@@ -229,7 +231,11 @@ def analyse(args):
             probs[others[:, None], model.classes_] = model.predict_proba(x[others])
         if args.save_probe:
             joblib.dump({"model": model, "classes": classes}, args.save_probe)
-            logging.info("Saved probe trained on all %s tracks to %s", len(train), args.save_probe)
+            logging.info(
+                "Saved probe trained on all %s tracks to %s",
+                len(train),
+                args.save_probe,
+            )
         accuracy = np.mean(probs[train].argmax(axis=1) == y)
         logging.info("Out of fold probe accuracy %.3f", accuracy)
     else:
