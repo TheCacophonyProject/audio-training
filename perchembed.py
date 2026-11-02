@@ -183,6 +183,18 @@ def analyse(args):
         return RELABEL_MAP.get(ebird_id, ebird_id)
 
     tags = [{to_label(t) for t in r["manual_tags"].split(";")} for r in rows]
+    if not args.include_bird:
+        # generic bird says nothing about the species, drop the tag and tracks
+        # left with no other tag so they aren't scored or used as neighbours
+        tags = [t - {"bird"} for t in tags]
+        keep = [i for i, t in enumerate(tags) if t]
+        logging.info(
+            "Skipping %s windows only tagged bird, use --include-bird to keep them",
+            len(rows) - len(keep),
+        )
+        rows = [rows[i] for i in keep]
+        tags = [tags[i] for i in keep]
+        x = x[keep]
     groups = np.array([r["recording_id"] or r["file"] for r in rows])
     # the probe trains on a track's own tags, the checks below also accept the
     # tags of tracks overlapping its window
@@ -438,6 +450,12 @@ def main():
         help="Labels with fewer single tag tracks aren't trained on by the probe",
     )
     parser.add_argument("--folds", type=int, default=5)
+    parser.add_argument(
+        "--include-bird",
+        action="store_true",
+        help="With --analyse also analyse generic bird tags, by default they are "
+        "dropped and tracks only tagged bird are skipped",
+    )
     parser.add_argument(
         "--min-overlap",
         type=float,
