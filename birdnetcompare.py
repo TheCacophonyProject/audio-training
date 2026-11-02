@@ -93,16 +93,17 @@ def species_taxon(taxon, by_code):
 
 @lru_cache(maxsize=None)
 def training_maps():
-    # imported when needed as audiodataset loads tensorflow, utils reads
-    # classes.csv and the taxonomy from the working dir
-    from audiodataset import RELABEL, labels_to_ebird_map
+    # imported when needed, utils reads classes.csv and the taxonomy from the
+    # working dir and birdsconfig needs the repo dir
+    from birdsconfig import RELABEL_MAP
+    from utils import get_label_to_ebird_map
 
-    return labels_to_ebird_map, RELABEL
+    return get_label_to_ebird_map(), RELABEL_MAP
 
 
 def training_ebird_ids(what):
-    """Ebird ids training gives a tag, as in audiodataset Track.add_tag, before
-    and after its RELABEL e.g. "norfolk golden whistler" -> y01193"""
+    """Ebird ids training gives a tag before and after birdsconfig RELABEL_MAP
+    e.g. "kelp gull" -> gull, kelgul"""
     from utils import get_ebird_id
 
     ebird_map, relabel = training_maps()

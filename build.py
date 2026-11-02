@@ -342,7 +342,7 @@ FILTER_COLUMNS = [
     "birdnet, no perch result",
     "birdnet only",
     "birdnet, perch unsure",
-    "perch, birdnet disagrees",
+    "perch & birdnet disagrees",
     "perch only",
 ]
 
@@ -357,10 +357,15 @@ def perch_details(row):
     )
 
 
+def perch_tags(row):
+    # the track's tags and those of tracks overlapping its perch window, joined
+    # with ;. Older flags files only have the track's own label
+    return set(row.get("window_label", row["label"]).split(";"))
+
+
 def perch_agrees(row, threshold):
-    # perch predicts the label with enough confidence, probe or knn. label is
-    # all the track's tags joined with ;
-    tags = set(row["label"].split(";"))
+    # perch predicts the label with enough confidence, probe or knn
+    tags = perch_tags(row)
 
     def score(key):
         return float(row[key]) if row[key] != "" else 0
@@ -374,7 +379,7 @@ def perch_confident_other(row, threshold):
     # the probe confidently predicts a label the track isn't tagged with. Only
     # for tracks with a label the probe was trained on (probe_own_prob is set),
     # as for rare labels it can only ever predict something else
-    tags = set(row["label"].split(";"))
+    tags = perch_tags(row)
     return (
         row["probe_own_prob"] != ""
         and row["probe_prob"] != ""
@@ -446,7 +451,7 @@ def window_outcome(window, perch_rows, args):
         and birdnet_disagrees
         and max(doubts, default=0) >= args.perch_remove_doubt
     ):
-        return "perch, birdnet disagrees", True
+        return "perch & birdnet disagrees", True
     if flagged:
         return "perch only", False
     return "kept", False

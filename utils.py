@@ -48,7 +48,6 @@ def get_label_to_ebird_map():
     ebird_map["crow"] = "rook1"
     ebird_map["norfolk-parrot"] = "noipar1"
     ebird_map["pigeon"] = "rocpig"
-    ebird_map["new-zealand-dotterel"] = "dobplo1"
     ebird_map["brown-creeper"] = "pipipi1"
     ebird_map["new-zealand-dotterel"] = "rebdot1"
     ebird_map["sacred-kingfisher"] = "sackin3"

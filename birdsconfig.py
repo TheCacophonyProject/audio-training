@@ -36,6 +36,11 @@ RELABEL_MAP = {
     "liskiw1": "kiwi",
     "sobkiw3": "kiwi",
     "sbweye1": "silver3",
+    "mohoua novaeseelandiae": "pipipi1",
+    "baicra1": "baicra4",
+    "norfolk morepork": "morepo2",
+    "norfolk golden whistler": "y01193",
+    "gobwhi1": "y01193",
 }
 
 

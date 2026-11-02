@@ -184,6 +184,16 @@ def analyse(args):
 
     tags = [{to_label(t) for t in r["manual_tags"].split(";")} for r in rows]
     groups = np.array([r["recording_id"] or r["file"] for r in rows])
+    # the probe trains on a track's own tags, the checks below also accept the
+    # tags of tracks overlapping its window
+    overlap_tags = window_tags(
+        rows, tags, args.min_overlap, args.min_overlap_fraction
+    )
+    logging.info(
+        "%s of %s windows overlap a track with other tags",
+        sum(len(w) > len(t) for w, t in zip(overlap_tags, tags)),
+        len(rows),
+    )
 
     # train the probe on single tag tracks of labels with enough examples,
     # multi tag tracks and rare labels are still scored
@@ -266,11 +276,12 @@ def analyse(args):
     for i, row in enumerate(rows):
         result = dict(row)
         result["label"] = ";".join(sorted(tags[i]))
+        result["window_label"] = ";".join(sorted(overlap_tags[i]))
 
         own_prob = None
         result.update(probe_own_prob="", probe_label="", probe_prob="")
         if probs is not None:
-            known = [class_index[t] for t in tags[i] if t in class_index]
+            known = [class_index[t] for t in overlap_tags[i] if t in class_index]
             if known:
                 own_prob = float(probs[i, known].max())
                 result["probe_own_prob"] = round(own_prob, 3)
@@ -282,7 +293,9 @@ def analyse(args):
         agreement = None
         result.update(knn_agreement="", knn_label="", knn_label_fraction="")
         if others:
-            agreement = sum(1 for n in others if tags[n] & tags[i]) / len(others)
+            agreement = sum(1 for n in others if tags[n] & overlap_tags[i]) / len(
+                others
+            )
             neighbour_tags = Counter(t for n in others for t in tags[n])
             knn_label, knn_count = neighbour_tags.most_common(1)[0]
             result["knn_agreement"] = round(agreement, 3)
@@ -334,6 +347,32 @@ def analyse(args):
             mean("probe_own_prob"),
             mean("knn_agreement"),
         )
+
+
+def window_tags(rows, tags, min_overlap, min_overlap_fraction):
+    """Tags of each row's track plus those of the other tracks in its recording
+    overlapping its perch window e.g. a blackbird calling behind a fantail. A
+    track overlaps when at least min_overlap seconds or min_overlap_fraction of
+    it is in the window, so short tracks inside the window count"""
+    tracks = {}
+    for row, row_tags in zip(rows, tags):
+        tracks.setdefault(row["file"], {})[row["track_id"]] = (
+            float(row["track_start"]),
+            float(row["track_end"]),
+            row_tags,
+        )
+    result = []
+    for row, row_tags in zip(rows, tags):
+        start = float(row["perch_start"])
+        end = float(row["perch_end"])
+        window = set(row_tags)
+        for track_start, track_end, other in tracks[row["file"]].values():
+            overlap = min(end, track_end) - max(start, track_start)
+            needed = min(min_overlap, min_overlap_fraction * (track_end - track_start))
+            if overlap > 0 and overlap >= needed:
+                window |= other
+        result.append(window)
+    return result
 
 
 def main():
@@ -401,6 +440,19 @@ def main():
         help="Labels with fewer single tag tracks aren't trained on by the probe",
     )
     parser.add_argument("--folds", type=int, default=5)
+    parser.add_argument(
+        "--min-overlap",
+        type=float,
+        default=0.1,
+        help="Seconds of another track in a window for its tags to count as the "
+        "window's tags",
+    )
+    parser.add_argument(
+        "--min-overlap-fraction",
+        type=float,
+        default=0.5,
+        help="or fraction of the other track, for tracks shorter than --min-overlap",
+    )
     parser.add_argument("--knn", type=int, default=10, help="Neighbours to compare")
     parser.add_argument(
         "--probe-threshold",
