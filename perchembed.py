@@ -186,9 +186,7 @@ def analyse(args):
     groups = np.array([r["recording_id"] or r["file"] for r in rows])
     # the probe trains on a track's own tags, the checks below also accept the
     # tags of tracks overlapping its window
-    overlap_tags = window_tags(
-        rows, tags, args.min_overlap, args.min_overlap_fraction
-    )
+    overlap_tags = window_tags(rows, tags, args.min_overlap, args.min_overlap_fraction)
     logging.info(
         "%s of %s windows overlap a track with other tags",
         sum(len(w) > len(t) for w, t in zip(overlap_tags, tags)),

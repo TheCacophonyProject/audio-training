@@ -1196,14 +1196,16 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--filter-birds",
-        action="store_true",
-        help="Remove tracks with no birdnet bird or clear signal that perch also flags",
+        "--no-filter",
+        dest="filter_birds",
+        action="store_false",
+        help="Don't remove tracks with no birdnet bird or clear signal that perch "
+        "also flags",
     )
     parser.add_argument(
         "--filter-dry-run",
         action="store_true",
-        help="With --filter-birds only log what would be removed",
+        help="Only log what the bird filter would remove",
     )
     parser.add_argument(
         "--perch-flags",
