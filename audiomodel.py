@@ -474,7 +474,9 @@ class AudioModel:
         self.save_metadata(run_name, None, None, **args)
 
         checkpoints = self.checkpoints(
-            run_name, multi_label=args.get("multi_label", True)
+            run_name,
+            multi_label=args.get("multi_label", True),
+            patience=args.get("patience", 10),
         )
         class_weights = None
         # off by default, keras turns class_weight into one weight per sample
@@ -850,7 +852,7 @@ class AudioModel:
         )(self.model.outputs[0])
         return tf.keras.models.Model(self.model.input, outputs=probabilities)
 
-    def checkpoints(self, run_name, multi_label=True):
+    def checkpoints(self, run_name, multi_label=True, patience=10):
         metrics = [
             "val_loss",
             "val_precision",
@@ -882,7 +884,7 @@ class AudioModel:
             )
             checks.append(m_check)
         earlyStopping = tf.keras.callbacks.EarlyStopping(
-            patience=10,
+            patience=patience,
             monitor="val_pr_auc",
             mode="max",
         )
@@ -2344,6 +2346,12 @@ def parse_args():
     parser.add_argument("--epochs", type=int, default=35, help="Epochs to use")
     parser.add_argument(
         "--lr", type=float, default=5e-4, help="Peak learning rate after warmup"
+    )
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=10,
+        help="Epochs without val_pr_auc improving before stopping early",
     )
     parser.add_argument(
         "--extra-datasets",

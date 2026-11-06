@@ -935,6 +935,9 @@ def main():
     dataset_recs = {}
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
+        # before split_noise, which removes recordings that only have noise, so
+        # the split file can rebuild them
+        dataset_recs[dataset.name] = list(dataset.recs.keys())
         noise_ds = None
         if args.noise_dataset:
             # noise only samples go to the noise dataset, not the main one
@@ -942,7 +945,6 @@ def main():
         r_counts = dataset.get_rec_counts()
         for k, v in r_counts.items():
             r_counts[k] = len(v)
-        dataset_recs[dataset.name] = list(dataset.recs.keys())
         dataset_counts[dataset.name] = {
             "rec_counts": r_counts,
             "sample_counts": dataset.get_counts(),
