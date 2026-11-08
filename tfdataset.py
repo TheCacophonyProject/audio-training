@@ -47,6 +47,11 @@ MOREPORK_MAX = 1200
 # remap value for noise tags when noise isn't a label, gives an empty label
 # like an excluded tag (-1) but the sample is kept as a negative
 NOISE_TAG = -2
+# labels need this many validation recordings for their validation results to
+# be trusted, labels with fewer are still trained on
+MIN_VAL_RECS = 10
+# filled by set_specific_by_count
+EVALUATED_LABELS = []
 
 
 def set_merge_labels(new_merge):
@@ -61,6 +66,7 @@ def set_specific_by_count(meta):
     training_rec = counts["train"]["rec_counts"]
 
     validation = counts["validation"]["sample_counts"]
+    validation_rec = counts["validation"]["rec_counts"]
     if "ebird_ids" in meta:
         ebird_ids = meta["ebird_ids"]
     else:
@@ -74,8 +80,8 @@ def set_specific_by_count(meta):
     #         ebird_id_to_labels[ebird_id] = [label]
     # #        logging.info("Adding %s for %s",ebird_id,label)
 
-    dataset_lbls = ["train samples", "rec counts", "validation sample"]
-    count_dics = [training, training_rec, validation]
+    dataset_lbls = ["train samples", "rec counts", "validation sample", "val recs"]
+    count_dics = [training, training_rec, validation, validation_rec]
     # for v, lbl_list in ebird_id_to_labels.items():
     #     for k in lbl_list:
     #         for dataset_lbl, dataset in zip(dataset_lbls, count_dics):
@@ -141,8 +147,20 @@ def set_specific_by_count(meta):
                     label,
                     count,
                     rec_count,
-                    not val_count,
+                    val_count,
                 )
+
+    for label, val_recs in validation_rec.items():
+        if val_recs >= MIN_VAL_RECS:
+            if label not in EVALUATED_LABELS:
+                EVALUATED_LABELS.append(label)
+        else:
+            logging.info(
+                "%s has %s validation recordings, needs %s to be evaluated",
+                label,
+                val_recs,
+                MIN_VAL_RECS,
+            )
 
 
 def get_excluded_labels(labels):

@@ -79,6 +79,7 @@ from tfdataset import (
     set_specific_by_count,
     N_MELS,
     BREAK_FREQ,
+    EVALUATED_LABELS,
 )
 from evaluate import (
     preprocess_audio,
@@ -565,6 +566,9 @@ class AudioModel:
         model_stats["use_generic_bird"] = args.get("use_generic_bird", False)
         # model_stats["filter_freq"] = args.get("filter_freq", False)
         model_stats["ebird_labels"] = self.labels
+        model_stats["evaluated_labels"] = [
+            l for l in self.labels if l in EVALUATED_LABELS
+        ]
         # model_stats["multi_label"] = args.get("multi_label", False)
         model_stats["loss_fn"] = self.loss_fn
         model_stats["bird_labels"] = BIRD_TRAIN_LABELS
