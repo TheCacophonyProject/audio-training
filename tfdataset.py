@@ -529,7 +529,9 @@ def get_dataset(dir, labels, global_epoch=None, **args):
         if noise_dataset is None:
             logging.info("No noise dataset, not mixing up")
         else:
-            logging.info("Mixing up")
+            logging.info(
+                "Mixing up with bird mix prob %s", args.get("bird_mix_prob", 0.25)
+            )
 
             # 3. Zip them together into a triple-stream
             zipped_dataset = tf.data.Dataset.zip((dataset, noise_dataset))
@@ -542,7 +544,7 @@ def get_dataset(dir, labels, global_epoch=None, **args):
                     b1,
                     bn,
                     alpha=0.2,
-                    bird_mix_prob=0.25,
+                    bird_mix_prob=args.get("bird_mix_prob", 0.25),
                     noise_mix_prob=0.7,
                     animal_class_idx=animal_index,
                 ),

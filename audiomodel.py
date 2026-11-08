@@ -411,6 +411,15 @@ class AudioModel:
         labels, excluded_labels, self.training_data_meta = init_labels(
             self.data_dir, **args
         )
+        weights_meta = None
+        if weights is not None:
+            weights_meta = load_weights_meta(weights)
+        if weights_meta is not None and not args.get("reset_labels", False):
+            # use the same labels and mappings as the weights so the trained
+            # final layer is kept and each output still means the same label
+            labels, excluded_labels = use_weights_labels(
+                weights_meta, labels, excluded_labels, args
+            )
 
         (
             self.train,
@@ -447,16 +456,12 @@ class AudioModel:
         # strategy = tf.distribute.MirroredStrategy()
         # with strategy.scope():
         weights_labels = None
-        if weights is not None:
-            weights_metadata = Path(weights).parent / "metadata.txt"
-            if weights_metadata.exists():
-                with weights_metadata.open("r") as f:
-                    weights_meta = json.load(f)
-                weights_labels = weights_meta.get("ebird_labels")
-                print("Weight labels are ", weights_labels)
-                # same labels so keep the trained final layer
-                if weights_labels == self.labels:
-                    weights_labels = None
+        if weights_meta is not None:
+            weights_labels = weights_meta.get("ebird_labels")
+            logging.info("Weight labels are %s", weights_labels)
+            # same labels so keep the trained final layer
+            if weights_labels == self.labels:
+                weights_labels = None
         self.build_model(
             multi_label=args.get("multi_label", True),
             loss_fn=args.get("loss_fn", "keras"),
@@ -1738,6 +1743,62 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
     return train, validation, new_labels, remapped, extra_label_map, epoch_size
 
 
+def load_weights_meta(weights):
+    """metadata.txt saved next to weights, or None if there isn't one"""
+    weights_metadata = Path(weights).parent / "metadata.txt"
+    if not weights_metadata.exists():
+        logging.warning(
+            "No metadata for weights %s, using labels from the datasets, these "
+            "must match the labels the weights were trained with",
+            weights,
+        )
+        return None
+    with weights_metadata.open("r") as f:
+        return json.load(f)
+
+
+WEIGHTS_LABEL_KEYS = ["ebird_labels", "excluded_labels", "remapped_labels"]
+
+
+def use_weights_labels(weights_meta, labels, excluded_labels, args):
+    """Labels, excluded labels, remapped labels, extra label map and generic
+    bird from the weights metadata. remapped_labels and extra_label_map are set
+    in args so get_dataset uses them instead of working them out again
+
+    Returns labels and excluded labels, unchanged if the metadata is missing any
+    of WEIGHTS_LABEL_KEYS
+    """
+    missing = [k for k in WEIGHTS_LABEL_KEYS if weights_meta.get(k) is None]
+    if missing:
+        logging.warning(
+            "Weights metadata is missing %s, using labels from the datasets",
+            missing,
+        )
+        return labels, excluded_labels
+
+    weights_labels = weights_meta["ebird_labels"]
+    # remapped labels has every dataset label the weights were trained with,
+    # including excluded and merged ones
+    new_labels = sorted(set(labels) - set(weights_meta["remapped_labels"]))
+    if new_labels:
+        logging.warning(
+            "Datasets have labels %s which the weights weren't trained with, "
+            "these are excluded",
+            new_labels,
+        )
+    use_generic_bird = weights_meta.get("use_generic_bird", False)
+    if args.get("use_generic_bird", False) != use_generic_bird:
+        logging.warning(
+            "Setting use generic bird to %s to match the weights", use_generic_bird
+        )
+    args["use_generic_bird"] = use_generic_bird
+    args["remapped_labels"] = weights_meta["remapped_labels"]
+    # an empty map rather than None so get_dataset uses the remapped labels
+    args["extra_label_map"] = weights_meta.get("extra_label_map") or {}
+    logging.info("Using labels, excluded and remapped labels from the weights")
+    return list(weights_labels), list(weights_meta["excluded_labels"])
+
+
 def init_labels(data_dir, **args):
     labels = set()
 
@@ -2402,6 +2463,12 @@ def parse_args():
         help="Train without augmentations (roll, mixup, noise mixing, spec augment)",
     )
     parser.add_argument(
+        "--bird-mix-prob",
+        type=float,
+        default=0.25,
+        help="Probability of mixing each training clip with another clip",
+    )
+    parser.add_argument(
         "--noise-mix-fraction",
         type=float,
         default=0.8,
@@ -2431,6 +2498,12 @@ def parse_args():
     parser.add_argument("--confusion", help="Save confusion matrix for model")
 
     parser.add_argument("-w", "--weights", help="Weights to use")
+    parser.add_argument(
+        "--reset-labels",
+        action="store_true",
+        help="With --weights, use labels from the datasets rather than the labels "
+        "in the weights metadata, replacing the final layer if they differ",
+    )
     parser.add_argument("--cross", action="count", help="Cross fold val")
     parser.add_argument(
         "--no-low-samples", action="count", help="Don't use over sampled samples"
