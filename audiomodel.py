@@ -374,9 +374,9 @@ class AudioModel:
             )
             test_results_acc["%Correct"] = round(100 * correct / total)
 
-            val_history = history.history["val_binary_accuracy"]
+            val_history = history.history["val_pr_auc"]
             best_val = np.amax(val_history)
-            test_results_acc["val_acc"] = best_val
+            test_results_acc["val_pr_auc"] = best_val
 
             loss_history = history.history["val_loss"]
             best_loss = np.amin(loss_history)
@@ -774,13 +774,6 @@ class AudioModel:
             outputs = birds
             self.model = tf.keras.models.Model(input, outputs=outputs)
 
-        if self.from_logits:
-            acc = tf.keras.metrics.BinaryAccuracy(threshold=0.0, name="binary_accuracy")
-        elif multi_label:
-            acc = tf.metrics.binary_accuracy
-        else:
-            acc = tf.metrics.categorical_accuracy
-
         logging.info(
             "Using  %s cross entropy from logits %s",
             "binary" if multi_label else "",
@@ -822,31 +815,13 @@ class AudioModel:
                 lr=lr,
             ),
             loss=loss_fn,
-            metrics=[
-                acc,
-                # precAtK( not working on gpu
-                #     k=3,
-                #     num_labels=len(self.labels),
-                #     # , bird_i=self.labels.index("bird")
-                # ),
-                tf.keras.losses.BinaryFocalCrossentropy(from_logits=self.from_logits),
-                tf.keras.metrics.AUC(from_logits=self.from_logits),
-                # per label pr auc averaged over labels so rare labels count
-                # as much as common ones
-                tf.keras.metrics.AUC(
-                    curve="PR",
-                    multi_label=True,
-                    num_labels=num_labels,
-                    from_logits=self.from_logits,
-                    name="pr_auc",
-                ),
-                # logits threshold of 0 is a probability of 0.5
-                tf.keras.metrics.Recall(thresholds=0.0 if self.from_logits else None),
-                tf.keras.metrics.Precision(
-                    thresholds=0.0 if self.from_logits else None
-                ),
-                huber_loss if self.from_logits else tf.keras.losses.Huber(),
-            ],
+            # given the per label sample weights, so soft labels, which may or
+            # may not be in a sample, don't count. Binary accuracy and roc auc
+            # aren't used as with many labels they are dominated by easy
+            # negatives
+            weighted_metrics=compile_metrics(
+                multi_label, num_labels, self.from_logits
+            ),
         )
         self.model.summary()
 
@@ -862,20 +837,10 @@ class AudioModel:
         return tf.keras.models.Model(self.model.input, outputs=probabilities)
 
     def checkpoints(self, run_name, multi_label=True, patience=10):
-        metrics = [
-            "val_loss",
-            "val_precision",
-            "val_auc",
-            "val_pr_auc",
-            "val_recall",
-            "val_huber_loss",
-            # "val_precK",
-            "val_binary_focal_crossentropy",
-        ]
-        accuracy = "val_categorical_accuracy"
-        if multi_label:
-            accuracy = "val_binary_accuracy"
-        metrics.append(accuracy)
+        # val_ and the names of the compile_metrics
+        metrics = ["val_loss", "val_pr_auc", "val_precision", "val_recall"]
+        if not multi_label:
+            metrics.append("val_categorical_accuracy")
         checks = []
         for m in metrics:
             m_dir = self.checkpoint_folder / run_name / f"{m}.weights.h5"
@@ -1196,6 +1161,28 @@ def sigmoid_binary_cross(y_true, y_pred):
     return loss_m
 
 
+def compile_metrics(multi_label, num_labels, from_logits):
+    """Metrics the model is compiled with, all weighted by the per label sample
+    weights. checkpoints saves the best weights for each"""
+    metrics = [
+        # per label pr auc averaged over labels so rare labels count as much
+        # as common ones
+        tf.keras.metrics.AUC(
+            curve="PR",
+            multi_label=True,
+            num_labels=num_labels,
+            from_logits=from_logits,
+            name="pr_auc",
+        ),
+        # logits threshold of 0 is a probability of 0.5
+        tf.keras.metrics.Recall(thresholds=0.0 if from_logits else None),
+        tf.keras.metrics.Precision(thresholds=0.0 if from_logits else None),
+    ]
+    if not multi_label:
+        metrics.append(tf.keras.metrics.CategoricalAccuracy())
+    return metrics
+
+
 def huber_loss(y_true, y_pred):
     # huber loss on probabilities for models outputting logits
     return tf.keras.losses.huber(y_true, tf.math.sigmoid(y_pred))
@@ -1474,11 +1461,21 @@ def predict_dataset(model, dataset):
 
 
 def group_by_track(dataset, predictions):
-    """Mean prediction per track, from a dataset loaded with load_all_y where
-    y[4] is the track id. A sample covering several tracks has them all in its
-    track id e.g. "123 124" and is grouped with samples of the same tracks
+    """Mean prediction per track and label, from a dataset loaded with
+    load_all_y where y[4] is the track id. A sample covering several tracks
+    has them all in its track id e.g. "123 124" and is grouped with samples of
+    the same tracks
 
-    Returns (true labels, mean predictions) with one row per track
+    Each label is pooled over the samples that know it, as e.g. a secondary
+    bird may only be in some of a track's samples:
+    - if any samples have it as a true label the track is true for it, and its
+      prediction is the mean over just those samples
+    - otherwise the track is false for it, and its prediction is the mean over
+      the samples it isn't soft in
+    - if it is soft in every sample it is soft for the track
+
+    Returns (true labels, mean predictions, soft labels) with one row per
+    track, soft labels are all zeros if the dataset has none (y[9])
     """
     true_categories, y_pred = predictions
     track_ds = dataset.map(
@@ -1492,16 +1489,38 @@ def group_by_track(dataset, predictions):
     ), f"Track ids {len(track_ids)} don't match predictions {len(y_pred)}"
     unique_tracks, track_index = np.unique(track_ids, return_inverse=True)
     num_tracks = len(unique_tracks)
-    track_counts = np.bincount(track_index, minlength=num_tracks)[:, np.newaxis]
 
-    track_pred = np.zeros((num_tracks, y_pred.shape[1]), dtype=np.float64)
-    np.add.at(track_pred, track_index, y_pred)
-    track_pred /= track_counts
-    # labels should be the same for every sample of a track, take any true
-    track_true = np.zeros((num_tracks, true_categories.shape[1]), dtype=np.float32)
-    np.maximum.at(track_true, track_index, true_categories)
+    true = (true_categories > 0).astype(np.float64)
+    soft = np.zeros_like(true)
+    if isinstance(dataset.element_spec[1], tuple) and len(dataset.element_spec[1]) > 9:
+        soft_ds = dataset.map(
+            lambda x, y: y[9],
+            num_parallel_calls=tf.data.AUTOTUNE,
+            deterministic=True,
+        )
+        soft = np.concatenate(list(soft_ds.as_numpy_iterator()), axis=0)
+        soft = (soft > 0).astype(np.float64) * (1 - true)
+    negative = (1 - true) * (1 - soft)
+
+    def per_track(values):
+        summed = np.zeros((num_tracks, y_pred.shape[1]), dtype=np.float64)
+        np.add.at(summed, track_index, values)
+        return summed
+
+    pos_count = per_track(true)
+    neg_count = per_track(negative)
+    pos_pred = per_track(y_pred * true) / np.maximum(pos_count, 1)
+    neg_pred = per_track(y_pred * negative) / np.maximum(neg_count, 1)
+    track_true = np.float32(pos_count > 0)
+    track_soft = np.float32((pos_count == 0) & (neg_count == 0))
+    # soft labels are masked out later so their prediction doesn't matter
+    track_pred = np.where(pos_count > 0, pos_pred, neg_pred)
+    if np.any(track_soft):
+        logging.info(
+            "%s tracks have soft labels", np.count_nonzero(track_soft.any(axis=1))
+        )
     logging.info("Grouped %s samples into %s tracks", len(y_pred), num_tracks)
-    return track_true, track_pred
+    return track_true, track_pred, track_soft
 
 
 def multi_confusion_single(
@@ -1536,16 +1555,21 @@ def multi_confusion_single(
         "thresholds": label_thresholds,
         "thresholds-capped": np.clip(label_thresholds, 0.5, 0.8),
     }
+    true_categories, y_pred, soft = predictions
     for name, prob_thresh in confusion_thresholds.items():
         save_multi_confusion(
-            *predictions,
+            true_categories,
+            y_pred,
             labels,
             filename.parent / f"{filename.name}-{name}",
             prob_thresh,
+            soft=soft,
         )
 
 
-def save_multi_confusion(true_categories, y_pred, labels, filename, prob_thresh):
+def save_multi_confusion(
+    true_categories, y_pred, labels, filename, prob_thresh, soft=None
+):
     """Saves filename-combined, filename-matches and filename-none confusions.
 
     combined: each true label is correct if predicted, and every prediction
@@ -1564,6 +1588,10 @@ def save_multi_confusion(true_categories, y_pred, labels, filename, prob_thresh)
     with no true labels are counted in the None row
 
     prob_thresh is a single threshold or one per label
+
+    soft (one row per track like true_categories) are labels that may or may
+    not be in a track, predicting them is neither right nor wrong so they are
+    left out. How often each was predicted is saved to filename-soft.csv
     """
     num_labels = y_pred.shape[1]
     # one threshold per label
@@ -1585,6 +1613,11 @@ def save_multi_confusion(true_categories, y_pred, labels, filename, prob_thresh)
     nothing_index = none_index if noise_index is None else noise_index
     # with a noise row, nothing true goes there rather than None
     totals_row = np.append(totals_row, 0 if noise_index is not None else no_true_count)
+
+    if soft is not None and np.any(soft):
+        save_soft_predictions(soft, y_pred, labels[:num_labels], prob_thresh, filename)
+        # below any threshold and argmax so never predicted
+        y_pred = np.where(soft > 0, -1.0, y_pred)
 
     none_p = []
     none_y = []
@@ -1667,6 +1700,28 @@ def save_multi_confusion(true_categories, y_pred, labels, filename, prob_thresh)
         logging.info("Saving confusion to %s", cm_path.with_suffix(".png"))
         plt.savefig(cm_path.with_suffix(".png"), format="png")
         plt.close(figure)
+
+
+def save_soft_predictions(soft, y_pred, labels, prob_thresh, filename):
+    """For each label, the tracks it is soft on and how many of them predict
+    it, a high fraction suggests the soft label is often really there"""
+    rows = []
+    for i, label in enumerate(labels):
+        on = soft[:, i] > 0
+        if not np.any(on):
+            continue
+        predicted = int(np.count_nonzero(y_pred[on, i] >= prob_thresh[i]))
+        rows.append((label, int(on.sum()), predicted, predicted / on.sum()))
+    rows.sort(key=lambda r: -r[1])
+    out = filename.parent / f"{filename.name}-soft.csv"
+    with open(out, "w") as f:
+        f.write("label,soft_tracks,predicted,predicted_fraction\n")
+        for label, count, predicted, fraction in rows:
+            f.write(f"{label},{count},{predicted},{fraction:.3f}\n")
+            logging.info(
+                "Soft %s predicted on %s of %s tracks", label, predicted, count
+            )
+    logging.info("Saved soft label predictions to %s", out)
 
 
 def ktest():
@@ -2531,7 +2586,20 @@ def parse_args():
         "--use-weighting",
         default=False,
         action="count",
-        help="Use weighting for classes",
+        help="Use weighting for classes, turns off the soft label weights as "
+        "keras can't use both",
+    )
+    parser.add_argument(
+        "--drop-untrained",
+        action="store_true",
+        help="Drop samples of bird species that aren't trained on instead of "
+        "using them as negatives",
+    )
+    parser.add_argument(
+        "--no-soft-weights",
+        action="store_true",
+        help="Train on soft labels as negatives instead of leaving them out of "
+        "the loss and pr auc",
     )
     parser.add_argument(
         "--only-features", default=False, action="count", help="Train on features"
@@ -2705,15 +2773,19 @@ def best_threshold(model, labels, dataset, filename=None):
     """
     from sklearn.metrics import precision_recall_curve
 
-    true_categories, y_pred = group_by_track(dataset, predict_dataset(model, dataset))
+    true_categories, y_pred, soft = group_by_track(
+        dataset, predict_dataset(model, dataset)
+    )
     thresholds_best = {}
     for i, label in enumerate(labels[: y_pred.shape[1]]):
-        y_true = true_categories[:, i] > 0
+        # tracks the label is soft on are neither positives nor negatives
+        known = soft[:, i] == 0
+        y_true = true_categories[known, i] > 0
         if not np.any(y_true):
             logging.info("No samples of %s, using threshold 0.5", label)
             thresholds_best[label] = 0.5
             continue
-        precision, recall, thresholds = precision_recall_curve(y_true, y_pred[:, i])
+        precision, recall, thresholds = precision_recall_curve(y_true, y_pred[known, i])
         # last precision / recall point has no threshold
         precision = precision[:-1]
         recall = recall[:-1]
@@ -3021,8 +3093,12 @@ class MultiHotMixupBCE(tf.keras.losses.Loss):
             1.0 - y_true
         ) * tf.math.pow(probs, 2.0)
 
-        # 4. Scale the standard BCE loss by the focal weights
-        return tf.reduce_mean(bce * focal_weight, axis=-1)
+        # 4. Scale the standard BCE loss by the focal weights. Left per label
+        # [batch, classes] so keras can apply per label sample weights (soft
+        # labels weigh 0), keras's sum over batch size reduction then averages
+        # over every label of every sample, the same as averaging over labels
+        # then the batch
+        return bce * focal_weight
 
 
 if __name__ == "__main__":

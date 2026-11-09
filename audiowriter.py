@@ -130,6 +130,12 @@ def create_tf_example(sample):
             sample.text_tags_s.encode("utf8")
         ),
         "audio/class/ebird": tfrecord_util.bytes_feature(tags.encode("utf8")),
+        "audio/secondary": tfrecord_util.bytes_feature(
+            "\n".join(sample.secondary_tags).encode("utf8")
+        ),
+        "audio/softtags": tfrecord_util.bytes_feature(
+            "\n".join(sample.soft_tags).encode("utf8")
+        ),
         "audio/raw": tfrecord_util.float_list_feature(np.float32(data.raw.ravel())),
     }
     if data.spectrogram is not None:

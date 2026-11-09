@@ -454,6 +454,50 @@ def non_bird_outcome(window, perch_rows, args):
     return "kept", False
 
 
+def check_secondary_tags(dataset, args):
+    """Keeps a sample's secondary tags that birdnet detects (at least
+    --birdnet-min-conf) for at least --secondary-min-overlap seconds of the
+    sample's time span, the rest become soft tags as the bird may not be in
+    the sample. Recordings without birdnet results only get soft tags"""
+    from birdnetcompare import detection_taxon, load_taxonomy
+
+    taxonomy = load_taxonomy(Path(__file__).parent / "eBird_taxonomy_v2024.csv")
+    counts = {}
+    for r in dataset.recs.values():
+        samples = [s for s in r.samples if s.secondary_tags or s.soft_tags]
+        if not samples:
+            continue
+        detections = []
+        for d in r.metadata.get("birdnet") or []:
+            if d["confidence"] < args.birdnet_min_conf:
+                continue
+            taxon = detection_taxon(d, taxonomy)
+            if taxon is None:
+                continue
+            code = taxon["code"]
+            detections.append((d["start"], d["end"], RELABEL.get(code, code)))
+        for s in samples:
+            # rechecks from scratch if run again
+            tags = set(s.secondary_tags) | set(s.soft_tags)
+            found = {
+                code
+                for start, end, code in detections
+                if code in tags
+                and min(end, s.end) - max(start, s.start) >= args.secondary_min_overlap
+            }
+            s.secondary_tags = sorted(tags & found)
+            s.soft_tags = sorted(tags - found)
+            for tag in s.secondary_tags:
+                counts.setdefault(tag, Counter())["secondary"] += 1
+            for tag in s.soft_tags:
+                counts.setdefault(tag, Counter())["soft"] += 1
+    logging.info(
+        "Sample secondary tags birdnet finds in the sample (secondary) / doesn't (soft)"
+    )
+    for tag, c in sorted(counts.items(), key=lambda kv: -sum(kv[1].values())):
+        logging.info("  %s: %s / %s", tag, c["secondary"], c["soft"])
+
+
 def window_outcome(window, perch_rows, args, tags=()):
     """What filter_bird_windows does with one birdnet window of a track.
     Returns the outcome and whether to remove the window"""
@@ -895,6 +939,7 @@ def main():
 
     if args.filter_birds:
         filter_bird_windows(dataset, args)
+    check_secondary_tags(dataset, args)
     # for r in dataset.recs:
     #     if "whistler" not in r.human_tags:
     #         print(r.id, " missing", r.human_tags)
@@ -968,6 +1013,9 @@ def main():
     # return
     dataset_counts = {}
     dataset_recs = {}
+    # every primary, secondary and soft tag, so training can look up tags that
+    # are only ever secondary or soft
+    all_tags = set(datasets[0].labels)
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
         # before split_noise, which removes recordings that only have noise, so
@@ -977,13 +1025,21 @@ def main():
         if args.noise_dataset:
             # noise only samples go to the noise dataset, not the main one
             dataset, noise_ds = split_noise(dataset, args)
-        r_counts = dataset.get_rec_counts()
-        for k, v in r_counts.items():
-            r_counts[k] = len(v)
-        dataset_counts[dataset.name] = {
-            "rec_counts": r_counts,
-            "sample_counts": dataset.get_counts(),
-        }
+        dataset_counts[dataset.name] = {}
+        # rec_counts and sample_counts are primary labels, which label
+        # selection uses
+        for prefix, tags in (
+            ("", "tags"),
+            ("secondary_", "secondary_tags"),
+            ("soft_", "soft_tags"),
+        ):
+            r_counts = {k: len(v) for k, v in dataset.get_rec_counts(tags=tags).items()}
+            dataset_counts[dataset.name][f"{prefix}rec_counts"] = r_counts
+            dataset_counts[dataset.name][f"{prefix}sample_counts"] = dataset.get_counts(
+                tags=tags
+            )
+            for sample in dataset.samples:
+                all_tags.update(getattr(sample, tags))
         create_tf_records(dataset, dir, datasets[0].labels, num_shards=100)
         if noise_ds is not None:
             logging.info("%s noise dataset", dataset.name)
@@ -1007,7 +1063,8 @@ def main():
         # "fmax": FMAX,
         # "break_freq": BREAK_FREQ,
         # "htk": HTK,
-        "labels": datasets[0].labels,
+        "labels": sorted(all_tags),
+        "primary_labels": datasets[0].labels,
         "type": "audio",
         "counts": dataset_counts,
         "by_label": False,
@@ -1248,6 +1305,13 @@ def parse_args():
         "--perch-flags",
         default=None,
         help="perch-flags.csv from perchembed.py --analyse",
+    )
+    parser.add_argument(
+        "--secondary-min-overlap",
+        type=float,
+        default=1.5,
+        help="Seconds a birdnet detection of a secondary tag must overlap a "
+        "sample by for it to stay a secondary tag rather than a soft tag",
     )
     parser.add_argument(
         "--filter-non-bird",

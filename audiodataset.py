@@ -178,21 +178,25 @@ class AudioDataset:
         for tag in r.human_tags:
             self.labels.add(tag)
 
-    def get_rec_counts(self):
+    def get_rec_counts(self, tags="tags"):
+        """Recording ids per tag, tags is the sample attribute to count e.g.
+        tags, secondary_tags or soft_tags"""
         counts = {}
         for s in self.samples:
-            for tag in s.tags:
+            for tag in getattr(s, tags):
                 if tag in counts:
                     counts[tag].add(s.rec_id)
                 else:
                     counts[tag] = {s.rec_id}
         return counts
 
-    def get_counts(self):
+    def get_counts(self, tags="tags"):
+        """Samples per tag, tags is the sample attribute to count e.g. tags,
+        secondary_tags or soft_tags"""
         counts = {}
 
         for s in self.samples:
-            for tag in s.tags:
+            for tag in getattr(s, tags):
                 if tag in counts:
                     counts[tag] += 1
                 else:
@@ -364,6 +368,8 @@ class AudioSample:
         max_freq=None,
         mixed_label=None,
         low_sample=False,
+        secondary_tags=None,
+        soft_tags=None,
     ):
         global audio_id
         self.id = audio_id
@@ -396,6 +402,11 @@ class AudioSample:
         self.predicted_labels = None
         self.min_freq = min_freq
         self.max_freq = max_freq
+        # other birds listed somewhere in the sample's clips e.g. tier1
+        # secondary labels, build moves those birdnet doesn't find in the
+        # sample's time span to soft_tags
+        self.secondary_tags = sorted(secondary_tags or [])
+        self.soft_tags = sorted(soft_tags or [])
 
         if bin_id is None:
             self.bin_id = f"{self.rec_id}"
@@ -416,6 +427,8 @@ class AudioSample:
             min_freq=self.min_freq,
             max_freq=self.max_freq,
             low_sample=self.low_sample,
+            secondary_tags=self.secondary_tags,
+            soft_tags=self.soft_tags,
         )
         cloned.rec_id = self.rec_id
         cloned.location = self.location
@@ -788,6 +801,12 @@ class Recording:
                                     max_freq = max(other_track.max_freq, max_freq)
 
                     other_tracks.append(track)
+                    # a secondary bird that is a label of an overlapping
+                    # track is already a label
+                    secondary_tags = set()
+                    for t in other_tracks:
+                        secondary_tags |= t.secondary_tags
+                    secondary_tags -= labels
                     if low_sample_track:
                         # if is a low sample track allow, tracks to spread over multiple datasets
                         # might not be a good idea
@@ -807,6 +826,7 @@ class Recording:
                         max_freq=max_freq,
                         mixed_label=track.mixed_label,
                         low_sample=low_sample_track,
+                        secondary_tags=secondary_tags,
                     )
                     if used_sample:
                         pool = "main"

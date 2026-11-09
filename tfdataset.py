@@ -48,6 +48,10 @@ MOREPORK_MAX = 1200
 # remap value for noise tags when noise isn't a label, gives an empty label
 # like an excluded tag (-1) but the sample is kept as a negative
 NOISE_TAG = -2
+# remap value for species that aren't trained on, an empty label kept as a
+# negative so the model learns not to predict trained labels for other birds.
+# A noise label is removed as a bird is in the sample
+UNTRAINED_TAG = -3
 # labels need this many validation recordings for their validation results to
 # be trusted, labels with fewer are still trained on
 MIN_VAL_RECS = 10
@@ -137,18 +141,20 @@ def set_specific_by_count(meta):
         if label not in validation:
             continue
         val_count = validation[label]
-        if count > 50 and rec_count > 50 and val_count > 2:
+        val_recs = validation_rec.get(label, 0)
+        if count > 50 and rec_count > 50 and val_recs >= MIN_VAL_RECS:
             labels_with_data.append(label)
             if label not in ALL_BIRDS and label not in RELABEL_MAP:
                 logging.info("Have data for %s but not included ", label)
             if label in ALL_BIRDS and label not in BIRD_TRAIN_LABELS:
                 BIRD_TRAIN_LABELS.append(label)
                 logging.info(
-                    "Using %s because have data samples: %s and recs %s val samples %s:",
+                    "Using %s because have data samples: %s and recs %s val samples %s val recs %s:",
                     label,
                     count,
                     rec_count,
                     val_count,
+                    val_recs,
                 )
 
     for label, val_recs in validation_rec.items():
@@ -467,6 +473,52 @@ def get_remappings(
 bird_mask = None
 
 
+TAXONOMY = None
+
+
+def load_species_taxonomy():
+    """{ebird code: (category, report as)} from the ebird taxonomy"""
+    global TAXONOMY
+    if TAXONOMY is None:
+        import csv
+
+        TAXONOMY = {}
+        path = Path(__file__).parent / "eBird_taxonomy_v2024.csv"
+        with open(path, encoding="utf-8-sig") as f:
+            for row in csv.DictReader(f):
+                TAXONOMY[row["SPECIES_CODE"]] = (row["CATEGORY"], row["REPORT_AS"])
+    return TAXONOMY
+
+
+def is_untrained_species(tag, table_remap):
+    """A specific bird species that isn't trained on, so samples of it can be
+    negatives. Not excluded labels, generic tags (spuh, slash, hybrid, or
+    names like bird), or subspecies of a trained species"""
+    if tag in EXCLUDED_LABELS:
+        return False
+    taxon = load_species_taxonomy().get(tag)
+    if taxon is None:
+        return False
+    category, report_as = taxon
+    if category == "species":
+        return True
+    if category in ("issf", "form"):
+        # a subspecies of a trained species is that species
+        return table_remap.get(report_as, -1) < 0 and report_as not in EXCLUDED_LABELS
+    return False
+
+
+def use_soft_weights(args):
+    """Whether training and validation datasets give keras a per label sample
+    weight of 0 for soft labels. Keras can't use class weights as well"""
+    return (
+        not args.get("no_soft_weights", False)
+        and args.get("one_hot", True)
+        and not args.get("use_weighting", False)
+        and not args.get("load_all_y", False)
+    )
+
+
 def get_dataset(dir, labels, global_epoch=None, **args):
     # global FMAX, MEL_WEIGHTS, FMIN, NFFT, BREAK_FREQ, N_MELS
     # if args.get("n_mels"):
@@ -569,6 +621,13 @@ def get_dataset(dir, labels, global_epoch=None, **args):
         dataset = dataset.map(
             lambda x, y: (tf_batch_spec_augment(x), y),
             num_parallel_calls=tf.data.AUTOTUNE,
+        )
+    if use_soft_weights(args) and not args.get("debug"):
+        # keras takes (x, y, sample weight)
+        dataset = dataset.map(
+            lambda x, y: (x, y[0], y[1]),
+            num_parallel_calls=tf.data.AUTOTUNE,
+            deterministic=deterministic,
         )
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     return dataset, remapped, epoch_size, labels, extra_label_dic
@@ -695,7 +754,7 @@ def load_noise_dataset(filenames, num_labels, labels, args, excluded_tags=None):
     # only pull the tag text out, so the audio is never copied into python
     tag_counts = {}
     for tags in (
-        noise_dataset.map(lambda wave, label: label[-1]).batch(1024).as_numpy_iterator()
+        noise_dataset.map(lambda wave, label: label[8]).batch(1024).as_numpy_iterator()
     ):
         for tag in tags:
             tag = tag.decode().replace("\n", "+")
@@ -749,6 +808,17 @@ def get_a_dataset(dir, labels, args):
         for tag in NOISE_LABELS:
             if table_remap.get(tag, -1) == -1:
                 table_remap[tag] = NOISE_TAG
+    if not args.get("drop_untrained", False):
+        untrained = [
+            tag
+            for tag, i in table_remap.items()
+            if i == -1 and is_untrained_species(tag, table_remap)
+        ]
+        for tag in untrained:
+            table_remap[tag] = UNTRAINED_TAG
+        logging.info(
+            "Using %s untrained species as negatives %s", len(untrained), untrained
+        )
     # lookups from tag to label index, passed to read_tfrecord through args
     args["remap_table"] = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
@@ -916,11 +986,21 @@ def get_a_dataset(dir, labels, args):
         return dataset, None, remapped, None, labels, extra_label_dic
 
     if not args.get("load_all_y", False):
-        dataset = dataset.map(
-            lambda x, y: (x, y[0]),
-            num_parallel_calls=tf.data.AUTOTUNE,
-            deterministic=deterministic,
-        )
+        if use_soft_weights(args):
+            # (label, weight) with 0 weight for soft labels, which may or may not
+            # be in the sample, get_dataset gives these to keras as sample
+            # weights so they are left out of the loss and weighted metrics
+            dataset = dataset.map(
+                lambda x, y: (x, (y[0], 1.0 - y[-1])),
+                num_parallel_calls=tf.data.AUTOTUNE,
+                deterministic=deterministic,
+            )
+        else:
+            dataset = dataset.map(
+                lambda x, y: (x, y[0]),
+                num_parallel_calls=tf.data.AUTOTUNE,
+                deterministic=deterministic,
+            )
 
     if args.get("cache", False) or dir.name != "train":
         logging.info("Caching to mem")
@@ -1023,6 +1103,15 @@ def read_tfrecord(
     as built in get_a_dataset"""
     tfrecord_format = {"audio/class/text": tf.io.FixedLenFeature((), tf.string)}
     tfrecord_format["audio/class/ebird"] = tf.io.FixedLenFeature((), tf.string)
+    # other birds in the sample's clip, birdnet found the secondary ones in the
+    # sample, the soft ones it didn't so they may not be in it. Missing from
+    # older records
+    tfrecord_format["audio/secondary"] = tf.io.FixedLenFeature(
+        (), tf.string, default_value=""
+    )
+    tfrecord_format["audio/softtags"] = tf.io.FixedLenFeature(
+        (), tf.string, default_value=""
+    )
 
     tfrecord_format["audio/rec_id"] = tf.io.FixedLenFeature((), tf.string)
     tfrecord_format["audio/track_id"] = tf.io.FixedLenFeature((), tf.string)
@@ -1115,6 +1204,7 @@ def read_tfrecord(
     extra = extra_table.lookup(split_labels)
     # tags that are excluded (or unknown) map to -1 and are dropped
     lost_tag = tf.reduce_any(tf.logical_and(labels == -1, extra == -1))
+    untrained_bird = tf.reduce_any(labels == UNTRAINED_TAG)
     if multi:
 
         labels = tf.concat([labels, extra], axis=0)
@@ -1143,8 +1233,37 @@ def read_tfrecord(
                 label = tf.one_hot(max_l, num_labels, dtype=tf.int32)
         # empty because a tag was excluded rather than only having noise tags,
         # make the label negative so it is filtered out
+        if noise_index is not None:
+            # an untrained bird is in the sample so it isn't just noise
+            label = tf.where(
+                untrained_bird,
+                label * (1 - tf.one_hot(noise_index, num_labels, dtype=tf.int32)),
+                label,
+            )
         excluded = tf.logical_and(lost_tag, tf.math.count_nonzero(label) == 0)
         label = tf.where(excluded, -tf.ones_like(label), label)
+
+        # unknown or excluded secondary tags look up -1, a zero one hot
+        def tags_hot(tags):
+            tags = tf.strings.split(tags, sep="\n")
+            # no tags splits to [""], which tables with another default (e.g.
+            # the noise mixing table) would turn into a label
+            tags = tf.boolean_mask(tags, tf.strings.length(tags) > 0)
+            ids = remap_table.lookup(tags)
+            # sum not max, max of no tags is the int minimum
+            hot = tf.reduce_sum(tf.one_hot(ids, num_labels, dtype=tf.int32), axis=0)
+            return tf.minimum(hot, 1)
+
+        if multi:
+            # secondaries are only added to kept samples, e.g. a weta clip with
+            # morepork as secondary is still dropped when weta is excluded
+            label = tf.where(
+                excluded,
+                label,
+                tf.maximum(label, tags_hot(example["audio/secondary"])),
+            )
+        # a tag that is also a label isn't soft
+        soft_label = tags_hot(example["audio/softtags"]) * tf.cast(label <= 0, tf.int32)
         if embed_preds is not None:
             embed_preds = tf.reduce_max(
                 tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
@@ -1153,6 +1272,7 @@ def read_tfrecord(
         # pretty sure this is wrong but never used
         logging.error("Don't think non one hot works please check")
         label = labels
+        soft_label = tf.zeros(num_labels, tf.int32)
     signal_percent = example["audio/signal_percent"]
 
     label = tf.cast(label, tf.float32)
@@ -1194,6 +1314,8 @@ def read_tfrecord(
         low_sample,
         start_s,
         tf.cast(example["audio/class/text"], tf.string),
+        # 1 for labels that may be in the sample, e.g. to leave out of the loss
+        tf.cast(soft_label, tf.float32),
     )
 
 
@@ -1324,7 +1446,8 @@ def debug_labels(dataset, labels):
         mapped[l] = set()
     for x, batch_y in dataset:
         y_true = batch_y[0]
-        y_label = batch_y[-1]
+        # text tags, before the soft labels
+        y_label = batch_y[8]
         for y_t, y_l in zip(y_true, y_label):
             text_label = y_l.numpy().decode("utf8")
             summed = np.sum(y_t)
@@ -1974,9 +2097,15 @@ def apply_raw_mixup(
     # noise dataset is wave only, labels are dropped in load_noise_dataset
     noise_audio = noise_batch
 
+    # a pair is (label, per label sample weight), see get_a_dataset, anything
+    # else after the label (e.g. debug's full y) is passed through
+    weight_A = None
     extra_y = None
     if isinstance(bird_label_A, (tuple, list)):
-        extra_y = tuple(bird_label_A[1:])
+        if len(bird_label_A) == 2:
+            weight_A = tf.cast(bird_label_A[1], tf.float32)
+        else:
+            extra_y = tuple(bird_label_A[1:])
         bird_label_A = bird_label_A[0]
 
     bird_label_A = tf.cast(bird_label_A, tf.float32)
@@ -2020,6 +2149,10 @@ def apply_raw_mixup(
     # Route: Applies mixup to birds, keeps original pure tracks for animals
     mixed_bird_audio = tf.where(mix_bird_mask_audio, soft_mixed_audio, bird_audio_A)
     mixed_bird_labels = tf.where(mix_bird_mask, soft_mixed_labels, bird_label_A)
+    if weight_A is not None:
+        # a label left out of the loss in either clip is left out of the mix
+        weight_B = tf.roll(weight_A, shift=1, axis=0)
+        mixed_weights = tf.where(mix_bird_mask, weight_A * weight_B, weight_A)
 
     # -------------------------------------------------------------
     # STEP 3: BACKGROUND NOISE OVERLAY (Weather Injection only)
@@ -2048,7 +2181,9 @@ def apply_raw_mixup(
     peaks = tf.reduce_max(tf.abs(final_audio), axis=-1, keepdims=True)
     final_audio = final_audio / tf.maximum(peaks, 1e-6)
 
-    if extra_y is not None:
+    if weight_A is not None:
+        final_labels = (final_labels, mixed_weights)
+    elif extra_y is not None:
         final_labels = (final_labels,) + extra_y
     return final_audio, final_labels
 

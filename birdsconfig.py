@@ -41,6 +41,12 @@ RELABEL_MAP = {
     "norfolk morepork": "morepo2",
     "norfolk golden whistler": "y01193",
     "gobwhi1": "y01193",
+    # subspecies of trained species
+    "tomtit2": "tomtit1",
+    "tomtit3": "tomtit1",
+    "nezpig1": "nezpig2",
+    "rebdot2": "rebdot1",
+    "rebdot3": "rebdot1",
 }
 
 
