@@ -539,8 +539,11 @@ def main():
             duration = len(y) / PERCH_SR
 
             for track in tracks:
+                # secondary tags (other birds in a clip) aren't the label
                 manual = [
-                    t for t in track.get("tags", []) if t.get("automatic") is False
+                    t
+                    for t in track.get("tags", [])
+                    if t.get("automatic") is False and not t.get("secondary")
                 ]
                 if args.full_track:
                     window = None

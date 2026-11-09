@@ -951,6 +951,9 @@ class Track:
         self.rms_filtered = False
         self.best_start = None
         self.best_end = None
+        # ebird ids of other birds somewhere in the clip, e.g. tier1 secondary
+        # labels, kept apart as where they are in the clip is unknown
+        self.secondary_tags = set()
         tags = metadata.get("tags", [])
         for tag in tags:
             self.add_tag(tag)
@@ -990,42 +993,12 @@ class Track:
             return
         # probably not doing anything so put very low
         MIN_STDDEV_PERCENT = 0.01
-        rms_thresh = 0.00001
-        rms_height = 0.001
-        upper_rms = metadata["upper_rms"]
-        rms_hop = metadata.get("rms_hop_length", 281)
-        rms_sr = metadata.get("rms_sr", 48000)
-
-        upper_peaks, _ = scipy.signal.find_peaks(
-            upper_rms, threshold=rms_thresh / 10, height=rms_height / 10, width=2
-        )
         if len(self.human_tags) == 0:
             return
 
-        if self.bird_track:
-            rms = metadata["bird_rms"]
-            noise_rms = metadata["noise_rms"]
-            rms = metadata["bird_rms"]
-        else:
-            rms = metadata["noise_rms"]
-            noise_rms = metadata["bird_rms"]
-        rms = np.array(rms)
-        rms_peaks, rms_meta = scipy.signal.find_peaks(
-            rms, threshold=rms_thresh, height=rms_height, width=2
+        start, end, rms, noise_removed, frame_length, best_offset = rms_best_segment(
+            metadata, self.start, self.end, segment_length
         )
-        noise_peaks, noise_meta = scipy.signal.find_peaks(
-            noise_rms, threshold=rms_thresh, height=rms_height, width=2
-        )
-        pre_noise_rms = rms.copy()
-        remove_rms_noise(rms, rms_peaks, rms_meta, noise_peaks, noise_meta, upper_peaks)
-        # removed noise is filled with the mean, so don't count it as active
-        noise_removed = rms != pre_noise_rms
-
-        # rms starts at the original track start
-        frame_length = rms_hop / rms_sr
-        best_offset, _ = best_rms(rms, segment_length, rms_sr, rms_hop)
-        start = self.start + best_offset * frame_length
-        end = min(start + segment_length, self.end)
         track_rms = rms[best_offset : best_offset + int(segment_length / frame_length)]
         if tighten:
             self.best_start = start
@@ -1100,7 +1073,9 @@ class Track:
         t = Tag(
             text_label, ebird_id, tag.get("confidence"), tag.get("automatic"), original
         )
-        if t.automatic:
+        if tag.get("secondary"):
+            self.secondary_tags.add(t.ebird_id)
+        elif t.automatic:
             self.automatic_tags.add(t.ebird_id)
         else:
             self.original_tags.add(t.original)
@@ -1625,6 +1600,42 @@ def filter_starts(starts, track_end, segment_length, min_length, first_min_lengt
     if first_min_length is not None and len(starts) > 0:
         keep[0] = keep[0] or lengths[0] >= first_min_length
     return starts[keep]
+
+
+def rms_best_segment(track_meta, track_start, track_end, segment_length=3):
+    """The segment_length window of a bird track with the most bird rms, once
+    rms noise is removed. track_meta needs upper_rms, bird_rms and noise_rms
+    starting at track_start. Returns start, end, the noise removed rms, which
+    rms frames were noise removed, the rms frame length and the window's first
+    frame"""
+    rms_thresh = 0.00001
+    rms_height = 0.001
+    upper_rms = track_meta["upper_rms"]
+    rms_hop = track_meta.get("rms_hop_length", 281)
+    rms_sr = track_meta.get("rms_sr", 48000)
+
+    upper_peaks, _ = scipy.signal.find_peaks(
+        upper_rms, threshold=rms_thresh / 10, height=rms_height / 10, width=2
+    )
+    rms = np.array(track_meta["bird_rms"])
+    noise_rms = track_meta["noise_rms"]
+    rms_peaks, rms_meta = scipy.signal.find_peaks(
+        rms, threshold=rms_thresh, height=rms_height, width=2
+    )
+    noise_peaks, noise_meta = scipy.signal.find_peaks(
+        noise_rms, threshold=rms_thresh, height=rms_height, width=2
+    )
+    pre_noise_rms = rms.copy()
+    remove_rms_noise(rms, rms_peaks, rms_meta, noise_peaks, noise_meta, upper_peaks)
+    # removed noise is filled with the mean, so don't count it as active
+    noise_removed = rms != pre_noise_rms
+
+    # rms starts at the original track start
+    frame_length = rms_hop / rms_sr
+    best_offset, _ = best_rms(rms, segment_length, rms_sr, rms_hop)
+    start = track_start + best_offset * frame_length
+    end = min(start + segment_length, track_end)
+    return start, end, rms, noise_removed, frame_length, best_offset
 
 
 def best_rms(rms, segment_length=3, sr=48000, hop_length=281):

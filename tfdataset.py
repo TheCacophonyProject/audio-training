@@ -19,6 +19,7 @@ from birdsconfig import (
     RELABEL_MAP,
     BIRD_TRAIN_LABELS,
     EXTRA_LABELS,
+    EXCLUDED_LABELS,
     OTHER_LABELS,
     HUMAN_LABELS,
     NOISE_LABELS,
@@ -166,7 +167,9 @@ def set_specific_by_count(meta):
 def get_excluded_labels(labels):
     excluded_labels = []
     for l in labels:
-        if l in NOISE_LABELS and "noise" in labels:
+        if l in EXCLUDED_LABELS:
+            excluded_labels.append(l)
+        elif l in NOISE_LABELS and "noise" in labels:
             continue
         elif l in HUMAN_LABELS and "human" in labels:
             continue
@@ -182,7 +185,7 @@ def get_excluded_labels(labels):
         v for k, v in RELABEL_MAP.items() if k in labels and k not in excluded_labels
     }
     for k, v in RELABEL_MAP.items():
-        if k not in excluded_labels:
+        if k not in excluded_labels or k in EXCLUDED_LABELS:
             continue
         kept = (
             v in kept_merged

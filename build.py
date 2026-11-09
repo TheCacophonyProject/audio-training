@@ -344,6 +344,11 @@ FILTER_COLUMNS = [
     "birdnet, perch unsure",
     "perch & birdnet disagrees",
     "perch only",
+    "non bird, no signal, perch flagged",
+    "non bird, no signal, no perch result",
+    "non bird, no signal, perch unsure",
+    "non bird, no signal, perch agrees",
+    "non bird, perch confident other",
 ]
 
 
@@ -421,12 +426,42 @@ def log_filter_outcomes(outcomes, unit, dry_run):
         )
 
 
-def window_outcome(window, perch_rows, args):
+def non_bird_outcome(window, perch_rows, args):
+    """window_outcome for --filter-non-bird labels e.g. frog and weta, which
+    birdnet can't confirm. A clear signal stands in for birdnet finding the
+    label and perch decides the rest"""
+    flagged = any(p["flagged"] == "True" for p in perch_rows)
+    agrees = any(perch_agrees(p, args.perch_agree_prob) for p in perch_rows)
+    doubts = [
+        float(p["doubt"])
+        for p in perch_rows
+        if p["doubt"] != "" and perch_confident_other(p, args.perch_remove_other_prob)
+    ]
+    # without signal data there is nothing to say the window is empty
+    no_signal = window["signal_count"] != "" and not window["clear_signal"]
+    if no_signal:
+        if flagged:
+            return "non bird, no signal, perch flagged", True
+        if not perch_rows:
+            return "non bird, no signal, no perch result", True
+        if not agrees:
+            return "non bird, no signal, perch unsure", False
+        return "non bird, no signal, perch agrees", False
+    if flagged and max(doubts, default=0) >= args.perch_remove_doubt:
+        return "non bird, perch confident other", True
+    if flagged:
+        return "perch only", False
+    return "kept", False
+
+
+def window_outcome(window, perch_rows, args, tags=()):
     """What filter_bird_windows does with one birdnet window of a track.
     Returns the outcome and whether to remove the window"""
     from birdnetcompare import MATCH, NO_BIRD, NON_BIRD_TAG, RELATED
 
     status = window["status"]
+    if status == NON_BIRD_TAG and set(tags) & set(args.filter_non_bird or []):
+        return non_bird_outcome(window, perch_rows, args)
     no_birdnet = status == NO_BIRD and not window["clear_signal"]
     flagged = any(p["flagged"] == "True" for p in perch_rows)
     agrees = any(perch_agrees(p, args.perch_agree_prob) for p in perch_rows)
@@ -544,7 +579,7 @@ def filter_bird_windows(dataset, args):
                 outcomes.setdefault(label, Counter())["noise skipped"] += 1
                 continue
             rows = window_perch(perch.get(track_id), w["window_start"], w["window_end"])
-            outcome, remove = window_outcome(w, rows, args)
+            outcome, remove = window_outcome(w, rows, args, t.human_tags)
             outcomes.setdefault(label, Counter())[outcome] += 1
             if remove:
                 removed.setdefault(track_id, []).append(
@@ -1213,6 +1248,13 @@ def parse_args():
         "--perch-flags",
         default=None,
         help="perch-flags.csv from perchembed.py --analyse",
+    )
+    parser.add_argument(
+        "--filter-non-bird",
+        nargs="*",
+        default=["frog", "weta"],
+        help="Non bird labels birdnet can't check that the bird filter also "
+        "checks, using signal and perch. Pass with no labels to turn off",
     )
     parser.add_argument(
         "--perch-remove-doubt",

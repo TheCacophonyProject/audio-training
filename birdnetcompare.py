@@ -488,7 +488,12 @@ def track_results(filename, meta, taxonomy, args, window_rows=None):
     # missing tags
     track_tags = []
     for track in tracks:
-        manual = [t for t in track.get("tags", []) if t.get("automatic") is False]
+        # secondary tags (other birds in a clip) aren't the track's label
+        manual = [
+            t
+            for t in track.get("tags", [])
+            if t.get("automatic") is False and not t.get("secondary")
+        ]
         start = track.get("start", 0)
         track_tags.append(
             {
@@ -505,7 +510,12 @@ def track_results(filename, meta, taxonomy, args, window_rows=None):
         )
 
     for track in tracks:
-        manual = [t for t in track.get("tags", []) if t.get("automatic") is False]
+        # secondary tags (other birds in a clip) aren't the track's label
+        manual = [
+            t
+            for t in track.get("tags", [])
+            if t.get("automatic") is False and not t.get("secondary")
+        ]
         start = track.get("start", 0)
         end = track.get("end", start)
         others = [
