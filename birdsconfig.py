@@ -205,7 +205,7 @@ EXTRA_LABELS = ["rooster", "frog", "insect", "human", "noise", "animal"]
 OTHER_LABELS = []
 # never trained on, even if they have enough samples. Samples with only these
 # labels are dropped, samples with other labels too keep the other labels
-EXCLUDED_LABELS = ["frog", "weta", "tree-weta"]
+EXCLUDED_LABELS = ["frog", "weta", "tree-weta", "eurgol"]
 
 
 for l in NOISE_LABELS:
