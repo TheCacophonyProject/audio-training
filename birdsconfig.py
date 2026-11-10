@@ -48,6 +48,15 @@ RELABEL_MAP = {
     "nezpig1": "nezpig2",
     "rebdot2": "rebdot1",
     "rebdot3": "rebdot1",
+    # untrained species that sound like a trained one, so they aren't negatives
+    "aussho1": "duck",
+    "gretea1": "duck",
+    "bluduc1": "duck",
+    "nezpig3": "nezpig2",
+    "chiger2": "gryger1",
+    "charob1": "nezrob3",
+    "blfter1": "sooter1",
+    "whfter1": "sooter1",
 }
 
 
