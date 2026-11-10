@@ -4,6 +4,7 @@ RELABEL_MAP = {
     "gragoo1": "cangoo",
     "x00458": "duck",
     "mallar3": "duck",
+    "parshe1": "duck",
     "domestic-chicken": "redjun1",
     "chicken": "redjun1",
     "hen": "redjun1",
