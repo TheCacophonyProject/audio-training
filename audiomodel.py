@@ -554,6 +554,7 @@ class AudioModel:
                     confusion_file,
                     thresholds or {},
                     model_name=self.model_name,
+                    split_secondary=True,
                 )
             else:
                 confusion(self.model, self.labels, self.test, confusion_file)
@@ -1474,8 +1475,10 @@ def group_by_track(dataset, predictions):
       the samples it isn't soft in
     - if it is soft in every sample it is soft for the track
 
-    Returns (true labels, mean predictions, soft labels) with one row per
-    track, soft labels are all zeros if the dataset has none (y[9])
+    Returns (true labels, mean predictions, soft labels, secondary labels)
+    with one row per track. Secondary labels are true labels that are only
+    ever a secondary tag in the track's samples. Soft and secondary labels are
+    all zeros if the dataset has none (y[9] and y[10])
     """
     true_categories, y_pred = predictions
     track_ds = dataset.map(
@@ -1491,15 +1494,22 @@ def group_by_track(dataset, predictions):
     num_tracks = len(unique_tracks)
 
     true = (true_categories > 0).astype(np.float64)
-    soft = np.zeros_like(true)
-    if isinstance(dataset.element_spec[1], tuple) and len(dataset.element_spec[1]) > 9:
-        soft_ds = dataset.map(
-            lambda x, y: y[9],
+
+    def y_values(index):
+        # zeros for datasets without y[index]
+        spec = dataset.element_spec[1]
+        if not isinstance(spec, tuple) or len(spec) <= index:
+            return np.zeros_like(true)
+        values_ds = dataset.map(
+            lambda x, y: y[index],
             num_parallel_calls=tf.data.AUTOTUNE,
             deterministic=True,
         )
-        soft = np.concatenate(list(soft_ds.as_numpy_iterator()), axis=0)
-        soft = (soft > 0).astype(np.float64) * (1 - true)
+        values = np.concatenate(list(values_ds.as_numpy_iterator()), axis=0)
+        return (values > 0).astype(np.float64)
+
+    soft = y_values(9) * (1 - true)
+    secondary = y_values(10) * true
     negative = (1 - true) * (1 - soft)
 
     def per_track(values):
@@ -1511,16 +1521,25 @@ def group_by_track(dataset, predictions):
     neg_count = per_track(negative)
     pos_pred = per_track(y_pred * true) / np.maximum(pos_count, 1)
     neg_pred = per_track(y_pred * negative) / np.maximum(neg_count, 1)
+    # a label soft in every sample is pooled over all of them, it isn't
+    # counted in the confusions but save_soft_predictions reports it
+    all_pred = per_track(y_pred) / np.bincount(
+        track_index, minlength=num_tracks
+    )[:, np.newaxis]
     track_true = np.float32(pos_count > 0)
     track_soft = np.float32((pos_count == 0) & (neg_count == 0))
-    # soft labels are masked out later so their prediction doesn't matter
-    track_pred = np.where(pos_count > 0, pos_pred, neg_pred)
+    # true in some samples, but never as a primary tag
+    primary_count = per_track(true * (1 - secondary))
+    track_secondary = np.float32((pos_count > 0) & (primary_count == 0))
+    track_pred = np.where(
+        pos_count > 0, pos_pred, np.where(neg_count > 0, neg_pred, all_pred)
+    )
     if np.any(track_soft):
         logging.info(
             "%s tracks have soft labels", np.count_nonzero(track_soft.any(axis=1))
         )
     logging.info("Grouped %s samples into %s tracks", len(y_pred), num_tracks)
-    return track_true, track_pred, track_soft
+    return track_true, track_pred, track_soft, track_secondary
 
 
 def multi_confusion_single(
@@ -1532,11 +1551,18 @@ def multi_confusion_single(
     one_hot=True,
     model_name=None,
     threshold=0.5,
+    split_secondary=False,
 ):
     """Save multi label confusion matrices at threshold, at
     thresholds_per_label ({label: threshold}, missing labels use threshold)
     and at thresholds_per_label capped between 0.5 and 0.8, predicting
     dataset once.
+
+    With split_secondary also saves filename-primary-* and
+    filename-secondary-* confusions. primary leaves out labels that are only
+    a secondary tag of a track (like soft labels, neither right nor wrong).
+    secondary is only tracks with secondary labels, with those as the true
+    labels and the track's primary labels left out
 
     Uses the mean prediction per track, so dataset must be loaded with
     load_all_y (y[4] is the track id)
@@ -1555,16 +1581,38 @@ def multi_confusion_single(
         "thresholds": label_thresholds,
         "thresholds-capped": np.clip(label_thresholds, 0.5, 0.8),
     }
-    true_categories, y_pred, soft = predictions
-    for name, prob_thresh in confusion_thresholds.items():
-        save_multi_confusion(
-            true_categories,
-            y_pred,
-            labels,
-            filename.parent / f"{filename.name}-{name}",
-            prob_thresh,
-            soft=soft,
+    true_categories, y_pred, soft, secondary = predictions
+    # (suffix, true labels, soft labels, tracks to use)
+    variants = [("", true_categories, soft, None)]
+    if split_secondary:
+        primary_true = true_categories * (1 - secondary)
+        variants.append(
+            ("-primary", primary_true, np.maximum(soft, secondary), None)
         )
+        has_secondary = secondary.any(axis=1)
+        logging.info("%s tracks have secondary labels", np.count_nonzero(has_secondary))
+        if np.any(has_secondary):
+            variants.append(
+                (
+                    "-secondary",
+                    secondary,
+                    np.maximum(soft, primary_true),
+                    has_secondary,
+                )
+            )
+    for suffix, var_true, var_soft, rows in variants:
+        var_pred = y_pred
+        if rows is not None:
+            var_true, var_pred, var_soft = var_true[rows], y_pred[rows], var_soft[rows]
+        for name, prob_thresh in confusion_thresholds.items():
+            save_multi_confusion(
+                var_true,
+                var_pred,
+                labels,
+                filename.parent / f"{filename.name}{suffix}-{name}",
+                prob_thresh,
+                soft=var_soft,
+            )
 
 
 def save_multi_confusion(
@@ -2339,6 +2387,14 @@ def main():
             noise_dirs=args.noise_dirs,
         )
         dataset, _, _, _, _ = get_dataset(base_dir / "test", labels, **dataset_args)
+        # (file prefix, dataset), with a second dataset also confusions of only
+        # the main (cacophony) dataset's test files
+        eval_datasets = [("", dataset)]
+        if second_dir is not None:
+            cacophony_dataset, _, _, _, _ = get_dataset(
+                base_dir / "test", labels, **dict(dataset_args, second_dir=None)
+            )
+            eval_datasets.append(("cacophony-", cacophony_dataset))
 
         thresholds = meta_data.get("original_thresholds")
         if multi and thresholds is None and not meta_data.get("only_features"):
@@ -2379,6 +2435,10 @@ def main():
                     ),
                 ]
             weight_base_path = model_path.parent
+            # newer models don't save binary accuracy weights
+            weight_files = [
+                w for w in weight_files if w is None or (weight_base_path / w).exists()
+            ]
             logging.info("Using %s weights", weight_base_path / weight_files[-1])
             # model.load_weights(weight_base_path / weight_files[-1])
             # best_threshold(model, labels, dataset, args.confusion)
@@ -2409,15 +2469,18 @@ def main():
                 )
                 confusion_file.parent.mkdir(exist_ok=True, parents=True)
                 if multi:
-                    multi_confusion_single(
-                        model,
-                        labels,
-                        dataset,
-                        confusion_file,
-                        thresholds or {},
-                        one_hot=not meta_data.get("only_features"),
-                        model_name=model_name,
-                    )
+                    for ds_prefix, eval_dataset in eval_datasets:
+                        multi_confusion_single(
+                            model,
+                            labels,
+                            eval_dataset,
+                            confusion_file.parent
+                            / f"{ds_prefix}{confusion_file.name}",
+                            thresholds or {},
+                            one_hot=not meta_data.get("only_features"),
+                            model_name=model_name,
+                            split_secondary=args.split_secondary,
+                        )
                 else:
                     confusion(
                         model,
@@ -2551,6 +2614,12 @@ def parse_args():
         help="Secondary dataset directory to use",
     )
     parser.add_argument("--confusion", help="Save confusion matrix for model")
+    parser.add_argument(
+        "--split-secondary",
+        action="store_true",
+        help="With --confusion also save confusions of primary labels only and "
+        "of secondary labels only",
+    )
 
     parser.add_argument("-w", "--weights", help="Weights to use")
     parser.add_argument(
@@ -2773,7 +2842,7 @@ def best_threshold(model, labels, dataset, filename=None):
     """
     from sklearn.metrics import precision_recall_curve
 
-    true_categories, y_pred, soft = group_by_track(
+    true_categories, y_pred, soft, _ = group_by_track(
         dataset, predict_dataset(model, dataset)
     )
     thresholds_best = {}

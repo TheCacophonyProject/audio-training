@@ -991,7 +991,7 @@ def get_a_dataset(dir, labels, args):
             # be in the sample, get_dataset gives these to keras as sample
             # weights so they are left out of the loss and weighted metrics
             dataset = dataset.map(
-                lambda x, y: (x, (y[0], 1.0 - y[-1])),
+                lambda x, y: (x, (y[0], 1.0 - y[9])),
                 num_parallel_calls=tf.data.AUTOTUNE,
                 deterministic=deterministic,
             )
@@ -1254,16 +1254,19 @@ def read_tfrecord(
             hot = tf.reduce_sum(tf.one_hot(ids, num_labels, dtype=tf.int32), axis=0)
             return tf.minimum(hot, 1)
 
+        secondary_hot = tags_hot(example["audio/secondary"])
         if multi:
             # secondaries are only added to kept samples, e.g. a weta clip with
             # morepork as secondary is still dropped when weta is excluded
-            label = tf.where(
-                excluded,
-                label,
-                tf.maximum(label, tags_hot(example["audio/secondary"])),
-            )
+            label = tf.where(excluded, label, tf.maximum(label, secondary_hot))
         # a tag that is also a label isn't soft
         soft_label = tags_hot(example["audio/softtags"]) * tf.cast(label <= 0, tf.int32)
+        # labels that are only in the sample as a secondary tag, a label that
+        # is also a primary tag (e.g. of an overlapping track) isn't secondary
+        primary_hot = tf.reduce_sum(
+            tf.one_hot(labels, num_labels, dtype=tf.int32), axis=0
+        )
+        secondary_label = secondary_hot * tf.cast(primary_hot <= 0, tf.int32)
         if embed_preds is not None:
             embed_preds = tf.reduce_max(
                 tf.one_hot(embed_preds, num_labels, dtype=tf.int32), axis=0
@@ -1273,6 +1276,7 @@ def read_tfrecord(
         logging.error("Don't think non one hot works please check")
         label = labels
         soft_label = tf.zeros(num_labels, tf.int32)
+        secondary_label = tf.zeros(num_labels, tf.int32)
     signal_percent = example["audio/signal_percent"]
 
     label = tf.cast(label, tf.float32)
@@ -1316,6 +1320,8 @@ def read_tfrecord(
         tf.cast(example["audio/class/text"], tf.string),
         # 1 for labels that may be in the sample, e.g. to leave out of the loss
         tf.cast(soft_label, tf.float32),
+        # 1 for labels that are only a secondary tag, e.g. to evaluate apart
+        tf.cast(secondary_label, tf.float32),
     )
 
 
