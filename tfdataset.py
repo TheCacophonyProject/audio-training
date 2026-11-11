@@ -585,7 +585,10 @@ def get_dataset(dir, labels, global_epoch=None, **args):
             logging.info("No noise dataset, not mixing up")
         else:
             logging.info(
-                "Mixing up with bird mix prob %s", args.get("bird_mix_prob", 0.25)
+                "Mixing up with bird mix prob %s mode %s db range %s",
+                args.get("bird_mix_prob", 0.25),
+                args.get("mixup_mode", "lam"),
+                args.get("mixup_db_range", (-12.0, 0.0)),
             )
 
             # 3. Zip them together into a triple-stream
@@ -600,6 +603,8 @@ def get_dataset(dir, labels, global_epoch=None, **args):
                     bn,
                     alpha=0.2,
                     bird_mix_prob=args.get("bird_mix_prob", 0.25),
+                    mixup_mode=args.get("mixup_mode") or "lam",
+                    mixup_db_range=tuple(args.get("mixup_db_range") or (-12.0, 0.0)),
                     noise_mix_prob=0.7,
                     animal_class_idx=animal_index,
                 ),
@@ -2097,10 +2102,17 @@ def apply_raw_mixup(
     bird_mix_prob=0.5,
     noise_mix_prob=0.7,
     animal_class_idx=-1,
+    mixup_mode="lam",
+    mixup_db_range=(-12.0, 0.0),
 ):
     """
     Path 1 Optimized Mixup: 'bird_batch' now contains both Bird and Animal tracks.
     Bypasses Bird-to-Bird mixup for animal files to preserve pure animal training instances.
+
+    mixup_mode "lam" blends the two clips lam * A + (1 - lam) * B and their
+    labels the same way. "union" adds clip B at a random level in
+    mixup_db_range dB relative to clip A (by rms) so it is always audible, and
+    labels every bird in either clip 1, matching secondary labels
     """
     bird_audio_A, bird_label_A = bird_batch
     # noise dataset is wave only, labels are dropped in load_noise_dataset
@@ -2152,8 +2164,25 @@ def apply_raw_mixup(
     lam = gamma_1 / (gamma_1 + gamma_2)
     lam_audio = tf.reshape(lam, [batch_size, -1])
 
-    soft_mixed_audio = lam_audio * bird_audio_A + (1.0 - lam_audio) * bird_audio_B
-    soft_mixed_labels = lam * bird_label_A + (1.0 - lam) * bird_label_B
+    if mixup_mode == "union":
+        rms_A = tf.sqrt(tf.reduce_mean(tf.square(bird_audio_A), axis=-1, keepdims=True))
+        rms_B = tf.roll(rms_A, shift=1, axis=0)
+        level_db = tf.random.uniform(
+            [batch_size, 1], minval=mixup_db_range[0], maxval=mixup_db_range[1]
+        )
+        gain = rms_A / tf.maximum(rms_B, 1e-6) * tf.pow(10.0, level_db / 20.0)
+        # a silent clip can't be set to a level relative to the other, so
+        # those pairs aren't mixed rather than mislabelled
+        has_sound = tf.logical_and(rms_A > 1e-5, rms_B > 1e-5)
+        mix_bird_mask = tf.logical_and(mix_bird_mask, has_sound)
+        mix_bird_mask_audio = tf.reshape(mix_bird_mask, [batch_size, -1])
+        soft_mixed_audio = bird_audio_A + gain * bird_audio_B
+        soft_mixed_labels = tf.maximum(bird_label_A, bird_label_B)
+    elif mixup_mode == "lam":
+        soft_mixed_audio = lam_audio * bird_audio_A + (1.0 - lam_audio) * bird_audio_B
+        soft_mixed_labels = lam * bird_label_A + (1.0 - lam) * bird_label_B
+    else:
+        raise ValueError(f"Unknown mixup mode {mixup_mode}")
 
     # Route: Applies mixup to birds, keeps original pure tracks for animals
     mixed_bird_audio = tf.where(mix_bird_mask_audio, soft_mixed_audio, bird_audio_A)

@@ -2623,6 +2623,22 @@ def parse_args():
         help="Probability of mixing each training clip with another clip",
     )
     parser.add_argument(
+        "--mixup-mode",
+        choices=["lam", "union"],
+        default="lam",
+        help="lam blends two clips and their labels by a random lambda, union "
+        "adds the second clip at an audible level (--mixup-db-range) and labels "
+        "every bird in either clip 1",
+    )
+    parser.add_argument(
+        "--mixup-db-range",
+        nargs=2,
+        type=float,
+        default=[-12.0, 0.0],
+        help="With --mixup-mode union, the range of levels in dB to add the "
+        "second clip at relative to the first, by rms",
+    )
+    parser.add_argument(
         "--noise-mix-fraction",
         type=float,
         default=0.8,
