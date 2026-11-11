@@ -338,8 +338,12 @@ def plot_confusion_matrix(cm, class_names, title="Confusion Matrix", totals_row=
 
     # Normalize the confusion matrix.
 
-    cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
-    cm = np.nan_to_num(cm)
+    # rows with no tracks (e.g. None, or labels never secondary) stay 0
+    row_totals = cm.sum(axis=1, keepdims=True).astype("float")
+    cm = np.divide(
+        cm.astype("float"), row_totals, out=np.zeros(cm.shape), where=row_totals > 0
+    )
+    cm = np.around(cm, decimals=2)
     cm = np.uint8(np.round(cm * 100))
 
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):

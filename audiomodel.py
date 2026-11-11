@@ -2323,9 +2323,9 @@ def main():
                         pre_lbl = pre_labels[v]
                         remapped_labels[k] = labels.index(pre_lbl)
         if args.weak_dir:
-            if args.weights is not None:
-                logging.info("Loading weights %s", args.weights)
-                model.load_weights(args.weights)
+            weights_file, _ = single_weight_file(args.weights, model_path.parent)
+            logging.info("Loading weights %s", weights_file)
+            model.load_weights(weights_file)
             evaluate_weakly_labelled_dir(
                 model, meta_data, Path(args.evaluate_dir), args.confusion
             )
@@ -2344,17 +2344,28 @@ def main():
                 ds_name = base_dir.stem
                 rec_ids = data_json["recs"][ds_name]
 
-            if args.weights is not None:
-                logging.info("Loading weights %s", args.weights)
-                model.load_weights(args.weights)
+            weights_file, _ = single_weight_file(args.weights, model_path.parent)
+            logging.info("Loading weights %s", weights_file)
+            model.load_weights(weights_file)
             evaluate_dir(
                 model, meta_data, Path(args.evaluate_dir), args.confusion, rec_ids
             )
             return
 
+        # default to the dirs the model was trained with, training saves its
+        # args in the metadata
+        for key in ("dataset_dir", "second_dataset_dir", "noise_dirs"):
+            if getattr(args, key) is None and meta_data.get(key) is not None:
+                setattr(args, key, meta_data[key])
+                logging.info("Using %s %s from the model metadata", key, meta_data[key])
+        if args.dataset_dir is None:
+            raise ValueError(
+                f"No --dataset-dir given and none in {meta_file} to evaluate on"
+            )
         base_dir = Path(args.dataset_dir)
         second_dir = None
         if args.second_dataset_dir is not None:
+            args.second_dataset_dir = Path(args.second_dataset_dir)
             second_dir = args.second_dataset_dir / "test"
 
         dataset_args = dict(
@@ -2423,44 +2434,26 @@ def main():
 
         if dataset is not None:
             if meta_data.get("only_features"):
-                weight_files = [None]
+                # only_features models have no weight files
+                weight_files = [(None, "model")]
             else:
-                weight_files = [
-                    "val_loss.weights.h5",
-                    "val_pr_auc.weights.h5",
-                    (
-                        "val_binary_accuracy.weights.h5"
-                        if multi
-                        else "val_categorical_accuracy.weights.h5"
-                    ),
-                ]
-            weight_base_path = model_path.parent
-            # newer models don't save binary accuracy weights
-            weight_files = [
-                w for w in weight_files if w is None or (weight_base_path / w).exists()
-            ]
-            logging.info("Using %s weights", weight_base_path / weight_files[-1])
-            # model.load_weights(weight_base_path / weight_files[-1])
-            # best_threshold(model, labels, dataset, args.confusion)
-            # return
+                weight_files = confusion_weight_files(
+                    args.weights, model_path.parent, multi=multi
+                )
 
             args.confusion = Path(args.confusion)
 
-            for w in weight_files:
-                # only_features models have no weight files
-                file_prefix = "model"
+            for w, file_prefix in weight_files:
                 if w is not None:
-                    logging.info("Using %s weights", weight_base_path / w)
-                    model.load_weights(weight_base_path / w)
-                    index = w.index(".weights")
-                    file_prefix = w[:index]
+                    logging.info("Using %s weights", w)
+                    model.load_weights(w)
                     if other_models is not None:
                         for model_dir, other_model in zip(args.model_2, other_models):
                             model_dir = Path(model_dir)
-                            other_model.load_weights(model_dir / w)
+                            other_model.load_weights(model_dir / w.name)
                     if pre_model is not None:
                         pre_path = Path(args.pre_model)
-                        pre_model.load_weights(pre_path / w)
+                        pre_model.load_weights(pre_path / w.name)
 
                 confusion_file = (
                     Path("./confusions")
@@ -2505,6 +2498,49 @@ def main():
                 run_name=args.name,
                 **args.__dict__,
             )
+
+
+# weights saved by training, "all" for the confusion uses those that exist
+ALL_WEIGHTS = ["val_loss", "val_pr_auc", "val_binary_accuracy"]
+
+
+def confusion_weight_files(weights, model_dir, multi=True):
+    """[(weights file, name)] to evaluate. weights is None for val_pr_auc,
+    "all" for every saved weights file, a path to a weights file, or a name in
+    model_dir e.g. val_loss for model_dir/val_loss.weights.h5"""
+    if weights != "all":
+        return [single_weight_file(weights, model_dir)]
+    names = list(ALL_WEIGHTS)
+    if not multi:
+        names[-1] = "val_categorical_accuracy"
+    found = [
+        (Path(model_dir) / f"{name}.weights.h5", name)
+        for name in names
+        if (Path(model_dir) / f"{name}.weights.h5").exists()
+    ]
+    if not found:
+        raise FileNotFoundError(f"No weights {names} in {model_dir}")
+    return found
+
+
+def single_weight_file(weights, model_dir):
+    """(weights file, name) for weights, see confusion_weight_files"""
+    if weights is None:
+        weights = "val_pr_auc"
+    if weights == "all":
+        raise ValueError("--weights all is only for the test set confusion")
+    suffix = ".weights.h5"
+    path = Path(weights)
+    if not path.is_file():
+        name = weights if weights.endswith(suffix) else f"{weights}{suffix}"
+        path = Path(model_dir) / name
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"Weights {weights} isn't a file and {path} doesn't exist"
+            )
+    name = path.name
+    name = name[: -len(suffix)] if name.endswith(suffix) else path.stem
+    return path, name
 
 
 def none_or_str(value):
@@ -2621,7 +2657,13 @@ def parse_args():
         "of secondary labels only",
     )
 
-    parser.add_argument("-w", "--weights", help="Weights to use")
+    parser.add_argument(
+        "-w",
+        "--weights",
+        help="Weights to use. Training starts from this weights file. With "
+        "--confusion a weights file or a name in the model dir e.g. val_loss for "
+        "val_loss.weights.h5, all for every saved weights file, default val_pr_auc",
+    )
     parser.add_argument(
         "--reset-labels",
         action="store_true",

@@ -858,6 +858,9 @@ def get_a_dataset(dir, labels, args):
             second_filenames[:1],
             len(second_filenames),
         )
+        if len(second_filenames) == 0:
+            # otherwise it silently trains or evaluates without it
+            raise ValueError(f"No tfrecords in second dataset dir {second_dir}")
 
         filenames.extend(second_filenames)
         # datasets.append(second_ds)
