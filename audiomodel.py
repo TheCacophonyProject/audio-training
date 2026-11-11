@@ -95,6 +95,9 @@ import matplotlib.pyplot as plt
 
 import badwinner
 import badwinner2
+
+# registers the MelSpectrogram layer so models with it load
+from mellayer import MelSpectrogram
 from sklearn.model_selection import KFold
 import math
 
@@ -471,6 +474,8 @@ class AudioModel:
             epoch_size=epoch_size,
             epochs=epochs,
             lr=args.get("lr", 5e-4),
+            mel_in_model=args.get("mel_in_model", False),
+            spec_augment=not args.get("no_augment", False),
         )
         (self.checkpoint_folder / run_name).mkdir(parents=True, exist_ok=True)
         if self.model_name != "rf-features":
@@ -636,6 +641,8 @@ class AudioModel:
         epoch_size=None,
         epochs=35,
         lr=5e-4,
+        mel_in_model=False,
+        spec_augment=False,
     ):
         if weights is not None and weight_labels is not None:
             # build model wight these labels then pop the dense layer and add a new one for our labels
@@ -734,24 +741,55 @@ class AudioModel:
         else:
             # norm_layer = tf.keras.layers.Normalization()
             # norm_layer.adapt(data=self.train.map(map_func=lambda spec, label: spec))
-            input = tf.keras.Input(shape=self.input_shape, name="input")
-
             base_model, self.preprocess_fn = self.get_base_model(self.input_shape)
             # base_model.summary()
+            if mel_in_model:
+                # raw audio in, the mel (and spec augment when training) is
+                # made on the GPU by the model rather than in the dataset
+                from tfdataset import (
+                    SR,
+                    NFFT,
+                    HOP_LENGTH,
+                    N_MELS,
+                    FMIN,
+                    FMAX,
+                    BREAK_FREQ,
+                )
+
+                input = tf.keras.Input(shape=(SR * 3,), name="input")
+                mel = MelSpectrogram(
+                    sr=SR,
+                    n_fft=NFFT,
+                    hop_length=HOP_LENGTH,
+                    n_mels=N_MELS,
+                    fmin=FMIN,
+                    fmax=FMAX,
+                    break_freq=BREAK_FREQ,
+                    power=not pcen,
+                    channels=self.input_shape[-1],
+                    spec_augment=spec_augment,
+                    name="mel_spectrogram",
+                )(input)
+                logging.info(
+                    "Making mels in the model, spec augment %s", spec_augment
+                )
+            else:
+                input = tf.keras.Input(shape=self.input_shape, name="input")
+                mel = input
             # x = norm_layer(input)
             if pcen:
                 logging.info("Adding pcen layer")
                 from tfpcen import PCEN
 
                 # inputs are [batch, mels, time, channels]
-                x = PCEN(time_axis=2, dtype="float32")(input)
+                x = PCEN(time_axis=2, dtype="float32")(mel)
             else:
                 # dataset gives power mels, MagTransform is pow(x, a) so needs
                 # non negative inputs, batch norm then normalizes per channel
                 # over batch, mels and time
                 # inputs are [batch, mels, time, channels]
                 logging.info("Adding mag transform and batch norm")
-                x = badwinner2.MagTransform()(input)
+                x = badwinner2.MagTransform()(mel)
                 x = tf.keras.layers.BatchNormalization(axis=-1)(x)
 
             x = base_model(x)
@@ -2041,6 +2079,8 @@ from multiprocessing import Pool
 
 
 def evaluate_dir(model, model_meta, dir_name, filename, rec_ids):
+    if model_meta.get("mel_in_model"):
+        raise NotImplementedError("evaluate_dir makes mels, this model takes raw audio")
     filename = Path("./confusions") / filename
     meta_data_f = dir_name.glob("**/*.txt")
     meta_data_f = list(meta_data_f)
@@ -2396,6 +2436,8 @@ def main():
             cache=True,
             load_all_y=True,
             noise_dirs=args.noise_dirs,
+            # models with a mel layer take raw audio
+            mel_in_model=meta_data.get("mel_in_model", False),
         )
         dataset, _, _, _, _ = get_dataset(base_dir / "test", labels, **dataset_args)
         # (file prefix, dataset), with a second dataset also confusions of only
@@ -2751,6 +2793,13 @@ def parse_args():
 
     parser.add_argument("--shuffle", type=str2bool, default=True, help="Shuffle DS")
     parser.add_argument(
+        "--mel-before-model",
+        action="store_true",
+        help="Make the mel spectrogram (and spec augment) in the input pipeline "
+        "on the CPU, the model then takes mels. By default the model makes them "
+        "on the GPU from raw audio",
+    )
+    parser.add_argument(
         "--pcen",
         action="store_true",
         help="Use a trainable PCEN layer on magnitude mels instead of normalized db mels",
@@ -2830,6 +2879,8 @@ def parse_args():
     parser.add_argument("--weak-dir", default=False, action="store_true")
 
     args = parser.parse_args()
+    # saved in the model metadata, models without it take mels
+    args.mel_in_model = not args.mel_before_model
     # args.multi = args.multi > 0
     args.resample = args.resample > 0
     args.only_features = args.only_features > 0

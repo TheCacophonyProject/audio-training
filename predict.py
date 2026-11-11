@@ -38,6 +38,8 @@ from tfdataset import get_dataset
 import soundfile as sf
 import matplotlib
 from custommel import mel_spec
+# registers the MelSpectrogram layer so models with it load
+import mellayer  # noqa: F401
 from denoisetest import (
     space_signals,
     signal_noise_data,

@@ -612,8 +612,13 @@ def get_dataset(dir, labels, global_epoch=None, **args):
                 deterministic=deterministic,
             )
 
+    # with mel_in_model the model's MelSpectrogram layer (mellayer.py) makes
+    # the mel and does spec augment on the GPU, so the dataset stays raw audio
+    mel_in_model = args.get("mel_in_model", False)
     if args.get("debug"):
         logging.info("Not mapping to mel")
+    elif mel_in_model:
+        logging.info("Leaving raw audio for the model's mel layer")
     else:
         dataset = dataset.map(
             lambda x, y: raw_to_mel(x, y, pcen=pcen),
@@ -622,7 +627,7 @@ def get_dataset(dir, labels, global_epoch=None, **args):
         )
 
     # spec augment needs the mel, debug leaves the raw audio
-    if args.get("augment", False) and not args.get("debug"):
+    if args.get("augment", False) and not args.get("debug") and not mel_in_model:
         dataset = dataset.map(
             lambda x, y: (tf_batch_spec_augment(x), y),
             num_parallel_calls=tf.data.AUTOTUNE,

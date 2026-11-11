@@ -21,6 +21,10 @@ from pathlib import Path
 
 
 def evaluate_weakly_labelled_dir(model, model_meta, dir_name, filename):
+    if model_meta.get("mel_in_model"):
+        raise NotImplementedError(
+            "evaluate_weakly_labelled_dir makes mels, this model takes raw audio"
+        )
     filename = Path("./confusions") / filename
 
     predicted_categories = []
