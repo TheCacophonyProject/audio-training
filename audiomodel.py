@@ -408,6 +408,9 @@ class AudioModel:
             1, name="global_epoch", trainable=False, dtype=tf.int32
         )
 
+        if args.get("train_batch_size"):
+            self.batch_size = args["train_batch_size"]
+        logging.info("Batch size %s", self.batch_size)
         self.log_dir = self.log_dir / run_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -438,6 +441,9 @@ class AudioModel:
             self.batch_size,
             **args,
         )
+        if args.get("benchmark_pipeline"):
+            benchmark_pipeline(self.train, args["benchmark_pipeline"])
+            return
 
         from tfdataset import DIMENSIONS
 
@@ -476,6 +482,7 @@ class AudioModel:
             lr=args.get("lr", 5e-4),
             mel_in_model=args.get("mel_in_model", False),
             spec_augment=not args.get("no_augment", False),
+            steps_per_execution=args.get("steps_per_execution", 1),
         )
         (self.checkpoint_folder / run_name).mkdir(parents=True, exist_ok=True)
         if self.model_name != "rf-features":
@@ -488,6 +495,7 @@ class AudioModel:
             run_name,
             multi_label=args.get("multi_label", True),
             patience=args.get("patience", 10),
+            backup=args.get("backup", False),
         )
         class_weights = None
         # off by default, keras turns class_weight into one weight per sample
@@ -643,6 +651,7 @@ class AudioModel:
         lr=5e-4,
         mel_in_model=False,
         spec_augment=False,
+        steps_per_execution=1,
     ):
         if weights is not None and weight_labels is not None:
             # build model wight these labels then pop the dense layer and add a new one for our labels
@@ -846,6 +855,7 @@ class AudioModel:
                 outputs = birds
                 self.model = tf.keras.models.Model(input, outputs=outputs)
 
+        logging.info("Steps per execution %s", steps_per_execution)
         self.model.compile(
             optimizer=optimizer(
                 epoch_size=epoch_size,
@@ -853,6 +863,8 @@ class AudioModel:
                 total_epochs=epochs,
                 lr=lr,
             ),
+            # runs several batches per call to the GPU, less per step overhead
+            steps_per_execution=steps_per_execution,
             loss=loss_fn,
             # given the per label sample weights, so soft labels, which may or
             # may not be in a sample, don't count. Binary accuracy and roc auc
@@ -875,18 +887,32 @@ class AudioModel:
         )(self.model.outputs[0])
         return tf.keras.models.Model(self.model.input, outputs=probabilities)
 
-    def checkpoints(self, run_name, multi_label=True, patience=10):
+    def checkpoints(self, run_name, multi_label=True, patience=10, backup=False):
+        """Best weights per metric, early stopping and, with backup, the full
+        training state (weights, optimizer, epoch) every epoch so an
+        interrupted run (e.g. a spot machine) resumes where it stopped when
+        started again with the same command"""
         # val_ and the names of the compile_metrics
         metrics = ["val_loss", "val_pr_auc", "val_precision", "val_recall"]
         if not multi_label:
             metrics.append("val_categorical_accuracy")
+        run_dir = self.checkpoint_folder / run_name
+        best_file = run_dir / "backup-best.json"
+        best = {}
+        if backup and best_file.exists():
+            # a resumed run must only replace best weights with better ones
+            with best_file.open() as f:
+                best = json.load(f)
+            logging.info("Resuming best metric values %s", best)
         checks = []
+        modes = {}
         for m in metrics:
-            m_dir = self.checkpoint_folder / run_name / f"{m}.weights.h5"
+            m_dir = run_dir / f"{m}.weights.h5"
             if "loss" in m or "focal" in m:
-                mode = "auto"
+                mode = "min"
             else:
                 mode = "max"
+            modes[m] = mode
             m_check = tf.keras.callbacks.ModelCheckpoint(
                 m_dir,
                 monitor=m,
@@ -894,8 +920,14 @@ class AudioModel:
                 save_best_only=True,
                 save_weights_only=True,
                 mode=mode,
+                initial_value_threshold=best.get(m),
             )
             checks.append(m_check)
+        if backup:
+            checks.append(BestMetrics(best_file, modes, best))
+            # restores weights, optimizer state (Adam moments, lr schedule step)
+            # and the epoch, and is removed once training finishes
+            checks.append(tf.keras.callbacks.BackupAndRestore(run_dir / "backup"))
         earlyStopping = tf.keras.callbacks.EarlyStopping(
             patience=patience,
             monitor="val_pr_auc",
@@ -1198,6 +1230,59 @@ def sigmoid_binary_cross(y_true, y_pred):
     loss = -y_true * log_p - (1.0 - y_true) * log_not_p
     loss_m = tf.keras.backend.mean(loss, axis=1)
     return loss_m
+
+
+def benchmark_pipeline(dataset, batches, warmup=20):
+    """Times the training input pipeline alone, no model, and logs samples a
+    second. The first warmup batches (filling the shuffle buffer etc) aren't
+    timed"""
+    import time
+
+    samples = 0
+    start = None
+    for i, batch in enumerate(dataset.take(warmup + batches)):
+        if i == warmup:
+            start = time.time()
+        if i >= warmup:
+            samples += int(tf.shape(batch[0])[0])
+    if start is None or samples == 0:
+        logging.info("Dataset has fewer than %s batches to benchmark", warmup + 1)
+        return
+    took = time.time() - start
+    logging.info(
+        "Pipeline benchmark: %s samples in %.1fs, %.0f samples/s, %.0f ms a batch",
+        samples,
+        took,
+        samples / took,
+        1000 * took / batches,
+    )
+
+
+class BestMetrics(tf.keras.callbacks.Callback):
+    """Saves the best value of each monitored metric every epoch, so a run
+    resumed with BackupAndRestore keeps its best weights checkpoints. Removed
+    when training finishes"""
+
+    def __init__(self, filename, modes, best=None):
+        super().__init__()
+        self.filename = Path(filename)
+        self.modes = modes
+        self.best = dict(best or {})
+
+    def on_epoch_end(self, epoch, logs=None):
+        for m, mode in self.modes.items():
+            value = (logs or {}).get(m)
+            if value is None:
+                continue
+            value = float(value)
+            old = self.best.get(m)
+            if old is None or (value < old if mode == "min" else value > old):
+                self.best[m] = value
+        with self.filename.open("w") as f:
+            json.dump(self.best, f, indent=4)
+
+    def on_train_end(self, logs=None):
+        self.filename.unlink(missing_ok=True)
 
 
 def compile_metrics(multi_label, num_labels, from_logits):
@@ -2792,6 +2877,37 @@ def parse_args():
     )
 
     parser.add_argument("--shuffle", type=str2bool, default=True, help="Shuffle DS")
+    parser.add_argument(
+        "--steps-per-execution",
+        type=int,
+        default=1,
+        help="Batches run per call to the GPU, more lowers the per step "
+        "overhead e.g. 8-16. Training metrics are only logged every this many "
+        "batches",
+    )
+    parser.add_argument(
+        "--benchmark-pipeline",
+        type=int,
+        default=None,
+        metavar="BATCHES",
+        help="Time this many training batches of the input pipeline alone (no "
+        "model), log samples a second and exit",
+    )
+    parser.add_argument(
+        "--backup",
+        action="store_true",
+        help="Save the full training state every epoch and resume from it when "
+        "the same command is run again, e.g. on spot machines",
+    )
+    parser.add_argument(
+        "--batch-size",
+        # batch_size is passed by name alongside **args
+        dest="train_batch_size",
+        type=int,
+        default=32,
+        help="Training batch size, the learning rate schedule's steps follow it "
+        "but --lr isn't scaled, e.g. try --lr 7e-4 to 1e-3 for 64",
+    )
     parser.add_argument(
         "--mel-before-model",
         action="store_true",
