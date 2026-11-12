@@ -933,16 +933,22 @@ def get_a_dataset(dir, labels, args):
     epoch_size = args.get("epoch_size")
     dist = None
     combos = {}
+    if args.get("benchmark_pipeline") and epoch_size is None:
+        # counting reads the whole dataset, a benchmark only needs a rough
+        # size for how many noise samples to add
+        epoch_size = 250000
+        logging.info("Benchmarking, not counting labels, using size %s", epoch_size)
     if noise_sample_files:
-        # the noise added depends on the number of samples, so get the
-        # distribution now and add the noise to it rather than counting again
-        dist, epoch_size = get_distribution(
-            dataset,
-            num_labels,
-            batched=False,
-            one_hot=args.get("one_hot", True),
-            combos=combos,
-        )
+        if epoch_size is None:
+            # the noise added depends on the number of samples, so get the
+            # distribution now and add the noise to it rather than counting again
+            dist, epoch_size = get_distribution(
+                dataset,
+                num_labels,
+                batched=False,
+                one_hot=args.get("one_hot", True),
+                combos=combos,
+            )
         dataset, noise_dist, num_noise = add_noise_samples(
             dataset,
             noise_sample_files,
@@ -953,7 +959,8 @@ def get_a_dataset(dir, labels, args):
             args,
             combos,
         )
-        dist += noise_dist
+        if dist is not None:
+            dist += noise_dist
         epoch_size += num_noise
     # to be adjusted
     # xeno_files = Path("/data/audio-data/xenocanto/xeno-training-data/")

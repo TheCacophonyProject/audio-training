@@ -1946,6 +1946,9 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
     )
     if args.get("only_load_train", False):
         return remapped, excluded_labels, extra_label_map
+    if args.get("benchmark_pipeline"):
+        # only the training input is timed
+        return train, None, new_labels, remapped, extra_label_map, epoch_size
 
     if second_data_dir is not None:
         second_dir = second_data_dir / "validation"
