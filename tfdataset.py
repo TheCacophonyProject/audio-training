@@ -781,6 +781,15 @@ def load_noise_dataset(filenames, num_labels, labels, args, excluded_tags=None):
     noise_dataset = noise_dataset.map(
         lambda wave, label: wave, num_parallel_calls=tf.data.AUTOTUNE
     )
+    if args.get("cache_noise"):
+        # decode each clip once and keep it in memory (about 0.6 MB a clip),
+        # otherwise every mixed sample reads, decompresses and parses a record
+        logging.info(
+            "Caching %s noise clips in memory, about %.1f GB",
+            total,
+            total * SR * 3 * 4 / 1e9,
+        )
+        noise_dataset = noise_dataset.cache()
     return noise_dataset.shuffle(buffer_size=1000).repeat()
 
 

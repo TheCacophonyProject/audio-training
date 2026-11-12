@@ -2881,6 +2881,12 @@ def parse_args():
 
     parser.add_argument("--shuffle", type=str2bool, default=True, help="Shuffle DS")
     parser.add_argument(
+        "--cache-noise",
+        action="store_true",
+        help="Keep the decoded noise clips for mixing in memory (about 0.6 MB "
+        "a clip, e.g. 7.4 GB for 12,867), much less CPU work each epoch",
+    )
+    parser.add_argument(
         "--steps-per-execution",
         type=int,
         default=1,
