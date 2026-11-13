@@ -585,10 +585,11 @@ def get_dataset(dir, labels, global_epoch=None, **args):
             logging.info("No noise dataset, not mixing up")
         else:
             logging.info(
-                "Mixing up with bird mix prob %s mode %s db range %s",
+                "Mixing up with bird mix prob %s mode %s db range %s gain range %s",
                 args.get("bird_mix_prob", 0.25),
                 args.get("mixup_mode", "lam"),
                 args.get("mixup_db_range", (-12.0, 0.0)),
+                args.get("mixup_gain_range", (0.5, 0.7)),
             )
 
             # 3. Zip them together into a triple-stream
@@ -605,6 +606,10 @@ def get_dataset(dir, labels, global_epoch=None, **args):
                     bird_mix_prob=args.get("bird_mix_prob", 0.25),
                     mixup_mode=args.get("mixup_mode") or "lam",
                     mixup_db_range=tuple(args.get("mixup_db_range") or (-12.0, 0.0)),
+                    mixup_gain_range=tuple(
+                        args.get("mixup_gain_range") or (0.5, 0.7)
+                    ),
+                    mixup_max_gain=args.get("mixup_max_gain") or 4.0,
                     noise_mix_prob=0.7,
                     animal_class_idx=animal_index,
                 ),
@@ -1187,6 +1192,10 @@ def read_tfrecord(
     embed_preds = None
     if load_raw:
         spectrogram = example["audio/raw"]
+        # peak normalise each sample as training (end of apply_raw_mixup) and
+        # predict_utils do, older builds stored the audio as recorded
+        peak = tf.reduce_max(tf.abs(spectrogram))
+        spectrogram = spectrogram / tf.maximum(peak, 1e-6)
 
     elif not only_features:
         buttered = example["audio/buttered"] if filter_freq else None
@@ -2116,6 +2125,17 @@ def tf_batch_mix_real_noise(
 
 
 @tf.function
+def loud_level(audio, frame=2400, top_fraction=0.1):
+    """[batch, samples] audio to [batch, 1] rms of its loudest top_fraction of
+    frame long frames (50 ms at 48 kHz), the level of the call rather than of
+    the background between calls"""
+    frames = tf.signal.frame(audio, frame, frame)
+    energy = tf.reduce_mean(tf.square(frames), axis=-1)
+    k = max(1, int(round(audio.shape[-1] // frame * top_fraction)))
+    top, _ = tf.math.top_k(energy, k=k)
+    return tf.sqrt(tf.reduce_mean(top, axis=-1, keepdims=True))
+
+
 def apply_raw_mixup(
     bird_batch,
     noise_batch,
@@ -2125,6 +2145,8 @@ def apply_raw_mixup(
     animal_class_idx=-1,
     mixup_mode="lam",
     mixup_db_range=(-12.0, 0.0),
+    mixup_gain_range=(0.5, 0.7),
+    mixup_max_gain=4.0,
 ):
     """
     Path 1 Optimized Mixup: 'bird_batch' now contains both Bird and Animal tracks.
@@ -2133,7 +2155,13 @@ def apply_raw_mixup(
     mixup_mode "lam" blends the two clips lam * A + (1 - lam) * B and their
     labels the same way. "union" adds clip B at a random level in
     mixup_db_range dB relative to clip A (by rms) so it is always audible, and
-    labels every bird in either clip 1, matching secondary labels
+    labels every bird in either clip 1, matching secondary labels. "peak"
+    scales clip B so its peak is a random mixup_gain_range fraction of clip A's
+    peak and labels every bird in either clip 1. Peaks follow the loudest
+    call rather than the background, so B's noise isn't boosted the way rms
+    levelling boosts a quiet noisy clip. "union-fixed" is union with each
+    clip's level taken from its loudest frames (roughly the call rather than
+    the background) and clip B's gain capped at mixup_max_gain
     """
     bird_audio_A, bird_label_A = bird_batch
     # noise dataset is wave only, labels are dropped in load_noise_dataset
@@ -2195,6 +2223,34 @@ def apply_raw_mixup(
         # a silent clip can't be set to a level relative to the other, so
         # those pairs aren't mixed rather than mislabelled
         has_sound = tf.logical_and(rms_A > 1e-5, rms_B > 1e-5)
+        mix_bird_mask = tf.logical_and(mix_bird_mask, has_sound)
+        mix_bird_mask_audio = tf.reshape(mix_bird_mask, [batch_size, -1])
+        soft_mixed_audio = bird_audio_A + gain * bird_audio_B
+        soft_mixed_labels = tf.maximum(bird_label_A, bird_label_B)
+    elif mixup_mode == "union-fixed":
+        loud_A = loud_level(bird_audio_A)
+        loud_B = tf.roll(loud_A, shift=1, axis=0)
+        level_db = tf.random.uniform(
+            [batch_size, 1], minval=mixup_db_range[0], maxval=mixup_db_range[1]
+        )
+        gain = loud_A / tf.maximum(loud_B, 1e-6) * tf.pow(10.0, level_db / 20.0)
+        # boosting a much quieter clip also boosts its background noise
+        gain = tf.minimum(gain, mixup_max_gain)
+        has_sound = tf.logical_and(loud_A > 1e-5, loud_B > 1e-5)
+        mix_bird_mask = tf.logical_and(mix_bird_mask, has_sound)
+        mix_bird_mask_audio = tf.reshape(mix_bird_mask, [batch_size, -1])
+        soft_mixed_audio = bird_audio_A + gain * bird_audio_B
+        soft_mixed_labels = tf.maximum(bird_label_A, bird_label_B)
+    elif mixup_mode == "peak":
+        peak_A = tf.reduce_max(tf.abs(bird_audio_A), axis=-1, keepdims=True)
+        peak_B = tf.roll(peak_A, shift=1, axis=0)
+        frac = tf.random.uniform(
+            [batch_size, 1], minval=mixup_gain_range[0], maxval=mixup_gain_range[1]
+        )
+        # B's peak to frac of A's peak, the mix keeps A's level so the noise
+        # overlay after this is as loud relative to A as without mixing
+        gain = peak_A / tf.maximum(peak_B, 1e-6) * frac
+        has_sound = tf.logical_and(peak_A > 1e-5, peak_B > 1e-5)
         mix_bird_mask = tf.logical_and(mix_bird_mask, has_sound)
         mix_bird_mask_audio = tf.reshape(mix_bird_mask, [batch_size, -1])
         soft_mixed_audio = bird_audio_A + gain * bird_audio_B

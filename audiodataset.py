@@ -1342,9 +1342,11 @@ def load_data(
         s_data = np.pad(s_data, (offset, extra_frames - offset))
     assert len(s_data) == int(segment_l * sr)
     # buttered = butter_bandpass_filter(s_data, min_freq, max_freq, sr)
+    # stored peak normalised, as the model is trained and used on
+    s_data = normalize_data(s_data)
     spectrogram = None
     if calc_spec:
-        normed = normalize_data(s_data)
+        normed = s_data
         # mimic tfdataset.raw_to_mel tf.signal.stft, no centering / padding,
         # periodic hann window, frame length = n_fft
         spectrogram = np.abs(

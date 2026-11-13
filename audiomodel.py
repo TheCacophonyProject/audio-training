@@ -483,6 +483,7 @@ class AudioModel:
             mel_in_model=args.get("mel_in_model", False),
             spec_augment=not args.get("no_augment", False),
             steps_per_execution=args.get("steps_per_execution", 1),
+            jit_compile=args.get("jit_compile", "auto"),
         )
         (self.checkpoint_folder / run_name).mkdir(parents=True, exist_ok=True)
         if self.model_name != "rf-features":
@@ -496,6 +497,7 @@ class AudioModel:
             multi_label=args.get("multi_label", True),
             patience=args.get("patience", 10),
             backup=args.get("backup", False),
+            profile=args.get("profile"),
         )
         class_weights = None
         # off by default, keras turns class_weight into one weight per sample
@@ -652,6 +654,7 @@ class AudioModel:
         mel_in_model=False,
         spec_augment=False,
         steps_per_execution=1,
+        jit_compile="auto",
     ):
         if weights is not None and weight_labels is not None:
             # build model wight these labels then pop the dense layer and add a new one for our labels
@@ -855,7 +858,9 @@ class AudioModel:
                 outputs = birds
                 self.model = tf.keras.models.Model(input, outputs=outputs)
 
-        logging.info("Steps per execution %s", steps_per_execution)
+        logging.info(
+            "Steps per execution %s jit compile %s", steps_per_execution, jit_compile
+        )
         self.model.compile(
             optimizer=optimizer(
                 epoch_size=epoch_size,
@@ -865,6 +870,8 @@ class AudioModel:
             ),
             # runs several batches per call to the GPU, less per step overhead
             steps_per_execution=steps_per_execution,
+            # auto uses XLA when there is a GPU and the model supports it
+            jit_compile=jit_compile,
             loss=loss_fn,
             # given the per label sample weights, so soft labels, which may or
             # may not be in a sample, don't count. Binary accuracy and roc auc
@@ -887,7 +894,9 @@ class AudioModel:
         )(self.model.outputs[0])
         return tf.keras.models.Model(self.model.input, outputs=probabilities)
 
-    def checkpoints(self, run_name, multi_label=True, patience=10, backup=False):
+    def checkpoints(
+        self, run_name, multi_label=True, patience=10, backup=False, profile=None
+    ):
         """Best weights per metric, early stopping and, with backup, the full
         training state (weights, optimizer, epoch) every epoch so an
         interrupted run (e.g. a spot machine) resumes where it stopped when
@@ -961,11 +970,13 @@ class AudioModel:
         )
         checks.append(model_checkpt)
 
-        if DEBUG_PROFILE:
+        if DEBUG_PROFILE or profile:
+            # batch number in the first epoch
+            start = profile or 10
+            logging.info("Profiling batches %s to %s", start, start + 20)
             tboard_callback = tf.keras.callbacks.TensorBoard(
                 log_dir=self.log_dir / run_name / "profiler",
-                histogram_freq=1,
-                profile_batch=(10, 30),
+                profile_batch=(start, start + 20),
             )
             checks.append(tboard_callback)
 
@@ -2754,11 +2765,28 @@ def parse_args():
     )
     parser.add_argument(
         "--mixup-mode",
-        choices=["lam", "union"],
+        choices=["lam", "union", "union-fixed", "peak"],
         default="lam",
         help="lam blends two clips and their labels by a random lambda, union "
-        "adds the second clip at an audible level (--mixup-db-range) and labels "
-        "every bird in either clip 1",
+        "adds the second clip at a level by rms (--mixup-db-range), peak adds it "
+        "with its peak at a fraction of the first's (--mixup-gain-range), union "
+        "and peak label every bird in either clip 1. union-fixed is union "
+        "levelled by each clip's loudest frames with the gain capped "
+        "(--mixup-max-gain)",
+    )
+    parser.add_argument(
+        "--mixup-max-gain",
+        type=float,
+        default=4.0,
+        help="With --mixup-mode union-fixed, the most the second clip is boosted",
+    )
+    parser.add_argument(
+        "--mixup-gain-range",
+        nargs=2,
+        type=float,
+        default=[0.5, 0.7],
+        help="With --mixup-mode peak, the range of the second clip's peak as a "
+        "fraction of the first clip's peak",
     )
     parser.add_argument(
         "--mixup-db-range",
@@ -2895,6 +2923,21 @@ def parse_args():
         "batches",
     )
     parser.add_argument(
+        "--jit-compile",
+        choices=["auto", "true", "false"],
+        default="auto",
+        help="XLA compile the training step, auto uses it when there is a GPU",
+    )
+    parser.add_argument(
+        "--profile",
+        type=int,
+        default=None,
+        metavar="START_BATCH",
+        help="Profile 20 training batches from START_BATCH for TensorBoard's "
+        "Profile tab, in <log dir>/<run>/profiler, e.g. 500 to be after the "
+        "noise cache fills",
+    )
+    parser.add_argument(
         "--benchmark-pipeline",
         type=int,
         default=None,
@@ -3006,6 +3049,8 @@ def parse_args():
     args = parser.parse_args()
     # saved in the model metadata, models without it take mels
     args.mel_in_model = not args.mel_before_model
+    if args.jit_compile != "auto":
+        args.jit_compile = args.jit_compile == "true"
     # args.multi = args.multi > 0
     args.resample = args.resample > 0
     args.only_features = args.only_features > 0
