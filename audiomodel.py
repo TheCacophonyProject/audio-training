@@ -508,6 +508,9 @@ class AudioModel:
         else:
             logging.info("Not using class weighting")
         history = None
+        if args.get("benchmark_model"):
+            benchmark_model(self.model, self.train, args["benchmark_model"])
+            return
 
         history = self.model.fit(
             self.train,
@@ -1243,6 +1246,43 @@ def sigmoid_binary_cross(y_true, y_pred):
     return loss_m
 
 
+def benchmark_model(model, dataset, steps, warmup=20):
+    """Trains on one batch repeated from memory, so the input pipeline costs
+    nothing, and logs the ms a step. If it is much faster than real training
+    the pipeline is what holds training back, if not the GPU side is. The
+    first warmup steps (XLA compiling) aren't timed"""
+    import time
+
+    batch = next(iter(dataset))
+    repeated = tf.data.Dataset.from_tensors(batch).repeat()
+    times = []
+
+    class StepTimer(tf.keras.callbacks.Callback):
+        def on_train_batch_end(self, batch, logs=None):
+            times.append(time.time())
+
+    model.fit(
+        repeated,
+        steps_per_epoch=warmup + steps,
+        epochs=1,
+        verbose=0,
+        callbacks=[StepTimer()],
+    )
+    # with steps_per_execution > 1 there is a time per execution, not per step
+    executions = len(times)
+    timed = times[executions * warmup // (warmup + steps) :]
+    if len(timed) < 2:
+        logging.info("Too few steps to benchmark the model")
+        return
+    per_execution = (timed[-1] - timed[0]) / (len(timed) - 1)
+    per_step = per_execution * executions / (warmup + steps)
+    logging.info(
+        "Model benchmark, input from memory: %.0f ms a step, %.0f samples/s",
+        1000 * per_step,
+        int(tf.shape(batch[0])[0]) / per_step,
+    )
+
+
 def benchmark_pipeline(dataset, batches, warmup=20):
     """Times the training input pipeline alone, no model, and logs samples a
     second. The first warmup batches (filling the shuffle buffer etc) aren't
@@ -1957,8 +1997,8 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
     )
     if args.get("only_load_train", False):
         return remapped, excluded_labels, extra_label_map
-    if args.get("benchmark_pipeline"):
-        # only the training input is timed
+    if args.get("benchmark_pipeline") or args.get("benchmark_model"):
+        # only the training input is used
         return train, None, new_labels, remapped, extra_label_map, epoch_size
 
     if second_data_dir is not None:
@@ -2936,6 +2976,14 @@ def parse_args():
         help="Profile 20 training batches from START_BATCH for TensorBoard's "
         "Profile tab, in <log dir>/<run>/profiler, e.g. 500 to be after the "
         "noise cache fills",
+    )
+    parser.add_argument(
+        "--benchmark-model",
+        type=int,
+        default=None,
+        metavar="STEPS",
+        help="Train this many steps on one batch repeated from memory (no input "
+        "pipeline cost), log ms a step and exit",
     )
     parser.add_argument(
         "--benchmark-pipeline",

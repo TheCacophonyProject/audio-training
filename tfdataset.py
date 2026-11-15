@@ -947,7 +947,9 @@ def get_a_dataset(dir, labels, args):
     epoch_size = args.get("epoch_size")
     dist = None
     combos = {}
-    if args.get("benchmark_pipeline") and epoch_size is None:
+    if (args.get("benchmark_pipeline") or args.get("benchmark_model")) and (
+        epoch_size is None
+    ):
         # counting reads the whole dataset, a benchmark only needs a rough
         # size for how many noise samples to add
         epoch_size = 250000
