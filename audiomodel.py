@@ -2993,6 +2993,19 @@ def parse_args():
         "mag transform and output stay float32",
     )
     parser.add_argument(
+        "--prefetch",
+        type=int,
+        default=None,
+        help="Batches the input pipeline keeps ready, e.g. 8, default autotune",
+    )
+    parser.add_argument(
+        "--tfdata-intra-op",
+        type=int,
+        default=None,
+        help="Threads each op in the input pipeline may use, 1 stops the "
+        "pipeline's parallel maps oversubscribing the cpu, default tf.data's",
+    )
+    parser.add_argument(
         "--xla-augment",
         action="store_true",
         help="XLA compile the training augmentation (roll, mixup, noise), faster on "

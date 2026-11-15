@@ -714,7 +714,16 @@ def get_dataset(dir, labels, global_epoch=None, **args):
             num_parallel_calls=tf.data.AUTOTUNE,
             deterministic=deterministic,
         )
-    dataset = dataset.prefetch(buffer_size=AUTOTUNE)
+    # a bigger buffer covers batches that are slow to make, so the GPU doesn't
+    # wait when the pipeline is fast enough on average
+    prefetch = args.get("prefetch") or AUTOTUNE
+    dataset = dataset.prefetch(buffer_size=prefetch)
+    if args.get("tfdata_intra_op"):
+        # ops in the pipeline's parallel maps each take this many threads,
+        # 1 stops them oversubscribing the cpu (tf.data performance guide)
+        options = tf.data.Options()
+        options.threading.max_intra_op_parallelism = args["tfdata_intra_op"]
+        dataset = dataset.with_options(options)
     return dataset, remapped, epoch_size, labels, extra_label_dic
 
 
