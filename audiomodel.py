@@ -2986,6 +2986,11 @@ def parse_args():
         "mag transform and output stay float32",
     )
     parser.add_argument(
+        "--no-xla-augment",
+        action="store_true",
+        help="Don't XLA compile the training augmentation (roll, mixup, noise)",
+    )
+    parser.add_argument(
         "--no-roll",
         action="store_true",
         help="Training without the random time roll of the audio",

@@ -575,22 +575,39 @@ def get_dataset(dir, labels, global_epoch=None, **args):
         #         ),
         #         num_parallel_calls=tf.data.AUTOTUNE,
         #     )
-        # Apply the roll on-the-fly during your training dataset pipeline
+        do_roll = not args.get("no_roll")
         if args.get("no_roll"):
             logging.info("Not rolling audio")
-        else:
-            dataset = dataset.map(
-                lambda audio, label: (tf_batch_audio_roll(audio), label),
-                num_parallel_calls=tf.data.AUTOTUNE,
-            )
+        mixing = noise_dataset is not None or args.get("no_noise_mix")
+        mixup_mode = args.get("mixup_mode") or "lam"
+        # XLA fuses the many whole batch passes into a few, about 2x faster on
+        # the CPU. lam's random gamma isn't supported by XLA and nor are
+        # string labels (e.g. load_all_y's ids)
+        has_strings = any(
+            spec.dtype == tf.string for spec in tf.nest.flatten(dataset.element_spec)
+        )
+        xla = (
+            not args.get("no_xla_augment")
+            and not has_strings
+            and not (mixing and mixup_mode == "lam")
+        )
+        logging.info("XLA compiling augmentation %s", xla)
 
-        if noise_dataset is None and not args.get("no_noise_mix"):
+        if not mixing:
             logging.info("No noise dataset, not mixing up")
+            if do_roll:
+                roll_fn = tf.function(
+                    tf_batch_audio_roll.python_function, jit_compile=xla
+                )
+                dataset = dataset.map(
+                    lambda audio, label: (roll_fn(audio), label),
+                    num_parallel_calls=tf.data.AUTOTUNE,
+                )
         else:
             logging.info(
                 "Mixing up with bird mix prob %s mode %s db range %s gain range %s",
                 args.get("bird_mix_prob", 0.25),
-                args.get("mixup_mode", "lam"),
+                mixup_mode,
                 args.get("mixup_db_range", (-12.0, 0.0)),
                 args.get("mixup_gain_range", (0.5, 0.7)),
             )
@@ -611,13 +628,17 @@ def get_dataset(dir, labels, global_epoch=None, **args):
             if "animal" in labels:
                 animal_index = labels.index("animal")
                 logging.info("Applying animal based logic using index %s", animal_index)
-            dataset = zipped_dataset.map(
-                lambda b1, bn: apply_raw_mixup(
+
+            def augment(b1, bn):
+                # roll each clip, then mix, as separate steps did before
+                if do_roll:
+                    b1 = (tf_batch_audio_roll.python_function(b1[0]), b1[1])
+                return apply_raw_mixup(
                     b1,
                     bn,
                     alpha=0.2,
                     bird_mix_prob=args.get("bird_mix_prob", 0.25),
-                    mixup_mode=args.get("mixup_mode") or "lam",
+                    mixup_mode=mixup_mode,
                     mixup_db_range=tuple(args.get("mixup_db_range") or (-12.0, 0.0)),
                     mixup_gain_range=tuple(
                         args.get("mixup_gain_range") or (0.5, 0.7)
@@ -625,7 +646,11 @@ def get_dataset(dir, labels, global_epoch=None, **args):
                     mixup_max_gain=args.get("mixup_max_gain") or 4.0,
                     noise_mix_prob=noise_mix_prob,
                     animal_class_idx=animal_index,
-                ),
+                )
+
+            augment_fn = tf.function(augment, jit_compile=xla)
+            dataset = zipped_dataset.map(
+                augment_fn,
                 num_parallel_calls=tf.data.AUTOTUNE,
                 deterministic=deterministic,
             )
@@ -2226,12 +2251,6 @@ def apply_raw_mixup(
     )
     mix_bird_mask_audio = tf.reshape(mix_bird_mask, [batch_size, -1])
 
-    # Sample standard MixUp lambdas
-    gamma_1 = tf.random.gamma(shape=[batch_size, 1], alpha=alpha)
-    gamma_2 = tf.random.gamma(shape=[batch_size, 1], alpha=alpha)
-    lam = gamma_1 / (gamma_1 + gamma_2)
-    lam_audio = tf.reshape(lam, [batch_size, -1])
-
     if mixup_mode == "union":
         rms_A = tf.sqrt(tf.reduce_mean(tf.square(bird_audio_A), axis=-1, keepdims=True))
         rms_B = tf.roll(rms_A, shift=1, axis=0)
@@ -2275,6 +2294,12 @@ def apply_raw_mixup(
         soft_mixed_audio = bird_audio_A + gain * bird_audio_B
         soft_mixed_labels = tf.maximum(bird_label_A, bird_label_B)
     elif mixup_mode == "lam":
+        # Sample standard MixUp lambdas (random gamma isn't supported by XLA,
+        # so only sampled in this mode)
+        gamma_1 = tf.random.gamma(shape=[batch_size, 1], alpha=alpha)
+        gamma_2 = tf.random.gamma(shape=[batch_size, 1], alpha=alpha)
+        lam = gamma_1 / (gamma_1 + gamma_2)
+        lam_audio = tf.reshape(lam, [batch_size, -1])
         soft_mixed_audio = lam_audio * bird_audio_A + (1.0 - lam_audio) * bird_audio_B
         soft_mixed_labels = lam * bird_label_A + (1.0 - lam) * bird_label_B
     else:
