@@ -2383,13 +2383,6 @@ def tf_batch_audio_roll(audio_batch, max_shift_pct=0.5, execution_probability=0.
     batch_size = tf.shape(audio_batch)[0]
     time_samples = tf.shape(audio_batch)[1]
 
-    # 1. Determine which individual items in the batch get the augmentation
-    # Generates uniform random numbers [0, 1) for each batch item
-    random_probs = tf.random.uniform(shape=[batch_size], minval=0.0, maxval=1.0)
-    # Boolean mask: True if we should roll, False if we keep original
-    should_roll_mask = random_probs < execution_probability
-
-    # 2. Calculate unique random shift amounts for EVERY item
     max_shift_samples = tf.cast(
         tf.cast(time_samples, tf.float32) * max_shift_pct, tf.int32
     )
@@ -2399,21 +2392,26 @@ def tf_batch_audio_roll(audio_batch, max_shift_pct=0.5, execution_probability=0.
         maxval=max_shift_samples,
         dtype=tf.int32,
     )
+    # items not chosen for the augmentation aren't shifted
+    should_roll = tf.random.uniform(shape=[batch_size]) < execution_probability
+    shift_amounts = tf.where(should_roll, shift_amounts, 0)
 
-    # 3. Compute rolled indices via broadcasting
-    time_indices = tf.range(time_samples, dtype=tf.int32)
-    new_indices = (
-        time_indices[tf.newaxis, :] - shift_amounts[:, tf.newaxis]
-    ) % time_samples
-
-    # 4. Gather the rolled version of the entire batch
-    rolled_batch = tf.gather(audio_batch, new_indices, batch_dims=1)
-
-    # 5. Conditionally select: If True -> take rolled, If False -> take original
-    # We expand the mask dimension to [batch_size, 1] so it broadcasts across time_samples
-    output_batch = tf.where(should_roll_mask[:, tf.newaxis], rolled_batch, audio_batch)
-
-    return output_batch
+    # tf.roll per item is a circular copy, much cheaper than gathering through
+    # a [batch, time] index table
+    if audio_batch.shape[0] is not None:
+        # fixed batch size (training drops the remainder)
+        rolled = [
+            tf.roll(audio, shift, axis=0)
+            for audio, shift in zip(
+                tf.unstack(audio_batch), tf.unstack(shift_amounts)
+            )
+        ]
+        return tf.stack(rolled)
+    return tf.map_fn(
+        lambda item: tf.roll(item[0], item[1], axis=0),
+        (audio_batch, shift_amounts),
+        fn_output_signature=audio_batch.dtype,
+    )
 
 
 @tf.function
