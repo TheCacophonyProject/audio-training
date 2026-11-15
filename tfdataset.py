@@ -585,7 +585,15 @@ def get_dataset(dir, labels, global_epoch=None, **args):
             # benchmarking the noise stream alone, (noise, noise) so a batch
             # looks like (audio, label)
             logging.info("Benchmark stage noise, only the noise stream")
-            dataset = noise_dataset.map(lambda n: (n, n))
+            if isinstance(noise_dataset, NoiseBank):
+                bank = noise_dataset
+                size = args.get("batch_size") or 32
+                dataset = tf.data.Dataset.range(1).repeat().map(
+                    lambda _: (bank.sample(size), bank.sample(size)),
+                    num_parallel_calls=tf.data.AUTOTUNE,
+                )
+            else:
+                dataset = noise_dataset.map(lambda n: (n, n))
             noise_dataset = None
             args = dict(args, no_roll=True, no_noise_mix=False)
         do_roll = not args.get("no_roll")
@@ -600,7 +608,7 @@ def get_dataset(dir, labels, global_epoch=None, **args):
             spec.dtype == tf.string for spec in tf.nest.flatten(dataset.element_spec)
         )
         xla = (
-            not args.get("no_xla_augment")
+            args.get("xla_augment")
             and not has_strings
             and not (mixing and mixup_mode == "lam")
         )
@@ -631,6 +639,17 @@ def get_dataset(dir, labels, global_epoch=None, **args):
                 noise_mix_prob = 0.0
                 zipped_dataset = dataset.map(
                     lambda audio, label: ((audio, label), tf.zeros_like(audio)),
+                    num_parallel_calls=tf.data.AUTOTUNE,
+                )
+            elif isinstance(noise_dataset, NoiseBank):
+                noise_mix_prob = 0.7
+                bank = noise_dataset
+                logging.info("Mixing noise from the noise bank")
+                zipped_dataset = dataset.map(
+                    lambda audio, label: (
+                        (audio, label),
+                        bank.sample(tf.shape(audio)[0]),
+                    ),
                     num_parallel_calls=tf.data.AUTOTUNE,
                 )
             else:
@@ -861,6 +880,8 @@ def load_noise_dataset(filenames, num_labels, labels, args, excluded_tags=None):
     noise_dataset = noise_dataset.map(
         lambda wave, label: wave, num_parallel_calls=tf.data.AUTOTUNE
     )
+    if args.get("noise_bank"):
+        return NoiseBank(noise_dataset, total)
     if args.get("cache_noise"):
         # decode each clip once and keep it in memory (about 0.6 MB a clip),
         # otherwise every mixed sample reads, decompresses and parses a record
@@ -871,6 +892,35 @@ def load_noise_dataset(filenames, num_labels, labels, args, excluded_tags=None):
         )
         noise_dataset = noise_dataset.cache()
     return noise_dataset.shuffle(buffer_size=1000).repeat()
+
+
+class NoiseBank:
+    """Every mixing noise clip decoded once into one float16 tensor (about
+    0.3 MB a clip) in memory. Each batch gathers random rows from it inside the
+    augment step, rather than zipping a second (shuffled, batched) dataset
+    with the training data, which costs much more CPU than the copy itself"""
+
+    def __init__(self, noise_dataset, count):
+        clips = None
+        filled = 0
+        for batch in noise_dataset.batch(256).as_numpy_iterator():
+            if clips is None:
+                clips = np.empty((count, batch.shape[1]), dtype=np.float16)
+            clips[filled : filled + len(batch)] = batch
+            filled += len(batch)
+        if filled == 0:
+            raise ValueError("No noise clips for the noise bank")
+        logging.info(
+            "Noise bank of %s clips, %.1f GB", filled, clips[:filled].nbytes / 1e9
+        )
+        with tf.device("/CPU:0"):
+            self.clips = tf.Variable(clips[:filled], trainable=False, name="noise_bank")
+        self.count = filled
+
+    def sample(self, batch_size):
+        """[batch_size, samples] float32 random clips, with replacement"""
+        index = tf.random.uniform([batch_size], 0, self.count, dtype=tf.int32)
+        return tf.cast(tf.gather(self.clips, index), tf.float32)
 
 
 def get_a_dataset(dir, labels, args):
@@ -1160,7 +1210,7 @@ def get_a_dataset(dir, labels, args):
         dataset = dataset.batch(
             batch_size, drop_remainder=args.get("drop_remainder", False)
         )
-        if noise_dataset is not None:
+        if noise_dataset is not None and not isinstance(noise_dataset, NoiseBank):
             noise_dataset = noise_dataset.batch(
                 batch_size, drop_remainder=args.get("drop_remainder", False)
             )

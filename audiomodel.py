@@ -2950,6 +2950,13 @@ def parse_args():
 
     parser.add_argument("--shuffle", type=str2bool, default=True, help="Shuffle DS")
     parser.add_argument(
+        "--noise-bank",
+        action="store_true",
+        help="Keep the mixing noise clips in one float16 tensor in memory (about "
+        "0.3 MB a clip) and gather random clips per batch, instead of a second "
+        "zipped dataset. Replaces --cache-noise",
+    )
+    parser.add_argument(
         "--cache-noise",
         action="store_true",
         help="Keep the decoded noise clips for mixing in memory (about 0.6 MB "
@@ -2986,9 +2993,10 @@ def parse_args():
         "mag transform and output stay float32",
     )
     parser.add_argument(
-        "--no-xla-augment",
+        "--xla-augment",
         action="store_true",
-        help="Don't XLA compile the training augmentation (roll, mixup, noise)",
+        help="XLA compile the training augmentation (roll, mixup, noise), faster on "
+        "some CPUs, slower on others",
     )
     parser.add_argument(
         "--no-roll",
