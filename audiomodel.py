@@ -2952,8 +2952,8 @@ def parse_args():
     parser.add_argument(
         "--noise-bank",
         action="store_true",
-        help="Keep the mixing noise clips in one float16 tensor in memory (about "
-        "0.3 MB a clip) and gather random clips per batch, instead of a second "
+        help="Keep the mixing noise clips in one float32 tensor in memory (about "
+        "0.6 MB a clip) and gather random clips per batch, instead of a second "
         "zipped dataset. Replaces --cache-noise",
     )
     parser.add_argument(

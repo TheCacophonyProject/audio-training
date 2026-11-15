@@ -895,8 +895,8 @@ def load_noise_dataset(filenames, num_labels, labels, args, excluded_tags=None):
 
 
 class NoiseBank:
-    """Every mixing noise clip decoded once into one float16 tensor (about
-    0.3 MB a clip) in memory. Each batch gathers random rows from it inside the
+    """Every mixing noise clip decoded once into one float32 tensor (about
+    0.6 MB a clip) in memory. Each batch gathers random rows from it inside the
     augment step, rather than zipping a second (shuffled, batched) dataset
     with the training data, which costs much more CPU than the copy itself"""
 
@@ -905,7 +905,7 @@ class NoiseBank:
         filled = 0
         for batch in noise_dataset.batch(256).as_numpy_iterator():
             if clips is None:
-                clips = np.empty((count, batch.shape[1]), dtype=np.float16)
+                clips = np.empty((count, batch.shape[1]), dtype=np.float32)
             clips[filled : filled + len(batch)] = batch
             filled += len(batch)
         if filled == 0:
@@ -918,9 +918,9 @@ class NoiseBank:
         self.count = filled
 
     def sample(self, batch_size):
-        """[batch_size, samples] float32 random clips, with replacement"""
+        """[batch_size, samples] random clips, with replacement"""
         index = tf.random.uniform([batch_size], 0, self.count, dtype=tf.int32)
-        return tf.cast(tf.gather(self.clips, index), tf.float32)
+        return tf.gather(self.clips, index)
 
 
 def get_a_dataset(dir, labels, args):
