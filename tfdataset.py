@@ -736,7 +736,7 @@ def split_noise_files(dir, noise_dirs, mix_fraction=0.5):
 
 
 def add_noise_samples(
-    dataset, noise_files, count, fraction, num_labels, labels, args, combos
+    dataset, noise_files, count, fraction, num_labels, labels, args, combos, train=False
 ):
     """Add noise records to dataset, fraction of count (the number of samples in
     dataset), so the noise share is the same whatever the size of the noise
@@ -744,11 +744,14 @@ def add_noise_samples(
     noise, combos is updated with the noise label combinations"""
     num_noise = int(round(count * fraction))
     # sorted then shuffled with a fixed seed so every run gets the same noise
-    # from all the noise dirs
+    # files from all the noise dirs
     noise_files = sorted(noise_files)
     random.Random(0).shuffle(noise_files)
     noise_args = dict(args)
-    noise_args["deterministic"] = True
+    # validation and test read in order so they get the same noise samples
+    # every time, training reads in whatever order is fastest so the noise
+    # samples taken can differ a little between epochs
+    noise_args["deterministic"] = args.get("deterministic", False) or not train
     noise_dataset = load_dataset(noise_files, num_labels, labels, noise_args)
     noise_dataset = noise_dataset.take(num_noise)
     # only counts the noise, may be less than num_noise if there isn't enough
@@ -1050,6 +1053,7 @@ def get_a_dataset(dir, labels, args):
             labels,
             args,
             combos,
+            train=dir.name == "train",
         )
         if dist is not None:
             dist += noise_dist
