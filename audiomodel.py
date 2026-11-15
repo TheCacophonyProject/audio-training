@@ -481,7 +481,7 @@ class AudioModel:
             epochs=epochs,
             lr=args.get("lr", 5e-4),
             mel_in_model=args.get("mel_in_model", False),
-            spec_augment=not args.get("no_augment", False),
+            spec_augment=not (args.get("no_augment") or args.get("no_spec_augment")),
             steps_per_execution=args.get("steps_per_execution", 1),
             jit_compile=args.get("jit_compile", "auto"),
         )
@@ -804,8 +804,9 @@ class AudioModel:
                 # over batch, mels and time
                 # inputs are [batch, mels, time, channels]
                 logging.info("Adding mag transform and batch norm")
-                x = badwinner2.MagTransform()(mel)
-                x = tf.keras.layers.BatchNormalization(axis=-1)(x)
+                # float32 under mixed precision, power mels span a wide range
+                x = badwinner2.MagTransform(dtype="float32")(mel)
+                x = tf.keras.layers.BatchNormalization(axis=-1, dtype="float32")(x)
 
             x = base_model(x)
             # , training=True)
@@ -2978,6 +2979,34 @@ def parse_args():
         "noise cache fills",
     )
     parser.add_argument(
+        "--mixed-precision",
+        choices=["off", "bf16", "fp16"],
+        default="off",
+        help="Run the model in bfloat16 or float16 (with loss scaling), the mel, "
+        "mag transform and output stay float32",
+    )
+    parser.add_argument(
+        "--no-roll",
+        action="store_true",
+        help="Training without the random time roll of the audio",
+    )
+    parser.add_argument(
+        "--no-noise-mix",
+        action="store_true",
+        help="Training without background noise mixed into the audio (bird "
+        "mixup still runs)",
+    )
+    parser.add_argument(
+        "--no-noise-samples",
+        action="store_true",
+        help="Training without the added noise only samples",
+    )
+    parser.add_argument(
+        "--no-spec-augment",
+        action="store_true",
+        help="Training without spec augment (in the model's mel layer)",
+    )
+    parser.add_argument(
         "--benchmark-model",
         type=int,
         default=None,
@@ -3099,6 +3128,11 @@ def parse_args():
     args.mel_in_model = not args.mel_before_model
     if args.jit_compile != "auto":
         args.jit_compile = args.jit_compile == "true"
+    if args.mixed_precision != "off":
+        # before any model is built, layers take the global policy
+        policy = {"bf16": "mixed_bfloat16", "fp16": "mixed_float16"}
+        tf.keras.mixed_precision.set_global_policy(policy[args.mixed_precision])
+        logging.info("Mixed precision %s", policy[args.mixed_precision])
     # args.multi = args.multi > 0
     args.resample = args.resample > 0
     args.only_features = args.only_features > 0

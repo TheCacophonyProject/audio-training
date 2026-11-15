@@ -576,12 +576,15 @@ def get_dataset(dir, labels, global_epoch=None, **args):
         #         num_parallel_calls=tf.data.AUTOTUNE,
         #     )
         # Apply the roll on-the-fly during your training dataset pipeline
-        dataset = dataset.map(
-            lambda audio, label: (tf_batch_audio_roll(audio), label),
-            num_parallel_calls=tf.data.AUTOTUNE,
-        )
+        if args.get("no_roll"):
+            logging.info("Not rolling audio")
+        else:
+            dataset = dataset.map(
+                lambda audio, label: (tf_batch_audio_roll(audio), label),
+                num_parallel_calls=tf.data.AUTOTUNE,
+            )
 
-        if noise_dataset is None:
+        if noise_dataset is None and not args.get("no_noise_mix"):
             logging.info("No noise dataset, not mixing up")
         else:
             logging.info(
@@ -592,8 +595,18 @@ def get_dataset(dir, labels, global_epoch=None, **args):
                 args.get("mixup_gain_range", (0.5, 0.7)),
             )
 
-            # 3. Zip them together into a triple-stream
-            zipped_dataset = tf.data.Dataset.zip((dataset, noise_dataset))
+            if noise_dataset is None:
+                # --no-noise-mix, bird mixup still runs with silence as noise
+                logging.info("Not mixing in background noise")
+                noise_mix_prob = 0.0
+                zipped_dataset = dataset.map(
+                    lambda audio, label: ((audio, label), tf.zeros_like(audio)),
+                    num_parallel_calls=tf.data.AUTOTUNE,
+                )
+            else:
+                noise_mix_prob = 0.7
+                # 3. Zip them together into a triple-stream
+                zipped_dataset = tf.data.Dataset.zip((dataset, noise_dataset))
             animal_index = -1
             if "animal" in labels:
                 animal_index = labels.index("animal")
@@ -610,7 +623,7 @@ def get_dataset(dir, labels, global_epoch=None, **args):
                         args.get("mixup_gain_range") or (0.5, 0.7)
                     ),
                     mixup_max_gain=args.get("mixup_max_gain") or 4.0,
-                    noise_mix_prob=0.7,
+                    noise_mix_prob=noise_mix_prob,
                     animal_class_idx=animal_index,
                 ),
                 num_parallel_calls=tf.data.AUTOTUNE,
@@ -934,6 +947,10 @@ def get_a_dataset(dir, labels, args):
                 dir, args["noise_dirs"], args.get("noise_mix_fraction", 0.8)
             )
             noise_fraction = args.get("noise_train_fraction", 0.05)
+            if args.get("no_noise_mix"):
+                noise_mix_files = None
+            if args.get("no_noise_samples"):
+                noise_sample_files = None
         elif dir.name == "train":
             logging.info("Not augmenting so not using noise files for training")
         else:
