@@ -575,6 +575,19 @@ def get_dataset(dir, labels, global_epoch=None, **args):
         #         ),
         #         num_parallel_calls=tf.data.AUTOTUNE,
         #     )
+        stage = args.get("benchmark_stage")
+        if stage == "main":
+            # benchmarking the main dataset alone, no augmentation or noise
+            logging.info("Benchmark stage main, not augmenting")
+            noise_dataset = None
+            args = dict(args, no_roll=True, no_noise_mix=False)
+        elif stage == "noise" and noise_dataset is not None:
+            # benchmarking the noise stream alone, (noise, noise) so a batch
+            # looks like (audio, label)
+            logging.info("Benchmark stage noise, only the noise stream")
+            dataset = noise_dataset.map(lambda n: (n, n))
+            noise_dataset = None
+            args = dict(args, no_roll=True, no_noise_mix=False)
         do_roll = not args.get("no_roll")
         if args.get("no_roll"):
             logging.info("Not rolling audio")

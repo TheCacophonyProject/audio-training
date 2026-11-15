@@ -3020,6 +3020,13 @@ def parse_args():
         "pipeline cost), log ms a step and exit",
     )
     parser.add_argument(
+        "--benchmark-stage",
+        choices=["main", "noise"],
+        default=None,
+        help="With --benchmark-pipeline, time only the main dataset (read, parse, "
+        "shuffle, batch, no augmentation) or only the noise stream",
+    )
+    parser.add_argument(
         "--benchmark-pipeline",
         type=int,
         default=None,
