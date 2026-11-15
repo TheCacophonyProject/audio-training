@@ -762,7 +762,28 @@ def add_noise_samples(
         count,
         len(noise_files),
     )
-    return dataset.concatenate(noise_dataset), noise_dist, num_noise
+    if num_noise == 0:
+        return dataset, noise_dist, num_noise
+    # spread through the epoch, concatenating would put every noise sample at
+    # the end, more than the later shuffle buffer can spread. The order is
+    # exactly count dataset and num_noise noise picks shuffled afresh each
+    # epoch, so the share is the same throughout (sample_from_datasets draws
+    # each pick at random, so leaves a run of one kind once the other is used
+    # up). Fixed seed for deterministic (eval) datasets
+    seed = 0 if args.get("deterministic") else None
+
+    def epoch_order(_):
+        picks = tf.concat(
+            [tf.zeros([count], tf.int64), tf.ones([num_noise], tf.int64)], axis=0
+        )
+        return tf.data.Dataset.from_tensor_slices(tf.random.shuffle(picks, seed=seed))
+
+    # re-run each time the dataset is iterated, i.e. a new order each epoch
+    order = tf.data.Dataset.range(1).flat_map(epoch_order)
+    mixed = tf.data.Dataset.choose_from_datasets(
+        [dataset, noise_dataset], order, stop_on_empty_dataset=False
+    )
+    return mixed, noise_dist, num_noise
 
 
 def load_noise_dataset(filenames, num_labels, labels, args, excluded_tags=None):
