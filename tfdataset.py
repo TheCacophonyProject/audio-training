@@ -660,6 +660,9 @@ def get_dataset(dir, labels, global_epoch=None, **args):
             if "animal" in labels:
                 animal_index = labels.index("animal")
                 logging.info("Applying animal based logic using index %s", animal_index)
+            noise_index = labels.index("noise") if "noise" in labels else -1
+            mix_negatives = args.get("mix_negatives", False)
+            logging.info("Bird mixup of clips with no label %s", mix_negatives)
 
             def augment(b1, bn):
                 # roll each clip, then mix, as separate steps did before
@@ -678,6 +681,8 @@ def get_dataset(dir, labels, global_epoch=None, **args):
                     mixup_max_gain=args.get("mixup_max_gain") or 4.0,
                     noise_mix_prob=noise_mix_prob,
                     animal_class_idx=animal_index,
+                    noise_class_idx=noise_index,
+                    mix_negatives=mix_negatives,
                 )
 
             augment_fn = tf.function(augment, jit_compile=xla)
@@ -2286,6 +2291,8 @@ def apply_raw_mixup(
     bird_mix_prob=0.5,
     noise_mix_prob=0.7,
     animal_class_idx=-1,
+    noise_class_idx=-1,
+    mix_negatives=False,
     mixup_mode="lam",
     mixup_db_range=(-12.0, 0.0),
     mixup_gain_range=(0.5, 0.7),
@@ -2348,6 +2355,17 @@ def apply_raw_mixup(
     mix_bird_mask = (random_bird_probs < bird_mix_prob) & tf.logical_not(
         tf.expand_dims(is_animal_A, -1)
     )
+    if not mix_negatives:
+        # clips with no label (noise only samples, untrained birds) stay
+        # negatives, mixing a bird into them would make them bird samples and
+        # leave few examples of nothing to detect. A noise label alone counts
+        # as no label
+        positive = bird_label_A
+        if noise_class_idx >= 0:
+            num_labels = bird_label_A.shape[-1] or tf.shape(bird_label_A)[-1]
+            positive = positive * (1.0 - tf.one_hot(noise_class_idx, num_labels))
+        has_label_A = tf.reduce_max(positive, axis=-1, keepdims=True) > 0
+        mix_bird_mask = mix_bird_mask & has_label_A
     mix_bird_mask_audio = tf.reshape(mix_bird_mask, [batch_size, -1])
 
     if mixup_mode == "union":

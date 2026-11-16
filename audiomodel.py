@@ -2835,6 +2835,12 @@ def parse_args():
         "(--mixup-max-gain)",
     )
     parser.add_argument(
+        "--mix-negatives",
+        action="store_true",
+        help="Bird mixup also mixes into clips with no label (noise only "
+        "samples, untrained birds), turning them into bird samples, as before",
+    )
+    parser.add_argument(
         "--mixup-max-gain",
         type=float,
         default=4.0,
