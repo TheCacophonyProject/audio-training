@@ -662,6 +662,9 @@ def get_dataset(dir, labels, global_epoch=None, **args):
                 logging.info("Applying animal based logic using index %s", animal_index)
             noise_index = labels.index("noise") if "noise" in labels else -1
             mix_negatives = args.get("mix_negatives", False)
+            no_mix_idx = tuple(labels.index(l) for l in args.get("no_mix_labels") or [])
+            if no_mix_idx:
+                logging.info("Never bird mixing %s", args.get("no_mix_labels"))
             logging.info("Bird mixup of clips with no label %s", mix_negatives)
 
             def augment(b1, bn):
@@ -683,6 +686,7 @@ def get_dataset(dir, labels, global_epoch=None, **args):
                     animal_class_idx=animal_index,
                     noise_class_idx=noise_index,
                     mix_negatives=mix_negatives,
+                    no_mix_idx=no_mix_idx,
                 )
 
             augment_fn = tf.function(augment, jit_compile=xla)
@@ -2314,6 +2318,7 @@ def apply_raw_mixup(
     animal_class_idx=-1,
     noise_class_idx=-1,
     mix_negatives=False,
+    no_mix_idx=(),
     mixup_mode="lam",
     mixup_db_range=(-12.0, 0.0),
     mixup_gain_range=(0.5, 0.7),
@@ -2387,6 +2392,13 @@ def apply_raw_mixup(
             positive = positive * (1.0 - tf.one_hot(noise_class_idx, num_labels))
         has_label_A = tf.reduce_max(positive, axis=-1, keepdims=True) > 0
         mix_bird_mask = mix_bird_mask & has_label_A
+    if no_mix_idx:
+        # clips with these labels are never mixed, as clip A or clip B
+        no_mix = tf.reduce_max(
+            tf.gather(bird_label_A, list(no_mix_idx), axis=1), axis=-1, keepdims=True
+        ) > 0
+        no_mix = tf.logical_or(no_mix, tf.roll(no_mix, shift=1, axis=0))
+        mix_bird_mask = mix_bird_mask & tf.logical_not(no_mix)
     mix_bird_mask_audio = tf.reshape(mix_bird_mask, [batch_size, -1])
 
     if mixup_mode == "union":

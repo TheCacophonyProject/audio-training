@@ -1355,6 +1355,14 @@ def benchmark_pipeline(
         t = np.concatenate(targets)
         w = np.concatenate(weights) if weights else np.ones_like(t)
         pos = t > 0.5
+        # where in the run the positives fall, a burst means the label's
+        # samples aren't spread through the epoch
+        tenths = np.histogram(np.flatnonzero(pos), bins=10, range=(0, len(t)))[0]
+        logging.info(
+            "Label stats %s positives per tenth of the batches: %s",
+            label_name,
+            tenths.tolist(),
+        )
         logging.info(
             "Label stats %s over %s samples: %s positive (%.3f%%), mean weight "
             "of positives %.3f, positives with weight 0: %s, samples with weight "
@@ -2918,6 +2926,13 @@ def parse_args():
         "and peak label every bird in either clip 1. union-fixed is union "
         "levelled by each clip's loudest frames with the gain capped "
         "(--mixup-max-gain)",
+    )
+    parser.add_argument(
+        "--no-mix-labels",
+        nargs="+",
+        default=None,
+        help="Clips with any of these labels are never bird mixed, as either "
+        "clip (background noise still applies), e.g. kokako3",
     )
     parser.add_argument(
         "--mix-negatives",
