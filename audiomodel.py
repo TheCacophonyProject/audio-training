@@ -2566,7 +2566,7 @@ def main():
         second_dir = None
         if args.second_dataset_dir is not None:
             args.second_dataset_dir = Path(args.second_dataset_dir)
-            second_dir = args.second_dataset_dir / "test"
+            second_dir = args.second_dataset_dir / args.eval_split
 
         dataset_args = dict(
             excluded_labels=excluded_labels,
@@ -2599,13 +2599,18 @@ def main():
             # models with a mel layer take raw audio
             mel_in_model=meta_data.get("mel_in_model", False),
         )
-        dataset, _, _, _, _ = get_dataset(base_dir / "test", labels, **dataset_args)
+        logging.info("Evaluating the %s split", args.eval_split)
+        dataset, _, _, _, _ = get_dataset(
+            base_dir / args.eval_split, labels, **dataset_args
+        )
         # (file prefix, dataset), with a second dataset also confusions of only
         # the main (cacophony) dataset's test files
         eval_datasets = [("", dataset)]
         if second_dir is not None:
             cacophony_dataset, _, _, _, _ = get_dataset(
-                base_dir / "test", labels, **dict(dataset_args, second_dir=None)
+                base_dir / args.eval_split,
+                labels,
+                **dict(dataset_args, second_dir=None),
             )
             eval_datasets.append(("cacophony-", cacophony_dataset))
 
@@ -2660,7 +2665,14 @@ def main():
                 confusion_file = (
                     Path("./confusions")
                     / model_path.stem
-                    / (args.confusion.parent / f"{args.confusion.stem}-{file_prefix}")
+                    / (
+                        args.confusion.parent
+                        / (
+                            f"{args.confusion.stem}-{file_prefix}"
+                            if args.eval_split == "test"
+                            else f"{args.confusion.stem}-{args.eval_split}-{file_prefix}"
+                        )
+                    )
                 )
                 confusion_file.parent.mkdir(exist_ok=True, parents=True)
                 if multi:
@@ -2891,6 +2903,13 @@ def parse_args():
         help="Secondary dataset directory to use",
     )
     parser.add_argument("--confusion", help="Save confusion matrix for model")
+    parser.add_argument(
+        "--eval-split",
+        choices=["train", "validation", "test"],
+        default="test",
+        help="With --confusion, the split to evaluate, e.g. train to see how well "
+        "the model fits its own training recordings",
+    )
     parser.add_argument(
         "--split-secondary",
         action="store_true",

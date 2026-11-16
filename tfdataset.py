@@ -2273,13 +2273,23 @@ def tf_batch_mix_real_noise(
 
 
 @tf.function
-def loud_level(audio, frame=2400, top_fraction=0.1):
-    """[batch, samples] audio to [batch, 1] rms of its loudest top_fraction of
+def loud_level(
+    audio, frame=2400, top_fraction=0.1, sr=SR, fmin=FMIN, fmax=FMAX, frame_step=2
+):
+    """[batch, samples] audio to [batch, 1] level of its loudest top_fraction of
     frame long frames (50 ms at 48 kHz), the level of the call rather than of
-    the background between calls"""
-    frames = tf.signal.frame(audio, frame, frame)
-    energy = tf.reduce_mean(tf.square(frames), axis=-1)
-    k = max(1, int(round(audio.shape[-1] // frame * top_fraction)))
+    the background between calls. Only energy between fmin and fmax (the mel
+    range, what the model hears) counts, e.g. wind rumble below 100 Hz would
+    otherwise make a clip seem louder than its bird. Every frame_step'th frame
+    is measured, to halve the cost of the FFTs"""
+    frames = tf.signal.frame(audio, frame, frame * frame_step)
+    frames = frames * tf.signal.hann_window(frame)
+    power = tf.square(tf.abs(tf.signal.rfft(frames)))
+    freqs = np.fft.rfftfreq(frame, 1 / sr)
+    band = tf.constant(((freqs >= fmin) & (freqs <= fmax)).astype(np.float32))
+    energy = tf.reduce_sum(power * band, axis=-1)
+    num_frames = (audio.shape[-1] - frame) // (frame * frame_step) + 1
+    k = max(1, int(round(num_frames * top_fraction)))
     top, _ = tf.math.top_k(energy, k=k)
     return tf.sqrt(tf.reduce_mean(top, axis=-1, keepdims=True))
 
