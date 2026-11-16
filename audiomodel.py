@@ -511,6 +511,15 @@ class AudioModel:
         if args.get("benchmark_model"):
             benchmark_model(self.model, self.train, args["benchmark_model"])
             return
+        if args.get("benchmark_model_stream"):
+            benchmark_model(
+                self.model,
+                self.train,
+                args["benchmark_model_stream"],
+                warmup=50,
+                from_memory=False,
+            )
+            return
 
         history = self.model.fit(
             self.train,
@@ -1247,7 +1256,7 @@ def sigmoid_binary_cross(y_true, y_pred):
     return loss_m
 
 
-def benchmark_model(model, dataset, steps, warmup=20):
+def benchmark_model(model, dataset, steps, warmup=20, from_memory=True):
     """Trains on one batch repeated from memory, so the input pipeline costs
     nothing, and logs the ms a step. If it is much faster than real training
     the pipeline is what holds training back, if not the GPU side is. The
@@ -1255,7 +1264,12 @@ def benchmark_model(model, dataset, steps, warmup=20):
     import time
 
     batch = next(iter(dataset))
-    repeated = tf.data.Dataset.from_tensors(batch).repeat()
+    if from_memory:
+        repeated = tf.data.Dataset.from_tensors(batch).repeat()
+    else:
+        # the real input pipeline, without the callbacks and progress bar of
+        # real training
+        repeated = dataset.repeat()
     times = []
 
     class StepTimer(tf.keras.callbacks.Callback):
@@ -1278,7 +1292,8 @@ def benchmark_model(model, dataset, steps, warmup=20):
     per_execution = (timed[-1] - timed[0]) / (len(timed) - 1)
     per_step = per_execution * executions / (warmup + steps)
     logging.info(
-        "Model benchmark, input from memory: %.0f ms a step, %.0f samples/s",
+        "Model benchmark, input from %s: %.0f ms a step, %.0f samples/s",
+        "memory" if from_memory else "the pipeline",
         1000 * per_step,
         int(tf.shape(batch[0])[0]) / per_step,
     )
@@ -1998,7 +2013,11 @@ def load_datasets(labels, excluded_labels, data_dir, batch_size, **args):
     )
     if args.get("only_load_train", False):
         return remapped, excluded_labels, extra_label_map
-    if args.get("benchmark_pipeline") or args.get("benchmark_model"):
+    if (
+        args.get("benchmark_pipeline")
+        or args.get("benchmark_model")
+        or args.get("benchmark_model_stream")
+    ):
         # only the training input is used
         return train, None, new_labels, remapped, extra_label_map, epoch_size
 
@@ -3046,6 +3065,14 @@ def parse_args():
         default=None,
         help="With --benchmark-pipeline, time only the main dataset (read, parse, "
         "shuffle, batch, no augmentation) or only the noise stream",
+    )
+    parser.add_argument(
+        "--benchmark-model-stream",
+        type=int,
+        default=None,
+        metavar="STEPS",
+        help="Train this many steps on the real input pipeline with no callbacks "
+        "or progress bar, log ms a step and exit",
     )
     parser.add_argument(
         "--benchmark-pipeline",
