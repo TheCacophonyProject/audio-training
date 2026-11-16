@@ -442,7 +442,15 @@ class AudioModel:
             **args,
         )
         if args.get("benchmark_pipeline"):
-            benchmark_pipeline(self.train, args["benchmark_pipeline"])
+            label_index = None
+            if args.get("label_stats"):
+                label_index = self.labels.index(args["label_stats"])
+            benchmark_pipeline(
+                self.train,
+                args["benchmark_pipeline"],
+                label_index=label_index,
+                label_name=args.get("label_stats"),
+            )
             return
 
         from tfdataset import DIMENSIONS
@@ -1300,7 +1308,7 @@ def benchmark_model(model, dataset, steps, warmup=20, from_memory=True):
     )
 
 
-def benchmark_pipeline(dataset, batches, warmup=20):
+def benchmark_pipeline(dataset, batches, warmup=20, label_index=None, label_name=None):
     """Times the training input pipeline alone, no model, and logs samples a
     second. The first warmup batches (filling the shuffle buffer etc) aren't
     timed"""
@@ -1308,15 +1316,43 @@ def benchmark_pipeline(dataset, batches, warmup=20):
 
     samples = 0
     start = None
+    # for label_index, the label's targets and loss weights as training sees
+    # them, after augmentation
+    targets = []
+    weights = []
     for i, batch in enumerate(dataset.take(warmup + batches)):
         if i == warmup:
             start = time.time()
         if i >= warmup:
             samples += int(tf.shape(batch[0])[0])
+            if label_index is not None:
+                y = batch[1]
+                label = y[0] if isinstance(y, (tuple, list)) else y
+                targets.append(label[:, label_index].numpy())
+                if isinstance(y, (tuple, list)) and len(y) > 1:
+                    weights.append(y[1][:, label_index].numpy())
     if start is None or samples == 0:
         logging.info("Dataset has fewer than %s batches to benchmark", warmup + 1)
         return
     took = time.time() - start
+    if label_index is not None and targets:
+        t = np.concatenate(targets)
+        w = np.concatenate(weights) if weights else np.ones_like(t)
+        pos = t > 0.5
+        logging.info(
+            "Label stats %s over %s samples: %s positive (%.3f%%), mean weight "
+            "of positives %.3f, positives with weight 0: %s, samples with weight "
+            "0: %s, partial targets (0 < t < 1): %s, target values %s",
+            label_name,
+            len(t),
+            int(pos.sum()),
+            100 * pos.mean(),
+            float(w[pos].mean()) if pos.any() else float("nan"),
+            int((pos & (w == 0)).sum()),
+            int((w == 0).sum()),
+            int(((t > 0) & (t < 1)).sum()),
+            np.unique(np.round(t, 2)).tolist()[:10],
+        )
     logging.info(
         "Pipeline benchmark: %s samples in %.1fs, %.0f samples/s, %.0f ms a batch",
         samples,
@@ -3092,6 +3128,13 @@ def parse_args():
         metavar="STEPS",
         help="Train this many steps on one batch repeated from memory (no input "
         "pipeline cost), log ms a step and exit",
+    )
+    parser.add_argument(
+        "--label-stats",
+        default=None,
+        metavar="LABEL",
+        help="With --benchmark-pipeline, report how often LABEL is a positive "
+        "target and its loss weights, as training sees them after augmentation",
     )
     parser.add_argument(
         "--benchmark-stage",
