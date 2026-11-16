@@ -521,17 +521,18 @@ class AudioModel:
             )
             return
 
+        callbacks = [
+            tf.keras.callbacks.TensorBoard(
+                self.log_dir, write_graph=True, write_images=True
+            ),
+            *checkpoints,
+        ]
         history = self.model.fit(
             self.train,
             validation_data=self.validation,
             epochs=epochs,
             shuffle=False,
-            callbacks=[
-                tf.keras.callbacks.TensorBoard(
-                    self.log_dir, write_graph=True, write_images=True
-                ),
-                *checkpoints,
-            ],  # log metricslast_stats
+            callbacks=callbacks,  # log metricslast_stats
             class_weight=class_weights,
         )
 
