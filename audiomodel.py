@@ -450,6 +450,8 @@ class AudioModel:
                 args["benchmark_pipeline"],
                 label_index=label_index,
                 label_name=args.get("label_stats"),
+                dump_dir=args.get("dump_label_samples"),
+                labels=self.labels,
             )
             return
 
@@ -1308,7 +1310,16 @@ def benchmark_model(model, dataset, steps, warmup=20, from_memory=True):
     )
 
 
-def benchmark_pipeline(dataset, batches, warmup=20, label_index=None, label_name=None):
+def benchmark_pipeline(
+    dataset,
+    batches,
+    warmup=20,
+    label_index=None,
+    label_name=None,
+    dump_dir=None,
+    labels=None,
+    dump_count=20,
+):
     """Times the training input pipeline alone, no model, and logs samples a
     second. The first warmup batches (filling the shuffle buffer etc) aren't
     timed"""
@@ -1320,6 +1331,7 @@ def benchmark_pipeline(dataset, batches, warmup=20, label_index=None, label_name
     # them, after augmentation
     targets = []
     weights = []
+    dumped = 0
     for i, batch in enumerate(dataset.take(warmup + batches)):
         if i == warmup:
             start = time.time()
@@ -1329,6 +1341,10 @@ def benchmark_pipeline(dataset, batches, warmup=20, label_index=None, label_name
                 y = batch[1]
                 label = y[0] if isinstance(y, (tuple, list)) else y
                 targets.append(label[:, label_index].numpy())
+                if dump_dir is not None and dumped < dump_count:
+                    dumped = dump_samples(
+                        batch[0], label, label_index, labels, dump_dir, dumped, dump_count
+                    )
                 if isinstance(y, (tuple, list)) and len(y) > 1:
                     weights.append(y[1][:, label_index].numpy())
     if start is None or samples == 0:
@@ -1360,6 +1376,25 @@ def benchmark_pipeline(dataset, batches, warmup=20, label_index=None, label_name
         samples / took,
         1000 * took / batches,
     )
+
+
+def dump_samples(audio, label, label_index, labels, dump_dir, dumped, dump_count):
+    """Save batch samples where label_index is a positive target as wav files
+    named with every label they carry, to listen to what training sees"""
+    dump_dir = Path(dump_dir)
+    dump_dir.mkdir(parents=True, exist_ok=True)
+    label = label.numpy()
+    for row in np.flatnonzero(label[:, label_index] > 0.5):
+        if dumped >= dump_count:
+            break
+        names = "+".join(labels[j] for j in np.flatnonzero(label[row] > 0.5))
+        wave = tf.expand_dims(tf.cast(audio[row], tf.float32), -1)
+        # peak normalised already, clip just in case
+        wave = tf.clip_by_value(wave, -1.0, 1.0)
+        path = dump_dir / f"{dumped:02d}-{names}.wav"
+        tf.io.write_file(str(path), tf.audio.encode_wav(wave, 48000))
+        dumped += 1
+    return dumped
 
 
 class BestMetrics(tf.keras.callbacks.Callback):
@@ -3135,6 +3170,13 @@ def parse_args():
         metavar="LABEL",
         help="With --benchmark-pipeline, report how often LABEL is a positive "
         "target and its loss weights, as training sees them after augmentation",
+    )
+    parser.add_argument(
+        "--dump-label-samples",
+        default=None,
+        metavar="DIR",
+        help="With --benchmark-pipeline and --label-stats, save the first 20 "
+        "training samples with that label, after augmentation, as wav files",
     )
     parser.add_argument(
         "--benchmark-stage",
