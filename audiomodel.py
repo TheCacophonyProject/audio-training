@@ -2595,7 +2595,8 @@ def main():
             model_name=model_name,
             cache=True,
             load_all_y=True,
-            noise_dirs=args.noise_dirs,
+            noise_dirs=None if args.eval_labels else args.noise_dirs,
+            only_labels=args.eval_labels,
             # models with a mel layer take raw audio
             mel_in_model=meta_data.get("mel_in_model", False),
         )
@@ -2909,6 +2910,13 @@ def parse_args():
         default="test",
         help="With --confusion, the split to evaluate, e.g. train to see how well "
         "the model fits its own training recordings",
+    )
+    parser.add_argument(
+        "--eval-labels",
+        nargs="+",
+        default=None,
+        help="With --confusion, only evaluate samples with these labels (e.g. "
+        "kokako3), faster on a large split but only gives their recall",
     )
     parser.add_argument(
         "--split-secondary",

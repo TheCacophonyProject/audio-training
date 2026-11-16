@@ -1087,6 +1087,17 @@ def get_a_dataset(dir, labels, args):
     logging.info("Loading %s files from %s", len(filenames), dir)
 
     dataset = load_dataset(filenames, num_labels, labels, args)
+    if args.get("only_labels"):
+        # e.g. to evaluate a few labels on a large split quickly, keep only
+        # samples with one of these labels
+        keep = [labels.index(l) for l in args["only_labels"]]
+        logging.info("Only keeping samples with %s", args["only_labels"])
+
+        def has_label(x, y):
+            label = y[0] if isinstance(y, (tuple, list)) else y
+            return tf.reduce_any(tf.gather(label, keep) > 0)
+
+        dataset = dataset.filter(has_label)
     epoch_size = args.get("epoch_size")
     dist = None
     combos = {}
