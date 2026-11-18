@@ -60,6 +60,7 @@ def load_recording(file, resample=SR):
     frames, sr = librosa.load(aro, sr=None)
     aro.close()
     if resample is not None and resample != sr:
+        print("RESAMPLING",resample,sr)
         frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
         sr = resample
     return frames, sr
@@ -423,34 +424,14 @@ class Perch:
         self.embeddings, self.rows = [], []
 
 
-def scalar_mag_transform():
-    """MagTransform as the spectv10 models were saved, a scalar "a-power"
-    weight, the same as audio-analysis. maglayers.MagTransform now has shape
-    [1] and badwinner2's a "mag_scale" weight, neither of which load"""
-    import tensorflow as tf
-
-    class MagTransform(tf.keras.layers.Layer):
-        def __init__(self, **kwargs):
-            super().__init__(**kwargs)
-            self.a = self.add_weight(
-                initializer=tf.keras.initializers.Constant(value=0.0),
-                name="a-power",
-                dtype="float32",
-                shape=(),
-                trainable=True,
-            )
-
-        def call(self, inputs):
-            return tf.math.pow(inputs, tf.math.sigmoid(self.a))
-
-    return MagTransform
-
-
 class CacophonyModel:
     def __init__(self, args):
         import tensorflow as tf
 
-        # custom MelSpectrogram layer in the saved model, MagTransform is below
+        # custom layers in the saved model, MagTransform is the one audiomodel.py
+        # trains with. Passed explicitly as maglayers registers another class
+        # under the same name, which doesn't load
+        import badwinner2
         import mellayer  # noqa: F401
 
         model_dir = Path(args.model).expanduser()
@@ -469,7 +450,7 @@ class CacophonyModel:
         self.weights = args.weights
         model_file = model_dir / f"{model_dir.name}.keras"
         logging.info("Loading %s with %s", model_file, self.weights)
-        mag_transform = scalar_mag_transform()
+        mag_transform = badwinner2.MagTransform
         self.model = tf.keras.models.load_model(
             str(model_file),
             compile=False,
@@ -480,7 +461,7 @@ class CacophonyModel:
         )
         self.model.load_weights(model_dir / self.weights)
         self.model.trainable = False
-
+        self.model.summary()
         # the model makes its own mel from raw audio, so its input size is the
         # context length
         input_shape = self.model.input_shape
