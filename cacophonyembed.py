@@ -110,7 +110,9 @@ class Shards:
         self.embeddings.append(embedding)
         self.logits.append(logits)
         self.rows.append(row)
-        self.done.add(window_key(row["recording_id"], row["track_id"], row["window_start"]))
+        self.done.add(
+            window_key(row["recording_id"], row["track_id"], row["window_start"])
+        )
         self.total += 1
 
     def maybe_save(self):
@@ -170,8 +172,7 @@ def get_jobs(meta, args, model, key, shards, stride, duration):
             track["start"], track["end"], model.length, stride, duration
         )
         missing = any(
-            window_key(recording_id, track.get("id"), round(w[0], 2))
-            not in shards.done
+            window_key(recording_id, track.get("id"), round(w[0], 2)) not in shards.done
             for w in track_windows
         )
         meta_missing = not args.no_meta and (args.overwrite or key not in track)

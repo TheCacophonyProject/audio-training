@@ -11,7 +11,6 @@ exec python3 audiomodel.py \
     --noise-dirs \
         /data2/audio-training/audio-training/training-data/noise \
         /data/audio-data/other-datasets/noise-dataset/ambient-noise/ \
-        /data/audio-data/other-datasets/noise-dataset/cacophony/noise/ \
         /data/audio-data/other-datasets/noise-dataset/esc-50-noise/ \
     --extra-dirs \
         /data/audio-data/other-datasets/animal-dataset/animal-sounds/ \

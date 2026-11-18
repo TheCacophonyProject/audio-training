@@ -805,9 +805,7 @@ class AudioModel:
                     spec_augment=spec_augment,
                     name="mel_spectrogram",
                 )(input)
-                logging.info(
-                    "Making mels in the model, spec augment %s", spec_augment
-                )
+                logging.info("Making mels in the model, spec augment %s", spec_augment)
             else:
                 input = tf.keras.Input(shape=self.input_shape, name="input")
                 mel = input
@@ -901,9 +899,7 @@ class AudioModel:
             # may not be in a sample, don't count. Binary accuracy and roc auc
             # aren't used as with many labels they are dominated by easy
             # negatives
-            weighted_metrics=compile_metrics(
-                multi_label, num_labels, self.from_logits
-            ),
+            weighted_metrics=compile_metrics(multi_label, num_labels, self.from_logits),
         )
         self.model.summary()
 
@@ -1343,7 +1339,13 @@ def benchmark_pipeline(
                 targets.append(label[:, label_index].numpy())
                 if dump_dir is not None and dumped < dump_count:
                     dumped = dump_samples(
-                        batch[0], label, label_index, labels, dump_dir, dumped, dump_count
+                        batch[0],
+                        label,
+                        label_index,
+                        labels,
+                        dump_dir,
+                        dumped,
+                        dump_count,
                     )
                 if isinstance(y, (tuple, list)) and len(y) > 1:
                     weights.append(y[1][:, label_index].numpy())
@@ -1793,9 +1795,10 @@ def group_by_track(dataset, predictions):
     neg_pred = per_track(y_pred * negative) / np.maximum(neg_count, 1)
     # a label soft in every sample is pooled over all of them, it isn't
     # counted in the confusions but save_soft_predictions reports it
-    all_pred = per_track(y_pred) / np.bincount(
-        track_index, minlength=num_tracks
-    )[:, np.newaxis]
+    all_pred = (
+        per_track(y_pred)
+        / np.bincount(track_index, minlength=num_tracks)[:, np.newaxis]
+    )
     track_true = np.float32(pos_count > 0)
     track_soft = np.float32((pos_count == 0) & (neg_count == 0))
     # true in some samples, but never as a primary tag
@@ -1856,9 +1859,7 @@ def multi_confusion_single(
     variants = [("", true_categories, soft, None)]
     if split_secondary:
         primary_true = true_categories * (1 - secondary)
-        variants.append(
-            ("-primary", primary_true, np.maximum(soft, secondary), None)
-        )
+        variants.append(("-primary", primary_true, np.maximum(soft, secondary), None))
         has_secondary = secondary.any(axis=1)
         logging.info("%s tracks have secondary labels", np.count_nonzero(has_secondary))
         if np.any(has_secondary):
@@ -2761,8 +2762,7 @@ def main():
                             model,
                             labels,
                             eval_dataset,
-                            confusion_file.parent
-                            / f"{ds_prefix}{confusion_file.name}",
+                            confusion_file.parent / f"{ds_prefix}{confusion_file.name}",
                             thresholds or {},
                             one_hot=not meta_data.get("only_features"),
                             model_name=model_name,
@@ -2968,6 +2968,13 @@ def parse_args():
         default=0.8,
         help="Fraction of the --noise-dirs records used for mixing, the rest "
         "are added to the training data as noise samples",
+    )
+    parser.add_argument(
+        "--noise-share",
+        action="store_true",
+        help="Training uses all the --noise-dirs records both for mixing and as "
+        "noise only samples, added straight to the training files so all of "
+        "them are used (ignores --noise-mix-fraction and --noise-train-fraction)",
     )
     parser.add_argument(
         "--noise-train-fraction",

@@ -381,7 +381,9 @@ class Perch:
         shards = shard_paths(self.out_dir)
         for npy in shards:
             for r in load_shard_rows(npy):
-                self.done.add(perch_key(r["recording_id"], r["track_id"], r["perch_start"]))
+                self.done.add(
+                    perch_key(r["recording_id"], r["track_id"], r["perch_start"])
+                )
         self.next_shard = int(shards[-1].stem) + 1 if shards else 0
         self.total = len(self.done)
         logging.info("%s perch windows already in %s shards", self.total, len(shards))
@@ -391,7 +393,9 @@ class Perch:
         self.sr = int(getattr(self.model, "sample_rate", 32000))
         self.length = float(getattr(self.model, "window_size_s", 5.0))
         self.stride = self.length - args.overlap
-        logging.info("Perch window %ss at %sHz stride %ss", self.length, self.sr, self.stride)
+        logging.info(
+            "Perch window %ss at %sHz stride %ss", self.length, self.sr, self.stride
+        )
         self.embeddings = []
         self.rows = []
 
@@ -471,9 +475,7 @@ class CacophonyModel:
             # training is the architecture, so the first of a duplicate key wins
             model_meta = json.load(
                 f,
-                object_pairs_hook=lambda pairs: {
-                    k: v for k, v in reversed(pairs)
-                },
+                object_pairs_hook=lambda pairs: {k: v for k, v in reversed(pairs)},
             )
         self.model_meta = model_meta
         self.labels = model_meta["ebird_labels"]

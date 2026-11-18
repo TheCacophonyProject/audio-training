@@ -588,9 +588,13 @@ def get_dataset(dir, labels, global_epoch=None, **args):
             if isinstance(noise_dataset, NoiseBank):
                 bank = noise_dataset
                 size = args.get("batch_size") or 32
-                dataset = tf.data.Dataset.range(1).repeat().map(
-                    lambda _: (bank.sample(size), bank.sample(size)),
-                    num_parallel_calls=tf.data.AUTOTUNE,
+                dataset = (
+                    tf.data.Dataset.range(1)
+                    .repeat()
+                    .map(
+                        lambda _: (bank.sample(size), bank.sample(size)),
+                        num_parallel_calls=tf.data.AUTOTUNE,
+                    )
                 )
             else:
                 dataset = noise_dataset.map(lambda n: (n, n))
@@ -678,9 +682,7 @@ def get_dataset(dir, labels, global_epoch=None, **args):
                     bird_mix_prob=args.get("bird_mix_prob", 0.25),
                     mixup_mode=mixup_mode,
                     mixup_db_range=tuple(args.get("mixup_db_range") or (-12.0, 0.0)),
-                    mixup_gain_range=tuple(
-                        args.get("mixup_gain_range") or (0.5, 0.7)
-                    ),
+                    mixup_gain_range=tuple(args.get("mixup_gain_range") or (0.5, 0.7)),
                     mixup_max_gain=args.get("mixup_max_gain") or 4.0,
                     noise_mix_prob=noise_mix_prob,
                     animal_class_idx=animal_index,
@@ -1070,7 +1072,19 @@ def get_a_dataset(dir, labels, args):
     noise_mix_files = None
     noise_sample_files = None
     if args.get("noise_dirs"):
-        if args.get("augment", False):
+        if args.get("augment", False) and args.get("noise_share"):
+            # every noise file is used both for mixing and as noise only
+            # samples, the samples go straight in with the training files so
+            # they are shuffled and counted with them and all are used
+            _, all_noise_files = split_noise_files(dir, args["noise_dirs"], 0)
+            noise_mix_files = None if args.get("no_noise_mix") else all_noise_files
+            if not args.get("no_noise_samples"):
+                logging.info(
+                    "Sharing %s noise files for mixing and as noise samples",
+                    len(all_noise_files),
+                )
+                filenames.extend(all_noise_files)
+        elif args.get("augment", False):
             # most noise is mixed into training audio, the rest are noise only
             # samples with an empty label
             noise_mix_files, noise_sample_files = split_noise_files(
@@ -2394,9 +2408,14 @@ def apply_raw_mixup(
         mix_bird_mask = mix_bird_mask & has_label_A
     if no_mix_idx:
         # clips with these labels are never mixed, as clip A or clip B
-        no_mix = tf.reduce_max(
-            tf.gather(bird_label_A, list(no_mix_idx), axis=1), axis=-1, keepdims=True
-        ) > 0
+        no_mix = (
+            tf.reduce_max(
+                tf.gather(bird_label_A, list(no_mix_idx), axis=1),
+                axis=-1,
+                keepdims=True,
+            )
+            > 0
+        )
         no_mix = tf.logical_or(no_mix, tf.roll(no_mix, shift=1, axis=0))
         mix_bird_mask = mix_bird_mask & tf.logical_not(no_mix)
     mix_bird_mask_audio = tf.reshape(mix_bird_mask, [batch_size, -1])
@@ -2577,9 +2596,7 @@ def tf_batch_audio_roll(audio_batch, max_shift_pct=0.5, execution_probability=0.
         # fixed batch size (training drops the remainder)
         rolled = [
             tf.roll(audio, shift, axis=0)
-            for audio, shift in zip(
-                tf.unstack(audio_batch), tf.unstack(shift_amounts)
-            )
+            for audio, shift in zip(tf.unstack(audio_batch), tf.unstack(shift_amounts))
         ]
         return tf.stack(rolled)
     return tf.map_fn(
