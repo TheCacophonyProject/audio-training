@@ -626,10 +626,15 @@ def process(audio, args, birdnet, perch, cacophony):
     try:
         changed |= add_signals_and_tracks(meta, y, sr, duration, args.overwrite)
         changed |= add_rms(meta, y, sr, args.overwrite)
-        if birdnet is not None:
-            changed |= birdnet.add(meta, y, sr, duration, args.overwrite)
-        if cacophony is not None:
-            changed |= cacophony.add(meta, y, sr, duration, args.overwrite)
+        # a model failing on a file doesn't stop the others, it isn't marked
+        # done so is retried on the next run
+        for name, model in (("BirdNET", birdnet), ("cacophony model", cacophony)):
+            if model is None:
+                continue
+            try:
+                changed |= model.add(meta, y, sr, duration, args.overwrite)
+            except Exception:
+                logging.exception("%s failed on %s", name, audio)
     finally:
         # save whatever was done, even if a later step failed
         if changed:
