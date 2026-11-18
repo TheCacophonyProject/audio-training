@@ -111,6 +111,15 @@ def clip(y, sr, start, length):
     return chunk
 
 
+def model_sample(y, sr, start, length):
+    """A model input window, separate from CacophonyModel so it can be cut in
+    processes without tensorflow"""
+    chunk = clip(y, sr, start, length)
+    # peak normalise to [-1, 1] as in training
+    chunk = chunk / max(float(np.max(np.abs(chunk))), 1e-6)
+    return chunk.astype(np.float32)
+
+
 def manual_tags(track):
     return [
         t["what"]
@@ -507,10 +516,7 @@ class CacophonyModel:
         )
 
     def sample(self, y, sr, start):
-        chunk = clip(y, sr, start, self.length)
-        # peak normalise to [-1, 1] as in training
-        chunk = chunk / max(float(np.max(np.abs(chunk))), 1e-6)
-        return chunk.astype(np.float32)
+        return model_sample(y, sr, start, self.length)
 
     def embedding_model(self):
         """The model with three outputs, the pooled embedding before the

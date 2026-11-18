@@ -20,7 +20,12 @@ import argparse
 import csv
 import json
 import logging
+import multiprocessing
+import os
+import signal
+import traceback
 import warnings
+from collections import deque
 from pathlib import Path
 
 import numpy as np
@@ -28,6 +33,7 @@ import numpy as np
 from addtracks import (
     CacophonyModel,
     load_recording,
+    model_sample,
     setup_gpu,
     windows,
     write_meta,
@@ -174,16 +180,66 @@ def get_jobs(meta, args, model, key, shards, stride, duration):
     return todo
 
 
-def process(txt, meta, y, sr, todo, args, model, embed_model, key, shards):
+def init_worker():
+    # ctrl-c is handled by the main process, which terminates the pool
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    warnings.filterwarnings("ignore", message="PySoundFile failed")
+
+
+def load_samples(txt, audio_file, spans, length, stride):
+    """Runs in a worker process so the GPU isn't waiting on audio decoding.
+    Loads the recording and cuts the model windows of each (start, end) track
+    span, with windows from the real audio duration.
+
+    Returns (windows per span, stacked samples) or (None, error message)"""
+    try:
+        audio = find_audio(txt, {"file": audio_file})
+        if audio is None:
+            return None, "No audio"
+        y, sr = load_recording(audio)
+        duration = len(y) / sr
+        track_windows = [
+            windows(start, end, length, stride, duration) for start, end in spans
+        ]
+        samples = np.stack(
+            [
+                model_sample(y, sr, start, length)
+                for spans_windows in track_windows
+                for start, _ in spans_windows
+            ]
+        )
+        return track_windows, samples
+    except Exception:
+        return None, traceback.format_exc()
+
+
+def find_jobs(args, model, key, shards, stride):
+    """Yields (txt, meta, tracks) for each recording with tracks to do. Uses the
+    metadata duration so done recordings are skipped without loading audio"""
+    for txt in sorted(Path(args.dir).rglob("*.txt")):
+        try:
+            with open(txt) as f:
+                meta = json.load(f)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        if not isinstance(meta, dict) or not meta.get("Tracks"):
+            continue
+        tracks = meta.get("Tracks")
+        duration = meta.get("duration") or max(t.get("end", 0) for t in tracks)
+        todo = get_jobs(meta, args, model, key, shards, stride, duration)
+        if todo:
+            yield txt, meta, [track for track, _ in todo]
+
+
+def process(txt, meta, samples, todo, args, model, embed_model, key, shards):
     recording_id = meta.get("id")
-    samples = []
-    owners = []
-    for track, track_windows in todo:
-        for start, end in track_windows:
-            samples.append(model.sample(y, sr, start))
-            owners.append((track, start, end))
+    owners = [
+        (track, start, end)
+        for track, track_windows in todo
+        for start, end in track_windows
+    ]
     embeddings, logits, probs = embed_model.predict(
-        np.stack(samples), batch_size=args.batch_size, verbose=0
+        samples, batch_size=args.batch_size, verbose=0
     )
 
     rec_tags = tag_whats(meta.get("tags") or [])
@@ -264,6 +320,12 @@ def main():
     parser.add_argument("--shard-size", type=int, default=10000)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=max(1, min(8, (os.cpu_count() or 2) - 1)),
+        help="Processes loading audio while the main process runs the model",
+    )
+    parser.add_argument(
         "--all-tracks",
         action="store_true",
         help="Also do tracks with no manual tags",
@@ -297,35 +359,36 @@ def main():
     shards = Shards(args.out, args.shard_size)
 
     files = 0
+    jobs = find_jobs(args, model, key, shards, stride)
+    # spawn so workers don't inherit tensorflow and the GPU from this process
+    pool = multiprocessing.get_context("spawn").Pool(
+        args.workers, initializer=init_worker
+    )
+    # loaded recordings waiting for the GPU, bounded so decoded audio can't
+    # pile up in memory when the model is slower than loading
+    pending = deque()
     try:
-        for txt in sorted(Path(args.dir).rglob("*.txt")):
+        while True:
+            while len(pending) < args.workers * 2:
+                job = next(jobs, None)
+                if job is None:
+                    break
+                txt, meta, tracks = job
+                spans = [(t["start"], t["end"]) for t in tracks]
+                result = pool.apply_async(
+                    load_samples, (txt, meta.get("file"), spans, model.length, stride)
+                )
+                pending.append((txt, meta, tracks, result))
+            if not pending:
+                break
+            txt, meta, tracks, result = pending.popleft()
+            track_windows, samples = result.get()
+            if track_windows is None:
+                logging.info("Could not load %s: %s", txt, samples)
+                continue
+            todo = list(zip(tracks, track_windows))
             try:
-                with open(txt) as f:
-                    meta = json.load(f)
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                continue
-            if not isinstance(meta, dict) or not meta.get("Tracks"):
-                continue
-            # get jobs with the metadata duration first so done recordings
-            # aren't loaded, then again with the real duration
-            tracks = meta.get("Tracks")
-            duration = meta.get("duration") or max(t.get("end", 0) for t in tracks)
-            if not get_jobs(meta, args, model, key, shards, stride, duration):
-                continue
-            audio = find_audio(txt, meta)
-            if audio is None:
-                logging.info("No audio for %s", txt)
-                continue
-            try:
-                y, sr = load_recording(audio)
-            except Exception:
-                logging.exception("Could not load %s", audio)
-                continue
-            todo = get_jobs(meta, args, model, key, shards, stride, len(y) / sr)
-            if not todo:
-                continue
-            try:
-                process(txt, meta, y, sr, todo, args, model, embed_model, key, shards)
+                process(txt, meta, samples, todo, args, model, embed_model, key, shards)
             except Exception:
                 logging.exception("Failed on %s", txt)
                 continue
@@ -336,6 +399,7 @@ def main():
             if files % 100 == 0:
                 logging.info("%s windows from %s files", shards.total, files)
     finally:
+        pool.terminate()
         # also save on ctrl-c or an error so the run can be resumed
         shards.save()
     logging.info("%s windows in %s", shards.total, args.out)
