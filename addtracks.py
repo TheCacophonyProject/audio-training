@@ -19,6 +19,7 @@ import csv
 import json
 import logging
 import math
+import multiprocessing
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -60,7 +61,6 @@ def load_recording(file, resample=SR):
     frames, sr = librosa.load(aro, sr=None)
     aro.close()
     if resample is not None and resample != sr:
-        print("RESAMPLING",resample,sr)
         frames = librosa.resample(frames, orig_sr=sr, target_sr=resample)
         sr = resample
     return frames, sr
@@ -233,6 +233,7 @@ class BirdNet:
         if not args.no_geo:
             self.geo_model = birdnet.load("geo", args.birdnet_version, args.backend)
         self.species_lists = {}
+        self.session = None
         self.length = args.birdnet_length or self.window_length()
         self.stride = self.length - args.overlap
         logging.info("BirdNET window %ss stride %ss", self.length, self.stride)
@@ -247,6 +248,26 @@ class BirdNet:
             n_workers=args.workers,
             batch_size=args.batch_size,
         ).to_structured_array()
+
+    def session_predict(self, arrays):
+        """predict_arrays starts and stops birdnet's worker processes on every
+        call, so keep one session open for the whole run"""
+        if self.session is None:
+            args = self.args
+            self.session = self.model.predict_session(
+                top_k=None,
+                default_confidence_threshold=args.min_conf,
+                device=args.device,
+                n_workers=args.workers,
+                batch_size=args.batch_size,
+            )
+            self.session.__enter__()
+        return self.session.run_arrays(arrays).to_structured_array()
+
+    def close(self):
+        if self.session is not None:
+            self.session.__exit__(None, None, None)
+            self.session = None
 
     def window_length(self):
         # read the context length off the model's own output segments
@@ -300,7 +321,7 @@ class BirdNet:
 
         # run unfiltered and apply the geo list here, so windows with no geo
         # species above threshold fall back to the full species list
-        rows = self.predict(arrays, self.args.min_conf, None) if arrays else []
+        rows = self.session_predict(arrays) if arrays else []
         # only marked done once predict has worked
         for track in tracks:
             track["birdnet"] = []
@@ -686,9 +707,15 @@ def main():
         # also save on ctrl-c or an error so the run can be resumed
         if perch is not None:
             perch.save()
+        if birdnet is not None:
+            birdnet.close()
 
 
 if __name__ == "__main__":
+    # birdnet runs in worker processes, forked ones can't use the gpu once
+    # tensorflow has initialised cuda in this process ("CUDA error:
+    # initialization error"). Newer birdnet defaults to spawn, older forks
+    multiprocessing.set_start_method("spawn", force=True)
     # m4a falls back to audioread which warns on every file
     warnings.filterwarnings("ignore", message="PySoundFile failed")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
