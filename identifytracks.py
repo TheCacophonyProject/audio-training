@@ -20,6 +20,7 @@ def get_nfft(sr):
 
 def get_end(frames, sr):
     hop_length = 281
+    # closest power of 2 to sr // 10 (4096 at 48kHz)
     n_fft = get_nfft(sr)
     spectrogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
     mel = mel_spec(
@@ -49,11 +50,9 @@ def get_end(frames, sr):
 
 
 def signal_noise(
-    frames, sr, hop_length=281, n_fft=1024, min_width=None, min_height=None
+    frames, sr, hop_length=281, n_fft=2048, min_width=None, min_height=None
 ):
-    # frames = frames[:sr]
-    n_fft = 2048
-    # frames = frames[: sr * 3]
+    # defaults match audio-analysis
     spectrogram = np.abs(librosa.stft(frames, n_fft=n_fft, hop_length=hop_length))
     freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
     lower_bin = None
@@ -69,12 +68,10 @@ def signal_noise(
             break
         if f > freq_range and height == 0:
             height = i + 1
-    print(f"Zeroing spec data <{lower_bin} and >{upper_bin}")
-
     og_spec = spectrogram.copy()
 
-    # spectrogram[:lower_bin,:]= 0
-    # spectrogram[upper_bin:,:]= 0
+    spectrogram[:lower_bin, :] = 0
+    spectrogram[upper_bin:, :] = 0
     a_max = np.amax(spectrogram)
     spectrogram = spectrogram / a_max
     row_medians = np.median(spectrogram, axis=1)
@@ -214,10 +211,8 @@ def merge_signals(signals):
                 time_diff = u.start - s.end
             mel_overlap = s.mel_freq_overlap(u)
             if (
-                overlap > u.length * 0.75
-                and mel_overlap > -20
-                or overlap > overlap_seconds
-            ):
+                overlap > u.length * 0.75 or overlap > overlap_seconds
+            ) and mel_overlap > -20:
                 s.merge(u)
                 merged = True
 
