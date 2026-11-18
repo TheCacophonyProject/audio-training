@@ -414,7 +414,13 @@ def get_remappings(
         if k in new_labels and v not in new_labels:
             if v in ["noise", "human"]:
                 excluded_labels.append(k)
-                logging.info("Excluding %s as not using noise human", k)
+                if v == "noise":
+                    # get_dataset remaps these to NOISE_TAG so the samples are kept
+                    logging.info(
+                        "%s isn't used as a label, kept as a noise only negative", k
+                    )
+                else:
+                    logging.info("Excluding %s as %s isn't a label", k, v)
             else:
                 new_labels.append(v)
     new_labels.sort()
@@ -666,7 +672,10 @@ def get_dataset(dir, labels, global_epoch=None, **args):
                 logging.info("Applying animal based logic using index %s", animal_index)
             noise_index = labels.index("noise") if "noise" in labels else -1
             mix_negatives = args.get("mix_negatives", False)
-            no_mix_idx = tuple(labels.index(l) for l in args.get("no_mix_labels") or [])
+            # labels not in this model (e.g. the kokako3 default) are skipped
+            no_mix_idx = tuple(
+                labels.index(l) for l in args.get("no_mix_labels") or [] if l in labels
+            )
             if no_mix_idx:
                 logging.info("Never bird mixing %s", args.get("no_mix_labels"))
             logging.info("Bird mixup of clips with no label %s", mix_negatives)

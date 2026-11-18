@@ -2913,13 +2913,13 @@ def parse_args():
     parser.add_argument(
         "--bird-mix-prob",
         type=float,
-        default=0.25,
+        default=0.5,
         help="Probability of mixing each training clip with another clip",
     )
     parser.add_argument(
         "--mixup-mode",
         choices=["lam", "union", "union-fixed", "peak"],
-        default="lam",
+        default="union-fixed",
         help="lam blends two clips and their labels by a random lambda, union "
         "adds the second clip at a level by rms (--mixup-db-range), peak adds it "
         "with its peak at a fraction of the first's (--mixup-gain-range), union "
@@ -2929,10 +2929,11 @@ def parse_args():
     )
     parser.add_argument(
         "--no-mix-labels",
-        nargs="+",
-        default=None,
+        nargs="*",
+        default=["kokako3"],
         help="Clips with any of these labels are never bird mixed, as either "
-        "clip (background noise still applies), e.g. kokako3",
+        "clip (background noise still applies), default kokako3. Give the "
+        "flag with no labels to bird mix everything",
     )
     parser.add_argument(
         "--mix-negatives",
@@ -2958,7 +2959,7 @@ def parse_args():
         "--mixup-db-range",
         nargs=2,
         type=float,
-        default=[-12.0, 0.0],
+        default=[-12.0, -6.0],
         help="With --mixup-mode union, the range of levels in dB to add the "
         "second clip at relative to the first, by rms",
     )
@@ -2971,10 +2972,12 @@ def parse_args():
     )
     parser.add_argument(
         "--noise-share",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="Training uses all the --noise-dirs records both for mixing and as "
         "noise only samples, added straight to the training files so all of "
-        "them are used (ignores --noise-mix-fraction and --noise-train-fraction)",
+        "them are used (ignores --noise-mix-fraction and --noise-train-fraction). "
+        "On by default, --no-noise-share for the old split",
     )
     parser.add_argument(
         "--noise-train-fraction",
@@ -3097,10 +3100,12 @@ def parse_args():
     parser.add_argument("--shuffle", type=str2bool, default=True, help="Shuffle DS")
     parser.add_argument(
         "--noise-bank",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="Keep the mixing noise clips in one float32 tensor in memory (about "
         "0.6 MB a clip) and gather random clips per batch, instead of a second "
-        "zipped dataset. Replaces --cache-noise",
+        "zipped dataset. Replaces --cache-noise. On by default, --no-noise-bank "
+        "to turn off",
     )
     parser.add_argument(
         "--cache-noise",
