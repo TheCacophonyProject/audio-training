@@ -136,9 +136,17 @@ class Shards:
         self.embeddings, self.logits, self.rows = [], [], []
 
 
-def plan(meta, args, model, key, shards, stride, duration):
-    """Tracks that need doing with their windows, a track is done when all its
-    windows are in the shards and it has predictions under the model key"""
+def get_jobs(meta, args, model, key, shards, stride, duration):
+    """Return the tracks in this recording that still need processing.
+
+    Only human-tagged tracks are considered unless --all-tracks is set. A track
+    is a job if any of its windows is missing from the shards, or (unless
+    --no-meta) its predictions under the model key are missing or --overwrite
+    is set.
+
+    Returns a list of (track, windows) tuples, where windows are the
+    (start, end) times the track is split into for the model.
+    """
     tracks = meta.get("Tracks") or []
     if not args.all_tracks:
         # only tracks a person has tagged
@@ -192,6 +200,7 @@ def process(txt, meta, y, sr, todo, args, model, embed_model, key, shards):
             }
             results[id(track)] = result
             track[key] = result
+            print("Sasving result for ", key)
         top = int(np.argmax(prob))
         result["windows"].append(
             {
@@ -245,8 +254,8 @@ def main():
     )
     parser.add_argument(
         "--model",
-        default="~/cacophony/audio-model/spectv10/spectv10NoMixKokakoFine",
-        help="Cacophony model directory",
+        default="~/cacophony/audio-model/spectv10/spectv10NoMixKokakoFine/spectv10NoMixKokakoFine.keras",
+        help="Cacophony .keras model file, metadata.txt and --weights are read from its directory",
     )
     parser.add_argument("--weights", default="val_pr_auc.weights.h5")
     parser.add_argument(
@@ -297,11 +306,11 @@ def main():
                 continue
             if not isinstance(meta, dict) or not meta.get("Tracks"):
                 continue
-            # plan with the metadata duration first so done recordings aren't
-            # loaded, then again with the real duration
+            # get jobs with the metadata duration first so done recordings
+            # aren't loaded, then again with the real duration
             tracks = meta.get("Tracks")
             duration = meta.get("duration") or max(t.get("end", 0) for t in tracks)
-            if not plan(meta, args, model, key, shards, stride, duration):
+            if not get_jobs(meta, args, model, key, shards, stride, duration):
                 continue
             audio = find_audio(txt, meta)
             if audio is None:
@@ -312,7 +321,7 @@ def main():
             except Exception:
                 logging.exception("Could not load %s", audio)
                 continue
-            todo = plan(meta, args, model, key, shards, stride, len(y) / sr)
+            todo = get_jobs(meta, args, model, key, shards, stride, len(y) / sr)
             if not todo:
                 continue
             try:

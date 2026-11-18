@@ -455,7 +455,8 @@ class CacophonyModel:
         import badwinner2
         import mellayer  # noqa: F401
 
-        model_dir = Path(args.model).expanduser()
+        model_file = Path(args.model).expanduser()
+        model_dir = model_file.parent
         with open(model_dir / "metadata.txt") as f:
             # model_name is set at the top of the file, a later model_name from
             # training is the architecture, so the first of a duplicate key wins
@@ -467,9 +468,8 @@ class CacophonyModel:
             )
         self.model_meta = model_meta
         self.labels = model_meta["ebird_labels"]
-        self.model_name = model_meta.get("model_name") or model_dir.name
+        self.model_name = model_meta.get("model_name") or model_file.stem
         self.weights = args.weights
-        model_file = model_dir / f"{model_dir.name}.keras"
         logging.info("Loading %s with %s", model_file, self.weights)
         mag_transform = badwinner2.MagTransform
         self.model = tf.keras.models.load_model(
@@ -525,15 +525,16 @@ class CacophonyModel:
         if not pools:
             raise ValueError("No GlobalAveragePooling2D layer to embed from")
         names = [l.name for l in self.model.layers]
-        # "predictions" is the linear layer before the sigmoid
+        # model.output is a list for models built with outputs=[birds], which
+        # would nest the probabilities and give them a leading dim, so take the
+        # tensor. "predictions" is the linear layer before the sigmoid
+        probs = self.model.outputs[0]
         logits = (
             self.model.get_layer("predictions").output
             if "predictions" in names
-            else self.model.output
+            else probs
         )
-        return tf.keras.Model(
-            self.model.input, [pools[-1].output, logits, self.model.output]
-        )
+        return tf.keras.Model(self.model.input, [pools[-1].output, logits, probs])
 
     def done(self, track):
         return any(
@@ -654,8 +655,8 @@ def main():
     )
     parser.add_argument(
         "--model",
-        default="~/cacophony/audio-model/spectv10/spectv10NoMixKokakoFine",
-        help="Cacophony model directory",
+        default="~/cacophony/audio-model/spectv10/spectv10NoMixKokakoFine/spectv10NoMixKokakoFine.keras",
+        help="Cacophony .keras model file, metadata.txt and --weights are read from its directory",
     )
     parser.add_argument("--weights", default="val_pr_auc.weights.h5")
     parser.add_argument(
