@@ -749,7 +749,7 @@ def get_dataset(dir, labels, global_epoch=None, **args):
 
 def split_noise_files(dir, noise_dirs, mix_fraction=0.5):
     """Split the noise records in <noise dir>/<split name> for each noise dir,
-    as written by build.py --noise-dataset, into files used for mixing into
+    as written by build.py (unless --no-noise-dataset), into files used for mixing into
     training audio and files added to the dataset as noise samples.
 
     Split by file, sorted so the split is the same every run
@@ -1632,7 +1632,7 @@ def parse_args():
         nargs="+",
         default=None,
         help="Noise record dirs to mix into the audio, each containing a dir "
-        "matching the dataset split e.g. training-data/noise from build.py --noise-dataset",
+        "matching the dataset split e.g. training-data/noise from build.py (unless --no-noise-dataset)",
     )
     parser.add_argument(
         "--extra-dirs",

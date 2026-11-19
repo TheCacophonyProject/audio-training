@@ -2894,7 +2894,7 @@ def parse_args():
         nargs="+",
         default=None,
         help="Noise record dirs to mix into training audio, each containing a"
-        "train dir e.g. training-data/noise from build.py --noise-dataset",
+        "train dir e.g. training-data/noise from build.py (unless --no-noise-dataset)",
     )
     parser.add_argument(
         "--extra-dirs",

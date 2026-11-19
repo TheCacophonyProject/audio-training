@@ -720,7 +720,9 @@ class Recording:
             # the track's own file, a merged recording's duration is only the
             # first file's
             duration = track.rec.duration if track.rec is not None else self.duration
-            bin_id = f"{self.id}-0"
+            # recordings sharing a split key e.g. the same site and device stay
+            # in the same one of train, validation, test
+            bin_id = self.split_key
             start_stride = segment_stride
             # jitter starts by up to a quarter of the stride either way
             jitter = start_stride / 4
@@ -938,8 +940,8 @@ class Recording:
                     for t in other_tracks:
                         secondary_tags |= t.secondary_tags
                     secondary_tags -= labels
-                    # bin_id is always the recording, so a recording is only
-                    # ever in one of train, validation, test
+                    # bin_id is always the recording's split key, so a
+                    # recording is only ever in one of train, validation, test
                     sample = AudioSample(
                         self,
                         labels,
