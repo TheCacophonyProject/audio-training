@@ -8,6 +8,8 @@ the script can be re-run and resumes where it left off:
   birdnet     per track, saved in track["birdnet"]
   perch       per track window, saved as shards in --out like perchembed.py
   cacophony   per track window, saved in track["cacophony-model"]
+
+--overwrite only redoes the cacophony model, replacing all its earlier results.
 """
 
 import os
@@ -164,10 +166,10 @@ def generated_tracks(meta):
     return bool(tracks) and all(t.get("generated_by") == GENERATED_BY for t in tracks)
 
 
-def add_signals_and_tracks(meta, y, sr, duration, overwrite):
+def add_signals_and_tracks(meta, y, sr, duration):
     changed = False
     signals = None
-    if overwrite or meta.get("signal_version", 0) < SIGNAL_VERSION:
+    if meta.get("signal_version", 0) < SIGNAL_VERSION:
         end = get_end(y, sr)
         signals, _ = signal_noise(y[: int(sr * end)], sr)
         meta["signal"] = [[float(v) for v in s.to_array(decimals=2)] for s in signals]
@@ -195,10 +197,10 @@ def add_signals_and_tracks(meta, y, sr, duration, overwrite):
     return changed
 
 
-def add_rms(meta, y, sr, overwrite):
+def add_rms(meta, y, sr):
     from rmsdata import RMS_VERSION, add_rms_data_to_tracks
 
-    if not overwrite and meta.get("rms_version", 0) >= RMS_VERSION:
+    if meta.get("rms_version", 0) >= RMS_VERSION:
         return False
     add_rms_data_to_tracks(y, sr, meta.get("Tracks", []))
     meta["rms_version"] = RMS_VERSION
@@ -308,11 +310,9 @@ class BirdNet:
             )
         return self.species_lists[key]
 
-    def add(self, meta, y, sr, duration, overwrite):
+    def add(self, meta, y, sr, duration):
         tracks = [
-            t
-            for t in meta.get("Tracks", [])
-            if overwrite or t.get("birdnet_model") != self.model_id
+            t for t in meta.get("Tracks", []) if t.get("birdnet_model") != self.model_id
         ]
         if not tracks:
             return False
@@ -575,12 +575,16 @@ class CacophonyModel:
                     "windows": [],
                 }
                 results[id(track)] = result
-                # replace an older result of this model, keep other models
-                track["cacophony-model"] = [
-                    r
-                    for r in track.get("cacophony-model", [])
-                    if r.get("model_name") != self.model_name
-                ] + [result]
+                if overwrite:
+                    # drop every earlier result, e.g. ones from older runs
+                    track["cacophony-model"] = [result]
+                else:
+                    # replace an older result of this model, keep other models
+                    track["cacophony-model"] = [
+                        r
+                        for r in track.get("cacophony-model", [])
+                        if r.get("model_name") != self.model_name
+                    ] + [result]
             result["windows"].append(
                 {
                     "start": round(start, 2),
@@ -635,17 +639,20 @@ def process(audio, args, birdnet, perch, cacophony):
         changed = True
 
     try:
-        changed |= add_signals_and_tracks(meta, y, sr, duration, args.overwrite)
-        changed |= add_rms(meta, y, sr, args.overwrite)
+        changed |= add_signals_and_tracks(meta, y, sr, duration)
+        changed |= add_rms(meta, y, sr)
         # a model failing on a file doesn't stop the others, it isn't marked
         # done so is retried on the next run
-        for name, model in (("BirdNET", birdnet), ("cacophony model", cacophony)):
-            if model is None:
-                continue
+        if birdnet is not None:
             try:
-                changed |= model.add(meta, y, sr, duration, args.overwrite)
+                changed |= birdnet.add(meta, y, sr, duration)
             except Exception:
-                logging.exception("%s failed on %s", name, audio)
+                logging.exception("BirdNET failed on %s", audio)
+        if cacophony is not None:
+            try:
+                changed |= cacophony.add(meta, y, sr, duration, args.overwrite)
+            except Exception:
+                logging.exception("Cacophony model failed on %s", audio)
     finally:
         # save whatever was done, even if a later step failed
         if changed:
@@ -673,7 +680,12 @@ def main():
         default=1.0,
         help="Seconds of overlap between birdnet and perch windows on long tracks",
     )
-    parser.add_argument("--overwrite", action="store_true", help="Redo every step")
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Redo the cacophony model on every track, removing all earlier "
+        "cacophony-model results. Other steps are only ever done if missing",
+    )
     parser.add_argument("--no-birdnet", action="store_true")
     parser.add_argument("--no-perch", action="store_true")
     parser.add_argument("--no-cacophony", action="store_true")

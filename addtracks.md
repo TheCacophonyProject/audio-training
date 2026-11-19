@@ -4,7 +4,7 @@ Script that runs over a directory of recordings, in the same way as `perchembed.
 `birdnetanalyse.py`. It fills in whatever metadata a recording is missing and skips
 anything that is already done. Each step below checks a version key and only runs when
 that key is missing or differs from the current version, so the script can be re-run
-safely and `--overwrite` forces everything again.
+safely. `--overwrite` only redoes the cacophony model predictions.
 
 Metadata must follow the format of
 `spectv10/1418778-20221221-072241-Alices Cacophonometer.txt`
@@ -66,8 +66,9 @@ Metadata must follow the format of
 
     python addtracks.py <dir> --out <perch shard dir>
 
-`--no-birdnet`, `--no-perch` and `--no-cacophony` skip a model. `--overwrite` redoes
-every step.
+`--no-birdnet`, `--no-perch` and `--no-cacophony` skip a model. `--overwrite` reruns
+the cacophony model on every track and replaces all of its earlier results. The other
+steps are never redone once they're there.
 
 ## Versions saved
 
