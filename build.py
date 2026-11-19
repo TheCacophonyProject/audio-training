@@ -47,6 +47,16 @@ MIN_BINS = 1
 LOW_SAMPLES_LABELS = ["bittern"]
 VAL_PERCENT = 0.15
 TEST_PERCENT = 0.05
+# recordings left out of the dataset, matched on the metadata "id" (tier1 clips
+# get their recording id there from scripts/tier1_add_meta.py)
+IGNORE_REC_IDS = {
+    # tier1 Train_001, clipped in two batches whose clip numbers clash. The
+    # batches overlap in time (281-336s) with conflicting labels
+    "BC110_BIRP_111006_082906",
+    # tier1 Train_001, two batches with clashing clip numbers, so rec_id +
+    # track id isn't unique
+    "CG25_BIRP_131121_085925",
+}
 
 
 def split_label(
@@ -483,12 +493,9 @@ def check_secondary_tags(dataset, args):
 
     taxonomy = load_taxonomy(Path(__file__).parent / "eBird_taxonomy_v2024.csv")
     counts = {}
-    for r in dataset.recs.values():
-        samples = [s for s in r.samples if s.secondary_tags or s.soft_tags]
-        if not samples:
-            continue
+    def clip_detections(clip):
         detections = []
-        for d in r.metadata.get("birdnet") or []:
+        for d in clip.metadata.get("birdnet") or []:
             if d["confidence"] < args.birdnet_min_conf:
                 continue
             taxon = detection_taxon(d, taxonomy)
@@ -496,7 +503,22 @@ def check_secondary_tags(dataset, args):
                 continue
             code = taxon["code"]
             detections.append((d["start"], d["end"], RELABEL.get(code, code)))
+        return detections
+
+    for r in dataset.recs.values():
+        samples = [s for s in r.samples if s.secondary_tags or s.soft_tags]
+        if not samples:
+            continue
+        # a merged recording's samples are in their own track's clip, whose
+        # birdnet results are in that clip's file times like the sample
+        tracks = {str(t.id): t for t in r.tracks}
+        by_clip = {}
         for s in samples:
+            t = tracks.get(str(s.track_ids[-1]))
+            clip = t.rec if t is not None and t.rec is not None else r
+            if clip not in by_clip:
+                by_clip[clip] = clip_detections(clip)
+            detections = by_clip[clip]
             # rechecks from scratch if run again
             tags = set(s.secondary_tags) | set(s.soft_tags)
             found = {
@@ -560,6 +582,74 @@ def window_outcome(window, perch_rows, args, tags=()):
     return "kept", False
 
 
+def clip_tracks_of(rec):
+    """{clip recording: its tracks} for rec, in track order. A merged recording
+    (e.g. tier1 clips of one recording) has tracks from several clips, each with
+    its own file, metadata and birdnet results, otherwise it is just rec"""
+    clips = {}
+    for t in rec.tracks:
+        clips.setdefault(t.rec if t.rec is not None else rec, []).append(t)
+    return clips
+
+
+def overlap_key(track_id, start, end):
+    # an overlap section of a track, rounded so the same section from
+    # different samples matches
+    return (str(track_id), round(float(start), 3), round(float(end), 3))
+
+
+def drop_removed_overlaps(sample, rejected, tracks):
+    """Drops overlapping tracks from sample whose overlap section in it
+    (sample.overlaps, in the track's own file times) the birdnet / perch rules
+    rejected for that track, and rebuilds the sample's labels, text tags,
+    secondary tags and frequency from the tracks left, so a label stays if the
+    sample's own track or a kept overlapping track has it. rejected is a set of
+    overlap_key. Returns the labels the sample lost"""
+    own = tracks.get(str(sample.track_ids[-1]))
+    if own is None:
+        return set()
+    dropped = []
+    for track_id in sample.track_ids[:-1]:
+        overlap = sample.overlaps.get(track_id)
+        if overlap is None:
+            continue
+        if overlap_key(track_id, overlap[0], overlap[1]) in rejected:
+            dropped.append(track_id)
+    if not dropped:
+        return set()
+
+    kept = [
+        tracks[str(t_id)]
+        for t_id in sample.track_ids
+        if t_id not in dropped and str(t_id) in tracks
+    ]
+    labels = set()
+    text_labels = set()
+    secondary = set()
+    min_freq = own.min_freq
+    max_freq = own.max_freq
+    for t in kept:
+        labels |= t.human_tags
+        text_labels |= t.human_text_tags
+        secondary |= t.secondary_tags
+        if min_freq is not None:
+            min_freq = None if t.min_freq is None else min(t.min_freq, min_freq)
+        if max_freq is not None:
+            max_freq = None if t.max_freq is None else max(t.max_freq, max_freq)
+    lost = set(sample.tags) - labels
+    sample.tags = sorted(labels)
+    sample.text_tags = sorted(text_labels)
+    non_bird = [tag for tag in sample.tags if tag not in ["noise", "bird"]]
+    sample.first_tag = non_bird[0] if non_bird else sample.tags[0]
+    sample.secondary_tags = sorted(secondary - labels)
+    sample.min_freq = min_freq
+    sample.max_freq = max_freq
+    sample.track_ids = [t_id for t_id in sample.track_ids if t_id not in dropped]
+    for t_id in dropped:
+        sample.overlaps.pop(t_id, None)
+    return lost
+
+
 def mostly_removed(sample, removed):
     # more than half of the sample is in removed windows of its own track, the
     # sample's own track is last in track_ids
@@ -617,28 +707,36 @@ def filter_bird_windows(dataset, args):
         best = max(rows, key=overlap)
         return [best] if overlap(best) > 0 else []
 
-    outcomes = {}
-    removed_samples = 0
-    for r in dataset.recs.values():
-        if "birdnet" not in r.metadata:
-            continue
-        tracks = {str(t.id): t for t in r.tracks}
-        # a best segment track's only sample is its best segment, so that is
-        # its only window
-        compare_args.segments = {}
-        if args.best_segment:
-            compare_args.segments = {
-                track_id: (t.best_start, t.best_end)
-                for track_id, t in tracks.items()
-                if t.best_start is not None
-            }
+    def judge(r, tracks, outcomes, sections=None):
+        """[(track id, start, end, remove)] of the birdnet windows of r's
+        tracks, or with sections ({clip: {track id: [(start, end)]}}) of just
+        those parts of the tracks"""
         windows = []
-        # only the window rows are needed
-        for _ in track_results(
-            Path(r.filename), r.metadata, taxonomy, compare_args, windows
-        ):
-            pass
-        removed = {}
+        # a merged recording (e.g. tier1 clips) has tracks from several clip
+        # files, each with its own birdnet results, so check each clip
+        for clip, clip_tracks in clip_tracks_of(r).items():
+            if "birdnet" not in clip.metadata:
+                continue
+            compare_args.windows = None
+            if sections is not None:
+                if clip not in sections:
+                    continue
+                compare_args.windows = sections[clip]
+            # a best segment track's only sample is its best segment, so that is
+            # its only window
+            compare_args.segments = {}
+            if args.best_segment:
+                compare_args.segments = {
+                    str(t.id): (t.best_start, t.best_end)
+                    for t in clip_tracks
+                    if t.best_start is not None
+                }
+            # only the window rows are needed
+            for _ in track_results(
+                Path(clip.filename), clip.metadata, taxonomy, compare_args, windows
+            ):
+                pass
+        results = []
         for w in windows:
             track_id = str(w["track_id"])
             t = tracks.get(track_id)
@@ -656,10 +754,8 @@ def filter_bird_windows(dataset, args):
             )
             outcome, remove = window_outcome(w, rows, args, t.human_tags)
             outcomes.setdefault(label, Counter())[outcome] += 1
+            results.append((track_id, w["window_start"], w["window_end"], remove))
             if remove:
-                removed.setdefault(track_id, []).append(
-                    (w["window_start"], w["window_end"])
-                )
                 logging.debug(
                     "Removing rec %s track %s %s window %s-%s, %s",
                     r.id,
@@ -669,14 +765,61 @@ def filter_bird_windows(dataset, args):
                     w["window_end"],
                     outcome,
                 )
+        return results
+
+    outcomes = {}
+    overlap_outcomes = {}
+    removed_samples = 0
+    dropped_labels = Counter()
+    for r in dataset.recs.values():
+        tracks = {str(t.id): t for t in r.tracks}
+        removed = {}
+        for track_id, start, end, remove in judge(r, tracks, outcomes):
+            if remove:
+                removed.setdefault(track_id, []).append((start, end))
         if removed and not args.filter_dry_run:
             keep = [s for s in r.samples if not mostly_removed(s, removed)]
             removed_samples += len(r.samples) - len(keep)
             r.samples = keep
 
+        # a kept sample has the tags of tracks overlapping it, check each
+        # overlap section with the same rules for the overlapping track, in
+        # its own clip, and drop its tags where they reject it
+        sections = {}
+        for s in r.samples:
+            for track_id, (start, end, _) in s.overlaps.items():
+                t = tracks.get(str(track_id))
+                if t is None:
+                    continue
+                clip = t.rec if t.rec is not None else r
+                key = overlap_key(track_id, start, end)
+                clip_sections = sections.setdefault(clip, {}).setdefault(key[0], [])
+                if key[1:] not in clip_sections:
+                    clip_sections.append(key[1:])
+        if not sections:
+            continue
+        rejected = {
+            overlap_key(track_id, start, end)
+            for track_id, start, end, remove in judge(
+                r, tracks, overlap_outcomes, sections
+            )
+            if remove
+        }
+        if rejected and not args.filter_dry_run:
+            for s in r.samples:
+                for tag in drop_removed_overlaps(s, rejected, tracks):
+                    dropped_labels[tag] += 1
+
     dataset.samples = [s for r in dataset.recs.values() for s in r.samples]
     log_filter_outcomes(outcomes, "windows", args.filter_dry_run)
     logging.info("Removed %s samples in removed windows", removed_samples)
+    log_filter_outcomes(overlap_outcomes, "overlap sections", args.filter_dry_run)
+    if dropped_labels:
+        logging.info(
+            "Dropped labels of overlapping tracks from kept samples where their"
+            " overlap section is rejected: %s",
+            dict(dropped_labels.most_common()),
+        )
     logging.info("Post filtering counts")
     dataset.print_sample_counts()
 
@@ -934,6 +1077,20 @@ def oversample_ds(original_ds, dataset, max_repeats=1):
                     dataset.samples.append(sample)
 
 
+def remove_ignored_recs(dataset):
+    """Remove the IGNORE_REC_IDS recordings (and their samples) from dataset"""
+    ignored = [
+        rec_id
+        for rec_id, rec in dataset.recs.items()
+        if rec.metadata.get("id") in IGNORE_REC_IDS
+    ]
+    for rec_id in ignored:
+        dataset.remove_rec(rec_id)
+    logging.info(
+        "Removed %s clips of ignored recordings %s", len(ignored), sorted(IGNORE_REC_IDS)
+    )
+
+
 def main():
     init_logging()
     args = parse_args()
@@ -959,6 +1116,7 @@ def main():
     # config = load_config(args.config_file)
     dataset = AudioDataset("all", config)
     dataset.load_meta(args.dir)
+    remove_ignored_recs(dataset)
     if args.plot_signal:
         logging.info("Plotting signals")
         from otherdata import plot_signal
@@ -1165,26 +1323,23 @@ def split_noise(dataset, args):
 
 
 def validate_datasets(datasets):
-    train, validation, test = datasets
-    train_tracks = [s.bin_id for s in train.samples]
-    val_tracks = [s.bin_id for s in validation.samples]
-    test_tracks = [s.bin_id for s in test.samples]
-
-    for t in train_tracks:
-        assert t not in val_tracks and t not in test_tracks
-
-    for t in val_tracks:
-        assert t not in test_tracks
-
-    #  make sure all tags from a recording are only in one dataset
-    train_tracks = [f"{s.rec_id}" for s in train.samples if not s.low_sample]
-    val_tracks = [f"{s.rec_id}" for s in validation.samples if not s.low_sample]
-    test_tracks = [f"{s.rec_id}" for s in test.samples if not s.low_sample]
-    for t in train_tracks:
-        assert t not in val_tracks and t not in test_tracks
-
-    for t in val_tracks:
-        assert t not in test_tracks
+    """A recording (and every sample and bin of it) must be in only one of
+    train, validation, test"""
+    for key in ("bin_id", "rec_id"):
+        ids = [
+            (d.name, {str(getattr(s, key)) for s in d.samples}) for d in datasets
+        ]
+        # recordings added whole (split_by_file) are in recs
+        if key == "rec_id":
+            ids = [(n, i | {str(r) for r in d.recs}) for (n, i), d in zip(ids, datasets)]
+        for a in range(len(ids)):
+            for b in range(a + 1, len(ids)):
+                shared = ids[a][1] & ids[b][1]
+                if shared:
+                    raise ValueError(
+                        f"{len(shared)} {key}s in both {ids[a][0]} and {ids[b][0]}, "
+                        f"e.g. {sorted(shared)[:10]}"
+                    )
 
 
 def create_signal_data(dataset, output_path, labels):

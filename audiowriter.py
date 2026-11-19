@@ -386,117 +386,153 @@ def save_data(
     offset=0,
 ):
     resample = 48000
-    try:
-        orig_frames, sr = load_recording(rec.filename, resample=None)
-
-        duration = get_ffmpeg_duration(rec.filename)
-        if abs(duration - len(orig_frames) / sr) > 1:
-            # print(abs(duration - len(orig_frames / sr)))
-            logging.error(
-                "Duration does not match ffmpeg %s librosa %s for %s ",
-                duration,
-                len(orig_frames) / sr,
-                rec.filename,
-            )
-            return 0
-    except:
-        logging.error("Error loading rec %s ", rec.filename, exc_info=True)
+    # a recording's tracks can be in different files (e.g. merged tier1 clips),
+    # each file is loaded once and its samples cut from it. A sample belongs to
+    # its own track's file (last in track_ids), recordings with one file are
+    # written as before
+    track_files = {t.id: t.filename for t in rec.tracks}
+    files = list(dict.fromkeys([rec.filename] + [t.filename for t in rec.tracks]))
+    samples_by_file = {f: [] for f in files}
+    for sample in rec.samples:
+        own = sample.track_ids[-1] if sample.track_ids else None
+        samples_by_file[track_files.get(own, rec.filename)].append(sample)
+    rec.sample_rate = resample
+    saved = 0
+    i = -1
+    for filename in files:
+        file_samples = samples_by_file[filename]
+        file_tracks = [t for t in rec.tracks if t.filename == filename]
+        if not file_samples and not file_tracks:
+            continue
         try:
-            aro.close()
-        except:
-            pass
-        return 0
-    try:
-        if DO_EMBEDDING:
-            frames32 = librosa.resample(orig_frames, orig_sr=sr, target_sr=32000)
+            orig_frames, sr = load_recording(filename, resample=None)
 
-        # hack to handle getting new samples without knowing length until load
-        if resample is not None and resample != sr:
-            frames = librosa.resample(orig_frames, orig_sr=sr, target_sr=resample)
-            sr = resample
-        else:
-            frames = orig_frames
-        orig_frames = None
-        for t in rec.tracks:
-            if t.end is None:
-                # logging.info(
-                #     "Track end is none so setting to rec length %s", len(frames) / sr
-                # )
-                t.end = len(frames) / sr
-            t.ensure_track_length(rec.duration)
-            # if add_features:
-            # load_features(t, frames, sr)
-        # rec.tracks[0].end = len0(frames) / sr
-        rec.duration = len(frames) / sr
-        # logging.info("Loadeding sample but already have %s", len(rec.samples))
-        # rec.load_samples(
-        #     config.segment_length,
-        #     config.segment_stride,
-        #     # do_overlap=not config.filter_frequency,
-        # )
-        samples = rec.samples
-        rec.sample_rate = resample
-        for i, sample in enumerate(samples):
-            try:
-                min_freq = sample.min_freq
-                max_freq = sample.max_freq
-
-                spec = load_data(
-                    config,
-                    sample.start,
-                    frames,
-                    sr,
-                    end=sample.end,
-                )
-                if DO_EMBEDDING:
-                    start = sample.start * 32000
-                    start = round(start)
-                    end = round(sample.end * 32000)
-                    if (end - start) > 32000 * config.segment_length:
-                        end = start + 32000 * config.segment_length
-                    data = frames32[start:end]
-                    data = np.pad(data, (0, 32000 * 5 - len(data)))
-                    model_outputs = model.infer_tf(data[np.newaxis, :])
-                    logits = model_outputs["label"]
-                    embeddings = model_outputs["embedding"]
-                    sample.logits = logits.numpy()[0]
-                    sample.embeddings = embeddings.numpy()[0]
-                    max_l = np.argmax(sample.logits)
-                    # logging.info("For label %s got %s with score %s ebird %s",sample.tags,df[max_l],sample.logits[max_l],ebird_map[df[max_l]])
-                # logging.info("Mem %s", psutil.virtual_memory()[2])
-
-                if spec is None:
-                    logging.warn("error loading spec for %s", rec.id)
-                    continue
-                # data[i] = spec
-                sample.spectrogram_data = spec
-                sample.sr = resample
-            except:
+            duration = get_ffmpeg_duration(filename)
+            if abs(duration - len(orig_frames) / sr) > 1:
+                # print(abs(duration - len(orig_frames / sr)))
                 logging.error(
-                    "Error %s with tracks %s ", rec.id, sample.track_ids, exc_info=True
+                    "Duration does not match ffmpeg %s librosa %s for %s ",
+                    duration,
+                    len(orig_frames) / sr,
+                    filename,
                 )
                 continue
-            writer_lbl = sample.first_tag
-            tf_example, num_annotations_skipped = create_tf_example(sample)
-            if by_label:
-                writer = writers[writer_lbl]
-            else:
-                shard = (i + offset) % num_shards
-                writer = writers[f"all-{shard}"]
-            counts[writer_lbl] += 1
-            writer.write(tf_example.SerializeToString())
-            del sample
-        saved = len(samples)
-        del samples
-        del frames
-        del orig_frames
-    except:
-        logging.error("Got error %s", rec.filename, exc_info=True)
-        return 0
-    del rec
+        except:
+            logging.error("Error loading rec %s ", filename, exc_info=True)
+            continue
+        try:
+            if DO_EMBEDDING:
+                frames32 = librosa.resample(orig_frames, orig_sr=sr, target_sr=32000)
 
-    # logging.info("Total Saved %s", saved)
+            # hack to handle getting new samples without knowing length until load
+            if resample is not None and resample != sr:
+                frames = librosa.resample(orig_frames, orig_sr=sr, target_sr=resample)
+                sr = resample
+            else:
+                frames = orig_frames
+            orig_frames = None
+            file_duration = len(frames) / sr
+            own_recs = []
+            for t in file_tracks:
+                if t.end is None:
+                    t.end = file_duration
+                # the duration of the track's own file (its clip for merged
+                # tracks), as in the metadata, updated after all its tracks
+                own_rec = t.rec if t.rec is not None else rec
+                t.ensure_track_length(own_rec.duration)
+                if own_rec not in own_recs:
+                    own_recs.append(own_rec)
+            for own_rec in own_recs:
+                own_rec.duration = file_duration
+            if filename == rec.filename:
+                rec.duration = file_duration
+            saved += write_samples(
+                rec,
+                file_samples,
+                frames,
+                frames32 if DO_EMBEDDING else None,
+                sr,
+                resample,
+                config,
+                model,
+                writers,
+                counts,
+                by_label,
+                num_shards,
+                offset,
+                i,
+            )
+            i += len(file_samples)
+            del frames
+        except:
+            logging.error("Got error %s", filename, exc_info=True)
+            continue
+    del rec
     return saved
+
+
+def write_samples(
+    rec,
+    samples,
+    frames,
+    frames32,
+    sr,
+    resample,
+    config,
+    model,
+    writers,
+    counts,
+    by_label,
+    num_shards,
+    offset,
+    last_i,
+):
+    """Cut samples from frames (the audio of the file they are in) and write
+    them, last_i is the index of the last sample written for this recording so
+    shards follow on across its files. Returns the number of samples"""
+    for i, sample in enumerate(samples, start=last_i + 1):
+        try:
+            spec = load_data(
+                config,
+                sample.start,
+                frames,
+                sr,
+                end=sample.end,
+            )
+            if DO_EMBEDDING:
+                start = sample.start * 32000
+                start = round(start)
+                end = round(sample.end * 32000)
+                if (end - start) > 32000 * config.segment_length:
+                    end = start + 32000 * config.segment_length
+                data = frames32[start:end]
+                data = np.pad(data, (0, 32000 * 5 - len(data)))
+                model_outputs = model.infer_tf(data[np.newaxis, :])
+                logits = model_outputs["label"]
+                embeddings = model_outputs["embedding"]
+                sample.logits = logits.numpy()[0]
+                sample.embeddings = embeddings.numpy()[0]
+
+            if spec is None:
+                logging.warn("error loading spec for %s", rec.id)
+                continue
+            sample.spectrogram_data = spec
+            sample.sr = resample
+        except:
+            logging.error(
+                "Error %s with tracks %s ", rec.id, sample.track_ids, exc_info=True
+            )
+            continue
+        writer_lbl = sample.first_tag
+        tf_example, num_annotations_skipped = create_tf_example(sample)
+        if by_label:
+            writer = writers[writer_lbl]
+        else:
+            shard = (i + offset) % num_shards
+            writer = writers[f"all-{shard}"]
+        counts[writer_lbl] += 1
+        writer.write(tf_example.SerializeToString())
+    return len(samples)
 
 
 def save_embeddings(rec):

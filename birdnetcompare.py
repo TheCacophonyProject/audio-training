@@ -631,8 +631,17 @@ def track_results(filename, meta, taxonomy, args, window_rows=None):
             used_signal = rms_signal
 
         if window_rows is not None:
+            # args.windows, {track id: [(start, end)]}, checks just those parts
+            # of each track e.g. where build.py's samples overlap it, tracks not
+            # in it get no window rows
+            given = getattr(args, "windows", None)
+            if given is not None:
+                windows = given.get(str(track.get("id")), [])
             # a given segment is the only window checked
-            windows = [segment] if segment is not None else birdnet_windows(start, end)
+            elif segment is not None:
+                windows = [segment]
+            else:
+                windows = birdnet_windows(start, end)
             for window_start, window_end in windows:
                 window_rows.append(
                     window_result(

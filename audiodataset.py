@@ -167,20 +167,64 @@ class AudioDataset:
                     continue
                     # hack to find files, probably should look
                     # at all files in dir or store file in metadata
-                r = Recording(meta, audio_f, self.config)
+                # samples are made once every file is loaded, so clips of one
+                # recording (e.g. tier1) are merged first and their samples see
+                # overlapping tracks from the other clips
+                r = Recording(meta, audio_f, self.config, load_samples=False)
 
                 self.add_recording(r)
             except:
                 logging.error("Error loading %s", f, exc_info=True)
+        self.load_samples()
+
+    def load_samples(self):
+        """Makes every recording's samples from its tracks, in load order so the
+        random numbers are used in the same order on every run"""
+        failed = []
+        for r in self.recs.values():
+            if r.samples:
+                continue
+            try:
+                r.signal_percent()
+                r.load_samples(self.config.segment_length, self.config.segment_stride)
+            except:
+                logging.error("Error making samples for %s", r.id, exc_info=True)
+                failed.append(r.id)
+                continue
+            self.samples.extend(r.samples)
+        # as before samples were made after loading, a recording that errors
+        # isn't kept
+        for rec_id in failed:
+            del self.recs[rec_id]
 
     def add_recording(self, r):
         if r.id in self.recs:
             logging.info(
-                "Already have %s in recs from %s now trying to add %s, Ignoring",
+                "Already have %s in recs from %s now trying to add %s, merging tracks",
                 r.id,
                 self.recs[r.id].filename,
                 r.filename,
             )
+            # e.g. tier1 clips of one recording, each clip is its own file so
+            # its tracks keep their own filename and rec (the clip)
+            existing = self.recs[r.id]
+            before = {t.id for t in existing.tracks}
+            existing.add_tracks(r.tracks)
+            added = {t.id for t in existing.tracks} - before
+            # a sample's own track is last in track_ids, only take samples of
+            # tracks that were added so the same file loaded twice isn't doubled
+            samples = [s for s in r.samples if s.track_ids and s.track_ids[-1] in added]
+            existing.samples.extend(samples)
+            existing.small_strides.extend(
+                s for s in r.small_strides if s.track_ids and s.track_ids[-1] in added
+            )
+            existing.unused_samples.extend(
+                s for s in r.unused_samples if s.track_ids and s.track_ids[-1] in added
+            )
+            self.samples.extend(samples)
+            for tag in r.human_tags:
+                self.labels.add(tag)
+            return
         self.recs[r.id] = r
 
         self.samples.extend(r.samples)
@@ -308,8 +352,9 @@ class AudioDataset:
     def add_sample(self, rec, sample):
         # make a clone of recordings so it is independent of original rec, and add correct tracks
         if sample.rec_id not in self.recs:
+            # starts empty, gets only the tracks (and their tags) of samples
+            # added here
             cloned_rec = rec.clone()
-            cloned_rec.tracks = []
             self.recs[rec.id] = cloned_rec
 
         tracks = [t for t in rec.tracks if t.id in sample.track_ids]
@@ -381,6 +426,7 @@ class AudioSample:
         low_sample=False,
         secondary_tags=None,
         soft_tags=None,
+        overlaps=None,
     ):
         global audio_id
         self.id = audio_id
@@ -418,6 +464,10 @@ class AudioSample:
         # sample's time span to soft_tags
         self.secondary_tags = sorted(secondary_tags or [])
         self.soft_tags = sorted(soft_tags or [])
+        # {track id: (start, end, min overlap)} of each other track whose tags
+        # the sample has, the part of it in the sample in that track's own file
+        # times and the overlap get_samples needed to add its tags
+        self.overlaps = dict(overlaps or {})
 
         if bin_id is None:
             # split by the recording's split key, so recordings sharing it
@@ -442,6 +492,7 @@ class AudioSample:
             low_sample=self.low_sample,
             secondary_tags=self.secondary_tags,
             soft_tags=self.soft_tags,
+            overlaps=self.overlaps,
         )
         cloned.rec_id = self.rec_id
         cloned.location = self.location
@@ -551,8 +602,24 @@ class Recording:
                 self.human_tags.add(tag)
 
     def clone(self):
-        cloned = Recording(self.metadata, self.filename, None, load_samples=False)
+        """An empty copy of this recording: the same id, filename, metadata,
+        duration, date, location and best_segment, but always with no tracks,
+        no samples and no human tags. Tracks aren't rebuilt from the metadata.
+
+        For AudioDataset.add_sample, which gives each dataset its own copy and
+        adds only the original Track objects of the samples it holds (they keep
+        their own filename and rec, so tracks merged from other files still
+        load their audio from those files), and the tags come from those tracks"""
+        no_tracks = {
+            k: v for k, v in self.metadata.items() if k not in ("tracks", "Tracks")
+        }
+        cloned = Recording(no_tracks, self.filename, None, load_samples=False)
+        cloned.metadata = self.metadata
         cloned.best_segment = self.best_segment
+        # empty from the no_tracks metadata, set so it holds whatever init does
+        cloned.tracks = []
+        cloned.human_tags = set()
+        cloned.samples = []
         return cloned
 
     def signal_percent(self):
@@ -562,7 +629,10 @@ class Recording:
             signal_time = 0
             signals = 0
             prev_e = None
-            for s in self.signals:
+            # the track's own clip, a merged recording's signals are only the
+            # first clip's
+            signals_list = t.rec.signals if t.rec is not None else self.signals
+            for s in signals_list:
                 if s[2] < freq_filter:
                     continue
                 if ((t.end - t.start) + (s[1] - s[0])) > max(t.end, s[1]) - min(
@@ -615,9 +685,15 @@ class Recording:
             logging.debug("Loading samples when we already have samples")
         global SAMPLE_GROUP_ID
         SAMPLE_GROUP_ID += 1
+        # merged recordings hold tracks from several clip files, each track's
+        # start/end is relative to its own file, offset_start moves it onto the
+        # original recording's timeline so overlaps are between real times
+        def track_offset(t):
+            return t.offset_start or 0
+
         sorted_tracks = sorted(
             self.tracks,
-            key=lambda track: track.start,
+            key=lambda track: track.start + track_offset(track),
         )
         # always take 1 one sample, but dont bother with more if they are short
         # want to sample end of tracks always
@@ -638,7 +714,13 @@ class Recording:
         made = {"main": [], "small": [], "unused": []}
 
         for track in tracks:
-            bin_id = f"{self.split_key}-0"
+            offset = track_offset(track)
+            # which audio this track's samples are, for the duplicate check
+            source = (track.filename, track.offset_start)
+            # the track's own file, a merged recording's duration is only the
+            # first file's
+            duration = track.rec.duration if track.rec is not None else self.duration
+            bin_id = f"{self.id}-0"
             start_stride = segment_stride
             # jitter starts by up to a quarter of the stride either way
             jitter = start_stride / 4
@@ -773,8 +855,8 @@ class Recording:
                         if start < 0:
                             start = 0
                             end = segment_length
-                        if self.duration is not None and end > self.duration:
-                            end = self.duration
+                        if duration is not None and end > duration:
+                            end = duration
                             start = max(0, end - segment_length)
 
                     min_freq = track.min_freq
@@ -783,28 +865,59 @@ class Recording:
                     text_labels = set(track.human_text_tags)
 
                     other_tracks = []
+                    overlaps = {}
+                    # the sample on the original recording's timeline
+                    rec_start = start + offset
+                    rec_end = end + offset
                     for other_track in sorted_tracks:
                         if track == other_track:
                             continue
-
-                        # starts in this sample
-                        if other_track.start > end:
+                        # another file's track is only on the same timeline if
+                        # both files have offsets into the original recording
+                        if other_track.filename != track.filename and (
+                            track.offset_start is None
+                            or other_track.offset_start is None
+                        ):
+                            continue
+                        other_offset = track_offset(other_track)
+                        other_start = other_track.start + other_offset
+                        other_end = other_track.end + other_offset
+                        # starts in this sample, sorted by track start and the best
+                        # window is inside the track so this still holds for it
+                        if other_start > rec_end:
                             break
+                        if (
+                            self.best_segment
+                            and other_track.offset_start is not None
+                            and other_track.best_start is not None
+                        ):
+                            # a clip of a longer recording (tier1), its label only
+                            # says the bird is somewhere in the clip, so only
+                            # count it if its best window (where its bird is
+                            # loudest) is in this sample
+                            other_start = other_track.best_start + other_offset
+                            other_end = other_track.best_end + other_offset
+                        other_length = other_end - other_start
                         overlap = (
-                            (end - start)
-                            + (other_track.length)
-                            - (
-                                max(end, other_track.end)
-                                - min(start, other_track.start)
-                            )
+                            (rec_end - rec_start)
+                            + other_length
+                            - (max(rec_end, other_end) - min(rec_start, other_start))
                         )
                         # 0.5s of the other track in this sample, or most of it if
                         # it is shorter than that
-                        min_overlap = min(0.5, other_track.length * 0.9)
+                        min_overlap = min(0.5, other_length * 0.9)
 
                         # enough overlap or we engulf the track
                         if overlap >= min_overlap:
                             other_tracks.append(other_track)
+                            # where, in the other track's own file times, so
+                            # it can be checked against that track's windows,
+                            # and the overlap it needed
+                            overlaps[other_track.id] = (
+                                max(rec_start, other_start) - other_offset,
+                                min(rec_end, other_end) - other_offset,
+                                min_overlap,
+                            )
                             labels = labels | other_track.human_tags
                             text_labels = text_labels | other_track.human_text_tags
                             if min_freq is not None:
@@ -825,11 +938,8 @@ class Recording:
                     for t in other_tracks:
                         secondary_tags |= t.secondary_tags
                     secondary_tags -= labels
-                    if low_sample_track:
-                        # if is a low sample track allow, tracks to spread over multiple datasets
-                        # might not be a good idea
-                        bin_id = f"{self.split_key}-{track.id}"
-                        # {int(start // segment_length)}"
+                    # bin_id is always the recording, so a recording is only
+                    # ever in one of train, validation, test
                     sample = AudioSample(
                         self,
                         labels,
@@ -845,6 +955,7 @@ class Recording:
                         mixed_label=track.mixed_label,
                         low_sample=low_sample_track,
                         secondary_tags=secondary_tags,
+                        overlaps=overlaps,
                     )
                     if used_sample:
                         pool = "main"
@@ -857,9 +968,9 @@ class Recording:
                     # overlapping tracks share labels, so their samples over the
                     # overlap are near duplicates, keep the first one made
                     if pool is not None and not is_duplicate_sample(
-                        sample, track.id, made, pool, segment_length
+                        sample, track.id, source, made, pool, segment_length
                     ):
-                        made[pool].append((sample, track.id))
+                        made[pool].append((sample, track.id, source))
                         if pool == "main":
                             samples.append(sample)
                             # spares from other tracks made earlier which duplicate
@@ -869,7 +980,12 @@ class Recording:
                                 ("unused", unused_samples),
                             ):
                                 for spare in remove_duplicate_spares(
-                                    sample, track.id, made, spare_pool, segment_length
+                                    sample,
+                                    track.id,
+                                    source,
+                                    made,
+                                    spare_pool,
+                                    segment_length,
                                 ):
                                     spare_list.remove(spare)
                         elif pool == "small":
@@ -963,6 +1079,11 @@ class Track:
         self.end = metadata["end"]
         self.og_start = self.start
         self.og_end = self.end
+        # where this track's file starts in the original recording, seconds,
+        # e.g. tier1 clips cut from a longer recording, None if the file is the
+        # recording
+        self.offset_start = metadata.get("offset_start")
+        self.offset_end = metadata.get("offset_end")
         self.id = metadata.get("id")
         positions = metadata.get("positions", [])
         self.min_freq = metadata.get("minFreq", None)
@@ -1600,31 +1721,50 @@ def rms_active_span(
     return start, end
 
 
-def samples_match(sample, other, segment_length):
-    # same labels and overlapping by more than half a segment
-    overlap = min(sample.end, other.end) - max(sample.start, other.start)
+def samples_match(sample, other, segment_length, offset=0, other_offset=0):
+    # same labels and overlapping by more than half a segment, offsets move each
+    # sample onto the original recording's timeline
+    overlap = min(sample.end + offset, other.end + other_offset) - max(
+        sample.start + offset, other.start + other_offset
+    )
     return overlap > segment_length / 2 and set(other.tags) == set(sample.tags)
 
 
-def is_duplicate_sample(sample, track_id, made, pool, segment_length):
-    # duplicate if a sample from another track matches, spare samples also check
-    # the main samples
+def same_audio(sample, other, segment_length, source, other_source):
+    """source is (filename, offset_start). Samples in the same file are compared
+    on the file's times. Samples from different files (a merged recording's
+    clips) are only compared if both files have offsets, on the original
+    recording's times, as overlapping clips hold the same audio. Without offsets
+    different files are never duplicates"""
+    filename, offset = source
+    other_filename, other_offset = other_source
+    if filename == other_filename:
+        return samples_match(sample, other, segment_length)
+    if offset is None or other_offset is None:
+        return False
+    return samples_match(sample, other, segment_length, offset, other_offset)
+
+
+def is_duplicate_sample(sample, track_id, source, made, pool, segment_length):
+    # duplicate if a sample from another track holding the same audio matches,
+    # spare samples also check the main samples
     pools = [pool] if pool == "main" else [pool, "main"]
     for check_pool in pools:
-        for other, other_track_id in made[check_pool]:
-            if other_track_id != track_id and samples_match(
-                sample, other, segment_length
+        for other, other_track_id, other_source in made[check_pool]:
+            if other_track_id != track_id and same_audio(
+                sample, other, segment_length, source, other_source
             ):
                 return True
     return False
 
 
-def remove_duplicate_spares(sample, track_id, made, pool, segment_length):
+def remove_duplicate_spares(sample, track_id, source, made, pool, segment_length):
     # remove spares in pool from other tracks which match sample, returns them
     removed = [
         other
-        for other, other_track_id in made[pool]
-        if other_track_id != track_id and samples_match(sample, other, segment_length)
+        for other, other_track_id, other_source in made[pool]
+        if other_track_id != track_id
+        and same_audio(sample, other, segment_length, source, other_source)
     ]
     made[pool] = [entry for entry in made[pool] if entry[0] not in removed]
     return removed
