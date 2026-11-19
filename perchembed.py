@@ -18,7 +18,13 @@ from birdnetcompare import (
     secondary_tags,
 )
 from birdsconfig import RELABEL_MAP
-from utils import ID_PREFIX_DIRS, get_ebird_id, get_label_to_ebird_map, prefixed_id
+from utils import (
+    ID_PREFIX_DIRS,
+    centre_bonus,
+    get_ebird_id,
+    get_label_to_ebird_map,
+    prefixed_id,
+)
 
 AUDIO_EXTS = [".flac", ".wav", ".m4a", ".mp3", ".ogg"]
 # perch v2 takes 5s of 32kHz audio
@@ -231,7 +237,10 @@ def analyse(args):
     # everything in a window, the track's own tags plus those of entries of
     # the same recording overlapping it. The probe trains on these and the
     # checks below accept any of them
-    overlap_tags = window_tags(rows, heard, groups)
+    # overlaps are within a file, tier1 clips of the same recording share its
+    # recording_id but each file's times start at 0. Folds and knn still
+    # group by recording_id so a recording's clips never help predict each other
+    overlap_tags = window_tags(rows, heard, np.array([r["file"] for r in rows]))
     logging.info(
         "%s of %s windows overlap an entry with other tags",
         sum(len(w) > len(t) for w, t in zip(overlap_tags, heard)),
@@ -496,7 +505,7 @@ def log_probe_metrics(y, probs, thresholds, classes):
 
 
 def window_tags(rows, tags, groups):
-    """Each row's tags plus the tags of the other rows of the same recording
+    """Each row's tags plus the tags of the other rows of the same group (file)
     overlapping its perch window e.g. a blackbird calling behind a fantail. A
     row with a best rms window overlaps when that window's centre is inside the
     perch window, full track rows have none so overlap when their perch windows
@@ -685,7 +694,9 @@ def main():
                 else:
                     # bird tracks use bird_rms, others noise_rms, same as audiodataset
                     bird_track = is_bird_track(manual, taxonomy)
-                    window = rms_window(track, meta, bird_track, args.segment_length)
+                    window = rms_window(
+                        track, meta, bird_track, args.segment_length, centre_bonus(txt)
+                    )
                     perch_windows = [perch_window(window, track, duration)]
                 for start, end in perch_windows:
                     embeddings.append(embed(model, y, start))

@@ -9,6 +9,8 @@ from pathlib import Path
 
 import numpy as np
 
+from utils import centre_bonus
+
 # how close birdnet's guess is to the manual tag, best first
 MATCH = "match"
 RELATED = "related"
@@ -219,21 +221,31 @@ def compare(tag_taxa, generic_bird, bird_detections):
     return best
 
 
-def best_rms(rms, segment_length=3, sr=48000, hop_length=281):
-    # copied from audiodataset.py, importing that pulls in tensorflow
-    window_size = sr * segment_length / hop_length
-    window_size = int(window_size)
-    first_window = np.sum(rms[:window_size])
-    rolling_sum = first_window
-    max_index = (0, first_window)
-    for i in range(1, len(rms) - window_size):
-        rolling_sum = rolling_sum - rms[i - 1] + rms[i + window_size]
-        if rolling_sum > max_index[1]:
-            max_index = (i, rolling_sum)
-    return max_index
+def best_rms(rms, segment_length=3, sr=48000, hop_length=281, centre_bonus=0):
+    """First frame and rms sum of the segment_length window with the most rms,
+    audiodataset uses this too. With centre_bonus a window centred on the rms
+    (the track) has its sum scaled by 1 + centre_bonus, falling linearly to 1
+    for windows at either end, so an off centre window has to be that much
+    louder to win e.g. for tier1 where tracks are mostly centred on the call"""
+    rms = np.asarray(rms, dtype=float)
+    window_size = int(sr * segment_length / hop_length)
+    if len(rms) <= window_size:
+        return 0, float(rms.sum())
+    # sums[i] is the window starting at frame i, the last one ends at the end
+    sums = np.convolve(rms, np.ones(window_size), "valid")
+    scores = sums
+    if centre_bonus:
+        # how far each window's centre is from the track centre, 0 when
+        # centred and 1 at the first and last windows
+        offsets = np.arange(len(sums))
+        middle = (len(sums) - 1) / 2
+        distance = np.abs(offsets - middle) / middle if middle else 0
+        scores = sums * (1 + centre_bonus * (1 - distance))
+    best = int(np.argmax(scores))
+    return best, float(sums[best])
 
 
-def rms_window(track, meta, bird_track, segment_length):
+def rms_window(track, meta, bird_track, segment_length, centre_bonus=0):
     # loudest segment_length window of the track, rms starts at the track start
     rms = track.get("bird_rms" if bird_track else "noise_rms")
     if not rms:
@@ -242,7 +254,9 @@ def rms_window(track, meta, bird_track, segment_length):
     # rms is calculated on audio resampled to 48k
     rms_sr = meta.get("rms_sr", 48000)
     frame_length = rms_hop / rms_sr
-    best_offset, _ = best_rms(np.array(rms), segment_length, rms_sr, rms_hop)
+    best_offset, _ = best_rms(
+        np.array(rms), segment_length, rms_sr, rms_hop, centre_bonus
+    )
     start = track.get("start", 0) + best_offset * frame_length
     end = min(start + segment_length, track.get("end", start))
     return start, end
@@ -573,7 +587,11 @@ def track_results(filename, meta, taxonomy, args, window_rows=None):
         # bird_rms or noise_rms from the primary tags, as perchembed and
         # audiodataset do, so it is the same best window
         window = rms_window(
-            track, meta, is_bird_track(primary, taxonomy), args.segment_length
+            track,
+            meta,
+            is_bird_track(primary, taxonomy),
+            args.segment_length,
+            centre_bonus(filename),
         )
         # args.segments, {track id: (start, end)}, compares just that part of
         # the track e.g. build.py --best-segment's best segment

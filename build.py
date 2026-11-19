@@ -650,7 +650,9 @@ def filter_bird_windows(dataset, args):
                 outcomes.setdefault(label, Counter())["noise skipped"] += 1
                 continue
             rows = window_perch(
-                perch.get((str(r.id), track_id)), w["window_start"], w["window_end"]
+                perch.get((str(r.id), track_id)),
+                w["window_start"],
+                w["window_end"],
             )
             outcome, remove = window_outcome(w, rows, args, t.human_tags)
             outcomes.setdefault(label, Counter())[outcome] += 1

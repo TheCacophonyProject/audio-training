@@ -1,7 +1,62 @@
 import csv
+from datetime import datetime
+from pathlib import Path
 
 # ids restart in each of these datasets so are prefixed with its name
 ID_PREFIX_DIRS = ["Train_001", "Train_002"]
+
+
+# tracks in these datasets are mostly centred on the call, so the best rms
+# segment prefers centred windows, see birdnetcompare.best_rms
+CENTRED_TRACK_DIRS = ["Train_001", "Train_002"]
+CENTRE_BONUS = 0.1
+
+
+def centre_bonus(path):
+    return CENTRE_BONUS if any(d in str(path) for d in CENTRED_TRACK_DIRS) else 0
+
+
+def split_key(path, metadata):
+    """The key recordings are split into train, validation and test by, so
+    recordings sharing it stay together. The prefixed id plus the first of
+    site and device, site, stationId, location lat and lng, deviceId or the day
+    of the recording that the metadata has"""
+    rec_id = prefixed_id(path, metadata.get("id"))
+    if rec_id is None:
+        rec_id = Path(path).stem
+
+    def key(*values):
+        return "-".join(str(v) for v in (rec_id, *values))
+
+    site = metadata.get("site")
+    device = metadata.get("device")
+    if site and device:
+        return key(site, device)
+    if site:
+        return key(site)
+    if metadata.get("stationId") is not None:
+        return key(metadata["stationId"])
+    location = metadata.get("location")
+    if isinstance(location, list):
+        location = location[0] if location else None
+    if isinstance(location, dict):
+        lat, lng = location.get("lat"), location.get("lng")
+        if lat is not None and lng is not None:
+            return key(lat, lng)
+    if metadata.get("deviceId") is not None:
+        return key(metadata["deviceId"])
+    when = metadata.get("rec_datetime") or metadata.get("recordingDateTime")
+    if when:
+        return key(recording_day(when))
+    return str(rec_id)
+
+
+def recording_day(when):
+    # the date of an iso datetime e.g. 2012-03-21T12:43:16 or 2022-10-09T01:31:07.000Z
+    try:
+        return datetime.fromisoformat(str(when).replace("Z", "+00:00")).date().isoformat()
+    except ValueError:
+        return str(when)[:10]
 
 
 def prefixed_id(path, rec_id):

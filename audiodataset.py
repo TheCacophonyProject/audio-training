@@ -5,11 +5,17 @@ from collections import namedtuple
 
 from dateutil.parser import parse as parse_date
 from utils import (
+    centre_bonus,
     get_label_to_ebird_map,
     get_ebird_id,
     get_ebird_ids_to_labels,
     prefixed_id,
+    split_key,
 )
+
+# shared with birdnetcompare and perchembed so they find the same best window,
+# otherdata imports it from here
+from birdnetcompare import best_rms
 import soundfile as sf
 
 import librosa
@@ -414,7 +420,9 @@ class AudioSample:
         self.soft_tags = sorted(soft_tags or [])
 
         if bin_id is None:
-            self.bin_id = f"{self.rec_id}"
+            # split by the recording's split key, so recordings sharing it
+            # stay together
+            self.bin_id = f"{getattr(rec, 'split_key', None) or self.rec_id}"
         else:
             self.bin_id = bin_id
 
@@ -465,8 +473,12 @@ class Recording:
     def __init__(self, metadata, filename, config, load_samples=True):
         self.filename = filename
         self.metadata = metadata
-        # Train_001 and Train_002 ids clash so are prefixed with the dataset
+        # Train_001 and Train_002 ids clash so are prefixed with the dataset,
+        # perchembed's recording_id is the same
         self.id = prefixed_id(filename, metadata.get("id"))
+        # recordings with the same key stay in the same train, validation or
+        # test set, samples' bin ids start with it
+        self.split_key = split_key(filename, metadata)
         self.best_segment = config.best_segment if config is not None else False
         self.device_id = metadata.get("deviceId")
         self.group_id = metadata.get("groupId")
@@ -626,7 +638,7 @@ class Recording:
         made = {"main": [], "small": [], "unused": []}
 
         for track in tracks:
-            bin_id = f"{self.id}-0"
+            bin_id = f"{self.split_key}-0"
             start_stride = segment_stride
             # jitter starts by up to a quarter of the stride either way
             jitter = start_stride / 4
@@ -816,7 +828,7 @@ class Recording:
                     if low_sample_track:
                         # if is a low sample track allow, tracks to spread over multiple datasets
                         # might not be a good idea
-                        bin_id = f"{self.id}-{track.id}"
+                        bin_id = f"{self.split_key}-{track.id}"
                         # {int(start // segment_length)}"
                     sample = AudioSample(
                         self,
@@ -1023,7 +1035,7 @@ class Track:
             return
 
         start, end, rms, noise_removed, frame_length, best_offset = rms_best_segment(
-            metadata, self.start, self.end, segment_length
+            metadata, self.start, self.end, segment_length, centre_bonus(self.filename)
         )
         track_rms = rms[best_offset : best_offset + int(segment_length / frame_length)]
         if tighten:
@@ -1630,12 +1642,14 @@ def filter_starts(starts, track_end, segment_length, min_length, first_min_lengt
     return starts[keep]
 
 
-def rms_best_segment(track_meta, track_start, track_end, segment_length=3):
+def rms_best_segment(
+    track_meta, track_start, track_end, segment_length=3, centre_bonus=0
+):
     """The segment_length window of a bird track with the most bird rms, once
-    rms noise is removed. track_meta needs upper_rms, bird_rms and noise_rms
-    starting at track_start. Returns start, end, the noise removed rms, which
-    rms frames were noise removed, the rms frame length and the window's first
-    frame"""
+    rms noise is removed, centred windows preferred by centre_bonus (see
+    best_rms). track_meta needs upper_rms, bird_rms and noise_rms starting at
+    track_start. Returns start, end, the noise removed rms, which rms frames
+    were noise removed, the rms frame length and the window's first frame"""
     rms_thresh = 0.00001
     rms_height = 0.001
     upper_rms = track_meta["upper_rms"]
@@ -1660,24 +1674,10 @@ def rms_best_segment(track_meta, track_start, track_end, segment_length=3):
 
     # rms starts at the original track start
     frame_length = rms_hop / rms_sr
-    best_offset, _ = best_rms(rms, segment_length, rms_sr, rms_hop)
+    best_offset, _ = best_rms(rms, segment_length, rms_sr, rms_hop, centre_bonus)
     start = track_start + best_offset * frame_length
     end = min(start + segment_length, track_end)
     return start, end, rms, noise_removed, frame_length, best_offset
-
-
-def best_rms(rms, segment_length=3, sr=48000, hop_length=281):
-    sr = 48000
-    window_size = sr * segment_length / hop_length
-    window_size = int(window_size)
-    first_window = np.sum(rms[:window_size])
-    rolling_sum = first_window
-    max_index = (0, first_window)
-    for i in range(1, len(rms) - window_size):
-        rolling_sum = rolling_sum - rms[i - 1] + rms[i + window_size]
-        if rolling_sum > max_index[1]:
-            max_index = (i, rolling_sum)
-    return max_index
 
 
 def segment_overlap(first, second):
