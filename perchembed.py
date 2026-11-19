@@ -737,5 +737,9 @@ def main():
 if __name__ == "__main__":
     # m4a falls back to audioread which warns on every file
     warnings.filterwarnings("ignore", message="PySoundFile failed")
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     main()

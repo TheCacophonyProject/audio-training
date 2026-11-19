@@ -61,7 +61,9 @@ RELABEL_MAP = {
 
 
 # add labels you want regardless of number of samples
-# birds from all birds will be added if they have over 50 records and 2 validation samples
+# birds from ALL_BIRDS are also added if they have over 50 train samples, over
+# 50 train recordings and at least MIN_VAL_RECS (10) validation recordings, see
+# tfdataset.set_specific_by_count
 BIRD_TRAIN_LABELS = [
     "ausbit1",
     "ausmag2",
@@ -78,6 +80,8 @@ BIRD_TRAIN_LABELS = [
     "y01193",
     "kokako3",
     "litowl1",
+    # all dotterels are merged into this (RELABEL_MAP)
+    "rebdot1",
 ]
 from utils import get_all_birds
 

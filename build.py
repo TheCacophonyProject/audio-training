@@ -1689,7 +1689,7 @@ def init_logging():
     Logs will go to stderr.
     """
 
-    fmt = "%(process)d %(thread)s:%(levelname)7s %(message)s"
+    fmt = "%(asctime)s %(process)d %(thread)s:%(levelname)7s %(message)s"
     logging.basicConfig(
         stream=sys.stderr, level=logging.INFO, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"
     )
