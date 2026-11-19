@@ -1,5 +1,24 @@
 import csv
 
+# ids restart in each of these datasets so are prefixed with its name
+ID_PREFIX_DIRS = ["Train_001", "Train_002"]
+
+
+def prefixed_id(path, rec_id):
+    """A recording's id, prefixed with Train_001- or Train_002- when its file
+    is in one of those datasets so ids are unique across them. Other ids are
+    returned unchanged"""
+    if rec_id is None:
+        return None
+    for prefix in ID_PREFIX_DIRS:
+        if prefix in str(path):
+            rec_id = str(rec_id)
+            # some ids already have it e.g. /data2/.../Train_001-846
+            if f"{prefix}-" in rec_id:
+                return rec_id[rec_id.index(f"{prefix}-") :]
+            return f"{prefix}-{rec_id}"
+    return rec_id
+
 
 def get_all_birds():
     allbirds = set()

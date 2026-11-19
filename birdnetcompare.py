@@ -431,7 +431,8 @@ def window_result(
     filename,
     meta,
     track,
-    manual,
+    primary,
+    secondary,
     window,
     detections,
     tags,
@@ -441,21 +442,32 @@ def window_result(
     args,
 ):
     """Comparison of one birdnet window of a track, to see which parts of a
-    track birdnet finds the tag in e.g. to tighten tracks"""
+    track birdnet finds the tag in e.g. to tighten tracks. tags are from the
+    primary and secondary tags"""
     tag_taxa, generic_bird, non_bird = tags
+    manual = primary + secondary
     found = overlapping(detections, *window, 0)
     status, best, bird_detections = evaluate(
         found, tag_taxa, generic_bird, non_bird, taxonomy
     )
     signals = track_signals(meta, *window, cutoff)
     window_signal = clear_signal(signals, window, args.clear_signal_db)
+    # birdnet doesn't find the track's tags but does find those of a track
+    # overlapping the window, it may just be hearing the louder bird. Only for
+    # reporting, the window still doesn't match
+    overlap_match = status == DIFFERENT and any(
+        overlaps_track(*window, o)
+        and compare(o["taxa"], False, bird_detections)[0] == MATCH
+        for o in others
+    )
     return {
         "file": filename.name,
         "recording_id": meta.get("id"),
         "track_id": track.get("id"),
         "track_start": track.get("start", 0),
         "track_end": track.get("end", track.get("start", 0)),
-        "manual_tags": ";".join(t["what"] for t in manual),
+        "manual_tags": ";".join(t["what"] for t in primary),
+        "secondary_tags": ";".join(t["what"] for t in secondary),
         "window_start": window[0],
         "window_end": window[1],
         "status": status,
@@ -469,12 +481,37 @@ def window_result(
         "birdnet_untagged": format_untagged(
             untagged_species(bird_detections, tag_taxa, manual, args, others)
         ),
+        "birdnet_overlap_match": overlap_match,
     }
+
+
+def primary_tags(track):
+    # manual tags that aren't secondary, the track's label
+    return [
+        t
+        for t in track.get("tags", [])
+        if t.get("automatic") is False and not t.get("secondary")
+    ]
+
+
+def secondary_tags(track):
+    """The track's secondary tags, the same as audiodataset any tag marked
+    secondary counts whether automatic or not. In tier1 the rarer of a clip's
+    labels is made primary so these are as much the track's tags"""
+    return [t for t in track.get("tags", []) if t.get("secondary")]
+
+
+def is_bird_track(tags, taxonomy):
+    return any(
+        tag_taxon(t, taxonomy) is not None or t["what"] in GENERIC_BIRD_TAGS
+        for t in tags
+    )
 
 
 def track_results(filename, meta, taxonomy, args, window_rows=None):
     """One comparison row per manually tagged track, and with window_rows (a
-    list) a row per birdnet window of each track appended to it"""
+    list) a row per birdnet window of each track appended to it. Birdnet is
+    compared with the track's primary and secondary tags"""
     detections = [d for d in meta["birdnet"] if d["confidence"] >= args.min_conf]
     tracks = [
         track
@@ -488,12 +525,7 @@ def track_results(filename, meta, taxonomy, args, window_rows=None):
     # missing tags
     track_tags = []
     for track in tracks:
-        # secondary tags (other birds in a clip) aren't the track's label
-        manual = [
-            t
-            for t in track.get("tags", [])
-            if t.get("automatic") is False and not t.get("secondary")
-        ]
+        manual = primary_tags(track) + secondary_tags(track)
         start = track.get("start", 0)
         track_tags.append(
             {
@@ -510,12 +542,10 @@ def track_results(filename, meta, taxonomy, args, window_rows=None):
         )
 
     for track in tracks:
-        # secondary tags (other birds in a clip) aren't the track's label
-        manual = [
-            t
-            for t in track.get("tags", [])
-            if t.get("automatic") is False and not t.get("secondary")
-        ]
+        primary = primary_tags(track)
+        secondary = secondary_tags(track)
+        # birdnet finding any of them is a match
+        manual = primary + secondary
         start = track.get("start", 0)
         end = track.get("end", start)
         others = [
@@ -540,8 +570,10 @@ def track_results(filename, meta, taxonomy, args, window_rows=None):
         # rms window only, track uses start to end. Without it (build.py) birdnet
         # is compared over the track and the clear signal is from the rms window
         compare = getattr(args, "window", None)
+        # bird_rms or noise_rms from the primary tags, as perchembed and
+        # audiodataset do, so it is the same best window
         window = rms_window(
-            track, meta, bool(tag_taxa or generic_bird), args.segment_length
+            track, meta, is_bird_track(primary, taxonomy), args.segment_length
         )
         # args.segments, {track id: (start, end)}, compares just that part of
         # the track e.g. build.py --best-segment's best segment
@@ -589,7 +621,8 @@ def track_results(filename, meta, taxonomy, args, window_rows=None):
                         filename,
                         meta,
                         track,
-                        manual,
+                        primary,
+                        secondary,
                         (window_start, window_end),
                         detections,
                         (tag_taxa, generic_bird, non_bird),
@@ -608,7 +641,8 @@ def track_results(filename, meta, taxonomy, args, window_rows=None):
             "end": end,
             "rms_start": "" if window is None else round(window[0], 2),
             "rms_end": "" if window is None else round(window[1], 2),
-            "manual_tags": ";".join(t["what"] for t in manual),
+            "manual_tags": ";".join(t["what"] for t in primary),
+            "secondary_tags": ";".join(t["what"] for t in secondary),
             "manual_scientific": ";".join(t["scientific"] for t in tag_taxa),
             "status": status,
             "birdnet_tag": "" if best is None else best["common_name"],

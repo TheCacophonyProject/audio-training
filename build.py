@@ -343,6 +343,7 @@ FILTER_COLUMNS = [
     "birdnet only",
     "birdnet, perch unsure",
     "perch & birdnet disagrees",
+    "birdnet hears overlapping track",
     "perch only",
     "non bird, no signal, perch flagged",
     "non bird, no signal, no perch result",
@@ -357,40 +358,59 @@ def perch_details(row):
         row["doubt"],
         row["probe_own_prob"],
         row["knn_agreement"],
-        row["probe_label"],
+        row["probe_labels"] or "nothing",
         row["knn_label"],
     )
 
 
 def perch_tags(row):
-    # the track's tags and those of tracks overlapping its perch window, joined
-    # with ;. Older flags files only have the track's own label
-    return set(row.get("window_label", row["label"]).split(";"))
+    # everything tagged in the track's perch window, its own and secondary
+    # tags and those of entries of the recording overlapping it, joined with ;
+    return set(row["window_label"].split(";"))
+
+
+def probe_labels(row):
+    # the labels the multi label probe predicts above their thresholds, saved
+    # as label:prob joined with ;
+    labels = {}
+    for item in row["probe_labels"].split(";"):
+        if item:
+            label, prob = item.rsplit(":", 1)
+            labels[label] = float(prob)
+    return labels
+
+
+def own_tags(row):
+    # the track's primary and secondary tags, not those of overlapping entries
+    return {t for t in (row["label"] + ";" + row["secondary_label"]).split(";") if t}
 
 
 def perch_agrees(row, threshold):
-    # perch predicts the label with enough confidence, probe or knn
-    tags = perch_tags(row)
-
-    def score(key):
-        return float(row[key]) if row[key] != "" else 0
-
-    return (row["probe_label"] in tags and score("probe_own_prob") >= threshold) or (
-        row["knn_label"] in tags and score("knn_agreement") >= threshold
+    # the probe predicts at least one of the track's own primary or secondary
+    # tags (not those of overlapping entries) above that label's threshold, or
+    # the most common tag of its knn neighbours is one of them and at least
+    # threshold of them have it. knn_agreement isn't used as it also counts
+    # neighbours with the tags of overlapping entries
+    own = own_tags(row)
+    if own & probe_labels(row).keys():
+        return True
+    fraction = (
+        float(row["knn_label_fraction"]) if row["knn_label_fraction"] != "" else 0
     )
+    return row["knn_label"] in own and fraction >= threshold
 
 
 def perch_confident_other(row, threshold):
-    # the probe confidently predicts a label the track isn't tagged with. Only
-    # for tracks with a label the probe was trained on (probe_own_prob is set),
-    # as for rare labels it can only ever predict something else
+    # the probe confidently predicts a label nothing in the window is tagged
+    # with. Only for tracks with a label the probe was trained on (probe_own_prob
+    # is set), as for rare labels it can only ever predict something else. As
+    # labels are independent this alone may just be another bird, it's used
+    # with flagged which says perch also doubts the track's own tags
+    if row["probe_own_prob"] == "":
+        return False
     tags = perch_tags(row)
-    return (
-        row["probe_own_prob"] != ""
-        and row["probe_prob"] != ""
-        and row["probe_label"] not in tags
-        and float(row["probe_prob"]) >= threshold
-    )
+    others = [p for label, p in probe_labels(row).items() if label not in tags]
+    return max(others, default=0) >= threshold
 
 
 def log_filter_outcomes(outcomes, unit, dry_run):
@@ -531,6 +551,10 @@ def window_outcome(window, perch_rows, args, tags=()):
         and max(doubts, default=0) >= args.perch_remove_doubt
     ):
         return "perch & birdnet disagrees", True
+    if window.get("birdnet_overlap_match"):
+        # kept, birdnet only found a tag of a track overlapping the window so
+        # may just be hearing the louder bird rather than disagreeing
+        return "birdnet hears overlapping track", False
     if flagged:
         return "perch only", False
     return "kept", False
@@ -565,8 +589,11 @@ def filter_bird_windows(dataset, args):
     perch = {}
     if args.perch_flags is not None:
         with open(args.perch_flags, newline="") as f:
+            # track ids can clash between datasets so rows are matched on the
+            # recording id as well, both prefixed for Train_001 and Train_002
             for row in csv.DictReader(f):
-                perch.setdefault(row["track_id"], []).append(row)
+                key = (row["recording_id"], row["track_id"])
+                perch.setdefault(key, []).append(row)
         logging.info(
             "Loaded perch results for %s tracks from %s", len(perch), args.perch_flags
         )
@@ -622,7 +649,9 @@ def filter_bird_windows(dataset, args):
                 # birdnet and perch only check bird labels
                 outcomes.setdefault(label, Counter())["noise skipped"] += 1
                 continue
-            rows = window_perch(perch.get(track_id), w["window_start"], w["window_end"])
+            rows = window_perch(
+                perch.get((str(r.id), track_id)), w["window_start"], w["window_end"]
+            )
             outcome, remove = window_outcome(w, rows, args, t.human_tags)
             outcomes.setdefault(label, Counter())[outcome] += 1
             if remove:
@@ -939,7 +968,11 @@ def main():
 
     if args.filter_birds:
         filter_bird_windows(dataset, args)
-    check_secondary_tags(dataset, args)
+    # off for now, only tier1 has secondary tags and there they are as much
+    # the clip's labels as the primary ones, which aren't checked per sample.
+    # The bird filter already compares birdnet with primary and secondary
+    # tags. While off no samples get soft tags
+    # check_secondary_tags(dataset, args)
     # for r in dataset.recs:
     #     if "whistler" not in r.human_tags:
     #         print(r.id, " missing", r.human_tags)
@@ -1336,7 +1369,7 @@ def parse_args():
         "--perch-agree-prob",
         type=float,
         default=0.5,
-        help="Perch agrees with a track label if its probe probability or knn agreement for the label is at least this",
+        help="Perch agrees with a track's labels if the probe predicts one of them, or one of them is its knn neighbours' most common tag for at least this fraction of them",
     )
     parser.add_argument(
         "--birdnet-min-conf",

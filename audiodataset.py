@@ -4,7 +4,12 @@ from pathlib import Path
 from collections import namedtuple
 
 from dateutil.parser import parse as parse_date
-from utils import get_label_to_ebird_map, get_ebird_id, get_ebird_ids_to_labels
+from utils import (
+    get_label_to_ebird_map,
+    get_ebird_id,
+    get_ebird_ids_to_labels,
+    prefixed_id,
+)
 import soundfile as sf
 
 import librosa
@@ -460,7 +465,8 @@ class Recording:
     def __init__(self, metadata, filename, config, load_samples=True):
         self.filename = filename
         self.metadata = metadata
-        self.id = metadata.get("id")
+        # Train_001 and Train_002 ids clash so are prefixed with the dataset
+        self.id = prefixed_id(filename, metadata.get("id"))
         self.best_segment = config.best_segment if config is not None else False
         self.device_id = metadata.get("deviceId")
         self.group_id = metadata.get("groupId")
