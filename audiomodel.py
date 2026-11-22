@@ -1735,9 +1735,11 @@ def predict_dataset(model, dataset):
 
 def group_by_track(dataset, predictions):
     """Mean prediction per track and label, from a dataset loaded with
-    load_all_y where y[4] is the track id. A sample covering several tracks
-    has them all in its track id e.g. "123 124" and is grouped with samples of
-    the same tracks
+    load_all_y where y[3] is the recording id and y[4] the track id, a track
+    is its recording and track id as track ids are only unique within a
+    recording (e.g. tier1 clip numbers). A sample covering several tracks has
+    them all in its track id e.g. "123 124" and is grouped with samples of the
+    same tracks
 
     Each label is pooled over the samples that know it, as e.g. a secondary
     bird may only be in some of a track's samples:
@@ -1762,7 +1764,19 @@ def group_by_track(dataset, predictions):
     assert len(track_ids) == len(
         y_pred
     ), f"Track ids {len(track_ids)} don't match predictions {len(y_pred)}"
-    unique_tracks, track_index = np.unique(track_ids, return_inverse=True)
+    # track ids are only unique within a recording, e.g. tier1 track ids are
+    # the clip number, so a track is its recording id and track id
+    rec_ds = dataset.map(
+        lambda x, y: y[3],
+        num_parallel_calls=tf.data.AUTOTUNE,
+        deterministic=True,
+    )
+    rec_ids = np.concatenate(list(rec_ds.as_numpy_iterator()), axis=0)
+    assert len(rec_ids) == len(track_ids)
+    track_keys = np.char.add(
+        np.char.add(rec_ids.astype(str), "|"), track_ids.astype(str)
+    )
+    unique_tracks, track_index = np.unique(track_keys, return_inverse=True)
     num_tracks = len(unique_tracks)
 
     true = (true_categories > 0).astype(np.float64)

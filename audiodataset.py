@@ -667,6 +667,7 @@ class Recording:
             logging.debug("Loading samples when we already have samples")
         global SAMPLE_GROUP_ID
         SAMPLE_GROUP_ID += 1
+
         # merged recordings hold tracks from several clip files, each track's
         # start/end is relative to its own file, offset_start moves it onto the
         # original recording's timeline so overlaps are between real times

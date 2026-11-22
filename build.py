@@ -473,6 +473,7 @@ def check_secondary_tags(dataset, args):
 
     taxonomy = load_taxonomy(Path(__file__).parent / "eBird_taxonomy_v2024.csv")
     counts = {}
+
     def clip_detections(clip):
         detections = []
         for d in clip.metadata.get("birdnet") or []:
@@ -656,7 +657,10 @@ def filter_bird_windows(dataset, args):
     if args.perch_flags is not None:
         with open(args.perch_flags, newline="") as f:
             for row in csv.DictReader(f):
-                perch.setdefault(row["track_id"], []).append(row)
+                # track ids are only unique within a recording, e.g. tier1
+                # track ids are the clip number
+                key = (str(row["recording_id"]), str(row["track_id"]))
+                perch.setdefault(key, []).append(row)
         logging.info(
             "Loaded perch results for %s tracks from %s", len(perch), args.perch_flags
         )
@@ -720,7 +724,10 @@ def filter_bird_windows(dataset, args):
                 # birdnet and perch only check bird labels
                 outcomes.setdefault(label, Counter())["noise skipped"] += 1
                 continue
-            rows = window_perch(perch.get(track_id), w["window_start"], w["window_end"])
+            track_perch = perch.get((str(r.id), track_id))
+            if perch and not track_perch:
+                perch_missing.add((str(r.id), track_id))
+            rows = window_perch(track_perch, w["window_start"], w["window_end"])
             outcome, remove = window_outcome(w, rows, args, t.human_tags)
             outcomes.setdefault(label, Counter())[outcome] += 1
             results.append((track_id, w["window_start"], w["window_end"], remove))
@@ -738,6 +745,9 @@ def filter_bird_windows(dataset, args):
 
     outcomes = {}
     overlap_outcomes = {}
+    # bird tracks checked without perch results, e.g. a perch csv made before
+    # the metadata ids changed
+    perch_missing = set()
     removed_samples = 0
     dropped_labels = Counter()
     for r in dataset.recs.values():
@@ -783,6 +793,14 @@ def filter_bird_windows(dataset, args):
     log_filter_outcomes(outcomes, "windows", args.filter_dry_run)
     logging.info("Removed %s samples in removed windows", removed_samples)
     log_filter_outcomes(overlap_outcomes, "overlap sections", args.filter_dry_run)
+    if perch_missing:
+        logging.warning(
+            "%s bird tracks have no perch results in %s (matched by recording id"
+            " and track id), e.g. %s",
+            len(perch_missing),
+            args.perch_flags,
+            sorted(perch_missing)[:3],
+        )
     if dropped_labels:
         logging.info(
             "Dropped labels of overlapping tracks from kept samples where their"
@@ -1056,7 +1074,9 @@ def remove_ignored_recs(dataset):
     for rec_id in ignored:
         dataset.remove_rec(rec_id)
     logging.info(
-        "Removed %s clips of ignored recordings %s", len(ignored), sorted(IGNORE_REC_IDS)
+        "Removed %s clips of ignored recordings %s",
+        len(ignored),
+        sorted(IGNORE_REC_IDS),
     )
 
 
@@ -1291,12 +1311,12 @@ def validate_datasets(datasets):
     """A recording (and every sample and bin of it) must be in only one of
     train, validation, test"""
     for key in ("bin_id", "rec_id"):
-        ids = [
-            (d.name, {str(getattr(s, key)) for s in d.samples}) for d in datasets
-        ]
+        ids = [(d.name, {str(getattr(s, key)) for s in d.samples}) for d in datasets]
         # recordings added whole (split_by_file) are in recs
         if key == "rec_id":
-            ids = [(n, i | {str(r) for r in d.recs}) for (n, i), d in zip(ids, datasets)]
+            ids = [
+                (n, i | {str(r) for r in d.recs}) for (n, i), d in zip(ids, datasets)
+            ]
         for a in range(len(ids)):
             for b in range(a + 1, len(ids)):
                 shared = ids[a][1] & ids[b][1]

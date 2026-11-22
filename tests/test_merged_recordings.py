@@ -118,7 +118,13 @@ class LoadTest(unittest.TestCase):
                 end = float(min(duration, start + rng.uniform(1, 30)))
                 best = float(rng.uniform(start, max(start, end - SEG)))
                 tracks.append(
-                    track(i * 10 + j, labels[rng.randint(len(labels))], start, end, best_start=best)
+                    track(
+                        i * 10 + j,
+                        labels[rng.randint(len(labels))],
+                        start,
+                        end,
+                        best_start=best,
+                    )
                 )
             files[f"{i:03d}"] = clip_meta(i, tracks, duration)
         write_dir(cls.dir, files)
@@ -352,7 +358,9 @@ class DropRemovedOverlapsTest(unittest.TestCase):
             )
         }
         dataset, tracks = self.load(files, True)
-        sample = [s for s in dataset.samples if own_track(s) == 1 and 2 in s.track_ids][0]
+        sample = [s for s in dataset.samples if own_track(s) == 1 and 2 in s.track_ids][
+            0
+        ]
         tui = ad.get_ebird_id("tui", ad.labels_to_ebird_map)
         self.assertIn(tui, sample.secondary_tags)
         lost = build.drop_removed_overlaps(sample, self.reject(sample, 2), tracks)
@@ -362,9 +370,10 @@ class DropRemovedOverlapsTest(unittest.TestCase):
         # the removed track's secondary goes too
         self.assertNotIn(tui, sample.secondary_tags)
 
-    def filter(self, dataset, reject_track, best_segment):
+    def filter(self, dataset, reject_track, best_segment, perch_flags=None, seen=None):
         """filter_bird_windows with birdnet judging stubbed, the windows of
-        reject_track are rejected, returns the windows judged per track"""
+        reject_track are rejected, returns the windows judged per track. seen
+        gets the perch rows each window was judged with"""
         judged = {}
 
         def fake_track_results(filename, meta, taxonomy, args, window_rows=None):
@@ -384,12 +393,14 @@ class DropRemovedOverlapsTest(unittest.TestCase):
             return iter(())
 
         def fake_outcome(window, perch_rows, args, tags=()):
+            if seen is not None:
+                seen.setdefault(str(window["track_id"]), []).extend(perch_rows)
             if str(window["track_id"]) == str(reject_track):
                 return "rejected", True
             return "kept", False
 
         args = Namespace(
-            perch_flags=None,
+            perch_flags=perch_flags,
             birdnet_min_conf=0.5,
             clear_signal_db=6,
             best_segment=best_segment,
@@ -436,6 +447,42 @@ class DropRemovedOverlapsTest(unittest.TestCase):
         self.assertTrue(any(morepork in tags for tags in before.values()))
         for s in kiwi_samples:
             self.assertNotIn(morepork, s.tags)
+
+    def test_perch_matched_by_recording_and_track(self):
+        import csv
+
+        dataset, _ = self.load(self.two_clips(birdnet=[]), False)
+        perch_file = self.dir / "perch.csv"
+        with open(perch_file, "w", newline="") as f:
+            writer = csv.DictWriter(
+                f, ["recording_id", "track_id", "perch_start", "perch_end", "which"]
+            )
+            writer.writeheader()
+            # track 2 of this recording, and a track 2 of another recording
+            writer.writerow(
+                {
+                    "recording_id": "R",
+                    "track_id": "2",
+                    "perch_start": 0,
+                    "perch_end": 5,
+                    "which": "mine",
+                }
+            )
+            writer.writerow(
+                {
+                    "recording_id": "OTHER",
+                    "track_id": "2",
+                    "perch_start": 0,
+                    "perch_end": 5,
+                    "which": "other",
+                }
+            )
+        seen = {}
+        self.filter(dataset, None, False, perch_flags=perch_file, seen=seen)
+        self.assertTrue(seen["2"])
+        self.assertEqual({row["which"] for row in seen["2"]}, {"mine"})
+        # track 1 has no perch rows of its own
+        self.assertEqual(seen.get("1"), [])
 
     def test_filter_without_birdnet_keeps_overlaps(self):
         dataset, tracks = self.load(self.two_clips(), False)
@@ -493,3 +540,35 @@ class SecondaryPerClipTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GroupByTrackTest(unittest.TestCase):
+    """Evaluation groups samples by recording and track id, track ids are only
+    unique within a recording (tier1 clip numbers)"""
+
+    def test_same_track_id_in_two_recordings(self):
+        import tensorflow as tf
+
+        import audiomodel
+
+        rec = np.array([b"A", b"A", b"B", b"A"])
+        trk = np.array([b"16", b"16", b"16", b"17"])
+        lab = np.array([[1, 0], [1, 0], [0, 1], [0, 1]], np.float32)
+        zeros = np.zeros_like(lab)
+        y = (lab, zeros, np.zeros(4, np.float32), rec, trk) + (zeros,) * 6
+        ds = tf.data.Dataset.from_tensor_slices(
+            (np.zeros((4, 1), np.float32), y)
+        ).batch(2)
+        pred = np.array([[0.9, 0.1], [0.7, 0.1], [0.2, 0.8], [0.1, 0.6]], np.float32)
+        true, track_pred, _, _ = audiomodel.group_by_track(ds, (lab, pred))
+        # A|16, A|17, B|16
+        self.assertEqual(len(true), 3)
+        rows = sorted(zip(true.tolist(), np.round(track_pred, 3).tolist()))
+        self.assertEqual(
+            rows,
+            [
+                ([0.0, 1.0], [0.1, 0.6]),
+                ([0.0, 1.0], [0.2, 0.8]),
+                ([1.0, 0.0], [0.8, 0.1]),
+            ],
+        )

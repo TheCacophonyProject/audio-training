@@ -15,6 +15,7 @@ by otherdata.tier1_data. Clips without a .txt are counted and skipped.
 
 python3 scripts/tier1_add_meta.py /data/.../tier1 [--dry-run]
 """
+
 import argparse, csv, json, re
 from collections import Counter
 from datetime import datetime
@@ -26,7 +27,9 @@ PLOT_RE = re.compile(
     r"^([A-Z]+\d+)[A-Z]*_(BIR[A-Z])_(\d{6}|\d{8})_(\d{6})_(\d+)\.flac$"
 )
 LATEST_YEAR = 2025
-UUID_RE = re.compile(r"^([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})_(\d+)\.flac$")
+UUID_RE = re.compile(
+    r"^([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})_(\d+)\.flac$"
+)
 
 
 def parse_datetime(date, time):
@@ -113,7 +116,7 @@ def main():
             else:
                 dry_test = Path(meta_file.name)
                 dry_test.write_text(json.dumps(meta, indent=4))
-                print("Saving too ",dry_test)
+                print("Saving too ", dry_test)
                 break
             stats[f"{folder} updated"] += 1
 
