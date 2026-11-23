@@ -584,18 +584,27 @@ class AudioModel:
                 os.path.join(self.checkpoint_folder, run_name, weights)
             )
             confusion_file = self.checkpoint_folder / run_name / "confusion-val_loss"
-            if args.get("multi_label"):
-                multi_confusion_single(
-                    self.probability_model(),
-                    self.labels,
-                    self.test,
-                    confusion_file,
-                    thresholds or {},
-                    model_name=self.model_name,
-                    split_secondary=True,
-                )
-            else:
-                confusion(self.model, self.labels, self.test, confusion_file)
+            # with a second dataset also confusions of only the main (cacophony)
+            # dataset's test files, as evaluating does
+            eval_sets = [("", self.test)]
+            if self.second_data_dir is not None:
+                eval_sets.append(("cacophony-", None))
+            for prefix, test in eval_sets:
+                if test is None:
+                    test = self.load_eval_set("test", include_second=False, **args)
+                file = confusion_file.parent / f"{prefix}{confusion_file.name}"
+                if args.get("multi_label"):
+                    multi_confusion_single(
+                        self.probability_model(),
+                        self.labels,
+                        test,
+                        file,
+                        thresholds or {},
+                        model_name=self.model_name,
+                        split_secondary=True,
+                    )
+                else:
+                    confusion(self.model, self.labels, test, file)
 
     def save_metadata(self, run_name, history, test_results, thresholds=None, **args):
         #  save metadata
@@ -1007,12 +1016,14 @@ class AudioModel:
     def load_test_set(self, **args):
         self.test = self.load_eval_set("test", **args)
 
-    def load_eval_set(self, split, **args):
+    def load_eval_set(self, split, include_second=True, **args):
         """Unshuffled split with all y loaded, as track ids are needed for the
-        per track thresholds and confusion"""
+        per track thresholds and confusion. include_second False leaves out
+        the second dataset (e.g. tier1), for confusions of only the main
+        (cacophony) dataset"""
         logging.info("Loading %s", split)
         second_dir = None
-        if self.second_data_dir is not None:
+        if include_second and self.second_data_dir is not None:
             second_dir = self.second_data_dir / split
 
         eval_args = dict(args)
@@ -2690,6 +2701,8 @@ def main():
             cache=True,
             load_all_y=True,
             noise_dirs=None if args.eval_labels else args.noise_dirs,
+            # evaluate on the same records the model was trained with
+            drop_tracks=args.drop_tracks or meta_data.get("drop_tracks"),
             only_labels=args.eval_labels,
             # models with a mel layer take raw audio
             mel_in_model=meta_data.get("mel_in_model", False),
@@ -2902,6 +2915,12 @@ def parse_args():
         type=none_or_str,
         default=None,
         help="Secondary dataset directory to use",
+    )
+    parser.add_argument(
+        "--drop-tracks",
+        default=None,
+        help="File of rec_id,track_id lines, records with any of these tracks"
+        " are left out of every split e.g. from scripts/tier1_morepork_check.py",
     )
     parser.add_argument(
         "--noise-dirs",

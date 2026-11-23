@@ -222,6 +222,29 @@ class MergedTest(unittest.TestCase):
                 )
                 self.assertEqual(len(dataset.samples), len(r.samples))
 
+    def test_rms_filtered_track_doesnt_label_overlaps(self):
+        def filtered_tighten(self, metadata, segment_length, tighten, filter_rms):
+            fake_tighten(self, metadata, segment_length, tighten, filter_rms)
+            self.rms_filtered = metadata.get("rms_filtered", False)
+
+        files = self.three_clips()
+        files["R_002"]["Tracks"][0]["rms_filtered"] = True
+        write_dir(self.dir, files)
+        kiwi = ad.get_ebird_id("kiwi", ad.labels_to_ebird_map)
+        for best_segment in (False, True):
+            with self.subTest(best_segment=best_segment):
+                with mock.patch.object(ad.Track, "tighten_track", filtered_tighten):
+                    dataset = load(self.dir, best_segment)
+                labels = self.labels_by_track(dataset)
+                # the filtered kiwi track makes no samples and isn't added to
+                # the morepork samples it overlaps
+                self.assertNotIn(2, labels)
+                self.assertTrue(labels[1])
+                self.assertTrue(all(kiwi not in tags for tags in labels[1]))
+                self.assertTrue(
+                    all(2 not in s.track_ids for s in dataset.samples)
+                )
+
     def test_overlapping_clips_share_labels(self):
         dataset = self.load(self.three_clips(), False)
         labels = self.labels_by_track(dataset)

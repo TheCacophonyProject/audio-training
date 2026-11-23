@@ -853,7 +853,9 @@ class Recording:
                     rec_start = start + offset
                     rec_end = end + offset
                     for other_track in sorted_tracks:
-                        if track == other_track:
+                        # rms filtered tracks make no samples so shouldn't
+                        # label other tracks samples either
+                        if track == other_track or other_track.rms_filtered:
                             continue
                         # another file's track is only on the same timeline if
                         # both files have offsets into the original recording

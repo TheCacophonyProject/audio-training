@@ -1,3 +1,4 @@
+import re
 import sys
 import math
 import argparse
@@ -223,6 +224,44 @@ BIRD_WEIGHTING = []
 SPECIFIC_BIRD_MASK = []
 
 
+# tier1 rec ids can be prefixed with their folder e.g. Train_001-AA138_BIRA_..
+TIER1_PREFIX = "^Train_[0-9]+-"
+DROP_TABLES = {}
+
+
+def drop_tracks_table(path):
+    """Lookup table of the "rec_id,track_id" lines in path, records with any
+    of these tracks are dropped. Loaded once per file"""
+    path = str(path)
+    if path not in DROP_TABLES:
+        keys = set()
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                rec_id, track_id = line.rsplit(",", 1)
+                rec_id = re.sub(TIER1_PREFIX, "", rec_id.strip())
+                keys.add(f"{rec_id}|{track_id.strip()}")
+        logging.info("Dropping records with any of %s tracks in %s", len(keys), path)
+        keys = sorted(keys)
+        DROP_TABLES[path] = tf.lookup.StaticHashTable(
+            tf.lookup.KeyValueTensorInitializer(
+                tf.constant(keys), tf.ones(len(keys), dtype=tf.int32)
+            ),
+            default_value=0,
+        )
+    return DROP_TABLES[path]
+
+
+def keep_track(rec_id, track_ids, table):
+    """False if any of the record's tracks (space separated track_ids, its own
+    track last and any overlapping tracks whose labels it has) is in table"""
+    rec_id = tf.strings.regex_replace(rec_id, TIER1_PREFIX, "")
+    keys = rec_id + "|" + tf.strings.split(track_ids, " ")
+    return tf.reduce_all(table.lookup(keys) == 0)
+
+
 def load_dataset(filenames, num_labels, labels, args):
     deterministic = args.get("deterministic", False)
     if not deterministic:
@@ -295,6 +334,11 @@ def load_dataset(filenames, num_labels, labels, args):
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
+
+    drop_tracks = args.get("drop_tracks")
+    if drop_tracks and read_record is read_tfrecord:
+        table = drop_tracks_table(drop_tracks)
+        dataset = dataset.filter(lambda x, y: keep_track(y[3], y[4], table))
 
     # if args.get("filter_bad", False):
     #     logging.info("Filtering bad")
