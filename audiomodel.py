@@ -2331,7 +2331,15 @@ def init_labels(data_dir, **args):
         pass
         # if "human" not in excluded_labels:
         #     excluded_labels.append("human")
-        if "noise" not in excluded_labels:
+        if args.get("add_noise_label", False):
+            # noise is trained as its own label, 1 only when no other label is
+            # in the sample (see exclusive_noise in tfdataset)
+            if "noise" not in labels:
+                labels.append("noise")
+                labels.sort()
+            if "noise" in excluded_labels:
+                excluded_labels.remove("noise")
+        elif "noise" not in excluded_labels:
             excluded_labels.append("noise")
 
     logging.info("labels are %s Excluding %s", labels, excluded_labels)
@@ -2706,6 +2714,7 @@ def main():
             only_labels=args.eval_labels,
             # models with a mel layer take raw audio
             mel_in_model=meta_data.get("mel_in_model", False),
+            add_noise_label=meta_data.get("add_noise_label", False),
         )
         logging.info("Evaluating the %s split", args.eval_split)
         dataset, _, _, _, _ = get_dataset(
@@ -2927,7 +2936,7 @@ def parse_args():
         nargs="+",
         default=None,
         help="Noise record dirs to mix into training audio, each containing a"
-        "train dir e.g. training-data/noise from build.py --noise-dataset",
+        "train dir e.g. training-data/noise from build.py (unless --no-noise-dataset)",
     )
     parser.add_argument(
         "--extra-dirs",
@@ -2967,6 +2976,13 @@ def parse_args():
         help="Clips with any of these labels are never bird mixed, as either "
         "clip (background noise still applies), default kokako3. Give the "
         "flag with no labels to bird mix everything",
+    )
+    parser.add_argument(
+        "--add-noise-label",
+        action="store_true",
+        help="Train noise as a label rather than an all zeros label. Noise is "
+        "1 only when no other label is in the sample, so a bird tagged with "
+        "wind or a bird mixed with a noise clip has noise 0",
     )
     parser.add_argument(
         "--mix-negatives",

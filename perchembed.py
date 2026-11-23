@@ -10,9 +10,21 @@ from pathlib import Path
 import librosa
 import numpy as np
 
-from birdnetcompare import GENERIC_BIRD_TAGS, load_taxonomy, rms_window, tag_taxon
+from birdnetcompare import (
+    is_bird_track,
+    load_taxonomy,
+    primary_tags,
+    rms_window,
+    secondary_tags,
+)
 from birdsconfig import RELABEL_MAP
-from utils import get_ebird_id, get_label_to_ebird_map
+from utils import (
+    ID_PREFIX_DIRS,
+    centre_bonus,
+    get_ebird_id,
+    get_label_to_ebird_map,
+    prefixed_id,
+)
 
 AUDIO_EXTS = [".flac", ".wav", ".m4a", ".mp3", ".ogg"]
 # perch v2 takes 5s of 32kHz audio
@@ -24,6 +36,8 @@ FIELDNAMES = [
     "recording_id",
     "track_id",
     "manual_tags",
+    "secondary_tags",
+    "rec_datetime",
     "track_start",
     "track_end",
     "rms_start",
@@ -108,6 +122,17 @@ def save_shard(out_dir, number, embeddings, rows):
     logging.info("Saved shard %s with %s embeddings", npy, len(rows))
 
 
+def recording_id(txt, meta):
+    """The txt's id, prefixed the same as audiodataset's Recording.id for
+    Train_001 and Train_002 so build.py can match rows to recordings"""
+    rec_id = prefixed_id(txt, meta.get("id"))
+    return None if rec_id is None else str(rec_id)
+
+
+def rec_datetime(meta):
+    return meta.get("rec_datetime") or meta.get("recordingDateTime") or ""
+
+
 def find_audio(txt, meta):
     for ext in AUDIO_EXTS:
         audio = txt.with_suffix(ext)
@@ -156,13 +181,15 @@ def embed(model, y, start):
 
 
 def analyse(args):
-    """Flags tracks whose label doesn't fit their embedding. Uses a logistic
-    regression probe with out of fold probabilities, folds grouped by recording
-    so tracks from the same recording never help predict each other, and the
-    labels of each track's nearest neighbours from other recordings."""
+    """Flags tracks whose label doesn't fit their embedding. Uses a multi label
+    probe, a logistic regression per label, with out of fold probabilities,
+    folds grouped by recording so tracks from the same recording never help
+    predict each other, and the labels of each track's nearest neighbours from
+    other recordings."""
     import joblib
     from sklearn.linear_model import LogisticRegression
     from sklearn.model_selection import StratifiedGroupKFold
+    from sklearn.multiclass import OneVsRestClassifier
     from sklearn.neighbors import NearestNeighbors
 
     print("Loading from ", args.out)
@@ -182,101 +209,134 @@ def analyse(args):
         ebird_id = get_ebird_id(tag, ebird_map)
         return RELABEL_MAP.get(ebird_id, ebird_id)
 
-    tags = [{to_label(t) for t in r["manual_tags"].split(";")} for r in rows]
+    def parse_tags(value):
+        return {to_label(t) for t in value.split(";") if t}
+
+    tags = [parse_tags(r["manual_tags"]) for r in rows]
+    # secondary tags are treated the same as primary tags, in tier1 the rarer
+    # of a clip's labels is made primary so secondary doesn't mean quieter.
+    # Shards made before they were saved have none
+    secondary = [parse_tags(r.get("secondary_tags", "")) for r in rows]
     if not args.include_bird:
         # generic bird says nothing about the species, drop the tag and tracks
         # left with no other tag so they aren't scored or used as neighbours
         tags = [t - {"bird"} for t in tags]
-        keep = [i for i, t in enumerate(tags) if t]
+        secondary = [t - {"bird"} for t in secondary]
+        keep = [i for i, (t, s) in enumerate(zip(tags, secondary)) if t or s]
         logging.info(
             "Skipping %s windows only tagged bird, use --include-bird to keep them",
             len(rows) - len(keep),
         )
         rows = [rows[i] for i in keep]
         tags = [tags[i] for i in keep]
+        secondary = [secondary[i] for i in keep]
         x = x[keep]
     groups = np.array([r["recording_id"] or r["file"] for r in rows])
-    # the probe trains on a track's own tags, the checks below also accept the
-    # tags of tracks overlapping its window
-    overlap_tags = window_tags(rows, tags, args.min_overlap, args.min_overlap_fraction)
+    # the track's own tags, primary and secondary
+    heard = [t | s for t, s in zip(tags, secondary)]
+    # everything in a window, the track's own tags plus those of entries of
+    # the same recording overlapping it. The probe trains on these and the
+    # checks below accept any of them
+    # overlaps are within a file, tier1 clips of the same recording share its
+    # recording_id but each file's times start at 0. Folds and knn still
+    # group by recording_id so a recording's clips never help predict each other
+    overlap_tags = window_tags(rows, heard, np.array([r["file"] for r in rows]))
     logging.info(
-        "%s of %s windows overlap a track with other tags",
-        sum(len(w) > len(t) for w, t in zip(overlap_tags, tags)),
+        "%s of %s windows overlap an entry with other tags",
+        sum(len(w) > len(t) for w, t in zip(overlap_tags, heard)),
         len(rows),
     )
 
-    # train the probe on single tag tracks of labels with enough examples,
-    # multi tag tracks and rare labels are still scored
-    counts = Counter(next(iter(t)) for t in tags if len(t) == 1)
-
-    classes = sorted(l for l, c in counts.items() if c >= args.min_label_count)
-    class_index = {l: i for i, l in enumerate(classes)}
-    train = np.array(
-        [i for i, t in enumerate(tags) if len(t) == 1 and next(iter(t)) in class_index]
-    )
     probs = None
+    classes = []
+    class_index = {}
     if args.load_probe:
-        logging.info("%s tracks", len(rows))
         # score with a probe trained on other embeddings e.g. the rms windows,
         # so no out of fold training here
         saved = joblib.load(args.load_probe)
-        model = saved["model"]
-        probe_probs = np.zeros((len(rows), len(saved["classes"])), dtype=np.float32)
-        probe_probs[:, model.classes_] = model.predict_proba(x)
-        # probe classes that relabel to the same label e.g. kelp gull and
-        # gull sp. are summed, as the probe's classes are exclusive
-        probe_labels = [to_label(c) for c in saved["classes"]]
-        classes = list(dict.fromkeys(probe_labels))
+        if "thresholds" not in saved:
+            raise ValueError(
+                f"{args.load_probe} is a single label probe, retrain it with --save-probe"
+            )
+        classes = list(saved["classes"])
+        # tags are relabelled before training so the classes should already be,
+        # if not RELABEL_MAP has changed since the probe was saved
+        if [to_label(c) for c in classes] != classes:
+            raise ValueError(
+                f"{args.load_probe} classes don't match the current RELABEL_MAP, retrain it"
+            )
         class_index = {l: i for i, l in enumerate(classes)}
-        probs = np.zeros((len(rows), len(classes)), dtype=np.float32)
-        for i, label in enumerate(probe_labels):
-            probs[:, class_index[label]] += probe_probs[:, i]
+        thresholds = np.asarray(saved["thresholds"], dtype=np.float32)
+        probs = saved["model"].predict_proba(x).astype(np.float32)
         logging.info(
-            "Scoring with probe %s of %s labels", args.load_probe, len(classes)
-        )
-        scored = [i for i, t in enumerate(tags) if len(t) == 1 and t <= set(classes)]
-        if scored:
-            y = np.array([class_index[next(iter(tags[i]))] for i in scored])
-            accuracy = np.mean(probs[scored].argmax(axis=1) == y)
-            logging.info("Probe accuracy on single tag tracks %.3f", accuracy)
-    elif len(classes) >= 2:
-        logging.info(
-            "%s tracks, probe trained on %s tracks of %s labels with at least %s tracks",
+            "Scoring %s windows with probe %s of %s labels",
             len(rows),
-            len(train),
+            args.load_probe,
             len(classes),
-            args.min_label_count,
         )
-        y = np.array([class_index[next(iter(tags[i]))] for i in train])
-        probs = np.zeros((len(rows), len(classes)), dtype=np.float32)
-
-        def probe():
-            return LogisticRegression(max_iter=1000, class_weight="balanced")
-
-        folds = min(args.folds, len(set(groups[train])))
-        splitter = StratifiedGroupKFold(n_splits=folds, shuffle=True, random_state=0)
-        for fold_train, fold_test in splitter.split(x[train], y, groups[train]):
-            model = probe().fit(x[train][fold_train], y[fold_train])
-            # a fold can miss a rare class, map its columns back
-            probs[train[fold_test][:, None], model.classes_] = model.predict_proba(
-                x[train][fold_test]
-            )
-        others = np.setdiff1d(np.arange(len(rows)), train)
-        if len(others) or args.save_probe:
-            model = probe().fit(x[train], y)
-        if len(others):
-            probs[others[:, None], model.classes_] = model.predict_proba(x[others])
-        if args.save_probe:
-            joblib.dump({"model": model, "classes": classes}, args.save_probe)
-            logging.info(
-                "Saved probe trained on all %s tracks to %s",
-                len(train),
-                args.save_probe,
-            )
-        accuracy = np.mean(probs[train].argmax(axis=1) == y)
-        logging.info("Out of fold probe accuracy %.3f", accuracy)
     else:
-        logging.info("Need at least 2 labels with enough tracks for the probe")
+        # labels heard in enough windows, rarer labels are still scored by knn
+        counts = Counter(t for w in overlap_tags for t in w)
+        classes = sorted(l for l, c in counts.items() if c >= args.min_label_count)
+        class_index = {l: i for i, l in enumerate(classes)}
+        if len(classes) >= 2:
+            y = multi_hot(overlap_tags, class_index)
+            logging.info(
+                "Probe trained on %s windows, %s with more than one label, of %s "
+                "labels heard in at least %s windows",
+                len(rows),
+                int((y.sum(axis=1) > 1).sum()),
+                len(classes),
+                args.min_label_count,
+            )
+
+            def probe():
+                # an independent logistic regression per label, balanced
+                # between its positive and negative windows
+                return OneVsRestClassifier(
+                    LogisticRegression(max_iter=1000, class_weight="balanced"),
+                    n_jobs=-1,
+                )
+
+            # multi hot labels can't be stratified, use each window's rarest
+            # label so rare labels are spread over the folds
+            rarest = np.array(
+                [
+                    min((counts[t], class_index[t]) for t in w if t in class_index)[1]
+                    if w & class_index.keys()
+                    else len(classes)
+                    for w in overlap_tags
+                ]
+            )
+            probs = np.zeros(y.shape, dtype=np.float32)
+            folds = min(args.folds, len(set(groups)))
+            splitter = StratifiedGroupKFold(
+                n_splits=folds, shuffle=True, random_state=0
+            )
+            with warnings.catch_warnings():
+                # a fold can miss a rare label, it's then predicted as never
+                warnings.filterwarnings("ignore", message="Label .* is present in all")
+                warnings.filterwarnings("ignore", message="Label not .* is present")
+                for fold_train, fold_test in splitter.split(x, rarest, groups):
+                    model = probe().fit(x[fold_train], y[fold_train])
+                    probs[fold_test] = model.predict_proba(x[fold_test])
+            thresholds = best_thresholds(y, probs)
+            if args.save_probe:
+                model = probe().fit(x, y)
+                joblib.dump(
+                    {"model": model, "classes": classes, "thresholds": thresholds},
+                    args.save_probe,
+                )
+                logging.info(
+                    "Saved probe trained on all %s windows to %s",
+                    len(rows),
+                    args.save_probe,
+                )
+        else:
+            logging.info("Need at least 2 labels with enough windows for the probe")
+            classes, class_index = [], {}
+    if probs is not None:
+        log_probe_metrics(multi_hot(overlap_tags, class_index), probs, thresholds, classes)
 
     # neighbours from the same recording sound alike so are skipped
     neighbours = NearestNeighbors(n_neighbors=min(len(rows), args.knn * 4 + 1)).fit(x)
@@ -286,27 +346,53 @@ def analyse(args):
     for i, row in enumerate(rows):
         result = dict(row)
         result["label"] = ";".join(sorted(tags[i]))
+        # relabelled the same as label, secondary_tags is as in the txt
+        result["secondary_label"] = ";".join(sorted(secondary[i]))
         result["window_label"] = ";".join(sorted(overlap_tags[i]))
 
         own_prob = None
-        result.update(probe_own_prob="", probe_label="", probe_prob="")
+        doubtful = None
+        result.update(
+            probe_own_prob="", probe_doubtful="", probe_labels="", probe_missing=""
+        )
         if probs is not None:
-            known = [class_index[t] for t in overlap_tags[i] if t in class_index]
-            if known:
-                own_prob = float(probs[i, known].max())
+            # labels are scored independently so each of the track's own tags,
+            # primary and secondary, is checked, the least likely one is its
+            # probe score
+            own = [class_index[t] for t in heard[i] if t in class_index]
+            if own:
+                own_prob = float(probs[i, own].min())
                 result["probe_own_prob"] = round(own_prob, 3)
-            top = int(probs[i].argmax())
-            result["probe_label"] = classes[top]
-            result["probe_prob"] = round(float(probs[i, top]), 3)
+                doubtful = [
+                    classes[c]
+                    for c in own
+                    if probs[i, c]
+                    < (
+                        thresholds[c]
+                        if args.probe_threshold is None
+                        else args.probe_threshold
+                    )
+                ]
+                result["probe_doubtful"] = ";".join(sorted(doubtful))
+            predicted = np.flatnonzero(probs[i] >= thresholds)
+            predicted = predicted[np.argsort(-probs[i, predicted])]
+            result["probe_labels"] = ";".join(
+                f"{classes[c]}:{probs[i, c]:.2f}" for c in predicted
+            )
+            # predicted but not tagged on anything in the window, possibly a
+            # missing tag
+            result["probe_missing"] = ";".join(
+                classes[c] for c in predicted if classes[c] not in overlap_tags[i]
+            )
 
         others = [n for n in nearest[i] if groups[n] != groups[i]][: args.knn]
         agreement = None
         result.update(knn_agreement="", knn_label="", knn_label_fraction="")
         if others:
-            agreement = sum(1 for n in others if tags[n] & overlap_tags[i]) / len(
+            agreement = sum(1 for n in others if heard[n] & overlap_tags[i]) / len(
                 others
             )
-            neighbour_tags = Counter(t for n in others for t in tags[n])
+            neighbour_tags = Counter(t for n in others for t in heard[n])
             knn_label, knn_count = neighbour_tags.most_common(1)[0]
             result["knn_agreement"] = round(agreement, 3)
             result["knn_label"] = knn_label
@@ -315,14 +401,12 @@ def analyse(args):
         scores = [s for s in (own_prob, agreement) if s is not None]
         result["doubt"] = round(1 - sum(scores) / len(scores), 3) if scores else ""
         # both have to disagree, either alone is too noisy
-        result["flagged"] = bool(scores) and all(
-            s < t
-            for s, t in (
-                (own_prob, args.probe_threshold),
-                (agreement, args.knn_threshold),
-            )
-            if s is not None
-        )
+        checks = []
+        if doubtful is not None:
+            checks.append(bool(doubtful))
+        if agreement is not None:
+            checks.append(agreement < args.knn_threshold)
+        result["flagged"] = bool(checks) and all(checks)
         results.append(result)
 
     results.sort(key=lambda r: -1 if r["doubt"] == "" else -r["doubt"])
@@ -359,29 +443,104 @@ def analyse(args):
         )
 
 
-def window_tags(rows, tags, min_overlap, min_overlap_fraction):
-    """Tags of each row's track plus those of the other tracks in its recording
-    overlapping its perch window e.g. a blackbird calling behind a fantail. A
-    track overlaps when at least min_overlap seconds or min_overlap_fraction of
-    it is in the window, so short tracks inside the window count"""
-    tracks = {}
-    for row, row_tags in zip(rows, tags):
-        tracks.setdefault(row["file"], {})[row["track_id"]] = (
-            float(row["track_start"]),
-            float(row["track_end"]),
-            row_tags,
+def multi_hot(tag_sets, class_index):
+    y = np.zeros((len(tag_sets), len(class_index)), dtype=np.int8)
+    for i, tag_set in enumerate(tag_sets):
+        for tag in tag_set:
+            if tag in class_index:
+                y[i, class_index[tag]] = 1
+    return y
+
+
+def best_thresholds(y, probs):
+    """Per label the probability threshold with the best F1, from out of fold
+    probabilities. Rare labels usually need a lower one than common labels"""
+    from sklearn.metrics import precision_recall_curve
+
+    thresholds = np.full(y.shape[1], 0.5, dtype=np.float32)
+    for c in range(y.shape[1]):
+        if not y[:, c].any():
+            continue
+        precision, recall, cuts = precision_recall_curve(y[:, c], probs[:, c])
+        # the last precision and recall have no threshold
+        f1 = 2 * precision[:-1] * recall[:-1] / np.maximum(
+            precision[:-1] + recall[:-1], 1e-10
         )
-    result = []
-    for row, row_tags in zip(rows, tags):
-        start = float(row["perch_start"])
-        end = float(row["perch_end"])
-        window = set(row_tags)
-        for track_start, track_end, other in tracks[row["file"]].values():
-            overlap = min(end, track_end) - max(start, track_start)
-            needed = min(min_overlap, min_overlap_fraction * (track_end - track_start))
-            if overlap > 0 and overlap >= needed:
-                window |= other
-        result.append(window)
+        thresholds[c] = cuts[np.argmax(f1)]
+    return thresholds
+
+
+def log_probe_metrics(y, probs, thresholds, classes):
+    """Average precision and F1 at each label's threshold, worst labels first"""
+    from sklearn.metrics import average_precision_score, f1_score
+
+    present = np.flatnonzero(y.any(axis=0))
+    if not len(present):
+        logging.info("No windows tagged with the probe's labels to score it on")
+        return
+    predicted = probs >= thresholds
+    scores = {
+        c: (
+            average_precision_score(y[:, c], probs[:, c]),
+            f1_score(y[:, c], predicted[:, c]),
+        )
+        for c in present
+    }
+    logging.info(
+        "Probe mean average precision %.3f, mean F1 %.3f over %s labels",
+        np.mean([ap for ap, _ in scores.values()]),
+        np.mean([f1 for _, f1 in scores.values()]),
+        len(present),
+    )
+    logging.info("Per label (average precision / F1 / threshold / windows):")
+    for c, (ap, f1) in sorted(scores.items(), key=lambda kv: kv[1][0]):
+        logging.info(
+            "  %s: %.3f / %.3f / %.2f / %s",
+            classes[c],
+            ap,
+            f1,
+            thresholds[c],
+            int(y[:, c].sum()),
+        )
+
+
+def window_tags(rows, tags, groups):
+    """Each row's tags plus the tags of the other rows of the same group (file)
+    overlapping its perch window e.g. a blackbird calling behind a fantail. A
+    row with a best rms window overlaps when that window's centre is inside the
+    perch window, full track rows have none so overlap when their perch windows
+    do. tags should hold primary and secondary tags so all of both rows' tags
+    are combined"""
+    by_recording = {}
+    for i, group in enumerate(groups):
+        by_recording.setdefault(group, []).append(i)
+
+    result = [None] * len(rows)
+    for members in by_recording.values():
+        members = np.array(members)
+        starts = np.array([float(rows[i]["perch_start"]) for i in members])
+        ends = np.array([float(rows[i]["perch_end"]) for i in members])
+        has_rms = np.array(
+            [rows[i].get("rms_start", "") != "" and rows[i].get("rms_end", "") != "" for i in members]
+        )
+        centres = np.array(
+            [
+                (float(rows[i]["rms_start"]) + float(rows[i]["rms_end"])) / 2
+                if rms
+                else np.nan
+                for i, rms in zip(members, has_rms)
+            ]
+        )
+        for i, start, end in zip(members, starts, ends):
+            overlaps = np.where(
+                has_rms,
+                (centres >= start) & (centres <= end),
+                (starts < end) & (ends > start),
+            )
+            window = set(tags[i])
+            for other in members[overlaps]:
+                window |= tags[other]
+            result[i] = window
     return result
 
 
@@ -447,7 +606,7 @@ def main():
         "--min-label-count",
         type=int,
         default=10,
-        help="Labels with fewer single tag tracks aren't trained on by the probe",
+        help="Labels heard in fewer windows aren't trained on by the probe",
     )
     parser.add_argument("--folds", type=int, default=5)
     parser.add_argument(
@@ -456,25 +615,12 @@ def main():
         help="With --analyse also analyse generic bird tags, by default they are "
         "dropped and tracks only tagged bird are skipped",
     )
-    parser.add_argument(
-        "--min-overlap",
-        type=float,
-        default=0.1,
-        help="Seconds of another track in a window for its tags to count as the "
-        "window's tags",
-    )
-    parser.add_argument(
-        "--min-overlap-fraction",
-        type=float,
-        default=0.5,
-        help="or fraction of the other track, for tracks shorter than --min-overlap",
-    )
     parser.add_argument("--knn", type=int, default=10, help="Neighbours to compare")
     parser.add_argument(
         "--probe-threshold",
         type=float,
-        default=0.2,
-        help="Flag when the out of fold probability of the track's label is below this",
+        help="Flag when the out of fold probability of one of the track's tags "
+        "is below this, by default each label's own threshold with the best F1",
     )
     parser.add_argument(
         "--knn-threshold",
@@ -539,23 +685,18 @@ def main():
             duration = len(y) / PERCH_SR
 
             for track in tracks:
-                # secondary tags (other birds in a clip) aren't the label
-                manual = [
-                    t
-                    for t in track.get("tags", [])
-                    if t.get("automatic") is False and not t.get("secondary")
-                ]
+                # primary and secondary tags are saved separately
+                manual = primary_tags(track)
+                secondary = secondary_tags(track)
                 if args.full_track:
                     window = None
                     perch_windows = track_windows(track, duration)
                 else:
                     # bird tracks use bird_rms, others noise_rms, same as audiodataset
-                    bird_track = any(
-                        tag_taxon(t, taxonomy) is not None
-                        or t["what"] in GENERIC_BIRD_TAGS
-                        for t in manual
+                    bird_track = is_bird_track(manual, taxonomy)
+                    window = rms_window(
+                        track, meta, bird_track, args.segment_length, centre_bonus(txt)
                     )
-                    window = rms_window(track, meta, bird_track, args.segment_length)
                     perch_windows = [perch_window(window, track, duration)]
                 for start, end in perch_windows:
                     embeddings.append(embed(model, y, start))
@@ -563,9 +704,11 @@ def main():
                         {
                             "index": total,
                             "file": str(txt),
-                            "recording_id": meta.get("id"),
+                            "recording_id": recording_id(txt, meta),
                             "track_id": track.get("id"),
                             "manual_tags": ";".join(t["what"] for t in manual),
+                            "secondary_tags": ";".join(t["what"] for t in secondary),
+                            "rec_datetime": rec_datetime(meta),
                             "track_start": track.get("start"),
                             "track_end": track.get("end"),
                             "rms_start": "" if window is None else round(window[0], 2),
@@ -594,5 +737,9 @@ def main():
 if __name__ == "__main__":
     # m4a falls back to audioread which warns on every file
     warnings.filterwarnings("ignore", message="PySoundFile failed")
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     main()

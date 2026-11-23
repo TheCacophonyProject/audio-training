@@ -17,6 +17,7 @@ import sys
 # from config.config import Config
 import numpy as np
 
+from utils import recording_day
 from audiodataset import (
     AudioDataset,
     RELABEL,
@@ -59,148 +60,6 @@ IGNORE_REC_IDS = {
 }
 
 
-def split_label(
-    dataset, datasets, label, existing_test_count=0, max_samples=None, no_test=False
-):
-    # split a label from dataset such that vlaidation is 15% or MIN_BINS
-    # recs = [r for r in dataset.recs if label in r.human_tags]
-
-    samples_by_bin = {}
-    total_tracks = set()
-    total_tracks = 0
-    sample_bins = set()
-    tracks = set()
-    num_samples = 0
-    rec_by_id = dataset.recs
-    for s in dataset.samples:
-        if s.rec_id not in rec_by_id:
-            logging.error("Could not find %s in dataset", s.rec_id)
-            continue
-        rec = rec_by_id[s.rec_id]
-        if label not in rec.human_tags:
-            continue
-        # for s in rec.samples:
-        if label in s.tags:
-            sample_bins.add(s.bin_id)
-            tracks = tracks | set(s.track_ids)
-            num_samples += 1
-        if s.bin_id in samples_by_bin:
-            samples_by_bin[s.bin_id].append(s)
-        else:
-            samples_by_bin[s.bin_id] = [s]
-    # sorted as set order changes between runs, which would change the shuffle
-    sample_bins = sorted(sample_bins)
-    total_tracks = len(tracks)
-    # sample_bins = [sample.bin_id for sample in samples]
-    if len(sample_bins) == 0:
-        return
-    # sample_bins duplicates
-    # sample_bins = list(set(sample_bins))
-    random.shuffle(sample_bins)
-    train_c, validate_c, test_c = datasets
-
-    camera_type = "validate"
-    add_to = validate_c
-    last_index = 0
-    label_count = 0
-    min_samples = MIN_SAMPLES
-    min_bins = MIN_BINS
-    total_bins = len(sample_bins)
-    if label in LOW_SAMPLES_LABELS or total_bins < 20:
-        min_bins = 1
-        min_samples = 1
-
-    if label in LOW_SAMPLES_LABELS:
-        min_samples = 10
-    num_validate_samples = max(num_samples * VAL_PERCENT, min_samples)
-
-    num_test_samples = max(num_samples * TEST_PERCENT, min_samples)
-    if MAX_TEST_SAMPLES is not None:
-        num_test_samples = min(MAX_TEST_SAMPLES, num_test_samples)
-    num_test_samples -= existing_test_count
-    # should have test covered by test set
-    #  VALIDATION LIMITS
-
-    num_validate_bins = max(total_bins * VAL_PERCENT, min_bins)
-
-    # TEST LIMITS
-    num_test_bins = max(total_bins * TEST_PERCENT, min_bins)
-    if MAX_TEST_BINS is not None:
-        num_test_bins = min(MAX_TEST_BINS, num_test_bins)
-
-    num_test_bins -= existing_test_count
-
-    bin_limit = num_validate_bins
-    sample_limit = num_validate_samples
-    bins = set()
-    print(
-        label,
-        "looking for val bins",
-        num_validate_bins,
-        "  out of bins",
-        total_bins,
-        "and # samples",
-        num_validate_samples,
-        "from total samples",
-        num_samples,
-        "# test tracks",
-        num_test_bins,
-        "# num test samples",
-        num_test_samples,
-    )
-    logging.info("Loading Val data %s with samples %s", label, len(sample_bins))
-    recs = set()
-    if total_bins > 0:
-        for i, sample_bin in enumerate(sample_bins):
-            samples = samples_by_bin[sample_bin]
-            for sample in samples:
-                # not really bins but bins are by bins right now
-                bins.add(sample.bin_id)
-                label_count += 1
-                recs.add(sample.rec_id)
-                rec = rec_by_id[sample.rec_id]
-                add_to.add_sample(rec, sample)
-                dataset.remove(sample)
-            samples_by_bin[sample_bin] = []
-            last_index = i
-            bin_count = len(bins)
-            if label_count >= sample_limit and bin_count >= bin_limit:
-                # 100 more for test
-                if no_test:
-                    break
-                if add_to == validate_c:
-                    add_to = test_c
-                    camera_type = "test"
-                    if num_test_samples <= 0:
-                        break
-                    sample_limit = num_test_samples
-                    bin_limit = num_test_bins
-                    label_count = 0
-                    bins = set()
-                    logging.info(
-                        "Loading Test data %s with leftovers %s",
-                        label,
-                        len(sample_bins),
-                    )
-
-                else:
-                    break
-
-        sample_bins = sample_bins[last_index + 1 :]
-    logging.info("Loading Train data with leftovers %s", len(sample_bins))
-
-    camera_type = "train"
-    added = 0
-    for i, sample_bin in enumerate(sample_bins):
-        samples = samples_by_bin[sample_bin]
-        for sample in samples:
-            rec = rec_by_id[sample.rec_id]
-            train_c.add_sample(rec, sample)
-            dataset.remove(sample)
-            added += 1
-        samples_by_bin[sample_bin] = []
-
-
 def get_test_recorder(dataset, test_clips, after_date):
     # load test set camera from tst_clip ids and all clips after a date
     test_c = Recorder("Test-Set-Camera")
@@ -234,26 +93,275 @@ def split_by_file(dataset, split, test_clips=[], no_test=False):
     return datasets
 
 
+# a bin that would take validation or test past this many times the label's
+# sample target is skipped and left for later sets, so one large recording or
+# site can't take most of a rare label
+SPLIT_OVERSHOOT = 1.5
+# a bin taken for one label also moves every other label in it, it can only go
+# to validation or test if each of those stays within this many times its own
+# target there
+COLLATERAL_OVERSHOOT = 1.0
+# a bin (site or station) with more than this share of a label's samples, for
+# labels with at least LARGE_BIN_MIN_SAMPLES, is split into recording + day bins
+# so it can be spread over the sets
+LARGE_BIN_SHARE = 0.25
+LARGE_BIN_MIN_SAMPLES = 100
+
+
+def take_bins(
+    bins,
+    label_counts,
+    sample_target,
+    bin_target,
+    best_fit=False,
+    keep=1,
+    count=0,
+    have=0,
+    max_bins=None,
+    allowed=None,
+):
+    """Bins for validation or test from the shuffled bins until the set has
+    sample_target of the label's samples and bin_target bins, count and have
+    are the samples and bins it already has. A bin that would take the set
+    past SPLIT_OVERSHOOT times sample_target, or that allowed rejects, is
+    skipped and left for later sets, e.g. a rare label with one 100 sample
+    recording and some 10 sample ones gets 10 sample ones in validation. Bins
+    are taken in their shuffled order, or with best_fit (labels with few bins)
+    the one bringing the set closest to sample_target, ties in shuffled order.
+    If the set has no bins and every allowed bin is too big it gets the
+    smallest, so each set has the label when there are enough bins e.g. 40,
+    40, 40 is one each. keep bins are always left for train, at most max_bins
+    are taken"""
+    taken = []
+    left = [b for b in bins if allowed is None or allowed(b)]
+    # bins allowed rejects still count towards what train keeps
+    spare = len(bins) - len(left)
+    while len(left) + spare > keep and left:
+        if max_bins is not None and len(taken) >= max_bins:
+            break
+        have_bins = have + len(taken)
+        if count >= sample_target and have_bins >= bin_target:
+            break
+        fits = [
+            b
+            for b in left
+            if count + label_counts[b] <= sample_target * SPLIT_OVERSHOOT
+        ]
+        if not fits:
+            if have_bins == 0 and sample_target > 0:
+                fits = [min(left, key=lambda b: label_counts[b])]
+            else:
+                break
+        if best_fit:
+
+            def miss(b):
+                return abs(sample_target - count - label_counts[b])
+
+            b = min(fits, key=miss)
+            # stop once another bin would only move the set further from target
+            if have_bins >= bin_target and miss(b) >= abs(sample_target - count):
+                break
+        else:
+            b = fits[0]
+        taken.append(b)
+        left.remove(b)
+        count += label_counts[b]
+    return taken
+
+
+def bin_label_counts(samples):
+    # {bin id: Counter of label: samples}, every sample's bin is in it
+    bins = {}
+    for s in samples:
+        counts = bins.setdefault(s.bin_id, Counter())
+        for label in set(s.tags):
+            counts[label] += 1
+    return bins
+
+
+def split_large_bins(samples, rec_by_id):
+    """Re-bins samples of a bin with more than LARGE_BIN_SHARE of a label's
+    samples (labels with at least LARGE_BIN_MIN_SAMPLES) by recording and day,
+    so a station with most of a label can be spread over the sets. A
+    recording's samples still share a bin"""
+    bins = bin_label_counts(samples)
+    totals = Counter()
+    for counts in bins.values():
+        totals.update(counts)
+    large = {}
+    for b, counts in bins.items():
+        for label, n in counts.items():
+            if totals[label] >= LARGE_BIN_MIN_SAMPLES and n > LARGE_BIN_SHARE * totals[label]:
+                large.setdefault(b, []).append(f"{label} {n}/{totals[label]}")
+    for b, why in sorted(large.items()):
+        logging.info("Splitting large bin %s by recording and day, has %s", b, ", ".join(why))
+    if not large:
+        return
+    for s in samples:
+        if s.bin_id in large:
+            rec = rec_by_id[s.rec_id]
+            when = rec.metadata.get("rec_datetime") or rec.metadata.get(
+                "recordingDateTime"
+            )
+            day = recording_day(when) if when else ""
+            s.bin_id = f"{s.bin_id}-rec:{s.rec_id}-day:{day}"
+
+
 def split_randomly(dataset, datasets=None, test_clips=[], no_test=False):
-    # split data randomly such that a clip is only in one dataset
-    # have tried many ways to split i.e. location and cameras found this is simplest
-    # and the results are the same
+    """Splits the dataset's bins (split keys e.g. a station, see
+    audiodataset.split_key) into train, validation and test so validation has
+    about VAL_PERCENT and test TEST_PERCENT of each label's samples. A bin
+    moves whole, all its samples go to one set. Labels are split rarest
+    (fewest bins) first, each label's targets allow for what is already in
+    the sets from earlier labels' bins and datasets given (split_by_file), and
+    a bin only goes to validation or test if the other labels in it stay
+    within COLLATERAL_OVERSHOOT of their targets there. Bins no label takes
+    go to train"""
     if datasets is None:
         train = AudioDataset("train", dataset.config)
         train.enable_augmentation = True
         validation = AudioDataset("validation", dataset.config)
         test = AudioDataset("test", dataset.config)
         datasets = [train, validation, test]
-    labels = list(dataset.labels)
-    labels.sort()
-    for label in labels:
-        split_label(
-            dataset,
-            datasets,
+    rec_by_id = dataset.recs
+    samples = []
+    for s in dataset.samples:
+        if s.rec_id not in rec_by_id:
+            logging.error("Could not find %s in dataset", s.rec_id)
+            continue
+        samples.append(s)
+    split_large_bins(samples, rec_by_id)
+    names = [d.name for d in datasets]
+    by_name = dict(zip(names, datasets))
+    bins = bin_label_counts(samples)
+
+    # what the sets already have, e.g. from split_by_file. Bins they have keep
+    # their samples together
+    set_counts = {name: Counter() for name in names}
+    set_bins = {name: Counter() for name in names}
+    assigned = {}
+    for d in datasets:
+        for b, counts in bin_label_counts(d.samples).items():
+            set_counts[d.name].update(counts)
+            set_bins[d.name].update(counts.keys())
+            assigned.setdefault(b, d.name)
+    for b in bins:
+        if b in assigned:
+            set_counts[assigned[b]].update(bins[b])
+            set_bins[assigned[b]].update(bins[b].keys())
+
+    totals = Counter()
+    label_bins = {}
+    for name in names:
+        totals.update(set_counts[name])
+    for b, counts in bins.items():
+        if b not in assigned:
+            totals.update(counts)
+        for label in counts:
+            label_bins.setdefault(label, []).append(b)
+
+    use_test = not no_test
+    targets = {}
+    for label, n in totals.items():
+        total_bins = len(label_bins.get(label, []))
+        min_samples = MIN_SAMPLES
+        min_bins = MIN_BINS
+        if label in LOW_SAMPLES_LABELS or total_bins < 20:
+            min_bins = 1
+            min_samples = 1
+        if label in LOW_SAMPLES_LABELS:
+            min_samples = 10
+        val_samples = max(n * VAL_PERCENT, min_samples)
+        test_samples = max(n * TEST_PERCENT, min_samples)
+        if MAX_TEST_SAMPLES is not None:
+            test_samples = min(MAX_TEST_SAMPLES, test_samples)
+        val_bins = max(total_bins * VAL_PERCENT, min_bins)
+        test_bins = max(total_bins * TEST_PERCENT, min_bins)
+        if MAX_TEST_BINS is not None:
+            test_bins = min(MAX_TEST_BINS, test_bins)
+        targets[label] = {
+            "validation": (val_samples, val_bins),
+            "test": (test_samples, test_bins) if use_test else (0, 0),
+            "bins": total_bins,
+        }
+
+    def collateral_ok(b, name, label):
+        for other, n in bins[b].items():
+            if other == label:
+                continue
+            cap = COLLATERAL_OVERSHOOT * targets[other][name][0]
+            if set_counts[name][other] + n > cap:
+                return False
+        return True
+
+    def assign(b, name):
+        assigned[b] = name
+        set_counts[name].update(bins[b])
+        set_bins[name].update(bins[b].keys())
+
+    # rarest first so rare labels pick their bins before common labels' bins
+    # sweep them up, ties in name order
+    order = sorted(label_bins, key=lambda l: (len(label_bins[l]), l))
+    sets = [n for n in ("validation", "test") if n in by_name and (n != "test" or use_test)]
+    for label in order:
+        candidates = sorted(b for b in label_bins[label] if b not in assigned)
+        random.shuffle(candidates)
+        own = {b: bins[b][label] for b in candidates}
+        # with few bins the order matters a lot, so pick the bins that fit best
+        best_fit = targets[label]["bins"] < 20
+        # with few bins each set first takes one bin so validation can't use
+        # up the small ones and leave test only big ones, then they top up
+        rounds = [1, None] if best_fit else [None]
+        for max_bins in rounds:
+            for name in sets:
+                sample_target, bin_target = targets[label][name]
+                taken = take_bins(
+                    [b for b in candidates if b not in assigned],
+                    own,
+                    sample_target,
+                    bin_target,
+                    best_fit,
+                    count=set_counts[name][label],
+                    have=set_bins[name][label],
+                    max_bins=max_bins,
+                    allowed=lambda b, name=name: collateral_ok(b, name, label),
+                )
+                for b in taken:
+                    assign(b, name)
+    for b in bins:
+        if b not in assigned:
+            assign(b, "train")
+
+    for s in samples:
+        by_name[assigned[s.bin_id]].add_sample(rec_by_id[s.rec_id], s)
+    moved = set(map(id, samples))
+    dataset.samples = [s for s in dataset.samples if id(s) not in moved]
+
+    for label in order:
+        counts = [set_counts[name][label] for name in names]
+        logging.info(
+            "%s: %s samples in %s bins, %s",
             label,
-            no_test=no_test,
-            # existing_test_count=existing_test_count,
+            totals[label],
+            targets[label]["bins"],
+            ", ".join(
+                f"{name} {c}"
+                + (
+                    f" (target {targets[label][name][0]:.0f})"
+                    if name in targets[label] and targets[label][name][0]
+                    else ""
+                )
+                for name, c in zip(names, counts)
+            ),
         )
+        for name in sets:
+            if targets[label][name][0] > 0 and not set_counts[name][label]:
+                logging.warning(
+                    "%s has no %s samples, it only has %s bins (recordings or sites)",
+                    name,
+                    label,
+                    targets[label]["bins"],
+                )
     return datasets
 
 
@@ -353,6 +461,7 @@ FILTER_COLUMNS = [
     "birdnet only",
     "birdnet, perch unsure",
     "perch & birdnet disagrees",
+    "birdnet hears overlapping track",
     "perch only",
     "non bird, no signal, perch flagged",
     "non bird, no signal, no perch result",
@@ -367,40 +476,59 @@ def perch_details(row):
         row["doubt"],
         row["probe_own_prob"],
         row["knn_agreement"],
-        row["probe_label"],
+        row["probe_labels"] or "nothing",
         row["knn_label"],
     )
 
 
 def perch_tags(row):
-    # the track's tags and those of tracks overlapping its perch window, joined
-    # with ;. Older flags files only have the track's own label
-    return set(row.get("window_label", row["label"]).split(";"))
+    # everything tagged in the track's perch window, its own and secondary
+    # tags and those of entries of the recording overlapping it, joined with ;
+    return set(row["window_label"].split(";"))
+
+
+def probe_labels(row):
+    # the labels the multi label probe predicts above their thresholds, saved
+    # as label:prob joined with ;
+    labels = {}
+    for item in row["probe_labels"].split(";"):
+        if item:
+            label, prob = item.rsplit(":", 1)
+            labels[label] = float(prob)
+    return labels
+
+
+def own_tags(row):
+    # the track's primary and secondary tags, not those of overlapping entries
+    return {t for t in (row["label"] + ";" + row["secondary_label"]).split(";") if t}
 
 
 def perch_agrees(row, threshold):
-    # perch predicts the label with enough confidence, probe or knn
-    tags = perch_tags(row)
-
-    def score(key):
-        return float(row[key]) if row[key] != "" else 0
-
-    return (row["probe_label"] in tags and score("probe_own_prob") >= threshold) or (
-        row["knn_label"] in tags and score("knn_agreement") >= threshold
+    # the probe predicts at least one of the track's own primary or secondary
+    # tags (not those of overlapping entries) above that label's threshold, or
+    # the most common tag of its knn neighbours is one of them and at least
+    # threshold of them have it. knn_agreement isn't used as it also counts
+    # neighbours with the tags of overlapping entries
+    own = own_tags(row)
+    if own & probe_labels(row).keys():
+        return True
+    fraction = (
+        float(row["knn_label_fraction"]) if row["knn_label_fraction"] != "" else 0
     )
+    return row["knn_label"] in own and fraction >= threshold
 
 
 def perch_confident_other(row, threshold):
-    # the probe confidently predicts a label the track isn't tagged with. Only
-    # for tracks with a label the probe was trained on (probe_own_prob is set),
-    # as for rare labels it can only ever predict something else
+    # the probe confidently predicts a label nothing in the window is tagged
+    # with. Only for tracks with a label the probe was trained on (probe_own_prob
+    # is set), as for rare labels it can only ever predict something else. As
+    # labels are independent this alone may just be another bird, it's used
+    # with flagged which says perch also doubts the track's own tags
+    if row["probe_own_prob"] == "":
+        return False
     tags = perch_tags(row)
-    return (
-        row["probe_own_prob"] != ""
-        and row["probe_prob"] != ""
-        and row["probe_label"] not in tags
-        and float(row["probe_prob"]) >= threshold
-    )
+    others = [p for label, p in probe_labels(row).items() if label not in tags]
+    return max(others, default=0) >= threshold
 
 
 def log_filter_outcomes(outcomes, unit, dry_run):
@@ -554,6 +682,10 @@ def window_outcome(window, perch_rows, args, tags=()):
         and max(doubts, default=0) >= args.perch_remove_doubt
     ):
         return "perch & birdnet disagrees", True
+    if window.get("birdnet_overlap_match"):
+        # kept, birdnet only found a tag of a track overlapping the window so
+        # may just be hearing the louder bird rather than disagreeing
+        return "birdnet hears overlapping track", False
     if flagged:
         return "perch only", False
     return "kept", False
@@ -656,6 +788,8 @@ def filter_bird_windows(dataset, args):
     perch = {}
     if args.perch_flags is not None:
         with open(args.perch_flags, newline="") as f:
+            # track ids can clash between datasets so rows are matched on the
+            # recording id as well, both prefixed for Train_001 and Train_002
             for row in csv.DictReader(f):
                 # track ids are only unique within a recording, e.g. tier1
                 # track ids are the clip number
@@ -1117,7 +1251,11 @@ def main():
 
     if args.filter_birds:
         filter_bird_windows(dataset, args)
-    check_secondary_tags(dataset, args)
+    # off for now, only tier1 has secondary tags and there they are as much
+    # the clip's labels as the primary ones, which aren't checked per sample.
+    # The bird filter already compares birdnet with primary and secondary
+    # tags. While off no samples get soft tags
+    # check_secondary_tags(dataset, args)
     # for r in dataset.recs:
     #     if "whistler" not in r.human_tags:
     #         print(r.id, " missing", r.human_tags)
@@ -1511,7 +1649,7 @@ def parse_args():
         "--perch-agree-prob",
         type=float,
         default=0.5,
-        help="Perch agrees with a track label if its probe probability or knn agreement for the label is at least this",
+        help="Perch agrees with a track's labels if the probe predicts one of them, or one of them is its knn neighbours' most common tag for at least this fraction of them",
     )
     parser.add_argument(
         "--birdnet-min-conf",
@@ -1533,16 +1671,18 @@ def parse_args():
         "seed is picked and logged if not given",
     )
     parser.add_argument(
-        "--noise-dataset",
-        action="store_true",
-        help="Also write samples whose labels are all in NOISE_LABELS to "
-        "training-data/noise/<split> for mixing in as background noise",
+        "--no-noise-dataset",
+        dest="noise_dataset",
+        action="store_false",
+        help="Keep samples whose labels are all in NOISE_LABELS in the main "
+        "dataset, by default they are written to training-data/noise/<split> "
+        "for mixing in as background noise",
     )
     parser.add_argument(
         "--noise-birdnet-conf",
         type=float,
         default=0.5,
-        help="With --noise-dataset noise only samples overlapping a birdnet bird "
+        help="Noise only samples overlapping a birdnet bird "
         "detection with at least this confidence are dropped",
     )
     parser.add_argument(
@@ -1564,7 +1704,7 @@ def init_logging():
     Logs will go to stderr.
     """
 
-    fmt = "%(process)d %(thread)s:%(levelname)7s %(message)s"
+    fmt = "%(asctime)s %(process)d %(thread)s:%(levelname)7s %(message)s"
     logging.basicConfig(
         stream=sys.stderr, level=logging.INFO, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"
     )

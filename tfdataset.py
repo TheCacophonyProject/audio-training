@@ -330,6 +330,7 @@ def load_dataset(filenames, num_labels, labels, args):
             remap_table=args.get("remap_table"),
             extra_table=args.get("extra_table"),
             noise_index=args.get("noise_index"),
+            exclusive_noise=args.get("add_noise_label", False),
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -742,6 +743,7 @@ def get_dataset(dir, labels, global_epoch=None, **args):
                     noise_class_idx=noise_index,
                     mix_negatives=mix_negatives,
                     no_mix_idx=no_mix_idx,
+                    exclusive_noise=args.get("add_noise_label", False),
                 )
 
             augment_fn = tf.function(augment, jit_compile=xla)
@@ -793,7 +795,7 @@ def get_dataset(dir, labels, global_epoch=None, **args):
 
 def split_noise_files(dir, noise_dirs, mix_fraction=0.5):
     """Split the noise records in <noise dir>/<split name> for each noise dir,
-    as written by build.py --noise-dataset, into files used for mixing into
+    as written by build.py (unless --no-noise-dataset), into files used for mixing into
     training audio and files added to the dataset as noise samples.
 
     Split by file, sorted so the split is the same every run
@@ -1362,9 +1364,11 @@ def read_tfrecord(
     remap_table=None,
     extra_table=None,
     noise_index=None,
+    exclusive_noise=False,
 ):
     """remap_table and extra_table map each tag to a label index (-1 for none),
-    as built in get_a_dataset"""
+    as built in get_a_dataset. With exclusive_noise the noise label is only
+    set when no other label is, e.g. morepork + wind is just morepork"""
     tfrecord_format = {"audio/class/text": tf.io.FixedLenFeature((), tf.string)}
     tfrecord_format["audio/class/ebird"] = tf.io.FixedLenFeature((), tf.string)
     # other birds in the sample's clip, birdnet found the secondary ones in the
@@ -1508,6 +1512,10 @@ def read_tfrecord(
                 label * (1 - tf.one_hot(noise_index, num_labels, dtype=tf.int32)),
                 label,
             )
+            if exclusive_noise:
+                not_noise = 1 - tf.one_hot(noise_index, num_labels, dtype=tf.int32)
+                has_other = tf.reduce_any(label * not_noise > 0)
+                label = tf.where(has_other, label * not_noise, label)
         excluded = tf.logical_and(lost_tag, tf.math.count_nonzero(label) == 0)
         label = tf.where(excluded, -tf.ones_like(label), label)
 
@@ -1676,7 +1684,7 @@ def parse_args():
         nargs="+",
         default=None,
         help="Noise record dirs to mix into the audio, each containing a dir "
-        "matching the dataset split e.g. training-data/noise from build.py --noise-dataset",
+        "matching the dataset split e.g. training-data/noise from build.py (unless --no-noise-dataset)",
     )
     parser.add_argument(
         "--extra-dirs",
@@ -2390,6 +2398,7 @@ def apply_raw_mixup(
     mixup_db_range=(-12.0, 0.0),
     mixup_gain_range=(0.5, 0.7),
     mixup_max_gain=4.0,
+    exclusive_noise=False,
 ):
     """
     Path 1 Optimized Mixup: 'bird_batch' now contains both Bird and Animal tracks.
@@ -2555,6 +2564,13 @@ def apply_raw_mixup(
     # Background weather injection leaves labels unchanged
     final_audio = tf.where(mix_noise_mask_audio, audio_with_noise, mixed_bird_audio)
     final_labels = mixed_bird_labels
+    if exclusive_noise and noise_class_idx >= 0:
+        # noise is only a label when nothing else is, e.g. a bird mixed with a
+        # noise only clip is just the bird (also soft lam labels)
+        num_labels = final_labels.shape[-1] or tf.shape(final_labels)[-1]
+        not_noise = 1.0 - tf.one_hot(noise_class_idx, num_labels)
+        has_other = tf.reduce_max(final_labels * not_noise, axis=-1, keepdims=True) > 0
+        final_labels = tf.where(has_other, final_labels * not_noise, final_labels)
 
     # -------------------------------------------------------------
     # STEP 4: PEAK NORMALISATION
