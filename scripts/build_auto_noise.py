@@ -43,14 +43,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from audiodataset import AudioDataset, Config, Recording, load_metadata  # noqa: E402
 from audiowriter import create_tf_records  # noqa: E402
-from birdnetcompare import load_taxonomy  # noqa: E402
-from build import birdnet_bird  # noqa: E402
+from birdnetcompare import detection_taxon, load_taxonomy  # noqa: E402
 from utils import prefixed_id, split_key  # noqa: E402
 
 AUTO_DIR = "auto-noise"
 MOREPORK = {"morepork", "morepo2"}
 MASTER = "Master"
+# Summit Road A213, the site we judge night false positives on, never trained on
+SUMMIT_ROAD_DEVICES = [3267]
 AUDIO_EXT = (".m4a", ".wav", ".mp3", ".flac")
+
+
+KIND_NAMES = {
+    "auto": "automatic noise, candidates",
+    "noise": "human noise (already in the build)",
+    "other": "birds, untagged or Master not noise",
+    "morepork": "Master noise but an automatic morepork",
+    "low": "Master noise below --min-confidence",
+}
 
 
 def is_noise(what):
@@ -86,20 +96,33 @@ def auto_tracks(meta, min_confidence, counts):
     kinds = [track_kind(t, min_confidence) for t in tracks]
     keep = []
     for t, kind in zip(tracks, kinds):
-        counts[f"{kind} tracks"] += 1
+        counts[f"tracks: {KIND_NAMES[kind]}"] += 1
         if kind != "auto":
             continue
         if any(
             k not in ("auto", "noise") and o is not t and overlaps(t, o)
             for o, k in zip(tracks, kinds)
         ):
-            counts["overlaps a non noise track"] += 1
+            counts["automatic noise tracks: overlap a non noise track, dropped"] += 1
             continue
         t = copy.deepcopy(t)
         # the automatic noise tags as the track's label so Recording keeps it
         t["tags"] = [{"what": "noise", "automatic": False}]
         keep.append(t)
     return keep
+
+
+def print_counts(counts, splits):
+    """counts grouped by the section before the colon, in pipeline order"""
+    order = ["recordings", "tracks", "automatic noise tracks", *splits]
+    width = max(len(k) for k in counts)
+    for section in order:
+        rows = [(k, v) for k, v in counts.items() if k.split(":")[0] == section]
+        if not rows:
+            continue
+        print()
+        for k, v in sorted(rows):
+            print(f"{k:{width}} {v:>8}")
 
 
 def load_config(meta):
@@ -125,6 +148,20 @@ def main():
         default="train",
         help="Split for recordings whose site / device key isn't in the split file "
         "(a split name or skip)",
+    )
+    p.add_argument(
+        "--allow-unknown-sites",
+        action="store_true",
+        help="Run even if no -d recording is in the split file (then no site's "
+        "split is known and every recording goes to --new-split)",
+    )
+    p.add_argument(
+        "--test-devices",
+        type=int,
+        nargs="*",
+        default=SUMMIT_ROAD_DEVICES,
+        help="deviceIds whose recordings always go to test whatever the split "
+        "file says, default Summit Road (A213)",
     )
     p.add_argument("--split-file", help="Default <training dir>/training-split.json")
     p.add_argument("--min-confidence", type=float, default=0, help="Master noise confidence")
@@ -169,31 +206,46 @@ def main():
         key = split_key(f, meta)
         name = rec_split.get(rec_id)
         if name is not None:
-            counts["split recordings"] += 1
+            counts["recordings: in the split file"] += 1
             old = key_split.get(key)
             if old is None or held_out.get(name, 2) < held_out.get(old, 2):
                 key_split[key] = name
         else:
-            counts["new recordings"] += 1
+            counts["recordings: not in the split file"] += 1
         tracks = auto_tracks(meta, a.min_confidence, counts)
         if not tracks:
             continue
         if "birdnet" not in meta and not a.allow_no_birdnet:
-            counts["no birdnet, tracks skipped"] += len(tracks)
+            counts["automatic noise tracks: no birdnet results, dropped"] += len(tracks)
             continue
         meta = dict(meta)
         meta["Tracks"] = tracks
         meta.pop("tracks", None)
         candidates.append((f, meta, name, key))
 
+    if not key_split and not a.allow_unknown_sites:
+        # every recording would be "new", keys from validation / test sites
+        # included, so --new-split would take noise from held out sites
+        sys.exit(
+            "No recordings in the split file were found in --dir so every site / "
+            "device is new and goes to --new-split, validation and test sites "
+            "included. Add the metadata dir the build used to -d (its "
+            "recordings give each site's split) or pass --allow-unknown-sites"
+        )
+
+    test_devices = set(a.test_devices or [])
     for f, meta, name, key in candidates:
-        if name is None:
+        if meta.get("deviceId") in test_devices:
+            if name != "test":
+                counts["recordings: --test-devices, moved to test"] += 1
+            name = "test"
+        elif name is None:
             name = key_split.get(key)
             if name is None:
                 name = a.new_split
-                counts["new key recordings"] += 1
+                counts[f"recordings: new site / device, to --new-split {a.new_split}"] += 1
             if name not in datasets:
-                counts["new key recordings skipped"] += 1
+                counts["recordings: new site / device, skipped"] += 1
                 continue
         audio = next((f.with_suffix(e) for e in AUDIO_EXT if f.with_suffix(e).exists()), None)
         if audio is None:
@@ -201,14 +253,25 @@ def main():
             continue
         tracks = meta["Tracks"]
         datasets[name].add_recording(Recording(meta, audio, config, load_samples=False))
-        counts[f"{name} tracks"] += len(tracks)
+        counts[f"{name}: automatic noise tracks"] += len(tracks)
 
     for name, ds in datasets.items():
         ds.load_samples()
         keep = []
         with_bird = 0
         for rec in ds.recs.values():
-            ok = [s for s in rec.samples if not birdnet_bird(rec, s, a.birdnet_conf, taxonomy)]
+            # the recording's bird detections once, not per sample
+            birds = [
+                (d["start"], d["end"])
+                for d in rec.metadata.get("birdnet") or []
+                if d["confidence"] >= a.birdnet_conf
+                and detection_taxon(d, taxonomy) is not None
+            ]
+            ok = [
+                s
+                for s in rec.samples
+                if not any(start < s.end and end > s.start for start, end in birds)
+            ]
             with_bird += len(rec.samples) - len(ok)
             if a.per_recording and len(ok) > a.per_recording:
                 ok = random.sample(ok, a.per_recording)
@@ -221,12 +284,11 @@ def main():
             if not rec.samples:
                 del ds.recs[rec_id]
         ds.samples = [s for s in ds.samples if id(s) in keep_ids]
-        counts[f"{name} birdnet bird dropped"] = with_bird
-        counts[f"{name} samples"] = len(ds.samples)
-        counts[f"{name} recordings"] = len(ds.recs)
+        counts[f"{name}: samples birdnet hears a bird in, dropped"] = with_bird
+        counts[f"{name}: samples written"] = len(ds.samples)
+        counts[f"{name}: recordings"] = len(ds.recs)
 
-    for k, v in counts.items():
-        print(f"{k:35} {v}")
+    print_counts(counts, list(datasets))
     if a.dry_run:
         return
     out = training_dir / "noise" / AUTO_DIR

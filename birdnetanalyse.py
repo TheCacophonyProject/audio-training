@@ -61,6 +61,38 @@ def split_name(name):
     return name, name
 
 
+def print_devices(backend):
+    """The GPUs the backend can see, GPU:<index> is relative to these, so
+    after CUDA_VISIBLE_DEVICES"""
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    print(f"CUDA_VISIBLE_DEVICES {visible if visible is not None else '(not set)'}")
+    try:
+        if backend == "pt":
+            import torch
+
+            for i in range(torch.cuda.device_count()):
+                p = torch.cuda.get_device_properties(i)
+                print(
+                    f"  GPU:{i} {p.name} {p.total_memory / 2**30:.1f}GB "
+                    f"sm_{p.major}{p.minor}"
+                )
+            if not torch.cuda.device_count():
+                print("  no GPUs, CPU only")
+        else:
+            import tensorflow as tf
+
+            gpus = tf.config.list_physical_devices("GPU")
+            for i, gpu in enumerate(gpus):
+                name = tf.config.experimental.get_device_details(gpu).get(
+                    "device_name", gpu.name
+                )
+                print(f"  GPU:{i} {name}")
+            if not gpus:
+                print("  no GPUs, CPU only")
+    except Exception as e:
+        print(f"  could not list devices: {e}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -103,6 +135,8 @@ def main():
     model_id = f"birdnet-{args.version}-{args.backend}"
     if args.no_geo:
         model_id += "-nogeo"
+    print_devices(args.backend)
+    print(f"Using --device {args.device}")
 
     groups = defaultdict(list)
     for audio, txt in find_files(args.dir):
