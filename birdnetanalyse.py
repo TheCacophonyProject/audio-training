@@ -1,7 +1,9 @@
 import os
 
-# Replace '1' with the actual index of the GPU you want to use
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# the first GPU unless CUDA_VISIBLE_DEVICES is set, PCI_BUS_ID so the numbers
+# match nvidia-smi (cuda's default order is fastest first)
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
+os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
 
 import argparse
 import json
