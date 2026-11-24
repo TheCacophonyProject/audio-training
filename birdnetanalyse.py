@@ -91,6 +91,12 @@ def main():
         help="Re-run files already analysed by this model",
     )
     args = parser.parse_args()
+    # birdnet only accepts CPU, GPU or GPU:<index>, anything else is a bare
+    # AssertionError in its workers
+    device = args.device.upper().replace("CUDA", "GPU")
+    if not (device == "CPU" or device == "GPU" or device.startswith("GPU:")):
+        parser.error(f"--device {args.device} should be CPU, GPU or GPU:<index>")
+    args.device = device
 
     if args.version == "2.4" and args.backend not in ("tf", "pb"):
         args.backend = "tf"
@@ -105,8 +111,11 @@ def main():
                 meta = json.load(f)
             except:
                 continue
-        if not args.overwrite and meta.get("birdnet_model") == model_id:
+        existing = meta.get("birdnet_model")
+        if not args.overwrite and existing == model_id:
             continue
+        if existing is not None and existing != model_id:
+            print(f"{txt} has birdnet results from {existing}, re-running with {model_id}")
         groups[location_key(meta, not args.no_geo)].append((audio, txt))
 
     total = sum(len(v) for v in groups.values())
