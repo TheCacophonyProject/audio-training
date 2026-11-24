@@ -8,6 +8,8 @@ os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
 import argparse
 import json
 import logging
+import subprocess
+import sys
 import warnings
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -63,36 +65,51 @@ def split_name(name):
     return name, name
 
 
+# run in a child process: starting CUDA here would break birdnet's forked
+# workers ("CUDA error: initialization error" loading the model)
+LIST_DEVICES = {
+    "pt": """
+import torch
+for i in range(torch.cuda.device_count()):
+    p = torch.cuda.get_device_properties(i)
+    print(f"GPU:{i} {p.name} {p.total_memory / 2**30:.1f}GB sm_{p.major}{p.minor}")
+""",
+    "tf": """
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+import tensorflow as tf
+for i, gpu in enumerate(tf.config.list_physical_devices("GPU")):
+    name = tf.config.experimental.get_device_details(gpu).get("device_name", gpu.name)
+    print(f"GPU:{i} {name}")
+""",
+}
+
+
 def print_devices(backend):
-    """The GPUs the backend can see, GPU:<index> is relative to these, so
-    after CUDA_VISIBLE_DEVICES"""
+    """Prints the GPUs the backend can see and returns how many (None if they
+    couldn't be listed). GPU:<index> counts from these, so after
+    CUDA_VISIBLE_DEVICES. Listed in a child process so this one never
+    initialises CUDA"""
     visible = os.environ.get("CUDA_VISIBLE_DEVICES")
     print(f"CUDA_VISIBLE_DEVICES {visible if visible is not None else '(not set)'}")
+    script = LIST_DEVICES["pt" if backend == "pt" else "tf"]
     try:
-        if backend == "pt":
-            import torch
-
-            for i in range(torch.cuda.device_count()):
-                p = torch.cuda.get_device_properties(i)
-                print(
-                    f"  GPU:{i} {p.name} {p.total_memory / 2**30:.1f}GB "
-                    f"sm_{p.major}{p.minor}"
-                )
-            if not torch.cuda.device_count():
-                print("  no GPUs, CPU only")
-        else:
-            import tensorflow as tf
-
-            gpus = tf.config.list_physical_devices("GPU")
-            for i, gpu in enumerate(gpus):
-                name = tf.config.experimental.get_device_details(gpu).get(
-                    "device_name", gpu.name
-                )
-                print(f"  GPU:{i} {name}")
-            if not gpus:
-                print("  no GPUs, CPU only")
+        out = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=True,
+        ).stdout
     except Exception as e:
         print(f"  could not list devices: {e}")
+        return None
+    gpus = [l for l in out.splitlines() if l.startswith("GPU:")]
+    for line in gpus:
+        print(f"  {line}")
+    if not gpus:
+        print("  no GPUs, CPU only")
+    return len(gpus)
 
 
 def main():
@@ -137,7 +154,15 @@ def main():
     model_id = f"birdnet-{args.version}-{args.backend}"
     if args.no_geo:
         model_id += "-nogeo"
-    print_devices(args.backend)
+    gpu_count = print_devices(args.backend)
+    if args.device.startswith("GPU") and gpu_count is not None:
+        index = int(args.device.split(":")[1]) if ":" in args.device else 0
+        if index >= gpu_count:
+            parser.error(
+                f"--device {args.device} but only {gpu_count} GPU(s) are visible, "
+                "GPU:<index> counts from the CUDA_VISIBLE_DEVICES cards so "
+                "CUDA_VISIBLE_DEVICES=1 --device GPU:0 is the second card"
+            )
     print(f"Using --device {args.device}")
 
     groups = defaultdict(list)
