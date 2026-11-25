@@ -793,16 +793,36 @@ def get_dataset(dir, labels, global_epoch=None, **args):
     return dataset, remapped, epoch_size, labels, extra_label_dic
 
 
-def split_noise_files(dir, noise_dirs, mix_fraction=0.5):
+AUTO_NOISE_DIR = "auto-noise"
+
+
+def split_noise_files(dir, noise_dirs, mix_fraction=0.5, auto_fraction=1.0):
     """Split the noise records in <noise dir>/<split name> for each noise dir,
     as written by build.py (unless --no-noise-dataset), into files used for mixing into
     training audio and files added to the dataset as noise samples.
 
-    Split by file, sorted so the split is the same every run
+    Split by file, sorted so the split is the same every run. For train only
+    auto_fraction of an auto-noise dir's files are used (every n'th, sorted)
     """
     filenames = []
     for noise_dir in noise_dirs:
         noise_files = tf.io.gfile.glob(str(Path(noise_dir) / dir.name / "*.tfrecord"))
+        if (
+            auto_fraction < 1
+            and dir.name == "train"
+            and Path(noise_dir).name == AUTO_NOISE_DIR
+            and noise_files
+        ):
+            noise_files = sorted(noise_files)
+            keep = max(1, int(round(len(noise_files) * auto_fraction)))
+            step = len(noise_files) / keep
+            noise_files = [noise_files[int(i * step)] for i in range(keep)]
+            logging.info(
+                "Using %s of the %s auto noise files (--auto-noise-fraction %s)",
+                keep,
+                len(tf.io.gfile.glob(str(Path(noise_dir) / dir.name / "*.tfrecord"))),
+                auto_fraction,
+            )
         logging.info(
             "Found noise files %s count: %s", noise_files[:1], len(noise_files)
         )
@@ -1131,7 +1151,9 @@ def get_a_dataset(dir, labels, args):
             # every noise file is used both for mixing and as noise only
             # samples, the samples go straight in with the training files so
             # they are shuffled and counted with them and all are used
-            _, all_noise_files = split_noise_files(dir, args["noise_dirs"], 0)
+            _, all_noise_files = split_noise_files(
+                dir, args["noise_dirs"], 0, args.get("auto_noise_fraction", 1.0)
+            )
             noise_mix_files = None if args.get("no_noise_mix") else all_noise_files
             if not args.get("no_noise_samples"):
                 logging.info(
@@ -1143,7 +1165,10 @@ def get_a_dataset(dir, labels, args):
             # most noise is mixed into training audio, the rest are noise only
             # samples with an empty label
             noise_mix_files, noise_sample_files = split_noise_files(
-                dir, args["noise_dirs"], args.get("noise_mix_fraction", 0.8)
+                dir,
+                args["noise_dirs"],
+                args.get("noise_mix_fraction", 0.8),
+                args.get("auto_noise_fraction", 1.0),
             )
             noise_fraction = args.get("noise_train_fraction", 0.05)
             if args.get("no_noise_mix"):
@@ -1685,6 +1710,13 @@ def parse_args():
         default=None,
         help="Noise record dirs to mix into the audio, each containing a dir "
         "matching the dataset split e.g. training-data/noise from build.py (unless --no-noise-dataset)",
+    )
+    parser.add_argument(
+        "--auto-noise-fraction",
+        type=float,
+        default=1.0,
+        help="Fraction of the training records of --noise-dirs named auto-noise "
+        "(build_auto_noise.py) to use, by file",
     )
     parser.add_argument(
         "--extra-dirs",
