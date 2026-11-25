@@ -359,7 +359,11 @@ def analyse(args):
         own_prob = None
         doubtful = None
         result.update(
-            probe_own_prob="", probe_doubtful="", probe_labels="", probe_missing=""
+            probe_own_prob="",
+            probe_doubtful="",
+            probe_labels="",
+            probe_missing="",
+            probe_scores="",
         )
         if probs is not None:
             # labels are scored independently so each of the track's own tags,
@@ -380,6 +384,10 @@ def analyse(args):
                     )
                 ]
                 result["probe_doubtful"] = ";".join(sorted(doubtful))
+            # every label's probability, not only those over their threshold
+            result["probe_scores"] = ";".join(
+                f"{label}:{probs[i, c]:.3f}" for c, label in enumerate(classes)
+            )
             predicted = np.flatnonzero(probs[i] >= thresholds)
             predicted = predicted[np.argsort(-probs[i, predicted])]
             result["probe_labels"] = ";".join(

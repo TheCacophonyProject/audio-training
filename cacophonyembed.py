@@ -257,7 +257,6 @@ def process(txt, meta, samples, todo, args, model, embed_model, key, shards):
             }
             results[id(track)] = result
             track[key] = result
-            print("Sasving result for ", key)
         top = int(np.argmax(prob))
         result["windows"].append(
             {
