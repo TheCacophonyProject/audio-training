@@ -4,6 +4,13 @@ import requests
 from pathlib import Path
 import argparse
 import librosa
+import warnings
+
+# m4a can't be read by soundfile so librosa falls back to its deprecated
+# audioread loader, which warns on every file. Set at import so spawned worker
+# processes, which don't inherit the parent's filters, get them too
+warnings.filterwarnings("ignore", message="PySoundFile failed")
+warnings.filterwarnings("ignore", category=FutureWarning, module="librosa")
 import math
 from datetime import timedelta
 import datetime

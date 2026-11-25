@@ -61,6 +61,8 @@ def init_worker():
     # ctrl-c is handled by the main process, which terminates the pool
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     warnings.filterwarnings("ignore", message="PySoundFile failed")
+    # m4a falls back to librosa's deprecated audioread loader
+    warnings.filterwarnings("ignore", category=FutureWarning, module="librosa")
 
 
 def load_samples(txt, audio_file, spans, configs):
@@ -250,5 +252,7 @@ def main():
 if __name__ == "__main__":
     # m4a falls back to audioread which warns on every file
     warnings.filterwarnings("ignore", message="PySoundFile failed")
+    # m4a falls back to librosa's deprecated audioread loader
+    warnings.filterwarnings("ignore", category=FutureWarning, module="librosa")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     main()

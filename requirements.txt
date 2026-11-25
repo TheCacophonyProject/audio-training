@@ -1,4 +1,4 @@
-librosa
+librosa>=0.10,<1.0  # 1.0 drops loading from audioread objects (audiowriter, addtracks, predict)
 tensorflow
 tensorflow_probability
 tensorflow_hub

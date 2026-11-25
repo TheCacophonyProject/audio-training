@@ -1,6 +1,13 @@
 import csv
+import warnings
 from datetime import datetime
 from pathlib import Path
+
+# m4a can't be read by soundfile so librosa falls back to its deprecated
+# audioread loader, which warns on every file. Set at import so spawned worker
+# processes, which don't inherit the parent's filters, get them too
+warnings.filterwarnings("ignore", message="PySoundFile failed")
+warnings.filterwarnings("ignore", category=FutureWarning, module="librosa")
 
 # ids restart in each of these datasets so are prefixed with its name
 ID_PREFIX_DIRS = ["Train_001", "Train_002"]

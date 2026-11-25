@@ -28,6 +28,12 @@ from pathlib import Path
 
 import audioread.ffdec  # Use ffmpeg decoder
 import librosa
+
+# m4a can't be read by soundfile so librosa falls back to its deprecated
+# audioread loader, which warns on every file. Set at import so spawned worker
+# processes, which don't inherit the parent's filters, get them too
+warnings.filterwarnings("ignore", message="PySoundFile failed")
+warnings.filterwarnings("ignore", category=FutureWarning, module="librosa")
 import numpy as np
 
 from identifytracks import Signal, get_end, get_tracks_from_signals, signal_noise
@@ -91,12 +97,13 @@ def windows(start, end, length, stride, duration):
     at least length - stride and the last one isn't a near copy of the one
     before"""
     end = min(end, duration)
-    if end - start <= length:
+    # rounded so float error doesn't add a window e.g. 10.0000001s, a track a
+    # hair longer than the context (0 gaps) gets the one centred window
+    gaps = math.ceil(round((end - start - length) / stride, 3))
+    if end - start <= length or gaps <= 0:
         centre = (start + end) / 2
         w_start = max(0, min(centre - length / 2, duration - length))
         return [(w_start, w_start + length)]
-    # rounded so float error doesn't add a window e.g. 10.0000001s
-    gaps = math.ceil(round((end - start - length) / stride, 3))
     step = (end - start - length) / gaps
     return [(start + i * step, start + i * step + length) for i in range(gaps + 1)]
 
