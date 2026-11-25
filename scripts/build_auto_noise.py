@@ -47,14 +47,21 @@ import build  # noqa: E402
 from audiodataset import AudioDataset, Config, Recording, load_metadata  # noqa: E402
 from audiowriter import create_tf_records  # noqa: E402
 from birdnetcompare import detection_taxon, load_taxonomy  # noqa: E402
+from birdsconfig import RELABEL_MAP  # noqa: E402
 from utils import prefixed_id, split_key  # noqa: E402
 
 AUTO_DIR = "auto-noise"
 MOREPORK = {"morepork", "morepo2"}
 MASTER = "Master"
+KOKAKO = "efficientnetv2bm-kokako"
+# the kokako model's tag for no bird
+KOKAKO_NO_BIRD = "unidentified"
 # Summit Road A213, the site we judge night false positives on, never trained on
 SUMMIT_ROAD_DEVICES = [3267]
 AUDIO_EXT = (".m4a", ".wav", ".mp3", ".flac")
+# NOISE_LABELS the build relabels to noise that usually have birds in them, not
+# used as automatic noise
+NOISY_BIRD_LABELS = {"chirping_birds", "forest", "rainforest"}
 
 
 KIND_NAMES = {
@@ -62,30 +69,41 @@ KIND_NAMES = {
     "noise": "human noise (already in the build)",
     "other": "birds, untagged or Master not noise",
     "morepork": "Master noise but an automatic morepork",
+    "kokako": "Master noise but kokako a bird (--kokako-noise)",
     "low": "Master noise below --min-confidence",
 }
 
 
 def is_noise(what):
-    # exactly noise, NOISE_LABELS has e.g. chirping_birds
-    return what == "noise"
+    """A tag the build trains as noise (RELABEL_MAP, e.g. wind, rain, static),
+    except the NOISE_LABELS that are likely to have birds in them"""
+    return what not in NOISY_BIRD_LABELS and RELABEL_MAP.get(what, what) == "noise"
 
 
-def track_kind(track, min_confidence):
+def track_kind(track, min_confidence, kokako_noise=False):
     """'auto' an automatic only track we can use, 'noise' a human noise only
-    track, 'other' anything else (human birds, untagged, not Master noise,
-    an automatic morepork)"""
+    track, 'other' anything else (human birds, untagged, not Master noise),
+    'morepork' an automatic morepork, with kokako_noise 'kokako' if a kokako
+    tag isn't noise or unidentified"""
     tags = track.get("tags", [])
     human = [t for t in tags if not t.get("automatic") and not t.get("secondary")]
     if human:
         return "noise" if all(is_noise(t.get("what")) for t in human) else "other"
     auto = [t for t in tags if t.get("automatic")]
-    master = [t for t in auto if t.get("model") == MASTER]
-    if not master or not all(is_noise(t.get("what")) for t in master):
+    # a track has at most one Master tag
+    master = next((t for t in auto if t.get("model") == MASTER), None)
+    if master is None or not is_noise(master.get("what")):
         return "other"
     if any(t.get("what") in MOREPORK for t in auto):
         return "morepork"
-    if min(t.get("confidence") or 0 for t in master) < min_confidence:
+    if kokako_noise and any(
+        t.get("model") == KOKAKO
+        and t.get("what") != KOKAKO_NO_BIRD
+        and not is_noise(t.get("what"))
+        for t in auto
+    ):
+        return "kokako"
+    if (master.get("confidence") or 0) < min_confidence:
         return "low"
     return "auto"
 
@@ -94,9 +112,9 @@ def overlaps(a, b):
     return a["start"] < b["end"] and b["start"] < a["end"]
 
 
-def auto_tracks(meta, min_confidence, counts):
+def auto_tracks(meta, min_confidence, counts, kokako_noise=False):
     tracks = meta.get("Tracks") or meta.get("tracks") or []
-    kinds = [track_kind(t, min_confidence) for t in tracks]
+    kinds = [track_kind(t, min_confidence, kokako_noise) for t in tracks]
     keep = []
     for t, kind in zip(tracks, kinds):
         counts[f"tracks: {KIND_NAMES[kind]}"] += 1
@@ -170,6 +188,12 @@ def main():
     )
     p.add_argument("--split-file", help="Default <training dir>/training-split.json")
     p.add_argument(
+        "--kokako-noise",
+        action="store_true",
+        help="Also drop tracks the kokako model tags as anything but noise or "
+        "unidentified (e.g. bird or a species), not only morepork",
+    )
+    p.add_argument(
         "--min-confidence", type=float, default=0, help="Master noise confidence"
     )
     p.add_argument("--birdnet-conf", type=float, default=0.3)
@@ -225,7 +249,7 @@ def main():
                 key_split[key] = name
         else:
             counts["recordings: not in the split file"] += 1
-        tracks = auto_tracks(meta, a.min_confidence, counts)
+        tracks = auto_tracks(meta, a.min_confidence, counts, a.kokako_noise)
         if not tracks:
             continue
         if "birdnet" not in meta and not a.allow_no_birdnet:
