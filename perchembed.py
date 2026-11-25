@@ -302,9 +302,13 @@ def analyse(args):
             # label so rare labels are spread over the folds
             rarest = np.array(
                 [
-                    min((counts[t], class_index[t]) for t in w if t in class_index)[1]
-                    if w & class_index.keys()
-                    else len(classes)
+                    (
+                        min((counts[t], class_index[t]) for t in w if t in class_index)[
+                            1
+                        ]
+                        if w & class_index.keys()
+                        else len(classes)
+                    )
                     for w in overlap_tags
                 ]
             )
@@ -336,7 +340,9 @@ def analyse(args):
             logging.info("Need at least 2 labels with enough windows for the probe")
             classes, class_index = [], {}
     if probs is not None:
-        log_probe_metrics(multi_hot(overlap_tags, class_index), probs, thresholds, classes)
+        log_probe_metrics(
+            multi_hot(overlap_tags, class_index), probs, thresholds, classes
+        )
 
     # neighbours from the same recording sound alike so are skipped
     neighbours = NearestNeighbors(n_neighbors=min(len(rows), args.knn * 4 + 1)).fit(x)
@@ -463,8 +469,11 @@ def best_thresholds(y, probs):
             continue
         precision, recall, cuts = precision_recall_curve(y[:, c], probs[:, c])
         # the last precision and recall have no threshold
-        f1 = 2 * precision[:-1] * recall[:-1] / np.maximum(
-            precision[:-1] + recall[:-1], 1e-10
+        f1 = (
+            2
+            * precision[:-1]
+            * recall[:-1]
+            / np.maximum(precision[:-1] + recall[:-1], 1e-10)
         )
         thresholds[c] = cuts[np.argmax(f1)]
     return thresholds
@@ -521,13 +530,18 @@ def window_tags(rows, tags, groups):
         starts = np.array([float(rows[i]["perch_start"]) for i in members])
         ends = np.array([float(rows[i]["perch_end"]) for i in members])
         has_rms = np.array(
-            [rows[i].get("rms_start", "") != "" and rows[i].get("rms_end", "") != "" for i in members]
+            [
+                rows[i].get("rms_start", "") != "" and rows[i].get("rms_end", "") != ""
+                for i in members
+            ]
         )
         centres = np.array(
             [
-                (float(rows[i]["rms_start"]) + float(rows[i]["rms_end"])) / 2
-                if rms
-                else np.nan
+                (
+                    (float(rows[i]["rms_start"]) + float(rows[i]["rms_end"])) / 2
+                    if rms
+                    else np.nan
+                )
                 for i, rms in zip(members, has_rms)
             ]
         )

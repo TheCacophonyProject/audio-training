@@ -241,9 +241,7 @@ class MergedTest(unittest.TestCase):
                 self.assertNotIn(2, labels)
                 self.assertTrue(labels[1])
                 self.assertTrue(all(kiwi not in tags for tags in labels[1]))
-                self.assertTrue(
-                    all(2 not in s.track_ids for s in dataset.samples)
-                )
+                self.assertTrue(all(2 not in s.track_ids for s in dataset.samples))
 
     def test_overlapping_clips_share_labels(self):
         dataset = self.load(self.three_clips(), False)

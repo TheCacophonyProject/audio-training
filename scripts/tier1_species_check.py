@@ -59,7 +59,9 @@ def perch_result(row, species, other_prob):
         return "missing", ""
     own = float(row["probe_own_prob"] or 0)
     probe_ok = row["probe_label"] == species or own >= 0.5
-    knn_ok = row["knn_label"] == species and float(row["knn_label_fraction"] or 0) >= 0.5
+    knn_ok = (
+        row["knn_label"] == species and float(row["knn_label_fraction"] or 0) >= 0.5
+    )
     if probe_ok or knn_ok:
         return "agrees", row["probe_label"]
     if float(row["probe_prob"] or 0) >= other_prob:
@@ -69,9 +71,13 @@ def perch_result(row, species, other_prob):
 
 def birdnet_result(detections, start, end, species, species_genus, min_conf, taxonomy):
     found = [
-        d for d in bc.overlapping(detections, start, end, 0) if d["confidence"] >= min_conf
+        d
+        for d in bc.overlapping(detections, start, end, 0)
+        if d["confidence"] >= min_conf
     ]
-    birds = [(d, t) for d in found if (t := bc.detection_taxon(d, taxonomy)) is not None]
+    birds = [
+        (d, t) for d in found if (t := bc.detection_taxon(d, taxonomy)) is not None
+    ]
     heard = [d["confidence"] for d, t in birds if t["code"] == species]
     if heard:
         return "species", max(heard), ""
@@ -116,12 +122,20 @@ def main():
             start = t.get("best_start", t["start"])
             end = t.get("best_end", min(t["start"] + 3, t["end"]))
             bn, bn_conf, bn_other = birdnet_result(
-                detections, start, end, a.species, species_genus, a.birdnet_conf, taxonomy
+                detections,
+                start,
+                end,
+                a.species,
+                species_genus,
+                a.birdnet_conf,
+                taxonomy,
             )
             pr, pr_label = perch_result(
                 perch_row(perch.get(f.name), start), a.species, a.perch_other_prob
             )
-            signals = [s for s in meta.get("signal") or [] if s[0] < end and s[1] > start]
+            signals = [
+                s for s in meta.get("signal") or [] if s[0] < end and s[1] > start
+            ]
             in_band = band is not None and any(
                 s[3] > band[0] and s[2] < band[1] for s in signals
             )
@@ -163,7 +177,9 @@ def main():
         sub = [r for r in rows if r["set"] == s]
         bn = sum(r["birdnet"] == "species" for r in sub)
         pr = sum(r["perch"] == "agrees" for r in sub)
-        print(f"{s or 'other'}: {len(sub)} tracks, birdnet hears {pct(bn, len(sub))}, perch agrees {pct(pr, len(sub))}")
+        print(
+            f"{s or 'other'}: {len(sub)} tracks, birdnet hears {pct(bn, len(sub))}, perch agrees {pct(pr, len(sub))}"
+        )
 
     print("\nBirdNET in the best window")
     for k, v in Counter(r["birdnet"] for r in rows).most_common():
@@ -172,26 +188,39 @@ def main():
     for k, v in Counter(r["perch"] for r in rows).most_common():
         print(f"  {k:16} {pct(v)}")
     if band:
-        print(f"Tracker signal {band[0]:.0f}-{band[1]:.0f}Hz {pct(sum(r['band_signal'] for r in rows))}")
+        print(
+            f"Tracker signal {band[0]:.0f}-{band[1]:.0f}Hz {pct(sum(r['band_signal'] for r in rows))}"
+        )
 
     print("\nBirdNET x Perch (rows birdnet, columns perch)")
     perch_keys = ["agrees", "unsure", "confident_other", "missing"]
     print(f"  {'':10}" + "".join(f"{k:>17}" for k in perch_keys))
     for b in ["species", "genus", "other", "none"]:
-        cells = [sum(r["birdnet"] == b and r["perch"] == pk for r in rows) for pk in perch_keys]
+        cells = [
+            sum(r["birdnet"] == b and r["perch"] == pk for r in rows)
+            for pk in perch_keys
+        ]
         print(f"  {b:10}" + "".join(f"{c:>9} {100 * c / n:5.1f}%" for c in cells))
 
     for status in ("genus", "other"):
         names = Counter(r["birdnet_other"] for r in rows if r["birdnet"] == status)
-        print(f"\nBirdNET {status} top: " + ", ".join(f"{k} {v}" for k, v in names.most_common(8)))
+        print(
+            f"\nBirdNET {status} top: "
+            + ", ".join(f"{k} {v}" for k, v in names.most_common(8))
+        )
     names = Counter(r["perch_label"] for r in rows if r["perch"] == "confident_other")
-    print("Perch confident other top: " + ", ".join(f"{k} {v}" for k, v in names.most_common(8)))
+    print(
+        "Perch confident other top: "
+        + ", ".join(f"{k} {v}" for k, v in names.most_common(8))
+    )
 
     keep_rules = {
         "birdnet hears it": lambda r: r["birdnet"] == "species",
         "perch agrees": lambda r: r["perch"] == "agrees",
-        "birdnet or perch": lambda r: r["birdnet"] == "species" or r["perch"] == "agrees",
-        "birdnet and perch": lambda r: r["birdnet"] == "species" and r["perch"] == "agrees",
+        "birdnet or perch": lambda r: r["birdnet"] == "species"
+        or r["perch"] == "agrees",
+        "birdnet and perch": lambda r: r["birdnet"] == "species"
+        and r["perch"] == "agrees",
         "not (perch confident other, birdnet doesn't hear it)": lambda r: not (
             r["perch"] == "confident_other" and r["birdnet"] != "species"
         ),

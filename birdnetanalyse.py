@@ -118,7 +118,9 @@ def main():
         if not args.overwrite and existing == model_id:
             continue
         if existing is not None and existing != model_id:
-            print(f"{txt} has birdnet results from {existing}, re-running with {model_id}")
+            print(
+                f"{txt} has birdnet results from {existing}, re-running with {model_id}"
+            )
         groups[location_key(meta, not args.no_geo)].append((audio, txt))
 
     total = sum(len(v) for v in groups.values())

@@ -64,9 +64,7 @@ def window_rms(track, start, end):
     above = (window_db > floor + RMS_ACTIVE_DB) & window_keep
     min_frames = max(1, int(round(RMS_MIN_ACTIVE / frame_length)))
     edges = np.flatnonzero(np.diff(np.r_[0, above.astype(np.int8), 0]))
-    active = sum(
-        e - s for s, e in zip(edges[::2], edges[1::2]) if e - s >= min_frames
-    )
+    active = sum(e - s for s, e in zip(edges[::2], edges[1::2]) if e - s >= min_frames)
     peak = float(np.max(window_db[window_keep]) - floor) if window_keep.any() else None
     return active * frame_length, peak
 
@@ -91,12 +89,16 @@ def main():
             start = t.get("best_start", t["start"])
             end = t.get("best_end", min(t["start"] + 3, t["end"]))
             tag_taxa = [
-                x for x in (bc.tag_taxon(g, taxonomy) for g in t["tags"]) if x is not None
+                x
+                for x in (bc.tag_taxon(g, taxonomy) for g in t["tags"])
+                if x is not None
             ]
             found = bc.overlapping(detections, start, end, 0)
             status, best, birds = bc.evaluate(found, tag_taxa, False, [], taxonomy)
             match = [d for d, x in birds if x["code"] == "morepo2"]
-            signals = [s for s in meta.get("signal") or [] if s[0] < end and s[1] > start]
+            signals = [
+                s for s in meta.get("signal") or [] if s[0] < end and s[1] > start
+            ]
             active, peak = window_rms(t, start, end)
             rows.append(
                 {
@@ -108,7 +110,9 @@ def main():
                     "birdnet": status,
                     "birdnet_best": "" if best is None else best["common_name"],
                     "birdnet_confidence": "" if best is None else best["confidence"],
-                    "morepork_confidence": max((d["confidence"] for d in match), default=""),
+                    "morepork_confidence": max(
+                        (d["confidence"] for d in match), default=""
+                    ),
                     "birdnet_any": bool(detections),
                     "rms_active_s": round(active, 2),
                     "rms_peak_db": "" if peak is None else round(peak, 1),
@@ -130,12 +134,16 @@ def main():
     def pct(k):
         return f"{k:6} ({100 * k / n:5.1f}%)"
 
-    print(f"{n} tracks in {len({r['file'] for r in rows})} files, best 3s window of each\n")
+    print(
+        f"{n} tracks in {len({r['file'] for r in rows})} files, best 3s window of each\n"
+    )
     status = Counter(r["birdnet"] for r in rows)
     print("BirdNET in the window")
     for s in bc.STATUS_ORDER:
         print(f"  {s:10} {pct(status[s])}")
-    print(f"  (files with no birdnet detections at all {pct(sum(not r['birdnet_any'] for r in rows))})")
+    print(
+        f"  (files with no birdnet detections at all {pct(sum(not r['birdnet_any'] for r in rows))})"
+    )
     for s in (bc.RELATED, bc.DIFFERENT):
         names = Counter(r["birdnet_best"] for r in rows if r["birdnet"] == s)
         print(f"  top {s}: " + ", ".join(f"{k} {v}" for k, v in names.most_common(8)))

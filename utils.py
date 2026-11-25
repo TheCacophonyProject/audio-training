@@ -72,7 +72,9 @@ def split_key(path, metadata):
 def recording_day(when):
     # the date of an iso datetime e.g. 2012-03-21T12:43:16 or 2022-10-09T01:31:07.000Z
     try:
-        return datetime.fromisoformat(str(when).replace("Z", "+00:00")).date().isoformat()
+        return (
+            datetime.fromisoformat(str(when).replace("Z", "+00:00")).date().isoformat()
+        )
     except ValueError:
         return str(when)[:10]
 

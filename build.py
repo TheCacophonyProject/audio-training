@@ -191,10 +191,15 @@ def split_large_bins(samples, rec_by_id):
     large = {}
     for b, counts in bins.items():
         for label, n in counts.items():
-            if totals[label] >= LARGE_BIN_MIN_SAMPLES and n > LARGE_BIN_SHARE * totals[label]:
+            if (
+                totals[label] >= LARGE_BIN_MIN_SAMPLES
+                and n > LARGE_BIN_SHARE * totals[label]
+            ):
                 large.setdefault(b, []).append(f"{label} {n}/{totals[label]}")
     for b, why in sorted(large.items()):
-        logging.info("Splitting large bin %s by recording and day, has %s", b, ", ".join(why))
+        logging.info(
+            "Splitting large bin %s by recording and day, has %s", b, ", ".join(why)
+        )
     if not large:
         return
     for s in samples:
@@ -302,7 +307,9 @@ def split_randomly(dataset, datasets=None, test_clips=[], no_test=False):
     # rarest first so rare labels pick their bins before common labels' bins
     # sweep them up, ties in name order
     order = sorted(label_bins, key=lambda l: (len(label_bins[l]), l))
-    sets = [n for n in ("validation", "test") if n in by_name and (n != "test" or use_test)]
+    sets = [
+        n for n in ("validation", "test") if n in by_name and (n != "test" or use_test)
+    ]
     for label in order:
         candidates = sorted(b for b in label_bins[label] if b not in assigned)
         random.shuffle(candidates)

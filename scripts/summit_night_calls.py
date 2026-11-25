@@ -28,15 +28,35 @@ TAG_MODELS = ["Master", "efficientnetv2bm-kokako", "efficientnetv2b3-rms", "huma
 KOKAKO = "efficientnetv2bm-kokako"
 # kokako model common names to the spect model labels, so they line up
 KOKAKO_LABELS = {
-    "morepork": "morepo2", "tomtit": "tomtit1", "kaka": "nezkak1", "kiwi": "kiwi",
-    "blackbird": "eurbla", "chaffinch": "comcha", "redpoll": "comred",
-    "silvereye": "silver3", "yellowhammer": "yellow2", "skylark": "skylar",
-    "warbler": "gryger1", "fantail": "nezfan1", "dunnock": "dunnoc1",
-    "bellbird": "nezbel1", "pukeko": "purswa6", "song thrush": "sonthr1",
-    "tui": "tui1", "rifleman": "riflem1", "canada goose": "cangoo",
-    "new zealand dotterel": "rebdot1", "robin": "nezrob3", "greenfinch": "eurgre1",
-    "weka": "weka1", "kea": "kea1", "kokako": "kokako3", "whitehead": "whiteh1",
-    "falcon": "nezfal1", "pigeon": "nezpig2", "sacred kingfisher": "sackin3",
+    "morepork": "morepo2",
+    "tomtit": "tomtit1",
+    "kaka": "nezkak1",
+    "kiwi": "kiwi",
+    "blackbird": "eurbla",
+    "chaffinch": "comcha",
+    "redpoll": "comred",
+    "silvereye": "silver3",
+    "yellowhammer": "yellow2",
+    "skylark": "skylar",
+    "warbler": "gryger1",
+    "fantail": "nezfan1",
+    "dunnock": "dunnoc1",
+    "bellbird": "nezbel1",
+    "pukeko": "purswa6",
+    "song thrush": "sonthr1",
+    "tui": "tui1",
+    "rifleman": "riflem1",
+    "canada goose": "cangoo",
+    "new zealand dotterel": "rebdot1",
+    "robin": "nezrob3",
+    "greenfinch": "eurgre1",
+    "weka": "weka1",
+    "kea": "kea1",
+    "kokako": "kokako3",
+    "whitehead": "whiteh1",
+    "falcon": "nezfal1",
+    "pigeon": "nezpig2",
+    "sacred kingfisher": "sackin3",
 }
 NOT_BIRDS = {"animal", "human", "insect", "noise", "frog", "mammal", "cat", "dog"}
 
@@ -91,7 +111,10 @@ class Sun:
     def night(self, ts, lat, lng):
         """(sunset, next sunrise) of the night ts is in or nearest to"""
         day = ts.date() if ts.hour >= 12 else ts.date() - timedelta(days=1)
-        return self.times(day, lat, lng)[1], self.times(day + timedelta(days=1), lat, lng)[0]
+        return (
+            self.times(day, lat, lng)[1],
+            self.times(day + timedelta(days=1), lat, lng)[0],
+        )
 
 
 def kokako_scores(track):
@@ -146,7 +169,9 @@ def main():
         " predictions on a track",
     )
     a = p.parse_args()
-    recs = [(f, json.load(open(f))) for f in sorted(glob.glob(os.path.join(a.dir, "*.txt")))]
+    recs = [
+        (f, json.load(open(f))) for f in sorted(glob.glob(os.path.join(a.dir, "*.txt")))
+    ]
     if not a.models:
         found = {
             k
@@ -202,12 +227,16 @@ def main():
                 if m != KOKAKO:
                     row[m] = ";".join(tags.get(m, []))
             row[f"{KOKAKO}_labels"] = ";".join(f"{k} ({v:.2f})" for k, v, _ in kokako)
-            row[f"{KOKAKO}_top"] = f"{kokako[0][0]} ({kokako[0][1]:.2f})" if kokako else ""
+            row[f"{KOKAKO}_top"] = (
+                f"{kokako[0][0]} ({kokako[0][1]:.2f})" if kokako else ""
+            )
             for m in a.models:
                 ranked = mean_scores(t.get(m))
                 above = [(k, v) for k, v in ranked if v > a.threshold]
                 row[f"{m}>{a.threshold}"] = ";".join(f"{k} ({v:.2f})" for k, v in above)
-                row[f"{m}_top"] = f"{ranked[0][0]} ({ranked[0][1]:.2f})" if ranked else ""
+                row[f"{m}_top"] = (
+                    f"{ranked[0][0]} ({ranked[0][1]:.2f})" if ranked else ""
+                )
                 found = [(k, v) for k, v in above if k not in NOT_BIRDS]
                 if found:
                     birds[m] = found
@@ -258,7 +287,11 @@ def main():
             night.append((ts, sset, rise, row, birds))
     print(
         f"\n{len(night)} bird calls "
-        + ("at any time" if a.all_day else f"from {a.hours:g}h after sunset to {a.hours:g}h before sunrise")
+        + (
+            "at any time"
+            if a.all_day
+            else f"from {a.hours:g}h after sunset to {a.hours:g}h before sunrise"
+        )
         + f" (mean score > {a.threshold})"
     )
     current = None

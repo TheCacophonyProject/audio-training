@@ -19,8 +19,10 @@ Recordings stay in the split (train / validation / test) they are in the
 split file. Recordings not in it (e.g. a new download of automatically tagged
 recordings) go to the split of the split file recordings with the same split
 key (site / device, utils.split_key), the most held out if several, so no
-noise comes from another split's sites. Recordings with a new key go to
---new-split (default train, skip to leave them out). The records
+noise comes from another split's sites. Recordings with a new key are split
+by build.py's split_randomly: random new keys go to validation and test until
+each has --val-share and --test-share of all the samples, counting what the
+split file and --test-devices already give it, the rest to train. The records
 go to <training dir>/noise/auto-noise/<split> with the build's labels and
 config, so add <training dir>/noise/auto-noise to train.sh's --noise-dirs.
 
@@ -41,6 +43,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import build  # noqa: E402
 from audiodataset import AudioDataset, Config, Recording, load_metadata  # noqa: E402
 from audiowriter import create_tf_records  # noqa: E402
 from birdnetcompare import detection_taxon, load_taxonomy  # noqa: E402
@@ -144,16 +147,18 @@ def main():
         help="Metadata / audio dirs, the one build used and any new downloads",
     )
     p.add_argument(
-        "--new-split",
-        default="train",
-        help="Split for recordings whose site / device key isn't in the split file "
-        "(a split name or skip)",
+        "--val-share",
+        type=float,
+        default=0.15,
+        help="Validation's share of all the samples, new site / device keys are "
+        "added to it until it has this (build.py VAL_PERCENT)",
     )
     p.add_argument(
-        "--allow-unknown-sites",
-        action="store_true",
-        help="Run even if no -d recording is in the split file (then no site's "
-        "split is known and every recording goes to --new-split)",
+        "--test-share",
+        type=float,
+        default=0.05,
+        help="Test's share of all the samples, new site / device keys are added "
+        "to it until it has this (build.py TEST_PERCENT)",
     )
     p.add_argument(
         "--test-devices",
@@ -164,7 +169,9 @@ def main():
         "file says, default Summit Road (A213)",
     )
     p.add_argument("--split-file", help="Default <training dir>/training-split.json")
-    p.add_argument("--min-confidence", type=float, default=0, help="Master noise confidence")
+    p.add_argument(
+        "--min-confidence", type=float, default=0, help="Master noise confidence"
+    )
     p.add_argument("--birdnet-conf", type=float, default=0.3)
     p.add_argument("--allow-no-birdnet", action="store_true")
     p.add_argument(
@@ -184,15 +191,20 @@ def main():
     train_meta = json.load(open(training_dir / "training-meta.json"))
     labels = train_meta["primary_labels"]
     config = load_config(train_meta)
-    split = json.load(open(a.split_file or training_dir / "training-split.json"))["recs"]
+    split = json.load(open(a.split_file or training_dir / "training-split.json"))[
+        "recs"
+    ]
     rec_split = {str(r): name for name, recs in split.items() for r in recs}
 
-    taxonomy = load_taxonomy(Path(__file__).resolve().parent.parent / "eBird_taxonomy_v2024.csv")
+    taxonomy = load_taxonomy(
+        Path(__file__).resolve().parent.parent / "eBird_taxonomy_v2024.csv"
+    )
     datasets = {name: AudioDataset(name, config) for name in split}
     counts = Counter()
-    # a split key (site / device) in more than one split goes to the most
-    # held out one so new recordings never add to train from a test device
-    held_out = {"test": 0, "validation": 1}
+    # a split key (site / device) in more than one split goes to the preferred
+    # (lowest, most held out) one so new recordings never add to train from a
+    # test device
+    dataset_preference = {"test": 0, "validation": 1, "train": 2}
     key_split = {}
     candidates = []
     for f in sorted(f for d in a.dir for f in Path(d).glob("**/*.txt")):
@@ -205,10 +217,11 @@ def main():
         rec_id = str(prefixed_id(f, meta["id"]))
         key = split_key(f, meta)
         name = rec_split.get(rec_id)
+
         if name is not None:
             counts["recordings: in the split file"] += 1
             old = key_split.get(key)
-            if old is None or held_out.get(name, 2) < held_out.get(old, 2):
+            if old is None or dataset_preference[name] < dataset_preference[old]:
                 key_split[key] = name
         else:
             counts["recordings: not in the split file"] += 1
@@ -223,39 +236,20 @@ def main():
         meta.pop("tracks", None)
         candidates.append((f, meta, name, key))
 
-    if not key_split and not a.allow_unknown_sites:
+    if not key_split:
         # every recording would be "new", keys from validation / test sites
-        # included, so --new-split would take noise from held out sites
+        # included, so the split would put noise from held out sites in train
         sys.exit(
             "No recordings in the split file were found in --dir so every site / "
-            "device is new and goes to --new-split, validation and test sites "
-            "included. Add the metadata dir the build used to -d (its "
-            "recordings give each site's split) or pass --allow-unknown-sites"
+            "device would be new, validation and test sites included. Add the "
+            "metadata dir the build used to -d (its recordings give each site's "
+            "split)"
         )
 
-    test_devices = set(a.test_devices or [])
-    for f, meta, name, key in candidates:
-        if meta.get("deviceId") in test_devices:
-            if name != "test":
-                counts["recordings: --test-devices, moved to test"] += 1
-            name = "test"
-        elif name is None:
-            name = key_split.get(key)
-            if name is None:
-                name = a.new_split
-                counts[f"recordings: new site / device, to --new-split {a.new_split}"] += 1
-            if name not in datasets:
-                counts["recordings: new site / device, skipped"] += 1
-                continue
-        audio = next((f.with_suffix(e) for e in AUDIO_EXT if f.with_suffix(e).exists()), None)
-        if audio is None:
-            logging.error("No audio for %s", f)
-            continue
-        tracks = meta["Tracks"]
-        datasets[name].add_recording(Recording(meta, audio, config, load_samples=False))
-        counts[f"{name}: automatic noise tracks"] += len(tracks)
-
-    for name, ds in datasets.items():
+    def filter_samples(ds):
+        """Makes the samples, drops those birdnet hears a bird in and keeps
+        --per-recording random ones per recording. Returns the number dropped
+        for a bird"""
         ds.load_samples()
         keep = []
         with_bird = 0
@@ -276,19 +270,64 @@ def main():
             if a.per_recording and len(ok) > a.per_recording:
                 ok = random.sample(ok, a.per_recording)
             keep.extend(ok)
-        if a.max_samples and len(keep) > a.max_samples:
-            keep = random.sample(keep, a.max_samples)
+        keep_only(ds, keep)
+        return with_bird
+
+    def keep_only(ds, keep):
         keep_ids = {id(s) for s in keep}
         for rec_id, rec in list(ds.recs.items()):
             rec.samples = [s for s in rec.samples if id(s) in keep_ids]
             if not rec.samples:
                 del ds.recs[rec_id]
         ds.samples = [s for s in ds.samples if id(s) in keep_ids]
-        counts[f"{name}: samples birdnet hears a bird in, dropped"] = with_bird
-        counts[f"{name}: samples written"] = len(ds.samples)
-        counts[f"{name}: recordings"] = len(ds.recs)
 
-    print_counts(counts, list(datasets))
+    test_devices = set(a.test_devices or [])
+    # recordings whose site / device isn't in the split file, split below
+    new_ds = AudioDataset("new", config)
+    for f, meta, name, key in candidates:
+        if meta.get("deviceId") in test_devices:
+            if name != "test":
+                counts["recordings: --test-devices, moved to test"] += 1
+            name = "test"
+        elif name is None:
+            name = key_split.get(key)
+            if name is not None:
+                counts[f"recordings: site / device in the split file, to {name}"] += 1
+        if name is None:
+            target = new_ds
+            counts["recordings: new site / device, split randomly"] += 1
+        else:
+            target = datasets[name]
+        audio = next(
+            (f.with_suffix(e) for e in AUDIO_EXT if f.with_suffix(e).exists()), None
+        )
+        if audio is None:
+            logging.error("No audio for %s", f)
+            continue
+        target.add_recording(Recording(meta, audio, config, load_samples=False))
+        counts[f"{target.name}: automatic noise tracks"] += len(meta["Tracks"])
+
+    for name, ds in [*datasets.items(), ("new", new_ds)]:
+        counts[f"{name}: samples birdnet hears a bird in, dropped"] = filter_samples(ds)
+    new_samples = {id(s) for s in new_ds.samples}
+    if new_ds.samples:
+        # build.py's split, counting what the split file and --test-devices
+        # already give each split, every sample is the noise label
+        build.VAL_PERCENT = a.val_share
+        build.TEST_PERCENT = a.test_share
+        build.split_randomly(new_ds, datasets=list(datasets.values()))
+    counts["new: samples"] = len(new_samples)
+
+    for name, ds in datasets.items():
+        if a.max_samples and len(ds.samples) > a.max_samples:
+            keep_only(ds, random.sample(ds.samples, a.max_samples))
+        from_new = [s for s in ds.samples if id(s) in new_samples]
+        counts[f"{name}: samples written"] = len(ds.samples)
+        counts[f"{name}: samples written, from new sites"] = len(from_new)
+        counts[f"{name}: recordings"] = len(ds.recs)
+        counts[f"{name}: new site bins"] = len({s.bin_id for s in from_new})
+
+    print_counts(counts, [*datasets, "new"])
     if a.dry_run:
         return
     out = training_dir / "noise" / AUTO_DIR
@@ -301,5 +340,7 @@ def main():
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
     main()

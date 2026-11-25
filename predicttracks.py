@@ -32,7 +32,14 @@ from pathlib import Path
 
 import numpy as np
 
-from addtracks import CacophonyModel, load_recording, model_sample, setup_gpu, windows, write_meta
+from addtracks import (
+    CacophonyModel,
+    load_recording,
+    model_sample,
+    setup_gpu,
+    windows,
+    write_meta,
+)
 from perchembed import find_audio
 
 
@@ -166,14 +173,20 @@ def main():
     models = []
     for i, model_file in enumerate(args.model):
         model = CacophonyModel(
-            Namespace(model=model_file, weights=args.weights, batch_size=args.batch_size)
+            Namespace(
+                model=model_file, weights=args.weights, batch_size=args.batch_size
+            )
         )
         stride = model.length - args.overlap
         if stride <= 0:
             parser.error(f"--overlap must be less than the {model.length}s window")
         name = args.name[i] if args.name else default_name(model, model_file)
         logging.info(
-            "Saving %s under %s, %ss windows %ss stride", model_file, name, model.length, stride
+            "Saving %s under %s, %ss windows %ss stride",
+            model_file,
+            name,
+            model.length,
+            stride,
         )
         models.append((model, name, stride))
     names = [name for _, name, _ in models]
@@ -184,7 +197,9 @@ def main():
     files = 0
     jobs = find_jobs(args.dir)
     # spawn so workers don't inherit tensorflow and the GPU from this process
-    pool = multiprocessing.get_context("spawn").Pool(args.workers, initializer=init_worker)
+    pool = multiprocessing.get_context("spawn").Pool(
+        args.workers, initializer=init_worker
+    )
     # loaded recordings waiting for the GPU, bounded so decoded audio can't
     # pile up in memory when the models are slower than loading
     pending = deque()
@@ -212,7 +227,13 @@ def main():
                     models, all_windows, all_samples
                 ):
                     predict(
-                        model, name, args.overlap, tracks, track_windows, samples, args.batch_size
+                        model,
+                        name,
+                        args.overlap,
+                        tracks,
+                        track_windows,
+                        samples,
+                        args.batch_size,
                     )
             except Exception:
                 logging.exception("Failed on %s", txt)
