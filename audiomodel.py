@@ -2939,6 +2939,13 @@ def parse_args():
         "train dir e.g. training-data/noise from build.py (unless --no-noise-dataset)",
     )
     parser.add_argument(
+        "--auto-noise-fraction",
+        type=float,
+        default=1.0,
+        help="Fraction of the training records of --noise-dirs named auto-noise "
+        "(scripts/build_auto_noise.py) to use, by file",
+    )
+    parser.add_argument(
         "--extra-dirs",
         dest="extra_datasets",
         nargs="+",
