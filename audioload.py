@@ -21,7 +21,7 @@ class AudioLoadError(Exception):
     pass
 
 
-def probe(file):
+def ffprobe(file):
     """(sample rate, channels) of the file's first audio stream"""
     result = subprocess.run(
         [
@@ -50,7 +50,7 @@ def probe(file):
 def load_audio(file, sr=None, mono=True):
     """(samples float32, sample rate). sr resamples to that rate, None keeps
     the file's. Mono averages the channels, otherwise (channels, samples)"""
-    native_sr, channels = probe(file)
+    native_sr, channels = ffprobe(file)
     result = subprocess.run(
         # the first audio stream, as probed
         ["ffmpeg", "-nostdin", "-v", "error", "-i", str(file), "-map", "0:a:0", "-f", "s16le", "-"],

@@ -535,8 +535,14 @@ def window_tags(rows, tags, groups):
     result = [None] * len(rows)
     for members in by_recording.values():
         members = np.array(members)
-        starts = np.array([float(rows[i]["perch_start"]) for i in members])
-        ends = np.array([float(rows[i]["perch_end"]) for i in members])
+        # perch shards have perch_start / perch_end, cacophonyembed.py shards
+        # window_start / window_end (and no rms window)
+        starts = np.array(
+            [float(rows[i].get("perch_start") or rows[i]["window_start"]) for i in members]
+        )
+        ends = np.array(
+            [float(rows[i].get("perch_end") or rows[i]["window_end"]) for i in members]
+        )
         has_rms = np.array(
             [
                 rows[i].get("rms_start", "") != "" and rows[i].get("rms_end", "") != ""
