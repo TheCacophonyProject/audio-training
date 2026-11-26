@@ -483,7 +483,11 @@ def best_thresholds(y, probs):
             * recall[:-1]
             / np.maximum(precision[:-1] + recall[:-1], 1e-10)
         )
-        thresholds[c] = cuts[np.argmax(f1)]
+        best = np.argmax(f1)
+        # a label the probe can't separate out of fold, e.g. one only in a few
+        # recordings, can get its best f1 by predicting it on every window,
+        # cut 0. Never predict it instead, so its own tracks are always doubtful
+        thresholds[c] = cuts[best] if cuts[best] > probs[:, c].min() else np.inf
     return thresholds
 
 
