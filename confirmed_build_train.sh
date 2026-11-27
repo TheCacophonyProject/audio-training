@@ -62,7 +62,8 @@ BUILD_ARGS=${BUILD_ARGS:-}
 WRITE_ARGS=${WRITE_ARGS:-}
 TIGHTEN_ARGS=${TIGHTEN_ARGS:-}
 WRITE_DRY_RUN=${WRITE_DRY_RUN:-}
-TRAIN_WEIGHTS=${TRAIN_WEIGHTS:-train/checkpoints/spectv11NoiseLbael/val_pr_auc.weights.h5}
+# weights to start training from, default none (an imagenet base model)
+TRAIN_WEIGHTS=${TRAIN_WEIGHTS:-}
 
 # from embed_analyse.sh
 PROBE_CSV=tier1-probe-$NAME.csv
@@ -70,7 +71,7 @@ CACOPHONY_PROBE_CSV=cacophony-flags-$NAME.csv
 BEST_CSV=tier1-best-windows-$NAME.csv
 COMPARE_CSV=tier1-best-windows-vs-rms-$NAME.csv
 for f in "$PROBE_CSV" "$CACOPHONY_PROBE_CSV" "$TIER1_FLAGS" "$CACOPHONY_FLAGS" \
-    "$TRAIN_WEIGHTS"; do
+    ${TRAIN_WEIGHTS:+"$TRAIN_WEIGHTS"}; do
     if [[ ! -f "$f" ]]; then
         echo "No $f" >&2
         exit 1
@@ -142,7 +143,11 @@ run cacophony-build "Building cacophony with confirmed tracks into $CACOPHONY_OU
 
 TRAIN_LOG=logs/$TRAIN_NAME.txt
 echo "==== $(date '+%F %T') Training $TRAIN_NAME, log $TRAIN_LOG"
-./train.sh -w "$TRAIN_WEIGHTS" --lr 1e-4 \
+WEIGHT_ARGS=()
+if [[ -n "$TRAIN_WEIGHTS" ]]; then
+    WEIGHT_ARGS=(-w "$TRAIN_WEIGHTS")
+fi
+./train.sh "${WEIGHT_ARGS[@]}" --lr 1e-4 \
     --epochs 25 --patience 25 "$TRAIN_NAME" \
     --bird-mix-prob 0.5 --mixup-mode union-fixed --mixup-db-range -12 -6 \
     --noise-bank --noise-share --backup --add-noise-label --auto-noise-fraction 0.3 \
@@ -150,7 +155,7 @@ echo "==== $(date '+%F %T') Training $TRAIN_NAME, log $TRAIN_LOG"
     --drop-tracks "$PWD/tier1-drop-b-tomtit-morepork.txt" \
     --noise-dirs \
         /data2/audio-training/audio-training/training-data/noise \
-        /data2/audio-training/audio-training/training-data/noise/auto-noise \
+        /data2/audio-training/audio-training/training-data/auto-noise \
         /data/audio-data/other-datasets/noise-dataset/ambient-noise/ \
         /data/audio-data/other-datasets/noise-dataset/esc-50-noise/ \
     &> "$TRAIN_LOG"
