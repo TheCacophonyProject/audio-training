@@ -23,8 +23,9 @@ noise comes from another split's sites. Recordings with a new key are split
 by build.py's split_randomly: random new keys go to validation and test until
 each has --val-share and --test-share of all the samples, counting what the
 split file and --test-devices already give it, the rest to train. The records
-go to <training dir>/noise/auto-noise/<split> with the build's labels and
-config, so add <training dir>/noise/auto-noise to train.sh's --noise-dirs.
+go to <training dir>/auto-noise/<split> with the build's labels and config,
+so add <training dir>/auto-noise to train.sh's --noise-dirs. It's beside
+<training dir>/noise, not in it, so rebuilding the noise doesn't touch it.
 
 python3 scripts/build_auto_noise.py -d /data/audio-data/cacophony /data/new-noise-meta \\
     /data2/audio-training/audio-training/training-data
@@ -337,7 +338,7 @@ def main():
     print_counts(counts, [*datasets, "new"])
     if a.dry_run:
         return
-    out = training_dir / "noise" / AUTO_DIR
+    out = training_dir / AUTO_DIR
     for name, ds in datasets.items():
         if ds.samples:
             create_tf_records(ds, out / name, labels, num_shards=100)
