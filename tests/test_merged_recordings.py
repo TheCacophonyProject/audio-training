@@ -9,6 +9,7 @@ import logging
 import sys
 import tempfile
 import unittest
+from collections import Counter
 from argparse import Namespace
 from pathlib import Path
 from unittest import mock
@@ -717,6 +718,66 @@ class ConfirmedTracksTest(unittest.TestCase):
         samples = self.merged(2.0)
         self.assertEqual(samples[1].tags, ["silver3"])
         self.assertEqual(samples[2].tags, ["eurbla", "tomtit1"])
+
+
+class ConfirmedCacophonyTest(unittest.TestCase):
+    """Cacophony confirmed tracks (write_tightened_tracks.py) can be any length
+    and are built without best_segment"""
+
+    def setUp(self):
+        logging.disable(logging.CRITICAL)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+        logging.disable(logging.NOTSET)
+
+    def load(self, confirmed_tracks):
+        meta = clip_meta(
+            "C", [track(1, "silvereye", 0, 12), track(2, "fantail", 20, 25)], 30
+        )
+        meta["confirmed-tracks"] = confirmed_tracks
+        write_dir(self.dir, {"c": meta})
+        tightened = []
+
+        def record_tighten(t, metadata, segment_length, tighten, filter_rms):
+            tightened.append(t.id)
+            fake_tighten(t, metadata, segment_length, tighten, filter_rms)
+
+        np.random.seed(0)
+        config = ad.Config(best_segment=False, confirmed_tracks=True)
+        dataset = ad.AudioDataset("test", config)
+        with mock.patch.object(ad.Track, "tighten_track", record_tighten):
+            dataset.load_meta(self.dir)
+        return dataset, tightened
+
+    def test_rms_tracks_tightened(self):
+        with_rms = confirmed("1_1", "silvereye", 0, 3, 1)
+        with_rms["upper_rms"] = [0.1] * 10
+        merged = confirmed(2, "fantail", 20, 28, 2)
+        merged["merged_tracks"] = [2, 3]
+        dataset, tightened = self.load([with_rms, merged])
+        # only the one with rms data is tightened, the merged one is as is
+        self.assertEqual(tightened, ["1_1"])
+        tracks = {t.id: t for t in dataset.recs["C"].tracks}
+        self.assertEqual((tracks[2].start, tracks[2].end), (20, 28))
+        self.assertEqual(tracks[2].merged_tracks, [2, 3])
+        self.assertEqual(tracks["1_1"].merged_tracks, [1])
+        # without best_segment a long track has samples along it as Tracks do
+        per_track = Counter(own_track(s) for s in dataset.samples)
+        self.assertGreater(per_track[2], 1)
+
+    def test_overlap_without_best_segment(self):
+        # 1s of overlap is enough without best_segment, as for Tracks
+        dataset, _ = self.load(
+            [
+                confirmed("1_1", "silvereye", 0, 3, 1),
+                confirmed("2_1", "fantail", 2, 5, 2),
+            ]
+        )
+        first = [s for s in dataset.samples if own_track(s) == "1_1"][0]
+        self.assertEqual(first.tags, ["nezfan1", "silver3"])
 
 
 if __name__ == "__main__":

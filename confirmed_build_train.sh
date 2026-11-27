@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# From an embed_analyse.sh run of a model, writes each tier1 track's confirmed
-# windows into its metadata, builds tier1 (with them) and cacophony, then
-# trains.
+# From an embed_analyse.sh run of a model, writes confirmed tracks into the
+# tier1 and cacophony metadata, builds both with them, then trains.
 #   1 best_windows.py          each tag's best probe / knn window, from
 #                              tier1-probe-<model name>.csv
 #   2 compare_best_windows.py  against each track's best rms window (needs the
@@ -11,9 +10,12 @@
 #                              into the tier1 metadata, every label unless
 #                              FILTER_LABELS=1 (only the model's labels, others'
 #                              primaries keep their rms window)
-#   4 build.py tier1           --best-segment --confirmed-tracks
-#   5 build.py cacophony       as build_datasets.sh
-#   6 train.sh
+#   4 write_tightened_tracks.py confirmed-tracks into the cacophony metadata,
+#                              by the scripts/tighten_tracks.py rules, from
+#                              cacophony-flags-<model name>.csv
+#   5 build.py tier1           --best-segment --confirmed-tracks
+#   6 build.py cacophony       --confirmed-tracks
+#   7 train.sh
 #
 #   ./confirmed_build_train.sh <model .keras> [train name]
 # e.g.
@@ -23,10 +25,12 @@
 #
 # Paths can be overridden with environment variables as in build_datasets.sh,
 # BUILD_ARGS go to both builds, WRITE_ARGS to write_best_windows.py e.g.
-# WRITE_ARGS="--exempt tomtit1,comred" (default none). WRITE_DRY_RUN=1 stops after counting
-# what step 3 would write. Each task writes its output to its own .txt file in
-# LOG_DIR. Back up the tier1 metadata before running, step 3 edits it in place
-# (re-running replaces what it wrote).
+# WRITE_ARGS="--exempt tomtit1,comred" (default none), TIGHTEN_ARGS to
+# write_tightened_tracks.py e.g. TIGHTEN_ARGS="--keep-labels comred nezpig2".
+# WRITE_DRY_RUN=1 stops after counting what steps 3 and 4 would write. Each
+# task writes its output to its own .txt file in LOG_DIR. Back up the tier1
+# and cacophony metadata before running, steps 3 and 4 edit it in place
+# (re-running replaces what they wrote).
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -56,14 +60,17 @@ TIER1_OUT=${TIER1_OUT:-/data2/audio-training/audio-training/tier1}
 CACOPHONY_OUT=${CACOPHONY_OUT:-/data2/audio-training/audio-training}
 BUILD_ARGS=${BUILD_ARGS:-}
 WRITE_ARGS=${WRITE_ARGS:-}
+TIGHTEN_ARGS=${TIGHTEN_ARGS:-}
 WRITE_DRY_RUN=${WRITE_DRY_RUN:-}
 TRAIN_WEIGHTS=${TRAIN_WEIGHTS:-train/checkpoints/spectv11NoiseLbael/val_pr_auc.weights.h5}
 
 # from embed_analyse.sh
 PROBE_CSV=tier1-probe-$NAME.csv
+CACOPHONY_PROBE_CSV=cacophony-flags-$NAME.csv
 BEST_CSV=tier1-best-windows-$NAME.csv
 COMPARE_CSV=tier1-best-windows-vs-rms-$NAME.csv
-for f in "$PROBE_CSV" "$TIER1_FLAGS" "$CACOPHONY_FLAGS" "$TRAIN_WEIGHTS"; do
+for f in "$PROBE_CSV" "$CACOPHONY_PROBE_CSV" "$TIER1_FLAGS" "$CACOPHONY_FLAGS" \
+    "$TRAIN_WEIGHTS"; do
     if [[ ! -f "$f" ]]; then
         echo "No $f" >&2
         exit 1
@@ -107,13 +114,20 @@ run compare "Comparing $BEST_CSV with the best rms windows into $COMPARE_CSV" \
 run write-dry-run "Counting what would be written to $TIER1_DIR" \
     python3 write_best_windows.py "$COMPARE_CSV" "${LABEL_ARGS[@]}" --dry-run \
     $WRITE_ARGS
+# shellcheck disable=SC2086 # TIGHTEN_ARGS is split into arguments on purpose
+run tighten-dry-run "Counting what would be written to $CACOPHONY_DIR" \
+    python3 write_tightened_tracks.py "$CACOPHONY_PROBE_CSV" --dry-run $TIGHTEN_ARGS
 if [[ -n "$WRITE_DRY_RUN" ]]; then
-    echo "==== WRITE_DRY_RUN set, stopping, counts in $LOG_DIR/write-dry-run.txt"
+    echo "==== WRITE_DRY_RUN set, stopping, counts in $LOG_DIR/write-dry-run.txt" \
+        "and $LOG_DIR/tighten-dry-run.txt"
     exit 0
 fi
 # shellcheck disable=SC2086
 run write "Writing confirmed tracks into $TIER1_DIR" \
     python3 write_best_windows.py "$COMPARE_CSV" "${LABEL_ARGS[@]}" $WRITE_ARGS
+# shellcheck disable=SC2086
+run tighten "Writing tightened confirmed tracks into $CACOPHONY_DIR" \
+    python3 write_tightened_tracks.py "$CACOPHONY_PROBE_CSV" $TIGHTEN_ARGS
 
 # shellcheck disable=SC2086 # BUILD_ARGS is split into arguments on purpose
 run tier1-build "Building tier1 with confirmed tracks into $TIER1_OUT" \
@@ -122,9 +136,9 @@ run tier1-build "Building tier1 with confirmed tracks into $TIER1_OUT" \
 # noise only samples go to training-data/noise/<split>, train's --noise-dirs
 # uses it
 # shellcheck disable=SC2086
-run cacophony-build "Building cacophony into $CACOPHONY_OUT" \
-    python3 build.py -d "$CACOPHONY_DIR" --perch-flags "$CACOPHONY_FLAGS" \
-    $BUILD_ARGS "$CACOPHONY_OUT"
+run cacophony-build "Building cacophony with confirmed tracks into $CACOPHONY_OUT" \
+    python3 build.py -d "$CACOPHONY_DIR" --confirmed-tracks \
+    --perch-flags "$CACOPHONY_FLAGS" $BUILD_ARGS "$CACOPHONY_OUT"
 
 TRAIN_LOG=logs/$TRAIN_NAME.txt
 echo "==== $(date '+%F %T') Training $TRAIN_NAME, log $TRAIN_LOG"

@@ -23,6 +23,7 @@ from audiodataset import (
     RELABEL,
     Track,
     AudioSample,
+    CONFIRMED_KEY,
     Config,
     LOW_SAMPLES_LABELS as dataset_low_samples,
 )
@@ -849,9 +850,16 @@ def filter_bird_windows(dataset, args):
                     for t in clip_tracks
                     if t.best_start is not None
                 }
+            # with --confirmed-tracks the recording's tracks are its confirmed
+            # tracks, so judge those, their ids are the dataset's track ids
+            clip_meta = clip.metadata
+            if getattr(args, "confirmed_tracks", False) and clip_meta.get(
+                CONFIRMED_KEY
+            ) is not None:
+                clip_meta = dict(clip_meta, Tracks=clip_meta[CONFIRMED_KEY])
             # only the window rows are needed
             for _ in track_results(
-                Path(clip.filename), clip.metadata, taxonomy, compare_args, windows
+                Path(clip.filename), clip_meta, taxonomy, compare_args, windows
             ):
                 pass
         results = []
@@ -866,6 +874,13 @@ def filter_bird_windows(dataset, args):
                 outcomes.setdefault(label, Counter())["noise skipped"] += 1
                 continue
             track_perch = perch.get((str(r.id), track_id))
+            if not track_perch and t.confirmed:
+                # perch is of the Tracks track(s) it was made from
+                track_perch = [
+                    row
+                    for source in t.merged_tracks
+                    for row in perch.get((str(r.id), str(source)), [])
+                ]
             if perch and not track_perch:
                 perch_missing.add((str(r.id), track_id))
             rows = window_perch(track_perch, w["window_start"], w["window_end"])

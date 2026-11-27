@@ -634,28 +634,30 @@ class Recording:
             tracks_meta = metadata[CONFIRMED_KEY]
 
         for track in tracks_meta:
+            # a confirmed track with no rms data (tier1's 3s windows, cacophony
+            # segments merged from several tracks) is already the window to
+            # use, one with rms data (other cacophony ones) is tightened by rms
+            # as Tracks are
+            use_rms = not confirmed or "upper_rms" in track
             t = Track(
                 track,
                 self.filename,
                 self.id,
                 self,
-                # confirmed tracks are already the window to use
                 tighten=(
-                    False
-                    if confirmed
-                    else config.tighten_tracks if config is not None else True
+                    (config.tighten_tracks if config is not None else True)
+                    and use_rms
                 ),
                 filter_rms=(
-                    False
-                    if confirmed
-                    else config.filter_rms if config is not None else True
+                    (config.filter_rms if config is not None else True) and use_rms
                 ),
             )
             if confirmed:
                 t.confirmed = True
-                # a confirmed track is its own best segment
-                t.best_start = t.start
-                t.best_end = t.end
+                if t.best_start is None:
+                    # not tightened, it's its own best segment
+                    t.best_start = t.start
+                    t.best_end = t.end
                 original = originals.get(str(t.source_track))
                 if original is not None:
                     t.presence = presence_windows(original, config.segment_length)
@@ -1038,10 +1040,11 @@ class Recording:
                         # 0.5s of the other track in this sample, or most of it if
                         # it is shorter than that
                         min_overlap = min(0.5, other_length * 0.9)
-                        if other_track.confirmed:
-                            # a confirmed track is a 3s window the bird is
-                            # somewhere in, so it needs as much overlap as a
-                            # presence window
+                        if other_track.confirmed and self.best_segment:
+                            # a confirmed best segment (tier1) is a 3s window
+                            # the bird is somewhere in, so it needs as much
+                            # overlap as a presence window. Without
+                            # best_segment (cacophony) a track is the call
                             min_overlap = min(presence_overlap, other_length * 0.9)
 
                         # enough overlap or we engulf the track
@@ -1267,6 +1270,8 @@ class Track:
         # the "Tracks" track a confirmed track came from, e.g. 31 for
         # 31_secondary
         self.source_track = metadata.get("source_track", self.id)
+        # every "Tracks" track a confirmed track was merged from
+        self.merged_tracks = metadata.get("merged_tracks") or [self.source_track]
         # [(ebird id, text label, start, end)] where the probe scored a bird
         # of the source track, in this track's file times, set for confirmed
         # tracks
