@@ -1590,6 +1590,22 @@ def parse_args():
         help="Only use each tracks best segment as its sample",
     )
     parser.add_argument(
+        "--confirmed-tracks",
+        default=False,
+        action="store_true",
+        help="Use a recording's confirmed-tracks (write_best_windows.py) in "
+        "place of its Tracks when it has them, recordings without them use "
+        "Tracks as before",
+    )
+    parser.add_argument(
+        "--presence-overlap",
+        type=float,
+        default=1.5,
+        help="With --confirmed-tracks, seconds a probe window where a bird of "
+        "a track scored (its primary_starts / secondary_starts) must overlap a "
+        "sample to add that bird's label, e.g. from an overlapping clip",
+    )
+    parser.add_argument(
         "--dont-filter-rms",
         default=False,
         action="store_true",

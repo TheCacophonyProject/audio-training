@@ -559,6 +559,166 @@ class SecondaryPerClipTest(unittest.TestCase):
                 self.assertEqual((s.secondary_tags, s.soft_tags), ([tui], []))
 
 
+def confirmed(track_id, label, start, end, source_track, offset=None, secondary=()):
+    t = track(track_id, label, start, end, offset=offset, secondary=secondary)
+    t["source_track"] = source_track
+    t["source"] = "probe"
+    return t
+
+
+def load_confirmed(directory, use_confirmed=True, presence_overlap=1.5):
+    np.random.seed(0)
+    config = ad.Config(
+        best_segment=True,
+        confirmed_tracks=use_confirmed,
+        presence_overlap=presence_overlap,
+    )
+    dataset = ad.AudioDataset("test", config)
+    dataset.load_meta(directory)
+    return dataset
+
+
+class ConfirmedTracksTest(unittest.TestCase):
+    """--confirmed-tracks uses write_best_windows.py's confirmed-tracks in place
+    of Tracks, and labels samples with birds where the original tracks'
+    primary_starts / secondary_starts say the probe scored them"""
+
+    def setUp(self):
+        logging.disable(logging.CRITICAL)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+        logging.disable(logging.NOTSET)
+
+    def one_clip(self):
+        original = track(31, "silvereye", 0, 8, secondary=["tomtit"])
+        original["primary_starts"] = [1.0]
+        original["secondary_starts"] = {"tomtit": [5.0]}
+        meta = clip_meta("R", [original], duration=8)
+        meta["confirmed-tracks"] = [
+            confirmed(31, "silvereye", 1.0, 4.0, 31),
+            confirmed("31_secondary", "tomtit", 5.0, 8.0, 31),
+        ]
+        return meta
+
+    def test_confirmed_replace_tracks(self):
+        write_dir(self.dir, {"a": self.one_clip()})
+        with mock.patch.object(ad.Track, "tighten_track", fake_tighten):
+            dataset = load_confirmed(self.dir)
+        samples = {own_track(s): s for s in dataset.samples}
+        self.assertEqual(set(samples), {31, "31_secondary"})
+        self.assertEqual(
+            (samples[31].start, samples[31].end, samples[31].tags), (1.0, 4.0, ["silver3"])
+        )
+        # tomtit is only in its own track, 1s of it overlaps neither way
+        self.assertEqual(samples["31_secondary"].tags, ["tomtit1"])
+        self.assertEqual(samples[31].secondary_tags, [])
+
+    def test_without_flag_uses_tracks(self):
+        write_dir(self.dir, {"a": self.one_clip()})
+        with mock.patch.object(ad.Track, "tighten_track", fake_tighten):
+            dataset = load_confirmed(self.dir, use_confirmed=False)
+        self.assertEqual({own_track(s) for s in dataset.samples}, {31})
+        self.assertEqual(dataset.samples[0].secondary_tags, ["tomtit1"])
+
+    def test_empty_confirmed_drops_recording_tracks(self):
+        dropped = clip_meta("D", [track(1, "silvereye", 0, 5)])
+        dropped["confirmed-tracks"] = []
+        # no confirmed-tracks, e.g. cacophony data, uses Tracks
+        plain = clip_meta("P", [track(2, "tui", 0, 5)])
+        write_dir(self.dir, {"d": dropped, "p": plain})
+        with mock.patch.object(ad.Track, "tighten_track", fake_tighten):
+            dataset = load_confirmed(self.dir)
+        self.assertEqual(dataset.recs["D"].tracks, [])
+        self.assertEqual([own_track(s) for s in dataset.samples], [2])
+
+    def merged(self, tomtit_start, a_heard=None):
+        # clip a is recording 0-5, clip b recording 1-6
+        a_track = track(1, "silvereye", 0, 5, offset=0)
+        a_track["primary_starts"] = [1.0]
+        if a_heard is not None:
+            a_track.update(a_heard)
+        a = clip_meta("R", [a_track])
+        a["confirmed-tracks"] = [confirmed(1, "silvereye", 1.0, 4.0, 1, offset=0)]
+        b_track = track(2, "eurasian-blackbird", 0, 5, offset=1.0, secondary=["tomtit"])
+        b_track["primary_starts"] = [2.0]
+        b_track["secondary_starts"] = {"tomtit": [tomtit_start]}
+        b = clip_meta("R", [b_track])
+        b["confirmed-tracks"] = [
+            confirmed(2, "eurasian-blackbird", 2.0, 5.0, 2, offset=1.0)
+        ]
+        write_dir(self.dir, {"a": a, "b": b})
+        with mock.patch.object(ad.Track, "tighten_track", fake_tighten):
+            dataset = load_confirmed(self.dir)
+        return {own_track(s): s for s in dataset.samples}
+
+    def test_presence_from_merged_clip(self):
+        # b's tomtit at its 0-3s is recording 1-4, all of a's sample
+        samples = self.merged(0.0)
+        self.assertEqual(samples[1].tags, ["silver3", "tomtit1"])
+        # a's silvereye (recording 1-4) and b's sample (recording 3-6) share
+        # only 1s, as do b's blackbird track and a's sample
+        self.assertEqual(samples[2].tags, ["eurbla"])
+
+    def test_overlap_label_needs_own_probe(self):
+        # a's own probe scored tomtit at its 1-4s, so b's tomtit is a label
+        samples = self.merged(
+            0.0, {"probe_starts": {"silver3": [1.0], "tomtit1": [1.0]}}
+        )
+        self.assertEqual(samples[1].tags, ["silver3", "tomtit1"])
+        self.assertEqual(samples[1].soft_tags, [])
+
+    def test_overlap_label_from_knn(self):
+        samples = self.merged(
+            0.0, {"probe_starts": {"silver3": [1.0]}, "knn_starts": {"tomtit1": [1.0]}}
+        )
+        self.assertEqual(samples[1].tags, ["silver3", "tomtit1"])
+
+    def test_overlap_label_not_heard_is_soft(self):
+        # a's probe only heard silvereye, b's tomtit is a soft tag on a's sample
+        samples = self.merged(0.0, {"probe_starts": {"silver3": [1.0]}})
+        self.assertEqual(samples[1].tags, ["silver3"])
+        self.assertEqual(samples[1].soft_tags, ["tomtit1"])
+        # heard but in a's 0-3s, only 2s of the 1-4s sample is enough
+        samples = self.merged(0.0, {"probe_starts": {"tomtit1": [0.0]}})
+        self.assertEqual(samples[1].tags, ["silver3", "tomtit1"])
+        # heard only at a's 3-6s, 1s of the 1-4s sample isn't enough
+        samples = self.merged(0.0, {"probe_starts": {"tomtit1": [3.0]}})
+        self.assertEqual(samples[1].soft_tags, ["tomtit1"])
+
+    def test_overlapping_track_not_heard_is_soft(self):
+        # b's blackbird track at recording 1.5-4.5 overlaps a's 1-4 sample by
+        # 2.5s, but a doesn't hear blackbird
+        a_track = track(1, "silvereye", 0, 5, offset=0)
+        a_track["probe_starts"] = {"silver3": [1.0]}
+        a = clip_meta("R", [a_track])
+        a["confirmed-tracks"] = [confirmed(1, "silvereye", 1.0, 4.0, 1, offset=0)]
+        b_track = track(2, "eurasian-blackbird", 0, 5, offset=1.0)
+        b = clip_meta("R", [b_track])
+        b["confirmed-tracks"] = [
+            confirmed(2, "eurasian-blackbird", 0.5, 3.5, 2, offset=1.0)
+        ]
+        write_dir(self.dir, {"a": a, "b": b})
+        with mock.patch.object(ad.Track, "tighten_track", fake_tighten):
+            dataset = load_confirmed(self.dir)
+        samples = {own_track(s): s for s in dataset.samples}
+        self.assertEqual(samples[1].tags, ["silver3"])
+        self.assertEqual(samples[1].soft_tags, ["eurbla"])
+        # not an overlap of the sample so filter_bird_windows can't make it a
+        # label again
+        self.assertEqual(samples[1].track_ids, [1])
+        # b has no probe_starts so checks nothing, a's silvereye is a label
+        self.assertEqual(samples[2].tags, ["eurbla", "silver3"])
+
+    def test_presence_needs_overlap(self):
+        # b's tomtit at its 2-5s is recording 3-6, 1s of a's sample
+        samples = self.merged(2.0)
+        self.assertEqual(samples[1].tags, ["silver3"])
+        self.assertEqual(samples[2].tags, ["eurbla", "tomtit1"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

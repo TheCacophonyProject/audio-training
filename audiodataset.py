@@ -131,6 +131,12 @@ class Config:
         self.filter_rms = not args.get("dont_filter_rms", False)
         # only use each tracks best segment (track.best_start - track.best_end)
         self.best_segment = args.get("best_segment", False)
+        # use a recording's "confirmed-tracks" (write_best_windows.py) in place
+        # of its "Tracks" when it has them
+        self.confirmed_tracks = args.get("confirmed_tracks", False)
+        # seconds a probe window where a bird scored (the original track's
+        # primary_starts / secondary_starts) must overlap a sample to label it
+        self.presence_overlap = args.get("presence_overlap", 1.5)
         # seeds random generation so a dataset build can be reproduced exactly
         self.seed = args.get("seed")
 
@@ -393,6 +399,57 @@ def load_metadata(filename):
     return meta
 
 
+# write_best_windows.py's tracks to keep, used in place of "Tracks" with
+# Config.confirmed_tracks
+CONFIRMED_KEY = "confirmed-tracks"
+
+
+def tag_labels(what):
+    """(ebird id, text label) of a tag's what, as Track.add_tag maps it"""
+    ebird_id = get_ebird_id(what, labels_to_ebird_map)
+    text_label = what
+    if ebird_id in RELABEL:
+        ebird_id = RELABEL[ebird_id]
+        text_label = ebird_to_labels_map.get(ebird_id, [ebird_id])[0]
+    return ebird_id, text_label
+
+
+def presence_windows(track_meta, segment_length):
+    """[(ebird id, text label, start, end)] of the probe windows where a
+    "Tracks" track's primary (primary_starts) or each secondary
+    (secondary_starts) scored, in the track's file times"""
+    windows = []
+    tags = track_meta.get("tags", [])
+    primaries = [
+        t["what"]
+        for t in tags
+        if t.get("what") and not t.get("secondary") and t.get("automatic") is False
+    ]
+    for what in primaries:
+        ebird_id, text_label = tag_labels(what)
+        for start in track_meta.get("primary_starts", []):
+            windows.append((ebird_id, text_label, start, start + segment_length))
+    for what, starts in (track_meta.get("secondary_starts") or {}).items():
+        ebird_id, text_label = tag_labels(what)
+        for start in starts:
+            windows.append((ebird_id, text_label, start, start + segment_length))
+    return windows
+
+
+def heard_windows(track_meta, segment_length):
+    """{label: [(start, end)]} from a "Tracks" track's probe_starts and
+    knn_starts, None if it has neither"""
+    if "probe_starts" not in track_meta and "knn_starts" not in track_meta:
+        return None
+    heard = {}
+    for key in ("probe_starts", "knn_starts"):
+        for label, starts in (track_meta.get(key) or {}).items():
+            heard.setdefault(label, []).extend(
+                (start, start + segment_length) for start in starts
+            )
+    return heard
+
+
 def filter_track(track):
     if len(track.tags) != 1:
         return True
@@ -531,6 +588,9 @@ class Recording:
         # test set, samples' bin ids start with it
         self.split_key = split_key(filename, metadata)
         self.best_segment = config.best_segment if config is not None else False
+        self.presence_overlap = (
+            getattr(config, "presence_overlap", None) if config is not None else None
+        )
         self.device_id = metadata.get("deviceId")
         self.group_id = metadata.get("groupId")
         self.rec_date = metadata.get("recordingDateTime")
@@ -561,6 +621,17 @@ class Recording:
         tracks_meta = metadata.get("Tracks")
         if tracks_meta is None:
             tracks_meta = metadata.get("tracks", [])
+        confirmed = (
+            config is not None
+            and getattr(config, "confirmed_tracks", False)
+            and metadata.get(CONFIRMED_KEY) is not None
+        )
+        originals = {}
+        if confirmed:
+            # where every bird of the original tracks scored, so samples can
+            # be labelled with birds outside the confirmed tracks
+            originals = {str(t.get("id")): t for t in tracks_meta}
+            tracks_meta = metadata[CONFIRMED_KEY]
 
         for track in tracks_meta:
             t = Track(
@@ -568,9 +639,27 @@ class Recording:
                 self.filename,
                 self.id,
                 self,
-                tighten=config.tighten_tracks if config is not None else True,
-                filter_rms=config.filter_rms if config is not None else True,
+                # confirmed tracks are already the window to use
+                tighten=(
+                    False
+                    if confirmed
+                    else config.tighten_tracks if config is not None else True
+                ),
+                filter_rms=(
+                    False
+                    if confirmed
+                    else config.filter_rms if config is not None else True
+                ),
             )
+            if confirmed:
+                t.confirmed = True
+                # a confirmed track is its own best segment
+                t.best_start = t.start
+                t.best_end = t.end
+                original = originals.get(str(t.source_track))
+                if original is not None:
+                    t.presence = presence_windows(original, config.segment_length)
+                    t.heard = heard_windows(original, config.segment_length)
             if filter_track(t):
                 continue
             self.tracks.append(t)
@@ -616,6 +705,7 @@ class Recording:
         cloned = Recording(no_tracks, self.filename, None, load_samples=False)
         cloned.metadata = self.metadata
         cloned.best_segment = self.best_segment
+        cloned.presence_overlap = self.presence_overlap
         # empty from the no_tracks metadata, set so it holds whatever init does
         cloned.tracks = []
         cloned.human_tags = set()
@@ -709,6 +799,30 @@ class Recording:
             tracks = [t for t in self.tracks if for_label in t.human_tags]
 
         tracks = [t for t in tracks if not t.rms_filtered]
+        # confirmed tracks' presence windows on the original recording's
+        # timeline, once per source track (its confirmed tracks share them):
+        # [(filename, offset_start, ebird id, text label, start, end)]
+        presence = []
+        seen_sources = set()
+        for t in self.tracks:
+            key = (t.filename, t.offset_start, t.source_track)
+            if not t.presence or key in seen_sources:
+                continue
+            seen_sources.add(key)
+            for ebird_id, text_label, w_start, w_end in t.presence:
+                presence.append(
+                    (
+                        t.filename,
+                        t.offset_start,
+                        ebird_id,
+                        text_label,
+                        w_start + track_offset(t),
+                        w_end + track_offset(t),
+                    )
+                )
+        presence_overlap = (
+            self.presence_overlap if self.presence_overlap is not None else 1.5
+        )
         # bird tracks first so they own samples shared with overlapping tracks
         tracks = sorted(tracks, key=lambda t: not t.bird_track)
         # samples made so far per pool, to skip duplicates from overlapping tracks
@@ -869,6 +983,19 @@ class Recording:
 
                     other_tracks = []
                     overlaps = {}
+                    # labels from overlaps this track doesn't hear
+                    soft = set()
+
+                    def heard(tag, start=start, end=end):
+                        """the probe or knn heard tag in this track's own
+                        audio where this sample is"""
+                        if track.heard is None:
+                            return True
+                        return any(
+                            min(end, w_end) - max(start, w_start) >= presence_overlap
+                            for w_start, w_end in track.heard.get(tag, [])
+                        )
+
                     # the sample on the original recording's timeline
                     rec_start = start + offset
                     rec_end = end + offset
@@ -911,9 +1038,25 @@ class Recording:
                         # 0.5s of the other track in this sample, or most of it if
                         # it is shorter than that
                         min_overlap = min(0.5, other_length * 0.9)
+                        if other_track.confirmed:
+                            # a confirmed track is a 3s window the bird is
+                            # somewhere in, so it needs as much overlap as a
+                            # presence window
+                            min_overlap = min(presence_overlap, other_length * 0.9)
 
                         # enough overlap or we engulf the track
                         if overlap >= min_overlap:
+                            rejected = {
+                                tag
+                                for tag in other_track.human_tags
+                                if tag not in labels and not heard(tag)
+                            }
+                            if rejected:
+                                # this track doesn't hear it, the other track's
+                                # bird may just be too far away or not here
+                                soft |= rejected
+                                labels = labels | (other_track.human_tags - rejected)
+                                continue
                             other_tracks.append(other_track)
                             # where, in the other track's own file times, so
                             # it can be checked against that track's windows,
@@ -936,13 +1079,43 @@ class Recording:
                                 else:
                                     max_freq = max(other_track.max_freq, max_freq)
 
+                    # birds the probe scored where this sample is, from any
+                    # clip on the same timeline, even outside their confirmed
+                    # tracks
+                    for (
+                        p_file,
+                        p_offset,
+                        ebird_id,
+                        text_label,
+                        p_start,
+                        p_end,
+                    ) in presence:
+                        if p_file != track.filename and (
+                            track.offset_start is None or p_offset is None
+                        ):
+                            continue
+                        shared = min(rec_end, p_end) - max(rec_start, p_start)
+                        if shared >= presence_overlap and ebird_id not in labels:
+                            if heard(ebird_id):
+                                labels = labels | {ebird_id}
+                                text_labels = text_labels | {text_label}
+                            else:
+                                soft.add(ebird_id)
+
                     other_tracks.append(track)
                     # a secondary bird that is a label of an overlapping
                     # track is already a label
-                    secondary_tags = set()
+                    secondary_tags = set(track.secondary_tags)
                     for t in other_tracks:
-                        secondary_tags |= t.secondary_tags
+                        if t is track:
+                            continue
+                        for tag in t.secondary_tags:
+                            if heard(tag):
+                                secondary_tags.add(tag)
+                            else:
+                                soft.add(tag)
                     secondary_tags -= labels
+                    soft -= labels | secondary_tags
                     # bin_id is always the recording's split key, so a
                     # recording is only ever in one of train, validation, test
                     sample = AudioSample(
@@ -961,6 +1134,7 @@ class Recording:
                         low_sample=low_sample_track,
                         secondary_tags=secondary_tags,
                         overlaps=overlaps,
+                        soft_tags=soft,
                     )
                     if used_sample:
                         pool = "main"
@@ -1090,6 +1264,21 @@ class Track:
         self.offset_start = metadata.get("offset_start")
         self.offset_end = metadata.get("offset_end")
         self.id = metadata.get("id")
+        # the "Tracks" track a confirmed track came from, e.g. 31 for
+        # 31_secondary
+        self.source_track = metadata.get("source_track", self.id)
+        # [(ebird id, text label, start, end)] where the probe scored a bird
+        # of the source track, in this track's file times, set for confirmed
+        # tracks
+        self.presence = []
+        # from "confirmed-tracks", set by Recording
+        self.confirmed = False
+        # {label: [(start, end)]} windows of this track's own audio where the
+        # probe scored the label or knn agreed with it, any label not only the
+        # track's tags, set for confirmed tracks. A label from an overlap is
+        # only a label if it's heard here, otherwise a soft tag. None checks
+        # nothing
+        self.heard = None
         positions = metadata.get("positions", [])
         self.min_freq = metadata.get("minFreq", None)
         self.max_freq = metadata.get("maxFreq", None)
