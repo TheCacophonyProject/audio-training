@@ -23,7 +23,7 @@
 #
 # Paths can be overridden with environment variables as in build_datasets.sh,
 # BUILD_ARGS go to both builds, WRITE_ARGS to write_best_windows.py e.g.
-# WRITE_ARGS="--exempt tomtit1,comred". WRITE_DRY_RUN=1 stops after counting
+# WRITE_ARGS="--exempt tomtit1,comred" (default none). WRITE_DRY_RUN=1 stops after counting
 # what step 3 would write. Each task writes its output to its own .txt file in
 # LOG_DIR. Back up the tier1 metadata before running, step 3 edits it in place
 # (re-running replaces what it wrote).

@@ -37,9 +37,9 @@ Primary window:
     under --min-score, the new window's is at least it (or knn rescued it) and
     they share under --max-shared seconds, then that window
   - neither the probe nor knn place it (now_dropped) and the label isn't in
-    --exempt: no primary track, it's dropped. Exempt labels keep the rms
-    window, as do labels the probe has no class for and primaries that aren't
-    --labels (the model's)
+    --exempt (default none): no primary track, it's dropped. Exempt labels
+    keep the rms window, as do labels the probe has no class for (it can't
+    score them) and primaries that aren't --labels (the model's)
   - an rms_filtered track the probe keeps gets the probe window
   - a track with no rms window (not tightened) is copied as is
 Secondaries that aren't --labels are never placed.
@@ -60,8 +60,6 @@ import pandas as pd
 CONFIRMED_KEY = "confirmed-tracks"
 # written by earlier versions, removed on a re-run
 OLD_KEYS = ["filtered-tracks"]
-# probe cross validated average precision under 0.5 on cacophony data
-DEFAULT_EXEMPT = "tomtit1,comred,gull,duck,nezkak1,comcha,nezpig2"
 # copied from the original track to its confirmed tracks
 COPY_KEYS = ["offset_start", "offset_end", "minFreq", "maxFreq"]
 
@@ -322,9 +320,11 @@ def main():
     )
     parser.add_argument(
         "--exempt",
-        default=DEFAULT_EXEMPT,
+        default="",
         help="Labels whose primary keeps the rms window when the probe and knn "
-        "don't place it, comma separated or a file",
+        "don't place it, comma separated or a file. Default none, every label "
+        "goes through the same rules and is worked out again with the next "
+        "model",
     )
     parser.add_argument("--min-score", type=float, default=0.4)
     parser.add_argument(
